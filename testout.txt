@@ -23,9 +23,11 @@ Token { kind: Ident, value: "b", line_data: LineData { line: 5, column: 16, file
 Token { kind: Colon, value: ":", line_data: LineData { line: 5, column: 17, file_name: "test_code.pmh" } }
 Token { kind: Ident, value: "i8", line_data: LineData { line: 5, column: 19, file_name: "test_code.pmh" } }
 Token { kind: RPar, value: ")", line_data: LineData { line: 5, column: 21, file_name: "test_code.pmh" } }
-Token { kind: Colon, value: ":", line_data: LineData { line: 5, column: 22, file_name: "test_code.pmh" } }
-Token { kind: Pass, value: "pass", line_data: LineData { line: 5, column: 24, file_name: "test_code.pmh" } }
-Token { kind: Indent(0), value: "\n\r", line_data: LineData { line: 5, column: 29, file_name: "test_code.pmh" } }
+Token { kind: RArrow, value: "->", line_data: LineData { line: 5, column: 23, file_name: "test_code.pmh" } }
+Token { kind: Ident, value: "i8", line_data: LineData { line: 5, column: 26, file_name: "test_code.pmh" } }
+Token { kind: Colon, value: ":", line_data: LineData { line: 5, column: 28, file_name: "test_code.pmh" } }
+Token { kind: Pass, value: "pass", line_data: LineData { line: 5, column: 30, file_name: "test_code.pmh" } }
+Token { kind: Indent(0), value: "\n\r", line_data: LineData { line: 5, column: 35, file_name: "test_code.pmh" } }
 Token { kind: Indent(0), value: "\n", line_data: LineData { line: 6, column: 1, file_name: "test_code.pmh" } }
 Token { kind: Fun, value: "fun", line_data: LineData { line: 7, column: 0, file_name: "test_code.pmh" } }
 Token { kind: Ident, value: "main", line_data: LineData { line: 7, column: 4, file_name: "test_code.pmh" } }
@@ -37,12 +39,12 @@ Group 'fun' "fun":
   FunctionHeader 'fun' "fun":
    Identifier identifier "main"
    None ':' ":"
-  Group 'pass' "pass"
+  Group ':' ":"
  Function 'fun' "fun":
   FunctionHeader 'fun' "fun":
    Identifier identifier "main"
    None ':' ":"
-  Group 'pass' "pass"
+  Group ':' ":"
  Function 'fun' "fun":
   FunctionHeader 'fun' "fun":
    Identifier identifier "main"
@@ -52,11 +54,11 @@ Group 'fun' "fun":
    FunctionArgument identifier "b":
     Identifier identifier "b"
     Identifier identifier "i8"
-   None ':' ":"
-  Group 'pass' "pass"
+   Identifier identifier "i8"
+  Group ':' ":"
  Function 'fun' "fun":
   FunctionHeader 'fun' "fun":
    Identifier identifier "main"
    None ':' ":"
-  Group indentation "\n  "
+  Group ':' ":"
 
