@@ -30,5 +30,33 @@ Token { kind: Indent(0), value: "\n", line_data: LineData { line: 6, column: 1, 
 Token { kind: Fun, value: "fun", line_data: LineData { line: 7, column: 0, file_name: "test_code.pmh" } }
 Token { kind: Ident, value: "main", line_data: LineData { line: 7, column: 4, file_name: "test_code.pmh" } }
 Token { kind: Colon, value: ":", line_data: LineData { line: 7, column: 8, file_name: "test_code.pmh" } }
-Token { kind: Indent(2), value: "\n    ", line_data: LineData { line: 7, column: 10, file_name: "test_code.pmh" } }
-Token { kind: Pass, value: "pass", line_data: LineData { line: 8, column: 4, file_name: "test_code.pmh" } }
+Token { kind: Indent(1), value: "\n  ", line_data: LineData { line: 7, column: 10, file_name: "test_code.pmh" } }
+Token { kind: Pass, value: "pass", line_data: LineData { line: 8, column: 2, file_name: "test_code.pmh" } }
+Group 'fun' "fun":
+ Function 'fun' "fun":
+  FunctionHeader 'fun' "fun":
+   Identifier identifier "main"
+   None ':' ":"
+  Group 'pass' "pass"
+ Function 'fun' "fun":
+  FunctionHeader 'fun' "fun":
+   Identifier identifier "main"
+   None ':' ":"
+  Group 'pass' "pass"
+ Function 'fun' "fun":
+  FunctionHeader 'fun' "fun":
+   Identifier identifier "main"
+   FunctionArgument identifier "a":
+    Identifier identifier "a"
+    Identifier identifier "i8"
+   FunctionArgument identifier "b":
+    Identifier identifier "b"
+    Identifier identifier "i8"
+   None ':' ":"
+  Group 'pass' "pass"
+ Function 'fun' "fun":
+  FunctionHeader 'fun' "fun":
+   Identifier identifier "main"
+   None ':' ":"
+  Group indentation "\n  "
+
