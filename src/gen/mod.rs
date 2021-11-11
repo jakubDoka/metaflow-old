@@ -1,23 +1,19 @@
-use std::{
-    cell::RefCell,
-    ops::Deref,
-    rc::Rc,
-    str::FromStr,
+use cranelift_codegen::{
+    ir::{types::*, AbiParam, ExternalName, Function, InstBuilder, Signature, Type, Value},
+    isa::CallConv,
 };
-use cranelift_codegen::{binemit::{NullRelocSink, NullStackMapSink, NullTrapSink}, ir::{types::*, AbiParam, ExternalName, Function, Signature, Type, Value, InstBuilder}, isa::{self, CallConv}, settings::{self, Configurable}};
 use cranelift_frontend::{FunctionBuilder, FunctionBuilderContext, Variable};
-use cranelift_module::{Linkage, Module};
-use cranelift_object::{ObjectBuilder, ObjectModule};
-use target_lexicon::triple;
+use std::{cell::RefCell, ops::Deref, rc::Rc};
+
 use crate::{
     ast::{AEKind, AKind, Ast, AstError, AstParser},
-    lexer::{Lexer, StrRef, Token},
+    lexer::{Lexer, StrRef, TKind, Token},
 };
 
-pub type CraneContext = cranelift_codegen::Context;
-pub type Result<T> = std::result::Result<T, GenError>;
+type CraneContext = cranelift_codegen::Context;
+type Result<T> = std::result::Result<T, GenError>;
 
-pub struct Generator {
+struct Generator {
     builtin_module: Mod,
     context: Context,
     current_module: Mod,
@@ -28,7 +24,7 @@ pub struct Generator {
 }
 
 impl Generator {
-    pub fn new() -> Self {
+    fn new() -> Self {
         let builtin = Mod::builtin();
         Self {
             builtin_module: builtin.clone(),
@@ -41,13 +37,13 @@ impl Generator {
         }
     }
 
-    pub fn generate(mut self, root_file_name: &str) -> Result<Context> {
+    fn generate(mut self, root_file_name: &str) -> Result<Context> {
         self.generate_module(root_file_name.to_string())?;
 
         Ok(self.context)
     }
 
-    pub fn generate_module(&mut self, module_path: String) -> Result<Mod> {
+    fn generate_module(&mut self, module_path: String) -> Result<Mod> {
         let ast = self.load_ast(module_path)?;
 
         self.module_id_counter += 1; // the 0 is for builtin module
@@ -73,7 +69,7 @@ impl Generator {
         Ok(self.current_module.clone())
     }
 
-    pub fn function(&mut self, ast: &Ast) -> Result<()> {
+    fn function(&mut self, ast: &Ast) -> Result<()> {
         self.variable_counter = 0;
         self.variables.clear();
         let mut function_builder_context =
@@ -81,31 +77,36 @@ impl Generator {
 
         let signature_ast = &ast[0];
         let (signature, mut fun_signature) =
-            self.create_signature(signature_ast, CallConv::WindowsFastcall)?;
+            self.create_signature(signature_ast, CallConv::Fast)?;
 
         let mut function = Function::with_name_signature(fun_signature.id.clone(), signature);
         let mut builder = FunctionBuilder::new(&mut function, &mut function_builder_context);
-        let entry_point = builder.create_block();
-        builder.append_block_params_for_function_params(entry_point);
-        for (param, sig_param) in builder
-            .block_params(entry_point)
-            .iter()
-            .zip(fun_signature.params.iter_mut())
-        {
-            sig_param.access = VarAccess::Immutable(param.clone());
-        }
+        let fun = if ast[1].len() > 0 {
+            let entry_point = builder.create_block();
+            builder.append_block_params_for_function_params(entry_point);
+            for (param, sig_param) in builder
+                .block_params(entry_point)
+                .iter()
+                .zip(fun_signature.params.iter_mut())
+            {
+                sig_param.access = VarAccess::Immutable(param.clone());
+            }
 
-        self.variables
-            .extend(fun_signature.params.iter().map(|i| Some(i.clone())));
-        let fun = Fun::new(fun_signature);
-        self.current_module
-            .borrow_mut()
-            .add_function(fun.clone())?;
+            self.variables
+                .extend(fun_signature.params.iter().map(|i| Some(i.clone())));
+            let fun = Fun::new(fun_signature);
+            self.current_module.borrow_mut().add_function(fun.clone())?;
 
-        builder.switch_to_block(entry_point);
-        builder.seal_block(entry_point);
-        let val = builder.ins().iconst(I32, 1);
-        builder.ins().return_(&[val]);
+            builder.switch_to_block(entry_point);
+            self.generate_function_body(&ast[1], &mut builder)?;
+            builder.seal_block(entry_point);
+            fun
+        } else {
+            let fun = Fun::new(fun_signature);
+            self.current_module.borrow_mut().add_function(fun.clone())?;
+            fun
+        };
+
         builder.finalize();
 
         fun.borrow_mut().function = Some(function);
@@ -115,11 +116,112 @@ impl Generator {
         Ok(())
     }
 
-    pub fn create_signature(
-        &self,
-        header: &Ast,
-        cc: CallConv,
-    ) -> Result<(Signature, FunSignature)> {
+    fn generate_function_body(&mut self, ast: &Ast, builder: &mut FunctionBuilder) -> Result<()> {
+        for stmt in ast.iter() {
+            match stmt.kind {
+                AKind::ReturnStatement => {
+                    self.return_statement(stmt, builder)?;
+                }
+                _ => todo!(),
+            }
+        }
+
+        Ok(())
+    }
+
+    fn return_statement(&mut self, ast: &Ast, builder: &mut FunctionBuilder) -> Result<()> {
+        let ret_expr = &ast[0];
+
+        let ret_value = self.expression(ret_expr, builder)?;
+
+        builder.ins().return_(&[ret_value.0]);
+
+        Ok(())
+    }
+
+    fn expression(
+        &mut self,
+        ast: &Ast,
+        builder: &mut FunctionBuilder,
+    ) -> Result<(Value, Datatype)> {
+        match ast.kind {
+            AKind::Literal => match ast.token.kind {
+                TKind::Int(value, base) => {
+                    let value = builder.ins().iconst(Type::int(base).unwrap(), value as i64);
+                    Ok((
+                        value,
+                        self.builtin_module
+                            .borrow()
+                            .find_datatype(&format!("i{}", base))
+                            .unwrap()
+                            .clone(),
+                    ))
+                }
+                _ => todo!(),
+            },
+            AKind::BinaryOperation => self.binary_operation(ast, builder),
+            _ => todo!(),
+        }
+    }
+
+    fn binary_operation(
+        &mut self,
+        ast: &Ast,
+        builder: &mut FunctionBuilder,
+    ) -> Result<(Value, Datatype)> {
+        let (left_val, left_type) = self.expression(&ast[1], builder)?;
+        let (right_val, right_type) = self.expression(&ast[2], builder)?;
+
+        if left_type == right_type {
+            let value = match left_type.borrow().name.as_str() {
+                "i8" | "i16" | "i32" | "i64" => match ast[0].token.value.deref() {
+                    "+" => builder.ins().iadd(left_val, right_val),
+                    "-" => builder.ins().isub(left_val, right_val),
+                    "*" => builder.ins().imul(left_val, right_val),
+                    "/" => builder.ins().sdiv(left_val, right_val),
+                    "%" => builder.ins().srem(left_val, right_val),
+                    "&" => builder.ins().band(left_val, right_val),
+                    "|" => builder.ins().bor(left_val, right_val),
+                    "^" => builder.ins().bxor(left_val, right_val),
+                    "<<" => builder.ins().ishl(left_val, right_val),
+                    ">>" => builder.ins().sshr(left_val, right_val),
+                    "max" => builder.ins().imax(left_val, right_val),
+                    "min" => builder.ins().imin(left_val, right_val),
+                    _ => todo!(),
+                },
+                "u8" | "u16" | "u32" | "u64" => match ast[0].token.value.deref() {
+                    "+" => builder.ins().iadd(left_val, right_val),
+                    "-" => builder.ins().isub(left_val, right_val),
+                    "*" => builder.ins().imul(left_val, right_val),
+                    "/" => builder.ins().udiv(left_val, right_val),
+                    "%" => builder.ins().urem(left_val, right_val),
+                    "&" => builder.ins().band(left_val, right_val),
+                    "|" => builder.ins().bor(left_val, right_val),
+                    "^" => builder.ins().bxor(left_val, right_val),
+                    "<<" => builder.ins().ishl(left_val, right_val),
+                    ">>" => builder.ins().ushr(left_val, right_val),
+                    "max" => builder.ins().umax(left_val, right_val),
+                    "min" => builder.ins().umin(left_val, right_val),
+                    _ => todo!(),
+                }
+                "f32" | "f64" => match ast[0].token.value.deref() {
+                    "+" => builder.ins().fadd(left_val, right_val),
+                    "-" => builder.ins().fsub(left_val, right_val),
+                    "*" => builder.ins().fmul(left_val, right_val),
+                    "/" => builder.ins().fdiv(left_val, right_val),
+                    "max" => builder.ins().fmax(left_val, right_val),
+                    "min" => builder.ins().fmin(left_val, right_val),
+                    _ => todo!(),
+                }
+                _ => todo!(),
+            };
+            Ok((value, right_type))
+        } else {
+            todo!()
+        }
+    }
+
+    fn create_signature(&self, header: &Ast, cc: CallConv) -> Result<(Signature, FunSignature)> {
         let mut signature = Signature::new(cc);
         let mut fun_params = Vec::new();
         for args in header[1..header.len() - 1].iter() {
@@ -164,21 +266,21 @@ impl Generator {
         ))
     }
 
-    pub fn find_datatype(&self, token: &Token) -> Result<Datatype> {
+    fn find_datatype(&self, token: &Token) -> Result<Datatype> {
         self.current_module
             .borrow()
             .find_datatype(&token.value)
             .ok_or_else(|| GenError::new(GEKind::TypeNotFound, token.clone()))
     }
 
-    pub fn find_function(&self, token: &Token) -> Result<Fun> {
+    fn find_function(&self, token: &Token) -> Result<Fun> {
         self.current_module
             .borrow()
             .find_function(token)
             .ok_or_else(|| GenError::new(GEKind::FunctionNotFound, token.clone()))
     }
 
-    pub fn find_variable(&self, token: &Token) -> Result<Var> {
+    fn find_variable(&self, token: &Token) -> Result<Var> {
         self.variables
             .iter()
             .rev()
@@ -189,13 +291,13 @@ impl Generator {
             .ok_or_else(|| GenError::new(GEKind::VariableNotFound, token.clone()))
     }
 
-    pub fn make_variable(&mut self) -> Variable {
+    fn make_variable(&mut self) -> Variable {
         let var = Variable::with_u32(self.variable_counter);
         self.variable_counter += 1;
         var
     }
 
-    pub fn load_ast(&mut self, file_name: String) -> Result<Ast> {
+    fn load_ast(&mut self, file_name: String) -> Result<Ast> {
         let bytes =
             std::fs::read_to_string(&file_name).map_err(|e| GEKind::CannotOpenFile(e).into())?;
         AstParser::new(Lexer::new(file_name, bytes))
@@ -204,18 +306,18 @@ impl Generator {
     }
 }
 
-pub struct Context {
+struct Context {
     modules: Vec<Mod>,
 }
 
 impl Context {
-    pub fn new() -> Self {
+    fn new() -> Self {
         Self {
             modules: Vec::new(),
         }
     }
 
-    pub fn add_module(&mut self, module: Mod) -> Result<()> {
+    fn add_module(&mut self, module: Mod) -> Result<()> {
         match self
             .modules
             .binary_search_by(|d| module.borrow().name.cmp(&d.borrow().name))
@@ -228,7 +330,7 @@ impl Context {
         }
     }
 
-    pub fn find_module(&self, name: Token) -> Result<Mod> {
+    fn find_module(&self, name: Token) -> Result<Mod> {
         match self
             .modules
             .binary_search_by(|d| name.value.cmp(&d.borrow().name))
@@ -240,18 +342,18 @@ impl Context {
 }
 
 #[derive(Debug, Clone)]
-pub struct Mod {
+struct Mod {
     inner: Rc<RefCell<ModuleStruct>>,
 }
 
 impl Mod {
-    pub fn new(name: String, id: u32) -> Self {
+    fn new(name: String, id: u32) -> Self {
         Self {
             inner: Rc::new(RefCell::new(ModuleStruct::new(name, id))),
         }
     }
 
-    pub fn builtin() -> Self {
+    fn builtin() -> Self {
         Self {
             inner: Rc::new(RefCell::new(ModuleStruct::builtin())),
         }
@@ -266,17 +368,17 @@ impl Deref for Mod {
 }
 
 #[derive(Debug, Clone)]
-pub struct ModuleStruct {
-    pub name: String,
-    pub dependency: Vec<Mod>,
-    pub types: Vec<Datatype>,
-    pub functions: Vec<Fun>,
-    pub function_id_counter: u32,
-    pub id: u32,
+struct ModuleStruct {
+    name: String,
+    dependency: Vec<Mod>,
+    types: Vec<Datatype>,
+    functions: Vec<Fun>,
+    function_id_counter: u32,
+    id: u32,
 }
 
 impl ModuleStruct {
-    pub fn new(name: String, id: u32) -> Self {
+    fn new(name: String, id: u32) -> Self {
         Self {
             name,
             dependency: vec![],
@@ -287,7 +389,7 @@ impl ModuleStruct {
         }
     }
 
-    pub fn builtin() -> Self {
+    fn builtin() -> Self {
         macro_rules! builtin {
             ($($name:ident, $short:ident, $bits:expr);+ $(;)?) => {
                 vec![$(
@@ -320,7 +422,7 @@ impl ModuleStruct {
         module
     }
 
-    pub fn find_datatype(&self, name: &str) -> Option<Datatype> {
+    fn find_datatype(&self, name: &str) -> Option<Datatype> {
         self.types
             .binary_search_by(|d| name.cmp(&d.borrow().name))
             .ok()
@@ -335,7 +437,7 @@ impl ModuleStruct {
             })
     }
 
-    pub fn add_datatype(&mut self, datatype: Datatype) -> Result<()> {
+    fn add_datatype(&mut self, datatype: Datatype) -> Result<()> {
         match self
             .types
             .binary_search_by(|d| datatype.borrow().name.cmp(&d.borrow().name))
@@ -348,7 +450,7 @@ impl ModuleStruct {
         }
     }
 
-    pub fn add_function(&mut self, fun: Fun) -> Result<()> {
+    fn add_function(&mut self, fun: Fun) -> Result<()> {
         match self
             .functions
             .binary_search_by(|d| fun.borrow().signature.name.cmp(&d.borrow().signature.name))
@@ -361,7 +463,7 @@ impl ModuleStruct {
         }
     }
 
-    pub fn find_function(&self, name: &Token) -> Option<Fun> {
+    fn find_function(&self, name: &Token) -> Option<Fun> {
         self.functions
             .binary_search_by(|f| name.value.cmp(&f.borrow().signature.name))
             .ok()
@@ -376,7 +478,7 @@ impl ModuleStruct {
             })
     }
 
-    pub fn new_fun_name(&mut self) -> ExternalName {
+    fn new_fun_name(&mut self) -> ExternalName {
         let name = ExternalName::user(self.id, self.function_id_counter);
         self.function_id_counter += 1;
         name
@@ -384,12 +486,12 @@ impl ModuleStruct {
 }
 
 #[derive(Debug, Clone)]
-pub struct Fun {
+struct Fun {
     inner: Rc<RefCell<FunStruct>>,
 }
 
 impl Fun {
-    pub fn new(signature: FunSignature) -> Self {
+    fn new(signature: FunSignature) -> Self {
         Self {
             inner: Rc::new(RefCell::new(FunStruct::new(signature))),
         }
@@ -397,20 +499,20 @@ impl Fun {
 }
 
 impl Deref for Fun {
-    type Target = Rc<RefCell<FunStruct>>;
+    type Target = RefCell<FunStruct>;
     fn deref(&self) -> &Self::Target {
         &self.inner
     }
 }
 
 #[derive(Debug, Clone)]
-pub struct FunStruct {
-    pub signature: FunSignature,
-    pub function: Option<Function>,
+struct FunStruct {
+    signature: FunSignature,
+    function: Option<Function>,
 }
 
 impl FunStruct {
-    pub fn new(signature: FunSignature) -> Self {
+    fn new(signature: FunSignature) -> Self {
         Self {
             signature,
             function: None,
@@ -419,16 +521,16 @@ impl FunStruct {
 }
 
 #[derive(Debug, Clone)]
-pub struct FunSignature {
-    pub id: ExternalName,
-    pub name: StrRef,
-    pub params: Vec<Var>,
-    pub ret: Option<Datatype>,
-    pub cc: CallConv,
+struct FunSignature {
+    id: ExternalName,
+    name: StrRef,
+    params: Vec<Var>,
+    ret: Option<Datatype>,
+    cc: CallConv,
 }
 
 impl FunSignature {
-    pub fn new(
+    fn new(
         id: ExternalName,
         name: StrRef,
         params: Vec<Var>,
@@ -461,17 +563,17 @@ impl FunSignature {
     }
 }
 
-#[derive(Debug, Clone)]
-pub struct Datatype {
+#[derive(Debug, Clone, PartialEq)]
+struct Datatype {
     inner: Rc<RefCell<DatatypeStruct>>,
 }
 
 impl Datatype {
-    pub fn new(name: String, kind: DKind) -> Self {
+    fn new(name: String, kind: DKind) -> Self {
         Self::with_size(name, kind, 0)
     }
 
-    pub fn with_size(name: String, kind: DKind, size: usize) -> Self {
+    fn with_size(name: String, kind: DKind, size: usize) -> Self {
         Self {
             inner: Rc::new(RefCell::new(DatatypeStruct::with_size(name, kind, size))),
         }
@@ -487,14 +589,14 @@ impl Deref for Datatype {
 }
 
 #[derive(Debug, Clone)]
-pub struct Var {
-    pub name: StrRef,
-    pub access: VarAccess,
-    pub datatype: Datatype,
+struct Var {
+    name: StrRef,
+    access: VarAccess,
+    datatype: Datatype,
 }
 
 impl Var {
-    pub fn new(name: StrRef, access: VarAccess, datatype: Datatype) -> Self {
+    fn new(name: StrRef, access: VarAccess, datatype: Datatype) -> Self {
         Self {
             datatype,
             name,
@@ -504,29 +606,29 @@ impl Var {
 }
 
 #[derive(Debug, Clone)]
-pub enum VarAccess {
+enum VarAccess {
     Mutable(Variable),
     Immutable(Value),
     Unresolved,
 }
 
-#[derive(Debug, Clone)]
-pub struct DatatypeStruct {
-    pub name: String,
-    pub kind: DKind,
-    pub size: usize,
+#[derive(Debug, Clone, PartialEq)]
+struct DatatypeStruct {
+    name: String,
+    kind: DKind,
+    size: usize,
 }
 
 impl DatatypeStruct {
-    pub fn new(name: String, kind: DKind) -> Self {
+    fn new(name: String, kind: DKind) -> Self {
         Self::with_size(name, kind, 0)
     }
 
-    pub fn with_size(name: String, kind: DKind, size: usize) -> Self {
+    fn with_size(name: String, kind: DKind, size: usize) -> Self {
         Self { name, kind, size }
     }
 
-    pub fn get_ir_repr(&self) -> Type {
+    fn get_ir_repr(&self) -> Type {
         match self.kind {
             DKind::Builtin(tp) => tp,
             DKind::Pointer(_) => todo!(),
@@ -537,8 +639,8 @@ impl DatatypeStruct {
     }
 }
 
-#[derive(Debug, Clone)]
-pub enum DKind {
+#[derive(Debug, Clone, PartialEq)]
+enum DKind {
     Builtin(Type),
     Pointer(Datatype),
     Alias(Datatype),
@@ -546,20 +648,20 @@ pub enum DKind {
     Enum(Enum),
 }
 
-#[derive(Debug, Clone)]
-pub enum Structure {}
+#[derive(Debug, Clone, PartialEq)]
+enum Structure {}
 
-#[derive(Debug, Clone)]
-pub enum Enum {}
+#[derive(Debug, Clone, PartialEq)]
+enum Enum {}
 
 #[derive(Debug)]
-pub struct GenError {
-    pub kind: GEKind,
-    pub cause: Option<Token>,
+struct GenError {
+    kind: GEKind,
+    cause: Option<Token>,
 }
 
 impl GenError {
-    pub fn new(kind: GEKind, cause: Token) -> Self {
+    fn new(kind: GEKind, cause: Token) -> Self {
         Self {
             kind,
             cause: Some(cause),
@@ -577,7 +679,7 @@ impl Into<GenError> for AstError {
 }
 
 #[derive(Debug)]
-pub enum GEKind {
+enum GEKind {
     DuplicateType(Datatype, Datatype),
     DuplicateModule(Mod, Mod),
     DuplicateFunction(Fun, Fun),
@@ -594,6 +696,15 @@ impl Into<GenError> for GEKind {
         GenError {
             kind: self,
             cause: None,
+        }
+    }
+}
+
+pub fn test() {
+    let context = Generator::new().generate("src/test_code.pmt").unwrap();
+    for module in context.modules.iter() {
+        for fun in module.borrow().functions.iter() {
+            println!("{}", fun.borrow().function.as_ref().unwrap().display());
         }
     }
 }

@@ -1,3 +1,4 @@
+#![allow(dead_code)]
 extern crate cranelift_codegen;
 extern crate cranelift_frontend;
 
@@ -13,12 +14,11 @@ fn main() {
     run();
 }
 
-fn run() {
-    
-}
+fn run() {}
 
 #[cfg(feature = "testing")]
 fn test() {
     lexer::test();
     ast::test();
+    gen::test();
 }

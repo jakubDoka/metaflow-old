@@ -1,4 +1,8 @@
-use std::{convert::TryInto, fmt::Write, iter::repeat, ops::{Deref, DerefMut}};
+use std::{
+    fmt::Write,
+    iter::repeat,
+    ops::{Deref, DerefMut},
+};
 
 use crate::lexer::{Lexer, TKind, Token};
 
@@ -116,28 +120,33 @@ impl AstParser {
         while self.current_token == TKind::Op {
             let op = self.current_token.clone();
             let pre = precedence(op.value.deref());
-            
+
             self.advance();
-            self.ignore_newlines();  
-            
+            self.ignore_newlines();
+
             let mut next = self.simple_expression()?;
-            
+
             if self.current_token == TKind::Op {
                 let dif = pre - precedence(self.current_token.value.deref());
-                let is_or_or_and = self.current_token.value.deref() == "or" || self.current_token.value.deref() == "and";
-    
+                let is_or_or_and = self.current_token.value.deref() == "or"
+                    || self.current_token.value.deref() == "and";
+
                 if dif > 0 || is_or_or_and {
                     next = self.expression_low(next)?;
                 }
             }
 
-            result = Ast::with_children(AKind::BinaryOperation, op.clone(), vec![Ast::new(AKind::Identifier, op), result, next]);
+            result = Ast::with_children(
+                AKind::BinaryOperation,
+                op.clone(),
+                vec![Ast::new(AKind::Identifier, op), result, next],
+            );
         }
 
         Ok(result)
-    }        
+    }
 
-    fn simple_expression(&mut self) -> Result<Ast> {        
+    fn simple_expression(&mut self) -> Result<Ast> {
         let result = match self.current_token.kind {
             TKind::Ident => self.ast(AKind::Identifier),
             TKind::Int(..) => self.ast(AKind::Literal),
@@ -437,7 +446,7 @@ pub fn precedence(op: &str) -> i64 {
             } else {
                 14
             }
-        } 
+        }
     }
 }
 

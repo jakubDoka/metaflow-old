@@ -33,6 +33,8 @@ impl Lexer {
             "pass" => TKind::Pass,
             "mut" => TKind::Mut,
             "return" => TKind::Return,
+            "max" => TKind::Op,
+            "min" => TKind::Op,
             _ => TKind::Ident,
         };
         Some(Token::new(kind, value, line_data))
@@ -191,6 +193,14 @@ pub struct Token {
 }
 
 impl Token {
+    pub fn builtin(value: &'static str) -> Self {
+        Token {
+            kind: TKind::Ident,
+            value: StrRef::infinite(value),
+            line_data: LineData::default(),
+        }
+    }
+
     pub fn new(kind: TKind, value: StrRef, line_data: LineData) -> Self {
         Token {
             kind,
@@ -237,7 +247,7 @@ pub enum TKind {
     Comma,
     RArrow,
 
-    Int(i64, i8),
+    Int(i64, u16),
 
     Indent(usize),
 
@@ -301,6 +311,13 @@ impl StrRef {
         }
     }
 
+    pub fn infinite(str: &'static str) -> Self {
+        StrRef {
+            rc: None,
+            string: str,
+        }
+    }
+
     pub fn empty() -> Self {
         StrRef {
             rc: None,
@@ -359,7 +376,7 @@ pub trait IsOperator {
 
 //#[cfg(feature = "testing")]
 pub fn test() {
-    let mut lexer = Lexer::new(
+    let lexer = Lexer::new(
         "test_code.pmh".to_string(),
         crate::testing::TEST_CODE.to_string(),
     );

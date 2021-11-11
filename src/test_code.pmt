@@ -1,10 +1,10 @@
-fun main: pass
+fun flo: pass
 
-fun main(): pass
+fun foo(): pass
 
-fun main(a: i8, b: i8) -> i8: pass
+fun goo(a: i8, b: i8): pass
 
-fun main:
+fun loo:
   pass
 
 fun main -> i64:

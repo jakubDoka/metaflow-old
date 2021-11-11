@@ -97,3 +97,29 @@ Group 'fun' "fun":
        Literal integer "1"
       Literal integer "8"
 
+function u1:4() -> i64 fast {
+block0:
+    v0 = iconst.i64 10
+    v1 = iconst.i64 4
+    v2 = iadd v0, v1
+    v3 = iconst.i64 2
+    v4 = iconst.i64 1
+    v5 = imul v3, v4
+    v6 = iconst.i64 8
+    v7 = iadd v5, v6
+    v8 = isub v2, v7
+    return v8
+}
+
+function u1:3() fast {
+}
+
+function u1:2(i8, i8) fast {
+}
+
+function u1:1() fast {
+}
+
+function u1:0() fast {
+}
+
