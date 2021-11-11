@@ -9,3 +9,6 @@ fun loo:
 
 fun main -> i64:
   return 10 + 4 - 2 * 1 + 8
+
+fun operator_stress_test -> i64:
+  return 10 + 2 * 1 - 9 | 4 & 1 ^ 2 >> 1 << 7 min 20 max 10

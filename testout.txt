@@ -76,6 +76,10 @@ Token { kind: Op, value: ">>", line_data: LineData { line: 14, column: 36, file_
 Token { kind: Int(1, 64), value: "1", line_data: LineData { line: 14, column: 39, file_name: "test_code.pmh" } }
 Token { kind: Op, value: "<<", line_data: LineData { line: 14, column: 41, file_name: "test_code.pmh" } }
 Token { kind: Int(7, 64), value: "7", line_data: LineData { line: 14, column: 44, file_name: "test_code.pmh" } }
+Token { kind: Op, value: "min", line_data: LineData { line: 14, column: 46, file_name: "test_code.pmh" } }
+Token { kind: Int(20, 64), value: "20", line_data: LineData { line: 14, column: 50, file_name: "test_code.pmh" } }
+Token { kind: Op, value: "max", line_data: LineData { line: 14, column: 53, file_name: "test_code.pmh" } }
+Token { kind: Int(10, 64), value: "10", line_data: LineData { line: 14, column: 57, file_name: "test_code.pmh" } }
 Group 'fun' "fun":
  Function 'fun' "fun":
   FunctionHeader 'fun' "fun":
@@ -146,13 +150,19 @@ Group 'fun' "fun":
         Identifier operator "&"
         Literal integer "4"
         Literal integer "1"
-       BinaryOperation operator "<<":
-        Identifier operator "<<"
-        BinaryOperation operator ">>":
-         Identifier operator ">>"
-         Literal integer "2"
-         Literal integer "1"
-        Literal integer "7"
+       BinaryOperation operator "max":
+        Identifier operator "max"
+        BinaryOperation operator "min":
+         Identifier operator "min"
+         BinaryOperation operator "<<":
+          Identifier operator "<<"
+          BinaryOperation operator ">>":
+           Identifier operator ">>"
+           Literal integer "2"
+           Literal integer "1"
+          Literal integer "7"
+         Literal integer "20"
+        Literal integer "10"
 
 function u1:5() -> i64 fast {
 block0:
@@ -170,10 +180,14 @@ block0:
     v11 = sshr v9, v10
     v12 = iconst.i64 7
     v13 = ishl v11, v12
-    v14 = bxor v8, v13
-    v15 = bor v5, v14
-    v16 = iadd v0, v15
-    return v16
+    v14 = iconst.i64 20
+    v15 = imin v13, v14
+    v16 = iconst.i64 10
+    v17 = imax v15, v16
+    v18 = bxor v8, v17
+    v19 = bor v5, v18
+    v20 = iadd v0, v19
+    return v20
 }
 
 function u1:4() -> i64 fast {

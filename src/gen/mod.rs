@@ -1,7 +1,4 @@
-use cranelift_codegen::{
-    ir::{types::*, AbiParam, ExternalName, Function, InstBuilder, Signature, Type, Value},
-    isa::CallConv,
-};
+use cranelift_codegen::{ir::{AbiParam, ExternalName, Function, InstBuilder, Signature, Type, Value, condcodes::{FloatCC, IntCC}, types::*}, isa::CallConv};
 use cranelift_frontend::{FunctionBuilder, FunctionBuilderContext, Variable};
 use std::{cell::RefCell, ops::Deref, rc::Rc};
 
@@ -14,6 +11,7 @@ type CraneContext = cranelift_codegen::Context;
 type Result<T> = std::result::Result<T, GenError>;
 
 struct Generator {
+    builtin_repo: BuiltinRepo,
     builtin_module: Mod,
     context: Context,
     current_module: Mod,
@@ -25,11 +23,13 @@ struct Generator {
 
 impl Generator {
     fn new() -> Self {
-        let builtin = Mod::builtin();
+        let builtin_repo = BuiltinRepo::new();
+        let builtin_module = builtin_repo.to_module();
         Self {
-            builtin_module: builtin.clone(),
+            current_module: builtin_module.clone(), // just an place holder
+            builtin_repo,
+            builtin_module,
             context: Context::new(),
-            current_module: builtin, // just an place holder
             function_builder_context: Some(FunctionBuilderContext::new()),
             variables: Vec::new(),
             variable_counter: 0,
@@ -146,15 +146,18 @@ impl Generator {
     ) -> Result<(Value, Datatype)> {
         match ast.kind {
             AKind::Literal => match ast.token.kind {
-                TKind::Int(value, base) => {
-                    let value = builder.ins().iconst(Type::int(base).unwrap(), value as i64);
+                TKind::Int(value, bits) => {
+                    let datatype = match bits {
+                        8 => self.builtin_repo.i8.clone(),
+                        16 => self.builtin_repo.i16.clone(),
+                        32 => self.builtin_repo.i32.clone(),
+                        64 => self.builtin_repo.i64.clone(),
+                        _ => unreachable!(),
+                    };
+                    let value = builder.ins().iconst(datatype.borrow().get_ir_repr(), value as i64);
                     Ok((
                         value,
-                        self.builtin_module
-                            .borrow()
-                            .find_datatype(&format!("i{}", base))
-                            .unwrap()
-                            .clone(),
+                        datatype,
                     ))
                 }
                 _ => todo!(),
@@ -173,8 +176,9 @@ impl Generator {
         let (right_val, right_type) = self.expression(&ast[2], builder)?;
 
         if left_type == right_type {
+            let op = ast[0].token.value.deref();
             let value = match left_type.borrow().name.as_str() {
-                "i8" | "i16" | "i32" | "i64" => match ast[0].token.value.deref() {
+                "i8" | "i16" | "i32" | "i64" => match op {
                     "+" => builder.ins().iadd(left_val, right_val),
                     "-" => builder.ins().isub(left_val, right_val),
                     "*" => builder.ins().imul(left_val, right_val),
@@ -187,9 +191,25 @@ impl Generator {
                     ">>" => builder.ins().sshr(left_val, right_val),
                     "max" => builder.ins().imax(left_val, right_val),
                     "min" => builder.ins().imin(left_val, right_val),
+
+                    "==" | "!=" | "<" | ">" | ">=" | "<=" => {
+                        let op = match op {
+                            "==" => IntCC::Equal,
+                            "!=" => IntCC::NotEqual,
+                            "<" => IntCC::SignedLessThan,
+                            ">" => IntCC::SignedGreaterThan,
+                            ">=" => IntCC::SignedGreaterThanOrEqual,
+                            "<=" => IntCC::SignedLessThanOrEqual,
+                            _ => unreachable!(),  
+                        };
+
+                        let val = builder.ins().icmp(op, left_val, right_val);
+                        return Ok((val, self.builtin_repo.bool.clone()));
+                    }
+
                     _ => todo!(),
                 },
-                "u8" | "u16" | "u32" | "u64" => match ast[0].token.value.deref() {
+                "u8" | "u16" | "u32" | "u64" => match op {
                     "+" => builder.ins().iadd(left_val, right_val),
                     "-" => builder.ins().isub(left_val, right_val),
                     "*" => builder.ins().imul(left_val, right_val),
@@ -202,15 +222,55 @@ impl Generator {
                     ">>" => builder.ins().ushr(left_val, right_val),
                     "max" => builder.ins().umax(left_val, right_val),
                     "min" => builder.ins().umin(left_val, right_val),
+
+                    "==" | "!=" | "<" | ">" | ">=" | "<=" => {
+                        let op = match op {
+                            "==" => IntCC::Equal,
+                            "!=" => IntCC::NotEqual,
+                            "<" => IntCC::UnsignedLessThan,
+                            ">" => IntCC::UnsignedGreaterThan,
+                            ">=" => IntCC::UnsignedGreaterThanOrEqual,
+                            "<=" => IntCC::UnsignedLessThanOrEqual,
+                            _ => unreachable!(),  
+                        };
+
+                        let val = builder.ins().icmp(op, left_val, right_val);
+                        return Ok((val, self.builtin_repo.bool.clone()));
+                    }
+
                     _ => todo!(),
                 }
-                "f32" | "f64" => match ast[0].token.value.deref() {
+                "f32" | "f64" => match op {
                     "+" => builder.ins().fadd(left_val, right_val),
                     "-" => builder.ins().fsub(left_val, right_val),
                     "*" => builder.ins().fmul(left_val, right_val),
                     "/" => builder.ins().fdiv(left_val, right_val),
                     "max" => builder.ins().fmax(left_val, right_val),
                     "min" => builder.ins().fmin(left_val, right_val),
+
+                    "==" | "=!" | "<" | ">" | ">=" | "<=" => {
+                        let op = match op {
+                            "==" => FloatCC::Equal,
+                            "!=" => FloatCC::NotEqual,
+                            "<" => FloatCC::LessThan,
+                            ">" => FloatCC::GreaterThan,
+                            ">=" => FloatCC::GreaterThanOrEqual,
+                            "<=" => FloatCC::LessThanOrEqual,
+                            _ => unreachable!(),  
+                        };
+
+                        let val = builder.ins().fcmp(op, left_val, right_val);
+                        return Ok((val, self.builtin_repo.bool.clone()));
+                    }
+
+                    "bool" => match op {
+                        "&" => builder.ins().band(left_val, right_val),
+                        "|" => builder.ins().bor(left_val, right_val),
+                        "||" => todo!(),
+                        "&&" => todo!(),
+                        _ => todo!(),
+                    },
+
                     _ => todo!(),
                 }
                 _ => todo!(),
@@ -352,12 +412,6 @@ impl Mod {
             inner: Rc::new(RefCell::new(ModuleStruct::new(name, id))),
         }
     }
-
-    fn builtin() -> Self {
-        Self {
-            inner: Rc::new(RefCell::new(ModuleStruct::builtin())),
-        }
-    }
 }
 
 impl Deref for Mod {
@@ -387,39 +441,6 @@ impl ModuleStruct {
             function_id_counter: 0,
             id,
         }
-    }
-
-    fn builtin() -> Self {
-        macro_rules! builtin {
-            ($($name:ident, $short:ident, $bits:expr);+ $(;)?) => {
-                vec![$(
-                    Datatype::with_size(
-                        concat!(stringify!($short)).to_string().to_lowercase(),
-                        DKind::Builtin($name),
-                        $bits,
-                    ),
-                )*]
-            };
-        }
-
-        let builtin = builtin!(
-            I8, i8, 8;
-            I16, i16, 16;
-            I32, i32, 32;
-            I64, i64, 64;
-            I8, u8, 8;
-            I16, u16, 16;
-            I32, u32, 32;
-            I64, u64, 64;
-            F32, f32, 32;
-            F64, f64, 64;
-        );
-
-        let mut module = Self::new("builtin".to_string(), 0);
-        for datatype in builtin {
-            module.add_datatype(datatype).unwrap();
-        }
-        module
     }
 
     fn find_datatype(&self, name: &str) -> Option<Datatype> {
@@ -484,6 +505,54 @@ impl ModuleStruct {
         name
     }
 }
+
+macro_rules! builtin_repo {
+    (types [$($name:ident: $lit:ident $bits:expr,)*]) => {
+        struct BuiltinRepo {
+            $($name: Datatype,)*
+        }
+
+        impl BuiltinRepo {
+            fn new() -> Self {
+                Self {
+                    $(
+                        $name: Datatype::with_size(
+                            stringify!($name).to_string(),
+                            DKind::Builtin($lit), 
+                            $bits
+                        ),
+                    )*
+                }
+            }
+
+            fn to_module(&self) -> Mod {
+                let module = Mod::new("builtin".to_string(), 0);
+                $(
+                    module.borrow_mut().add_datatype(self.$name.clone()).unwrap();
+                )*
+                module
+            }
+        }
+    }
+}
+
+builtin_repo!(
+    types [
+        i8: I8 8,
+        i16: I16 16,
+        i32: I32 32,
+        i64: I64 64,
+        u8: I8 8,
+        u16: I16 16,
+        u32: I32 32,
+        u64: I64 64,
+        f32: F32 32,
+        f64: F64 64,
+        bool: B1 1,
+    ]
+);
+
+
 
 #[derive(Debug, Clone)]
 struct Fun {

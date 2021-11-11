@@ -1,5 +1,31 @@
 {
     "cSpell.words": [
-        "conv"
+        "bxor",
+        "codegen",
+        "condcodes",
+        "conv",
+        "cranelift",
+        "fadd",
+        "fcmp",
+        "fdiv",
+        "fmax",
+        "fmin",
+        "fmul",
+        "fsub",
+        "iadd",
+        "iconst",
+        "imax",
+        "imin",
+        "imul",
+        "ishl",
+        "isub",
+        "sdiv",
+        "srem",
+        "sshr",
+        "udiv",
+        "umax",
+        "umin",
+        "urem",
+        "ushr"
     ]
 }

@@ -23,7 +23,11 @@ impl Lexer {
     fn ident(&mut self) -> Option<Token> {
         let line_data = self.line_data();
         let start = self.cursor.progress();
-        while self.cursor.peek().unwrap_or('\0').is_alphanumeric() {
+        loop {
+            let char = self.cursor.peek().unwrap_or('\0');
+            if !char.is_alphanumeric() && char != '_' {
+                break;
+            }
             self.cursor.advance();
         }
         let end = self.cursor.progress();
@@ -108,7 +112,7 @@ impl<'a> Iterator for Lexer {
 
     fn next(&mut self) -> Option<Self::Item> {
         let char = self.cursor.peek()?;
-        if char.is_alphabetic() {
+        if char.is_alphabetic() || char == '_' {
             return self.ident();
         }
         if char.is_operator() {
@@ -130,7 +134,7 @@ impl<'a> Iterator for Lexer {
             ',' => TKind::Comma,
             '(' => TKind::LPar,
             ')' => TKind::RPar,
-            _ => todo!("error handling"),
+            _ => TKind::UnknownCharacter(char),
         };
 
         let line_data = self.line_data();
@@ -251,6 +255,7 @@ pub enum TKind {
 
     Indent(usize),
 
+    UnknownCharacter(char),
     Eof,
     None,
 }
@@ -271,6 +276,7 @@ impl std::fmt::Display for TKind {
             TKind::RArrow => "'->'",
             TKind::Indent(_) => "indentation",
             TKind::Int(..) => "integer",
+            TKind::UnknownCharacter(_) => "unknown character",
             TKind::Eof => "end of file",
             TKind::None => "nothing",
         })
