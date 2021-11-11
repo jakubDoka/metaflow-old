@@ -34,6 +34,24 @@ Token { kind: Ident, value: "main", line_data: LineData { line: 7, column: 4, fi
 Token { kind: Colon, value: ":", line_data: LineData { line: 7, column: 8, file_name: "test_code.pmh" } }
 Token { kind: Indent(1), value: "\n  ", line_data: LineData { line: 7, column: 10, file_name: "test_code.pmh" } }
 Token { kind: Pass, value: "pass", line_data: LineData { line: 8, column: 2, file_name: "test_code.pmh" } }
+Token { kind: Indent(0), value: "\n\r", line_data: LineData { line: 8, column: 7, file_name: "test_code.pmh" } }
+Token { kind: Indent(0), value: "\n", line_data: LineData { line: 9, column: 1, file_name: "test_code.pmh" } }
+Token { kind: Fun, value: "fun", line_data: LineData { line: 10, column: 0, file_name: "test_code.pmh" } }
+Token { kind: Ident, value: "main", line_data: LineData { line: 10, column: 4, file_name: "test_code.pmh" } }
+Token { kind: RArrow, value: "->", line_data: LineData { line: 10, column: 9, file_name: "test_code.pmh" } }
+Token { kind: Ident, value: "i64", line_data: LineData { line: 10, column: 12, file_name: "test_code.pmh" } }
+Token { kind: Colon, value: ":", line_data: LineData { line: 10, column: 15, file_name: "test_code.pmh" } }
+Token { kind: Indent(1), value: "\n  ", line_data: LineData { line: 10, column: 17, file_name: "test_code.pmh" } }
+Token { kind: Return, value: "return", line_data: LineData { line: 11, column: 2, file_name: "test_code.pmh" } }
+Token { kind: Int(10, 64), value: "10", line_data: LineData { line: 11, column: 9, file_name: "test_code.pmh" } }
+Token { kind: Op, value: "+", line_data: LineData { line: 11, column: 12, file_name: "test_code.pmh" } }
+Token { kind: Int(4, 64), value: "4", line_data: LineData { line: 11, column: 14, file_name: "test_code.pmh" } }
+Token { kind: Op, value: "-", line_data: LineData { line: 11, column: 16, file_name: "test_code.pmh" } }
+Token { kind: Int(2, 64), value: "2", line_data: LineData { line: 11, column: 18, file_name: "test_code.pmh" } }
+Token { kind: Op, value: "*", line_data: LineData { line: 11, column: 20, file_name: "test_code.pmh" } }
+Token { kind: Int(1, 64), value: "1", line_data: LineData { line: 11, column: 22, file_name: "test_code.pmh" } }
+Token { kind: Op, value: "+", line_data: LineData { line: 11, column: 24, file_name: "test_code.pmh" } }
+Token { kind: Int(8, 64), value: "8", line_data: LineData { line: 11, column: 26, file_name: "test_code.pmh" } }
 Group 'fun' "fun":
  Function 'fun' "fun":
   FunctionHeader 'fun' "fun":
@@ -50,15 +68,34 @@ Group 'fun' "fun":
    Identifier identifier "main"
    FunctionArgument identifier "a":
     Identifier identifier "a"
-    Identifier identifier "i8"
+    Identifier ',' ","
    FunctionArgument identifier "b":
     Identifier identifier "b"
-    Identifier identifier "i8"
-   Identifier identifier "i8"
+    Identifier ')' ")"
+   Identifier ':' ":"
   Group ':' ":"
  Function 'fun' "fun":
   FunctionHeader 'fun' "fun":
    Identifier identifier "main"
    None ':' ":"
   Group ':' ":"
+ Function 'fun' "fun":
+  FunctionHeader 'fun' "fun":
+   Identifier identifier "main"
+   Identifier ':' ":"
+  Group ':' ":":
+   ReturnStatement 'return' "return":
+    BinaryOperation operator "-":
+     Identifier operator "-"
+     BinaryOperation operator "+":
+      Identifier operator "+"
+      Literal operator "+"
+      Literal operator "-"
+     BinaryOperation operator "+":
+      Identifier operator "+"
+      BinaryOperation operator "*":
+       Identifier operator "*"
+       Literal operator "*"
+       Literal operator "+"
+      Literal end of file ""
 
