@@ -14,15 +14,7 @@ fn main() {
 }
 
 fn run() {
-    let args = std::env::args().collect::<Vec<String>>();
-    if args.len() < 2 {
-        println!("Usage: <file>.pmh");
-        return;
-    }
-
-    let mut generator = gen::Generator::new();
-    let data = generator.generate(&args[1]).unwrap();
-    std::fs::write(format!("{}.exe", args[1]), data).unwrap();
+    
 }
 
 #[cfg(feature = "testing")]
