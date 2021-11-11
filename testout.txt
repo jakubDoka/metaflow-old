@@ -113,201 +113,30 @@ Token { kind: Colon, value: ":", line_data: LineData { line: 21, column: 6, file
 Token { kind: Indent(2), value: "\n    ", line_data: LineData { line: 21, column: 8, file_name: "test_code.pmh" } }
 Token { kind: Return, value: "return", line_data: LineData { line: 22, column: 4, file_name: "test_code.pmh" } }
 Token { kind: Int(0, 64), value: "0", line_data: LineData { line: 22, column: 11, file_name: "test_code.pmh" } }
-Group 'fun' "fun":
- Function 'fun' "fun":
-  FunctionHeader 'fun' "fun":
-   Identifier identifier "flo"
-   None ':' ":"
-  Group ':' ":"
- Function 'fun' "fun":
-  FunctionHeader 'fun' "fun":
-   Identifier identifier "foo"
-   None ':' ":"
-  Group ':' ":"
- Function 'fun' "fun":
-  FunctionHeader 'fun' "fun":
-   Identifier identifier "goo"
-   FunctionArgument identifier "a":
-    Identifier identifier "a"
-    Identifier identifier "i8"
-   FunctionArgument identifier "b":
-    Identifier identifier "b"
-    Identifier identifier "i8"
-   None ':' ":"
-  Group ':' ":"
- Function 'fun' "fun":
-  FunctionHeader 'fun' "fun":
-   Identifier identifier "loo"
-   None ':' ":"
-  Group ':' ":"
- Function 'fun' "fun":
-  FunctionHeader 'fun' "fun":
-   Identifier identifier "main"
-   Identifier identifier "i64"
-  Group ':' ":":
-   ReturnStatement 'return' "return":
-    BinaryOperation operator "-":
-     Identifier operator "-"
-     BinaryOperation operator "+":
-      Identifier operator "+"
-      Literal integer "10"
-      Literal integer "4"
-     BinaryOperation operator "+":
-      Identifier operator "+"
-      BinaryOperation operator "*":
-       Identifier operator "*"
-       Literal integer "2"
-       Literal integer "1"
-      Literal integer "8"
- Function 'fun' "fun":
-  FunctionHeader 'fun' "fun":
-   Identifier identifier "operator_stress_test"
-   Identifier identifier "i64"
-  Group ':' ":":
-   ReturnStatement 'return' "return":
-    BinaryOperation operator "+":
-     Identifier operator "+"
-     Literal integer "10"
-     BinaryOperation operator "|":
-      Identifier operator "|"
-      BinaryOperation operator "-":
-       Identifier operator "-"
-       BinaryOperation operator "*":
-        Identifier operator "*"
-        Literal integer "2"
-        Literal integer "1"
-       Literal integer "9"
-      BinaryOperation operator "^":
-       Identifier operator "^"
-       BinaryOperation operator "&":
-        Identifier operator "&"
-        Literal integer "4"
-        Literal integer "1"
-       BinaryOperation operator "max":
-        Identifier operator "max"
-        BinaryOperation operator "min":
-         Identifier operator "min"
-         BinaryOperation operator "<<":
-          Identifier operator "<<"
-          BinaryOperation operator ">>":
-           Identifier operator ">>"
-           Literal integer "2"
-           Literal integer "1"
-          Literal integer "7"
-         Literal integer "20"
-        Literal integer "10"
- Function 'fun' "fun":
-  FunctionHeader 'fun' "fun":
-   Identifier identifier "conditional"
-   Identifier identifier "i64"
-  Group ':' ":":
-   IfExpression 'if' "if":
-    Literal boolean "false"
-    Group ':' ":":
-     ReturnStatement 'return' "return":
-      Literal integer "10"
-    IfExpression 'elif' "elif":
-     Literal boolean "true"
-     Group ':' ":":
-      ReturnStatement 'return' "return":
-       IfExpression 'if' "if":
-        Literal boolean "true"
-        Group ':' ":":
-         Literal integer "10"
-        Group ':' ":":
-         Literal integer "20"
-     Group ':' ":":
-      ReturnStatement 'return' "return":
-       Literal integer "0"
-
-function u1:5() -> i64 fast {
-block0:
-    v0 = iconst.i64 10
-    v1 = iconst.i64 2
-    v2 = iconst.i64 1
-    v3 = imul v1, v2
-    v4 = iconst.i64 9
-    v5 = isub v3, v4
-    v6 = iconst.i64 4
-    v7 = iconst.i64 1
-    v8 = band v6, v7
-    v9 = iconst.i64 2
-    v10 = iconst.i64 1
-    v11 = sshr v9, v10
-    v12 = iconst.i64 7
-    v13 = ishl v11, v12
-    v14 = iconst.i64 20
-    v15 = imin v13, v14
-    v16 = iconst.i64 10
-    v17 = imax v15, v16
-    v18 = bxor v8, v17
-    v19 = bor v5, v18
-    v20 = iadd v0, v19
-    return v20
-}
-
-function u1:4() -> i64 fast {
-block0:
-    v0 = iconst.i64 10
-    v1 = iconst.i64 4
-    v2 = iadd v0, v1
-    v3 = iconst.i64 2
-    v4 = iconst.i64 1
-    v5 = imul v3, v4
-    v6 = iconst.i64 8
-    v7 = iadd v5, v6
-    v8 = isub v2, v7
-    return v8
-}
-
-function u1:3() fast {
-}
-
-function u1:2(i8, i8) fast {
-}
-
-function u1:1() fast {
-}
-
-function u1:0() fast {
-}
-
-function u1:6() -> i64 fast {
-block0:
-    v0 = bconst.b1 false
-    brnz v0, block1
-    jump block3
-
-block1:
-    v1 = iconst.i64 10
-    return v1
-
-block3:
-    v2 = bconst.b1 true
-    brnz v2, block4
-    jump block6
-
-block4:
-    v3 = bconst.b1 true
-    brnz v3, block7
-    jump block9
-
-block7:
-    v4 = iconst.i64 10
-    jump block8(v4)
-
-block9:
-    v6 = iconst.i64 20
-    jump block8(v6)
-
-block8(v5: i64):
-    return v5
-
-block6:
-    v7 = iconst.i64 0
-    return v7
-
-block5:
-    jump block2
-}
-
+Token { kind: Indent(0), value: "\n\r", line_data: LineData { line: 22, column: 13, file_name: "test_code.pmh" } }
+Token { kind: Indent(0), value: "\n", line_data: LineData { line: 23, column: 1, file_name: "test_code.pmh" } }
+Token { kind: Attr, value: "attr", line_data: LineData { line: 24, column: 0, file_name: "test_code.pmh" } }
+Token { kind: Ident, value: "inline", line_data: LineData { line: 24, column: 5, file_name: "test_code.pmh" } }
+Token { kind: Indent(0), value: "\n", line_data: LineData { line: 24, column: 12, file_name: "test_code.pmh" } }
+Token { kind: Fun, value: "fun", line_data: LineData { line: 25, column: 0, file_name: "test_code.pmh" } }
+Token { kind: Ident, value: "inline_fn", line_data: LineData { line: 25, column: 4, file_name: "test_code.pmh" } }
+Token { kind: RArrow, value: "->", line_data: LineData { line: 25, column: 14, file_name: "test_code.pmh" } }
+Token { kind: Ident, value: "u32", line_data: LineData { line: 25, column: 17, file_name: "test_code.pmh" } }
+Token { kind: Colon, value: ":", line_data: LineData { line: 25, column: 20, file_name: "test_code.pmh" } }
+Token { kind: Indent(1), value: "\n  ", line_data: LineData { line: 25, column: 22, file_name: "test_code.pmh" } }
+Token { kind: Return, value: "return", line_data: LineData { line: 26, column: 2, file_name: "test_code.pmh" } }
+Token { kind: Int(10, 64), value: "10", line_data: LineData { line: 26, column: 9, file_name: "test_code.pmh" } }
+Token { kind: Fun, value: "fun", line_data: LineData { line: 1, column: 0, file_name: "test_code.pmh" } }
+Token { kind: Indent(0), value: "\n\r", line_data: LineData { line: 1, column: 14, file_name: "test_code.pmh" } }
+Token { kind: Indent(0), value: "\n", line_data: LineData { line: 2, column: 1, file_name: "test_code.pmh" } }
+Token { kind: Fun, value: "fun", line_data: LineData { line: 3, column: 0, file_name: "test_code.pmh" } }
+Token { kind: Indent(0), value: "\n\r", line_data: LineData { line: 3, column: 16, file_name: "test_code.pmh" } }
+Token { kind: Indent(0), value: "\n", line_data: LineData { line: 4, column: 1, file_name: "test_code.pmh" } }
+Token { kind: Fun, value: "fun", line_data: LineData { line: 5, column: 0, file_name: "test_code.pmh" } }
+Token { kind: Indent(0), value: "\n\r", line_data: LineData { line: 5, column: 28, file_name: "test_code.pmh" } }
+Token { kind: Indent(0), value: "\n", line_data: LineData { line: 6, column: 1, file_name: "test_code.pmh" } }
+Token { kind: Fun, value: "fun", line_data: LineData { line: 7, column: 0, file_name: "test_code.pmh" } }
+Token { kind: Fun, value: "fun", line_data: LineData { line: 10, column: 0, file_name: "test_code.pmh" } }
+Token { kind: Fun, value: "fun", line_data: LineData { line: 13, column: 0, file_name: "test_code.pmh" } }
+Token { kind: Fun, value: "fun", line_data: LineData { line: 16, column: 0, file_name: "test_code.pmh" } }
+Token { kind: Ident, value: "inline", line_data: LineData { line: 24, column: 5, file_name: "test_code.pmh" } }
