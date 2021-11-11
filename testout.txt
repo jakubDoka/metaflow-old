@@ -1,38 +1,36 @@
 Token { kind: Fun, value: "fun", line_data: LineData { line: 1, column: 0, file_name: "test_code.pmh" } }
-Token { kind: Ident, value: "main", line_data: LineData { line: 1, column: 4, file_name: "test_code.pmh" } }
-Token { kind: Colon, value: ":", line_data: LineData { line: 1, column: 8, file_name: "test_code.pmh" } }
-Token { kind: Pass, value: "pass", line_data: LineData { line: 1, column: 10, file_name: "test_code.pmh" } }
-Token { kind: Indent(0), value: "\n\r", line_data: LineData { line: 1, column: 15, file_name: "test_code.pmh" } }
+Token { kind: Ident, value: "flo", line_data: LineData { line: 1, column: 4, file_name: "test_code.pmh" } }
+Token { kind: Colon, value: ":", line_data: LineData { line: 1, column: 7, file_name: "test_code.pmh" } }
+Token { kind: Pass, value: "pass", line_data: LineData { line: 1, column: 9, file_name: "test_code.pmh" } }
+Token { kind: Indent(0), value: "\n\r", line_data: LineData { line: 1, column: 14, file_name: "test_code.pmh" } }
 Token { kind: Indent(0), value: "\n", line_data: LineData { line: 2, column: 1, file_name: "test_code.pmh" } }
 Token { kind: Fun, value: "fun", line_data: LineData { line: 3, column: 0, file_name: "test_code.pmh" } }
-Token { kind: Ident, value: "main", line_data: LineData { line: 3, column: 4, file_name: "test_code.pmh" } }
-Token { kind: LPar, value: "(", line_data: LineData { line: 3, column: 8, file_name: "test_code.pmh" } }
-Token { kind: RPar, value: ")", line_data: LineData { line: 3, column: 9, file_name: "test_code.pmh" } }
-Token { kind: Colon, value: ":", line_data: LineData { line: 3, column: 10, file_name: "test_code.pmh" } }
-Token { kind: Pass, value: "pass", line_data: LineData { line: 3, column: 12, file_name: "test_code.pmh" } }
-Token { kind: Indent(0), value: "\n\r", line_data: LineData { line: 3, column: 17, file_name: "test_code.pmh" } }
+Token { kind: Ident, value: "foo", line_data: LineData { line: 3, column: 4, file_name: "test_code.pmh" } }
+Token { kind: LPar, value: "(", line_data: LineData { line: 3, column: 7, file_name: "test_code.pmh" } }
+Token { kind: RPar, value: ")", line_data: LineData { line: 3, column: 8, file_name: "test_code.pmh" } }
+Token { kind: Colon, value: ":", line_data: LineData { line: 3, column: 9, file_name: "test_code.pmh" } }
+Token { kind: Pass, value: "pass", line_data: LineData { line: 3, column: 11, file_name: "test_code.pmh" } }
+Token { kind: Indent(0), value: "\n\r", line_data: LineData { line: 3, column: 16, file_name: "test_code.pmh" } }
 Token { kind: Indent(0), value: "\n", line_data: LineData { line: 4, column: 1, file_name: "test_code.pmh" } }
 Token { kind: Fun, value: "fun", line_data: LineData { line: 5, column: 0, file_name: "test_code.pmh" } }
-Token { kind: Ident, value: "main", line_data: LineData { line: 5, column: 4, file_name: "test_code.pmh" } }
-Token { kind: LPar, value: "(", line_data: LineData { line: 5, column: 8, file_name: "test_code.pmh" } }
-Token { kind: Ident, value: "a", line_data: LineData { line: 5, column: 9, file_name: "test_code.pmh" } }
-Token { kind: Colon, value: ":", line_data: LineData { line: 5, column: 10, file_name: "test_code.pmh" } }
-Token { kind: Ident, value: "i8", line_data: LineData { line: 5, column: 12, file_name: "test_code.pmh" } }
-Token { kind: Comma, value: ",", line_data: LineData { line: 5, column: 14, file_name: "test_code.pmh" } }
-Token { kind: Ident, value: "b", line_data: LineData { line: 5, column: 16, file_name: "test_code.pmh" } }
-Token { kind: Colon, value: ":", line_data: LineData { line: 5, column: 17, file_name: "test_code.pmh" } }
-Token { kind: Ident, value: "i8", line_data: LineData { line: 5, column: 19, file_name: "test_code.pmh" } }
-Token { kind: RPar, value: ")", line_data: LineData { line: 5, column: 21, file_name: "test_code.pmh" } }
-Token { kind: RArrow, value: "->", line_data: LineData { line: 5, column: 23, file_name: "test_code.pmh" } }
-Token { kind: Ident, value: "i8", line_data: LineData { line: 5, column: 26, file_name: "test_code.pmh" } }
-Token { kind: Colon, value: ":", line_data: LineData { line: 5, column: 28, file_name: "test_code.pmh" } }
-Token { kind: Pass, value: "pass", line_data: LineData { line: 5, column: 30, file_name: "test_code.pmh" } }
-Token { kind: Indent(0), value: "\n\r", line_data: LineData { line: 5, column: 35, file_name: "test_code.pmh" } }
+Token { kind: Ident, value: "goo", line_data: LineData { line: 5, column: 4, file_name: "test_code.pmh" } }
+Token { kind: LPar, value: "(", line_data: LineData { line: 5, column: 7, file_name: "test_code.pmh" } }
+Token { kind: Ident, value: "a", line_data: LineData { line: 5, column: 8, file_name: "test_code.pmh" } }
+Token { kind: Colon, value: ":", line_data: LineData { line: 5, column: 9, file_name: "test_code.pmh" } }
+Token { kind: Ident, value: "i8", line_data: LineData { line: 5, column: 11, file_name: "test_code.pmh" } }
+Token { kind: Comma, value: ",", line_data: LineData { line: 5, column: 13, file_name: "test_code.pmh" } }
+Token { kind: Ident, value: "b", line_data: LineData { line: 5, column: 15, file_name: "test_code.pmh" } }
+Token { kind: Colon, value: ":", line_data: LineData { line: 5, column: 16, file_name: "test_code.pmh" } }
+Token { kind: Ident, value: "i8", line_data: LineData { line: 5, column: 18, file_name: "test_code.pmh" } }
+Token { kind: RPar, value: ")", line_data: LineData { line: 5, column: 20, file_name: "test_code.pmh" } }
+Token { kind: Colon, value: ":", line_data: LineData { line: 5, column: 21, file_name: "test_code.pmh" } }
+Token { kind: Pass, value: "pass", line_data: LineData { line: 5, column: 23, file_name: "test_code.pmh" } }
+Token { kind: Indent(0), value: "\n\r", line_data: LineData { line: 5, column: 28, file_name: "test_code.pmh" } }
 Token { kind: Indent(0), value: "\n", line_data: LineData { line: 6, column: 1, file_name: "test_code.pmh" } }
 Token { kind: Fun, value: "fun", line_data: LineData { line: 7, column: 0, file_name: "test_code.pmh" } }
-Token { kind: Ident, value: "main", line_data: LineData { line: 7, column: 4, file_name: "test_code.pmh" } }
-Token { kind: Colon, value: ":", line_data: LineData { line: 7, column: 8, file_name: "test_code.pmh" } }
-Token { kind: Indent(1), value: "\n  ", line_data: LineData { line: 7, column: 10, file_name: "test_code.pmh" } }
+Token { kind: Ident, value: "loo", line_data: LineData { line: 7, column: 4, file_name: "test_code.pmh" } }
+Token { kind: Colon, value: ":", line_data: LineData { line: 7, column: 7, file_name: "test_code.pmh" } }
+Token { kind: Indent(1), value: "\n  ", line_data: LineData { line: 7, column: 9, file_name: "test_code.pmh" } }
 Token { kind: Pass, value: "pass", line_data: LineData { line: 8, column: 2, file_name: "test_code.pmh" } }
 Token { kind: Indent(0), value: "\n\r", line_data: LineData { line: 8, column: 7, file_name: "test_code.pmh" } }
 Token { kind: Indent(0), value: "\n", line_data: LineData { line: 9, column: 1, file_name: "test_code.pmh" } }
@@ -55,28 +53,28 @@ Token { kind: Int(8, 64), value: "8", line_data: LineData { line: 11, column: 26
 Group 'fun' "fun":
  Function 'fun' "fun":
   FunctionHeader 'fun' "fun":
-   Identifier identifier "main"
+   Identifier identifier "flo"
    None ':' ":"
   Group ':' ":"
  Function 'fun' "fun":
   FunctionHeader 'fun' "fun":
-   Identifier identifier "main"
+   Identifier identifier "foo"
    None ':' ":"
   Group ':' ":"
  Function 'fun' "fun":
   FunctionHeader 'fun' "fun":
-   Identifier identifier "main"
+   Identifier identifier "goo"
    FunctionArgument identifier "a":
     Identifier identifier "a"
     Identifier identifier "i8"
    FunctionArgument identifier "b":
     Identifier identifier "b"
     Identifier identifier "i8"
-   Identifier identifier "i8"
+   None ':' ":"
   Group ':' ":"
  Function 'fun' "fun":
   FunctionHeader 'fun' "fun":
-   Identifier identifier "main"
+   Identifier identifier "loo"
    None ':' ":"
   Group ':' ":"
  Function 'fun' "fun":
