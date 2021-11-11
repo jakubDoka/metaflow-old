@@ -12,3 +12,11 @@ fun main -> i64:
 
 fun operator_stress_test -> i64:
   return 10 + 2 * 1 - 9 | 4 & 1 ^ 2 >> 1 << 7 min 20 max 10
+
+fun conditional -> i64:
+  if false:
+    return 10
+  elif true:
+    return if true: 10 else: 20
+  else:
+    return 0

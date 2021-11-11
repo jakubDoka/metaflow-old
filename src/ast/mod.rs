@@ -32,6 +32,7 @@ impl AstParser {
                 TKind::Fun => {
                     ast.push(self.fun()?);
                 }
+                TKind::Hash => {}
                 TKind::Indent(0) => self.advance(),
                 _ => self.unexpected_str("expected 'fun'")?,
             }
@@ -150,10 +151,34 @@ impl AstParser {
         let result = match self.current_token.kind {
             TKind::Ident => self.ast(AKind::Identifier),
             TKind::Int(..) => self.ast(AKind::Literal),
-            _ => todo!(),
+            TKind::Bool(..) => self.ast(AKind::Literal),
+            TKind::If => self.if_expression()?,
+            _ => todo!(
+                "unmatched simple expression pattern {:?}",
+                self.current_token
+            ),
         };
         self.advance();
         Ok(result)
+    }
+
+    fn if_expression(&mut self) -> Result<Ast> {
+        let mut ast = self.ast(AKind::IfExpression);
+        self.advance();
+        let condition = self.expression()?;
+        let then_block = self.stmt_block()?;
+        let else_block = if self.current_token == TKind::Else {
+            self.advance();
+            let val = self.stmt_block()?;
+            val
+        } else if self.current_token == TKind::Elif {
+            self.if_expression()?
+        } else {
+            self.empty_ast()
+        };
+
+        ast.children = vec![condition, then_block, else_block];
+        Ok(ast)
     }
 
     fn walk_block<F: FnMut(&mut Self) -> Result<()>>(&mut self, mut parser: F) -> Result<()> {
@@ -200,6 +225,15 @@ impl AstParser {
     }
 
     fn level_continues(&mut self) -> Result<bool> {
+        match self.current_token.kind {
+            TKind::Elif | TKind::Else => {
+                self.level -= 1;
+                return Ok(false);
+            },
+            TKind::Indent(_) | TKind::Eof => (),
+            _ => self.unexpected_str("expected indentation").unwrap(),
+        }
+
         loop {
             match self.peek().kind {
                 TKind::Indent(_) => {
@@ -380,6 +414,7 @@ pub enum AKind {
     ReturnStatement,
 
     BinaryOperation,
+    IfExpression,
 
     Group,
 

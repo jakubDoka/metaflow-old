@@ -1,4 +1,11 @@
-use cranelift_codegen::{ir::{AbiParam, ExternalName, Function, InstBuilder, Signature, Type, Value, condcodes::{FloatCC, IntCC}, types::*}, isa::CallConv};
+use cranelift_codegen::{
+    ir::{
+        condcodes::{FloatCC, IntCC},
+        types::*,
+        AbiParam, ExternalName, Function, InstBuilder, Signature, Type, Value,
+    },
+    isa::CallConv,
+};
 use cranelift_frontend::{FunctionBuilder, FunctionBuilderContext, Variable};
 use std::{cell::RefCell, ops::Deref, rc::Rc};
 
@@ -99,7 +106,7 @@ impl Generator {
 
             builder.switch_to_block(entry_point);
             self.generate_function_body(&ast[1], &mut builder)?;
-            builder.seal_block(entry_point);
+            builder.seal_current_block();
             fun
         } else {
             let fun = Fun::new(fun_signature);
@@ -117,16 +124,44 @@ impl Generator {
     }
 
     fn generate_function_body(&mut self, ast: &Ast, builder: &mut FunctionBuilder) -> Result<()> {
-        for stmt in ast.iter() {
-            match stmt.kind {
-                AKind::ReturnStatement => {
-                    self.return_statement(stmt, builder)?;
-                }
-                _ => todo!(),
+        self.statement_list(ast, builder)?;
+        Ok(())
+    }
+
+    fn statement_list(
+        &mut self,
+        ast: &Ast,
+        builder: &mut FunctionBuilder,
+    ) -> Result<Option<(Value, Datatype)>> {
+        for stmt in ast[0..ast.len() - 1].iter() {
+            self.statement(stmt, builder)?;
+        }
+
+        if let Some(last) = ast.last() {
+            return self.statement(last, builder);
+        }
+
+        Ok(None)
+    }
+
+    fn statement(
+        &mut self,
+        ast: &Ast,
+        builder: &mut FunctionBuilder,
+    ) -> Result<Option<(Value, Datatype)>> {
+        match ast.kind {
+            AKind::ReturnStatement => {
+                self.return_statement(ast, builder)?;
+            }
+            AKind::IfExpression => {
+                self.if_expression(ast, builder)?;
+            }
+            _ => {
+                return Ok(Some(self.expression(ast, builder)?));
             }
         }
 
-        Ok(())
+        Ok(None)
     }
 
     fn return_statement(&mut self, ast: &Ast, builder: &mut FunctionBuilder) -> Result<()> {
@@ -145,26 +180,130 @@ impl Generator {
         builder: &mut FunctionBuilder,
     ) -> Result<(Value, Datatype)> {
         match ast.kind {
-            AKind::Literal => match ast.token.kind {
-                TKind::Int(value, bits) => {
-                    let datatype = match bits {
-                        8 => self.builtin_repo.i8.clone(),
-                        16 => self.builtin_repo.i16.clone(),
-                        32 => self.builtin_repo.i32.clone(),
-                        64 => self.builtin_repo.i64.clone(),
-                        _ => unreachable!(),
-                    };
-                    let value = builder.ins().iconst(datatype.borrow().get_ir_repr(), value as i64);
-                    Ok((
-                        value,
-                        datatype,
-                    ))
-                }
-                _ => todo!(),
-            },
+            AKind::Literal => self.literal(ast, builder),
             AKind::BinaryOperation => self.binary_operation(ast, builder),
+            AKind::IfExpression => self
+                .if_expression(ast, builder)?
+                .ok_or_else(|| GenError::new(GEKind::ExpectedValue, ast.token.clone())),
+            _ => todo!("unmatched expression {}", ast),
+        }
+    }
+
+    fn literal(&mut self, ast: &Ast, builder: &mut FunctionBuilder) -> Result<(Value, Datatype)> {
+        match ast.token.kind {
+            TKind::Int(value, bits) => {
+                let datatype = match bits {
+                    8 => self.builtin_repo.i8.clone(),
+                    16 => self.builtin_repo.i16.clone(),
+                    32 => self.builtin_repo.i32.clone(),
+                    64 => self.builtin_repo.i64.clone(),
+                    _ => unreachable!(),
+                };
+                let value = builder
+                    .ins()
+                    .iconst(datatype.borrow().get_ir_repr(), value as i64);
+                Ok((value, datatype))
+            }
+            TKind::Bool(value) => {
+                let datatype = self.builtin_repo.bool.clone();
+                let value = builder.ins().bconst(datatype.borrow().get_ir_repr(), value);
+                Ok((value, datatype))
+            }
             _ => todo!(),
         }
+    }
+
+    fn if_expression(
+        &mut self,
+        ast: &Ast,
+        builder: &mut FunctionBuilder,
+    ) -> Result<Option<(Value, Datatype)>> {
+        let cond_expr = &ast[0];
+        let (cond_value, cond_type) = self.expression(cond_expr, builder)?;
+
+        self.assert_type(cond_expr, &cond_type, &self.builtin_repo.bool)?;
+
+        let then_block = builder.create_block();
+        builder.ins().brnz(cond_value, then_block, &[]);
+
+        let merge_block = builder.create_block();
+
+        let else_branch = &ast[2];
+        let else_block = if else_branch.kind == AKind::None {
+            builder.ins().jump(merge_block, &[]);
+            None
+        } else {
+            let else_block = builder.create_block();
+            builder.ins().jump(else_block, &[]);
+            Some(else_block)
+        };
+
+        builder.seal_current_block();
+
+        let then_branch = &ast[1];
+        
+        builder.switch_to_block(then_block);
+        let then_result = self.statement_list(then_branch, builder)?;
+
+        let mut result = None;
+        if let Some((value, datatype)) = then_result {
+            let val = builder.append_block_param(merge_block, datatype.borrow().get_ir_repr());
+            result = Some((val, datatype));
+            builder.ins().jump(merge_block, &[value]);
+        } else if !builder.is_filled() {
+            builder.ins().jump(merge_block, &[]);
+        }
+
+        builder.seal_current_block();
+        
+        match else_branch.kind {
+            AKind::None => {
+                if result.is_some() {
+                    return Err(GenError::new(GEKind::MissingElseBranch, ast.token.clone()));
+                }
+                builder.switch_to_block(merge_block);
+            }
+            AKind::IfExpression | AKind::Group => {
+                let else_block = else_block.unwrap();
+
+                builder.switch_to_block(else_block);
+                let else_result = match else_branch.kind {
+                    AKind::IfExpression => self.if_expression(else_branch, builder)?,
+                    AKind::Group => self.statement_list(else_branch, builder)?,
+                    _ => unreachable!(),
+                };
+
+                if let Some((value, datatype)) = else_result {
+                    if let Some((_, other_datatype)) = result.as_ref() {
+                        self.assert_type(ast, &datatype, &other_datatype)?;
+                    } else {
+                        return Err(GenError::new(
+                            GEKind::UnexpectedValueInThenBranch,
+                            ast.token.clone(),
+                        ));
+                    }
+                    builder.ins().jump(merge_block, &[value]);
+                } else {
+                    if result.is_some() {
+                        return Err(GenError::new(
+                            GEKind::MissingValueInElseBranch,
+                            ast.token.clone(),
+                        ));
+                    }
+                    if !builder.is_filled() {
+                        builder.ins().jump(merge_block, &[]);
+                    }
+                }
+
+                builder.seal_current_block();
+
+            }
+            _ => unreachable!(),
+        }
+
+        builder.switch_to_block(merge_block);
+
+        Ok(result)
     }
 
     fn binary_operation(
@@ -200,7 +339,7 @@ impl Generator {
                             ">" => IntCC::SignedGreaterThan,
                             ">=" => IntCC::SignedGreaterThanOrEqual,
                             "<=" => IntCC::SignedLessThanOrEqual,
-                            _ => unreachable!(),  
+                            _ => unreachable!(),
                         };
 
                         let val = builder.ins().icmp(op, left_val, right_val);
@@ -231,7 +370,7 @@ impl Generator {
                             ">" => IntCC::UnsignedGreaterThan,
                             ">=" => IntCC::UnsignedGreaterThanOrEqual,
                             "<=" => IntCC::UnsignedLessThanOrEqual,
-                            _ => unreachable!(),  
+                            _ => unreachable!(),
                         };
 
                         let val = builder.ins().icmp(op, left_val, right_val);
@@ -239,7 +378,7 @@ impl Generator {
                     }
 
                     _ => todo!(),
-                }
+                },
                 "f32" | "f64" => match op {
                     "+" => builder.ins().fadd(left_val, right_val),
                     "-" => builder.ins().fsub(left_val, right_val),
@@ -256,7 +395,7 @@ impl Generator {
                             ">" => FloatCC::GreaterThan,
                             ">=" => FloatCC::GreaterThanOrEqual,
                             "<=" => FloatCC::LessThanOrEqual,
-                            _ => unreachable!(),  
+                            _ => unreachable!(),
                         };
 
                         let val = builder.ins().fcmp(op, left_val, right_val);
@@ -272,7 +411,7 @@ impl Generator {
                     },
 
                     _ => todo!(),
-                }
+                },
                 _ => todo!(),
             };
             Ok((value, right_type))
@@ -324,6 +463,17 @@ impl Generator {
                 cc,
             ),
         ))
+    }
+
+    fn assert_type(&self, ast: &Ast, actual: &Datatype, expected: &Datatype) -> Result<()> {
+        if actual != expected {
+            Err(GenError::new(
+                GEKind::TypeMismatch(actual.clone(), expected.clone()),
+                ast.token.clone(),
+            ))
+        } else {
+            Ok(())
+        }
     }
 
     fn find_datatype(&self, token: &Token) -> Result<Datatype> {
@@ -518,7 +668,7 @@ macro_rules! builtin_repo {
                     $(
                         $name: Datatype::with_size(
                             stringify!($name).to_string(),
-                            DKind::Builtin($lit), 
+                            DKind::Builtin($lit),
                             $bits
                         ),
                     )*
@@ -551,8 +701,6 @@ builtin_repo!(
         bool: B1 1,
     ]
 );
-
-
 
 #[derive(Debug, Clone)]
 struct Fun {
@@ -749,9 +897,14 @@ impl Into<GenError> for AstError {
 
 #[derive(Debug)]
 enum GEKind {
+    TypeMismatch(Datatype, Datatype),
     DuplicateType(Datatype, Datatype),
     DuplicateModule(Mod, Mod),
     DuplicateFunction(Fun, Fun),
+    ExpectedValue,
+    MissingValueInElseBranch,
+    UnexpectedValueInThenBranch,
+    MissingElseBranch,
     FunctionNotFound,
     VariableNotFound,
     TypeNotFound,
@@ -767,6 +920,16 @@ impl Into<GenError> for GEKind {
             cause: None,
         }
     }
+}
+
+impl<'a> SealCurrentBlock for FunctionBuilder<'a> {
+    fn seal_current_block(&mut self) {
+        self.seal_block(self.current_block().unwrap());
+    }
+}
+
+trait SealCurrentBlock {
+    fn seal_current_block(&mut self);
 }
 
 pub fn test() {

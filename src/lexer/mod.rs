@@ -37,8 +37,13 @@ impl Lexer {
             "pass" => TKind::Pass,
             "mut" => TKind::Mut,
             "return" => TKind::Return,
+            "if" => TKind::If,
+            "elif" => TKind::Elif,
+            "else" => TKind::Else,
             "max" => TKind::Op,
             "min" => TKind::Op,
+            "true" => TKind::Bool(true),
+            "false" => TKind::Bool(false),
             _ => TKind::Ident,
         };
         Some(Token::new(kind, value, line_data))
@@ -130,7 +135,7 @@ impl<'a> Iterator for Lexer {
                 }
                 return self.next();
             }
-            ':' => TKind::Colon,
+            '#' => TKind::Hash,
             ',' => TKind::Comma,
             '(' => TKind::LPar,
             ')' => TKind::RPar,
@@ -241,6 +246,9 @@ pub enum TKind {
     Pass,
     Mut,
     Return,
+    If,
+    Elif,
+    Else,
 
     Ident,
     Op,
@@ -250,8 +258,10 @@ pub enum TKind {
     Colon,
     Comma,
     RArrow,
+    Hash,
 
     Int(i64, u16),
+    Bool(bool),
 
     Indent(usize),
 
@@ -267,6 +277,9 @@ impl std::fmt::Display for TKind {
             TKind::Pass => "'pass'",
             TKind::Mut => "'mut'",
             TKind::Return => "'return'",
+            TKind::If => "'if'",
+            TKind::Elif => "'elif'",
+            TKind::Else => "'else'",
             TKind::Ident => "identifier",
             TKind::Op => "operator",
             TKind::LPar => "'('",
@@ -274,8 +287,10 @@ impl std::fmt::Display for TKind {
             TKind::Colon => "':'",
             TKind::Comma => "','",
             TKind::RArrow => "'->'",
+            TKind::Hash => "'#'",
             TKind::Indent(_) => "indentation",
             TKind::Int(..) => "integer",
+            TKind::Bool(_) => "boolean",
             TKind::UnknownCharacter(_) => "unknown character",
             TKind::Eof => "end of file",
             TKind::None => "nothing",
@@ -371,7 +386,7 @@ impl IsOperator for char {
     fn is_operator(&self) -> bool {
         matches!(
             self,
-            '+' | '-' | '*' | '/' | '%' | '^' | '=' | '<' | '>' | '!' | '&' | '|' | '?' | ':'
+            '+' | '-' | '*' | '/' | '%' | '^' | '=' | '<' | '>' | '!' | '&' | '|' | '?' | ':' | '~'
         )
     }
 }

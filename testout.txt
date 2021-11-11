@@ -220,3 +220,94 @@ Group 'fun' "fun":
       ReturnStatement 'return' "return":
        Literal integer "0"
 
+function u1:5() -> i64 fast {
+block0:
+    v0 = iconst.i64 10
+    v1 = iconst.i64 2
+    v2 = iconst.i64 1
+    v3 = imul v1, v2
+    v4 = iconst.i64 9
+    v5 = isub v3, v4
+    v6 = iconst.i64 4
+    v7 = iconst.i64 1
+    v8 = band v6, v7
+    v9 = iconst.i64 2
+    v10 = iconst.i64 1
+    v11 = sshr v9, v10
+    v12 = iconst.i64 7
+    v13 = ishl v11, v12
+    v14 = iconst.i64 20
+    v15 = imin v13, v14
+    v16 = iconst.i64 10
+    v17 = imax v15, v16
+    v18 = bxor v8, v17
+    v19 = bor v5, v18
+    v20 = iadd v0, v19
+    return v20
+}
+
+function u1:4() -> i64 fast {
+block0:
+    v0 = iconst.i64 10
+    v1 = iconst.i64 4
+    v2 = iadd v0, v1
+    v3 = iconst.i64 2
+    v4 = iconst.i64 1
+    v5 = imul v3, v4
+    v6 = iconst.i64 8
+    v7 = iadd v5, v6
+    v8 = isub v2, v7
+    return v8
+}
+
+function u1:3() fast {
+}
+
+function u1:2(i8, i8) fast {
+}
+
+function u1:1() fast {
+}
+
+function u1:0() fast {
+}
+
+function u1:6() -> i64 fast {
+block0:
+    v0 = bconst.b1 false
+    brnz v0, block1
+    jump block3
+
+block1:
+    v1 = iconst.i64 10
+    return v1
+
+block3:
+    v2 = bconst.b1 true
+    brnz v2, block4
+    jump block6
+
+block4:
+    v3 = bconst.b1 true
+    brnz v3, block7
+    jump block9
+
+block7:
+    v4 = iconst.i64 10
+    jump block8(v4)
+
+block9:
+    v6 = iconst.i64 20
+    jump block8(v6)
+
+block8(v5: i64):
+    return v5
+
+block6:
+    v7 = iconst.i64 0
+    return v7
+
+block5:
+    jump block2
+}
+
