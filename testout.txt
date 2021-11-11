@@ -89,14 +89,14 @@ Token { kind: Ident, value: "i64", line_data: LineData { line: 16, column: 19, f
 Token { kind: Colon, value: ":", line_data: LineData { line: 16, column: 22, file_name: "test_code.pmh" } }
 Token { kind: Indent(1), value: "\n  ", line_data: LineData { line: 16, column: 24, file_name: "test_code.pmh" } }
 Token { kind: If, value: "if", line_data: LineData { line: 17, column: 2, file_name: "test_code.pmh" } }
-Token { kind: Ident, value: "false", line_data: LineData { line: 17, column: 5, file_name: "test_code.pmh" } }
+Token { kind: Bool(false), value: "false", line_data: LineData { line: 17, column: 5, file_name: "test_code.pmh" } }
 Token { kind: Colon, value: ":", line_data: LineData { line: 17, column: 10, file_name: "test_code.pmh" } }
 Token { kind: Indent(2), value: "\n    ", line_data: LineData { line: 17, column: 12, file_name: "test_code.pmh" } }
 Token { kind: Return, value: "return", line_data: LineData { line: 18, column: 4, file_name: "test_code.pmh" } }
 Token { kind: Int(10, 64), value: "10", line_data: LineData { line: 18, column: 11, file_name: "test_code.pmh" } }
 Token { kind: Indent(1), value: "\n  ", line_data: LineData { line: 18, column: 14, file_name: "test_code.pmh" } }
 Token { kind: Elif, value: "elif", line_data: LineData { line: 19, column: 2, file_name: "test_code.pmh" } }
-Token { kind: Ident, value: "true", line_data: LineData { line: 19, column: 7, file_name: "test_code.pmh" } }
+Token { kind: Bool(true), value: "true", line_data: LineData { line: 19, column: 7, file_name: "test_code.pmh" } }
 Token { kind: Colon, value: ":", line_data: LineData { line: 19, column: 11, file_name: "test_code.pmh" } }
 Token { kind: Indent(2), value: "\n    ", line_data: LineData { line: 19, column: 13, file_name: "test_code.pmh" } }
 Token { kind: Return, value: "return", line_data: LineData { line: 20, column: 4, file_name: "test_code.pmh" } }
@@ -196,12 +196,12 @@ Group 'fun' "fun":
    Identifier identifier "i64"
   Group ':' ":":
    IfExpression 'if' "if":
-    Identifier identifier "false"
+    Literal boolean "false"
     Group ':' ":":
      ReturnStatement 'return' "return":
       Literal integer "10"
     IfExpression 'elif' "elif":
-     Identifier identifier "true"
+     Literal boolean "true"
      Group ':' ":":
       ReturnStatement 'return' "return":
        Literal integer "1"
