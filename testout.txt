@@ -50,6 +50,32 @@ Token { kind: Op, value: "*", line_data: LineData { line: 11, column: 20, file_n
 Token { kind: Int(1, 64), value: "1", line_data: LineData { line: 11, column: 22, file_name: "test_code.pmh" } }
 Token { kind: Op, value: "+", line_data: LineData { line: 11, column: 24, file_name: "test_code.pmh" } }
 Token { kind: Int(8, 64), value: "8", line_data: LineData { line: 11, column: 26, file_name: "test_code.pmh" } }
+Token { kind: Indent(0), value: "\n\r", line_data: LineData { line: 11, column: 28, file_name: "test_code.pmh" } }
+Token { kind: Indent(0), value: "\n", line_data: LineData { line: 12, column: 1, file_name: "test_code.pmh" } }
+Token { kind: Fun, value: "fun", line_data: LineData { line: 13, column: 0, file_name: "test_code.pmh" } }
+Token { kind: Ident, value: "operator_stress_test", line_data: LineData { line: 13, column: 4, file_name: "test_code.pmh" } }
+Token { kind: RArrow, value: "->", line_data: LineData { line: 13, column: 25, file_name: "test_code.pmh" } }
+Token { kind: Ident, value: "i64", line_data: LineData { line: 13, column: 28, file_name: "test_code.pmh" } }
+Token { kind: Colon, value: ":", line_data: LineData { line: 13, column: 31, file_name: "test_code.pmh" } }
+Token { kind: Indent(1), value: "\n  ", line_data: LineData { line: 13, column: 33, file_name: "test_code.pmh" } }
+Token { kind: Return, value: "return", line_data: LineData { line: 14, column: 2, file_name: "test_code.pmh" } }
+Token { kind: Int(10, 64), value: "10", line_data: LineData { line: 14, column: 9, file_name: "test_code.pmh" } }
+Token { kind: Op, value: "+", line_data: LineData { line: 14, column: 12, file_name: "test_code.pmh" } }
+Token { kind: Int(2, 64), value: "2", line_data: LineData { line: 14, column: 14, file_name: "test_code.pmh" } }
+Token { kind: Op, value: "*", line_data: LineData { line: 14, column: 16, file_name: "test_code.pmh" } }
+Token { kind: Int(1, 64), value: "1", line_data: LineData { line: 14, column: 18, file_name: "test_code.pmh" } }
+Token { kind: Op, value: "-", line_data: LineData { line: 14, column: 20, file_name: "test_code.pmh" } }
+Token { kind: Int(9, 64), value: "9", line_data: LineData { line: 14, column: 22, file_name: "test_code.pmh" } }
+Token { kind: Op, value: "|", line_data: LineData { line: 14, column: 24, file_name: "test_code.pmh" } }
+Token { kind: Int(4, 64), value: "4", line_data: LineData { line: 14, column: 26, file_name: "test_code.pmh" } }
+Token { kind: Op, value: "&", line_data: LineData { line: 14, column: 28, file_name: "test_code.pmh" } }
+Token { kind: Int(1, 64), value: "1", line_data: LineData { line: 14, column: 30, file_name: "test_code.pmh" } }
+Token { kind: Op, value: "^", line_data: LineData { line: 14, column: 32, file_name: "test_code.pmh" } }
+Token { kind: Int(2, 64), value: "2", line_data: LineData { line: 14, column: 34, file_name: "test_code.pmh" } }
+Token { kind: Op, value: ">>", line_data: LineData { line: 14, column: 36, file_name: "test_code.pmh" } }
+Token { kind: Int(1, 64), value: "1", line_data: LineData { line: 14, column: 39, file_name: "test_code.pmh" } }
+Token { kind: Op, value: "<<", line_data: LineData { line: 14, column: 41, file_name: "test_code.pmh" } }
+Token { kind: Int(7, 64), value: "7", line_data: LineData { line: 14, column: 44, file_name: "test_code.pmh" } }
 Group 'fun' "fun":
  Function 'fun' "fun":
   FunctionHeader 'fun' "fun":
@@ -96,6 +122,59 @@ Group 'fun' "fun":
        Literal integer "2"
        Literal integer "1"
       Literal integer "8"
+ Function 'fun' "fun":
+  FunctionHeader 'fun' "fun":
+   Identifier identifier "operator_stress_test"
+   Identifier identifier "i64"
+  Group ':' ":":
+   ReturnStatement 'return' "return":
+    BinaryOperation operator "+":
+     Identifier operator "+"
+     Literal integer "10"
+     BinaryOperation operator "|":
+      Identifier operator "|"
+      BinaryOperation operator "-":
+       Identifier operator "-"
+       BinaryOperation operator "*":
+        Identifier operator "*"
+        Literal integer "2"
+        Literal integer "1"
+       Literal integer "9"
+      BinaryOperation operator "^":
+       Identifier operator "^"
+       BinaryOperation operator "&":
+        Identifier operator "&"
+        Literal integer "4"
+        Literal integer "1"
+       BinaryOperation operator "<<":
+        Identifier operator "<<"
+        BinaryOperation operator ">>":
+         Identifier operator ">>"
+         Literal integer "2"
+         Literal integer "1"
+        Literal integer "7"
+
+function u1:5() -> i64 fast {
+block0:
+    v0 = iconst.i64 10
+    v1 = iconst.i64 2
+    v2 = iconst.i64 1
+    v3 = imul v1, v2
+    v4 = iconst.i64 9
+    v5 = isub v3, v4
+    v6 = iconst.i64 4
+    v7 = iconst.i64 1
+    v8 = band v6, v7
+    v9 = iconst.i64 2
+    v10 = iconst.i64 1
+    v11 = sshr v9, v10
+    v12 = iconst.i64 7
+    v13 = ishl v11, v12
+    v14 = bxor v8, v13
+    v15 = bor v5, v14
+    v16 = iadd v0, v15
+    return v16
+}
 
 function u1:4() -> i64 fast {
 block0:
