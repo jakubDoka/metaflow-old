@@ -32,11 +32,54 @@ impl AstParser {
                 TKind::Fun => {
                     ast.push(self.fun()?);
                 }
-                TKind::Hash => {}
+                TKind::Attr => {
+                    ast.push(self.attr()?);
+                }
                 TKind::Indent(0) => self.advance(),
                 _ => self.unexpected_str("expected 'fun'")?,
             }
         }
+        Ok(ast)
+    }
+
+    fn attr(&mut self) -> Result<Ast> {
+        let mut ast = self.ast(AKind::Attribute);
+        self.advance();
+
+        self.list(
+            &mut ast,
+            TKind::None,
+            TKind::Comma,
+            TKind::None,
+            Self::attr_element,
+        )?;
+
+        Ok(ast)
+    }
+
+    fn attr_element(&mut self) -> Result<Ast> {
+        let mut ast = self.ast(AKind::AttributeElement);
+        self.advance();
+
+        match self.current_token.kind {
+            TKind::LPar => self.list(
+                &mut ast,
+                TKind::LPar,
+                TKind::Comma,
+                TKind::RPar,
+                Self::attr_element,
+            )?,
+            TKind::Op => match self.current_token.value.deref() {
+                "=" => {
+                    ast.kind = AKind::AttributeAssign;
+                    self.advance();
+                    ast.push(self.expression()?);
+                }
+                _ => self.unexpected_str("expected '='")?,
+            },
+            _ => (),
+        }
+
         Ok(ast)
     }
 
@@ -52,7 +95,7 @@ impl AstParser {
         self.advance();
         ast.push(match self.current_token.kind {
             TKind::Ident | TKind::Op => self.ast(AKind::Identifier),
-            _ => self.empty_ast(),
+            _ => Ast::none(),
         });
         self.advance();
 
@@ -70,7 +113,7 @@ impl AstParser {
             self.advance();
             self.expression()?
         } else {
-            self.empty_ast()
+            Ast::none()
         });
 
         Ok(ast)
@@ -103,7 +146,7 @@ impl AstParser {
         let mut ast = self.ast(AKind::ReturnStatement);
         self.advance();
         let ret_val = if let TKind::Indent(_) = self.current_token.kind {
-            self.empty_ast()
+            Ast::none()
         } else {
             self.expression()?
         };
@@ -152,7 +195,7 @@ impl AstParser {
             TKind::Ident => self.ast(AKind::Identifier),
             TKind::Int(..) => self.ast(AKind::Literal),
             TKind::Bool(..) => self.ast(AKind::Literal),
-            TKind::If => self.if_expression()?,
+            TKind::If => return self.if_expression(),
             _ => todo!(
                 "unmatched simple expression pattern {:?}",
                 self.current_token
@@ -174,7 +217,7 @@ impl AstParser {
         } else if self.current_token == TKind::Elif {
             self.if_expression()?
         } else {
-            self.empty_ast()
+            Ast::none()
         };
 
         ast.children = vec![condition, then_block, else_block];
@@ -226,12 +269,11 @@ impl AstParser {
 
     fn level_continues(&mut self) -> Result<bool> {
         match self.current_token.kind {
-            TKind::Elif | TKind::Else => {
+            TKind::Indent(_) | TKind::Eof => (),
+            _ => {
                 self.level -= 1;
                 return Ok(false);
-            },
-            TKind::Indent(_) | TKind::Eof => (),
-            _ => self.unexpected_str("expected indentation").unwrap(),
+            }
         }
 
         loop {
@@ -273,6 +315,7 @@ impl AstParser {
         if start != TKind::None {
             self.expect(start, format!("expected {}", start))?;
             self.advance();
+            self.ignore_newlines();
         }
 
         if end != TKind::None && self.current_token == end {
@@ -284,10 +327,12 @@ impl AstParser {
 
         while self.current_token == separator {
             self.advance();
+            self.ignore_newlines();
             ast.push(parser(self)?);
         }
 
         if end != TKind::None {
+            self.ignore_newlines();
             self.expect(end, format!("expected {}", end))?;
             self.advance();
         }
@@ -309,10 +354,6 @@ impl AstParser {
         } else {
             self.current_token = self.lexer.next().unwrap_or(Token::eof());
         }
-    }
-
-    fn empty_ast(&mut self) -> Ast {
-        self.ast(AKind::None)
     }
 
     fn ast(&self, kind: AKind) -> Ast {
@@ -353,6 +394,10 @@ pub struct Ast {
 impl Ast {
     pub fn new(kind: AKind, token: Token) -> Ast {
         Self::with_children(kind, token, vec![])
+    }
+
+    pub fn none() -> Ast {
+        Self::new(AKind::None, Token::eof())
     }
 
     pub fn with_children(kind: AKind, token: Token, children: Vec<Ast>) -> Ast {
@@ -410,6 +455,10 @@ pub enum AKind {
     Function,
     FunctionHeader,
     FunctionArgument,
+
+    Attribute,
+    AttributeElement,
+    AttributeAssign,
 
     ReturnStatement,
 

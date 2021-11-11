@@ -1,3 +1,5 @@
+pub mod gen;
+
 use cranelift_codegen::{
     ir::{
         condcodes::{FloatCC, IntCC},
@@ -7,7 +9,8 @@ use cranelift_codegen::{
     isa::CallConv,
 };
 use cranelift_frontend::{FunctionBuilder, FunctionBuilderContext, Variable};
-use std::{cell::RefCell, ops::Deref, rc::Rc};
+use cranelift_module::Linkage;
+use std::{cell::RefCell, ops::Deref, rc::Rc, str::FromStr};
 
 use crate::{
     ast::{AEKind, AKind, Ast, AstError, AstParser},
@@ -15,9 +18,9 @@ use crate::{
 };
 
 type CraneContext = cranelift_codegen::Context;
-type Result<T> = std::result::Result<T, GenError>;
+type Result<T> = std::result::Result<T, IrGenError>;
 
-struct Generator {
+pub struct Generator {
     builtin_repo: BuiltinRepo,
     builtin_module: Mod,
     context: Context,
@@ -26,6 +29,8 @@ struct Generator {
     variables: Vec<Option<Var>>,
     variable_counter: u32,
     module_id_counter: u32,
+    global_attributes: Vec<Ast>,
+    pushed_attributes: Vec<Ast>,
 }
 
 impl Generator {
@@ -41,6 +46,8 @@ impl Generator {
             variables: Vec::new(),
             variable_counter: 0,
             module_id_counter: 0,
+            global_attributes: Vec::new(),
+            pushed_attributes: Vec::new(),
         }
     }
 
@@ -51,7 +58,7 @@ impl Generator {
     }
 
     fn generate_module(&mut self, module_path: String) -> Result<Mod> {
-        let ast = self.load_ast(module_path)?;
+        let mut ast = self.load_ast(module_path)?;
 
         self.module_id_counter += 1; // the 0 is for builtin module
         self.current_module = Mod::new(
@@ -62,11 +69,32 @@ impl Generator {
             .borrow_mut()
             .dependency
             .push(self.builtin_module.clone());
-        for item in ast.children.iter() {
+        for mut item in ast.drain(..) {
             match item.kind {
                 AKind::Function => {
-                    self.function(item)?;
+                    self.function(&item)?;
+                    self.pushed_attributes.clear();
                 }
+                AKind::Attribute => match item[0].token.value.deref() {
+                    "push" => {
+                        self.global_attributes.push(Ast::none());
+                        item.drain(..)
+                            .for_each(|item| self.global_attributes.push(item));
+                    }
+                    "pop" => {
+                        self.global_attributes.drain(
+                            self.global_attributes
+                                .iter()
+                                .rev()
+                                .position(|e| e.kind == AKind::None)
+                                .unwrap()..,
+                        );
+                    }
+                    _ => {
+                        item.drain(..)
+                            .for_each(|item| self.pushed_attributes.push(item));
+                    }
+                },
                 _ => todo!(),
             }
         }
@@ -84,7 +112,7 @@ impl Generator {
 
         let signature_ast = &ast[0];
         let (signature, mut fun_signature) =
-            self.create_signature(signature_ast, CallConv::Fast)?;
+            self.create_signature(signature_ast)?;
 
         let mut function = Function::with_name_signature(fun_signature.id.clone(), signature);
         let mut builder = FunctionBuilder::new(&mut function, &mut function_builder_context);
@@ -109,6 +137,14 @@ impl Generator {
             builder.seal_current_block();
             fun
         } else {
+            let entry_point = builder.create_block();
+            builder.append_block_params_for_function_params(entry_point);
+            builder.switch_to_block(entry_point);
+            if let Some(ret) = fun_signature.ret.as_ref() {
+                let val = ret.borrow().default_value(&mut builder);
+                builder.ins().return_(&[val]);
+            }
+            builder.seal_current_block();
             let fun = Fun::new(fun_signature);
             self.current_module.borrow_mut().add_function(fun.clone())?;
             fun
@@ -184,7 +220,7 @@ impl Generator {
             AKind::BinaryOperation => self.binary_operation(ast, builder),
             AKind::IfExpression => self
                 .if_expression(ast, builder)?
-                .ok_or_else(|| GenError::new(GEKind::ExpectedValue, ast.token.clone())),
+                .ok_or_else(|| IrGenError::new(IGEKind::ExpectedValue, ast.token.clone())),
             _ => todo!("unmatched expression {}", ast),
         }
     }
@@ -241,7 +277,7 @@ impl Generator {
         builder.seal_current_block();
 
         let then_branch = &ast[1];
-        
+
         builder.switch_to_block(then_block);
         let then_result = self.statement_list(then_branch, builder)?;
 
@@ -255,11 +291,14 @@ impl Generator {
         }
 
         builder.seal_current_block();
-        
+
         match else_branch.kind {
             AKind::None => {
                 if result.is_some() {
-                    return Err(GenError::new(GEKind::MissingElseBranch, ast.token.clone()));
+                    return Err(IrGenError::new(
+                        IGEKind::MissingElseBranch,
+                        ast.token.clone(),
+                    ));
                 }
                 builder.switch_to_block(merge_block);
             }
@@ -277,16 +316,16 @@ impl Generator {
                     if let Some((_, other_datatype)) = result.as_ref() {
                         self.assert_type(ast, &datatype, &other_datatype)?;
                     } else {
-                        return Err(GenError::new(
-                            GEKind::UnexpectedValueInThenBranch,
+                        return Err(IrGenError::new(
+                            IGEKind::UnexpectedValueInThenBranch,
                             ast.token.clone(),
                         ));
                     }
                     builder.ins().jump(merge_block, &[value]);
                 } else {
                     if result.is_some() {
-                        return Err(GenError::new(
-                            GEKind::MissingValueInElseBranch,
+                        return Err(IrGenError::new(
+                            IGEKind::MissingValueInElseBranch,
                             ast.token.clone(),
                         ));
                     }
@@ -296,7 +335,6 @@ impl Generator {
                 }
 
                 builder.seal_current_block();
-
             }
             _ => unreachable!(),
         }
@@ -420,8 +458,8 @@ impl Generator {
         }
     }
 
-    fn create_signature(&self, header: &Ast, cc: CallConv) -> Result<(Signature, FunSignature)> {
-        let mut signature = Signature::new(cc);
+    fn create_signature(&self, header: &Ast) -> Result<(Signature, FunSignature)> {
+        let mut signature = Signature::new(CallConv::Fast);
         let mut fun_params = Vec::new();
         for args in header[1..header.len() - 1].iter() {
             let datatype = self.find_datatype(&args.last().unwrap().token)?;
@@ -453,22 +491,44 @@ impl Generator {
             StrRef::empty()
         };
 
-        Ok((
-            signature,
-            FunSignature::new(
-                self.current_module.borrow_mut().new_fun_name(),
-                name,
-                fun_params,
-                return_type,
-                cc,
-            ),
-        ))
+        let linkage = if let Some(attr) = self.find_attribute("linkage") {
+            match attr[0].token.value.deref() {
+                "local" => Linkage::Local,
+                "hidden" => Linkage::Hidden,
+                "import" => Linkage::Import,
+                "export" => Linkage::Export,
+                "preemptible" => Linkage::Preemptible,
+                _ => return Err(IrGenError::new(IGEKind::InvalidLinkage, attr.token.clone())),
+            }
+        } else {
+            Linkage::Export
+        };
+
+        let cc = if let Some(attr) = self.find_attribute("call_conv") {
+            CallConv::from_str(attr[0].token.value.deref())
+                .map_err(|_| IrGenError::new(IGEKind::InvalidCallConv, attr.token.clone()))?
+        } else {
+            CallConv::Fast
+        };
+
+        let fun_signature = FunSignature::new(
+            self.current_module.borrow_mut().new_fun_name(),
+            name,
+            fun_params,
+            return_type,
+            cc,
+            linkage,
+        );
+
+        signature.call_conv = cc;
+
+        Ok((signature, fun_signature))
     }
 
     fn assert_type(&self, ast: &Ast, actual: &Datatype, expected: &Datatype) -> Result<()> {
         if actual != expected {
-            Err(GenError::new(
-                GEKind::TypeMismatch(actual.clone(), expected.clone()),
+            Err(IrGenError::new(
+                IGEKind::TypeMismatch(actual.clone(), expected.clone()),
                 ast.token.clone(),
             ))
         } else {
@@ -480,14 +540,14 @@ impl Generator {
         self.current_module
             .borrow()
             .find_datatype(&token.value)
-            .ok_or_else(|| GenError::new(GEKind::TypeNotFound, token.clone()))
+            .ok_or_else(|| IrGenError::new(IGEKind::TypeNotFound, token.clone()))
     }
 
     fn find_function(&self, token: &Token) -> Result<Fun> {
         self.current_module
             .borrow()
             .find_function(token)
-            .ok_or_else(|| GenError::new(GEKind::FunctionNotFound, token.clone()))
+            .ok_or_else(|| IrGenError::new(IGEKind::FunctionNotFound, token.clone()))
     }
 
     fn find_variable(&self, token: &Token) -> Result<Var> {
@@ -498,7 +558,7 @@ impl Generator {
             .map(|v| v.as_ref().unwrap())
             .find(|var| &var.name == &token.value)
             .map(|var| var.clone())
-            .ok_or_else(|| GenError::new(GEKind::VariableNotFound, token.clone()))
+            .ok_or_else(|| IrGenError::new(IGEKind::VariableNotFound, token.clone()))
     }
 
     fn make_variable(&mut self) -> Variable {
@@ -509,14 +569,30 @@ impl Generator {
 
     fn load_ast(&mut self, file_name: String) -> Result<Ast> {
         let bytes =
-            std::fs::read_to_string(&file_name).map_err(|e| GEKind::CannotOpenFile(e).into())?;
+            std::fs::read_to_string(&file_name).map_err(|e| IGEKind::CannotOpenFile(e).into())?;
         AstParser::new(Lexer::new(file_name, bytes))
             .parse()
             .map_err(Into::into)
     }
+
+    fn has_attribute(&self, name: &str) -> bool {
+        self.find_attribute(name).is_some()
+    }
+
+    fn find_attribute(&self, name: &str) -> Option<&Ast> {
+        self.global_attributes
+            .iter()
+            .rev()
+            .find(|a| a.token.value.deref() == name)
+            .or(self
+                .pushed_attributes
+                .iter()
+                .rev()
+                .find(|a| a.token.value.deref() == name))
+    }
 }
 
-struct Context {
+pub struct Context {
     modules: Vec<Mod>,
 }
 
@@ -532,7 +608,7 @@ impl Context {
             .modules
             .binary_search_by(|d| module.borrow().name.cmp(&d.borrow().name))
         {
-            Ok(i) => Err(GEKind::DuplicateModule(module.clone(), self.modules[i].clone()).into()),
+            Ok(i) => Err(IGEKind::DuplicateModule(module.clone(), self.modules[i].clone()).into()),
             Err(i) => {
                 self.modules.insert(i, module);
                 Ok(())
@@ -546,13 +622,13 @@ impl Context {
             .binary_search_by(|d| name.value.cmp(&d.borrow().name))
         {
             Ok(i) => Ok(self.modules[i].clone()),
-            Err(_) => Err(GenError::new(GEKind::ModuleNotFound, name.clone())),
+            Err(_) => Err(IrGenError::new(IGEKind::ModuleNotFound, name.clone())),
         }
     }
 }
 
 #[derive(Debug, Clone)]
-struct Mod {
+pub struct Mod {
     inner: Rc<RefCell<ModuleStruct>>,
 }
 
@@ -572,7 +648,7 @@ impl Deref for Mod {
 }
 
 #[derive(Debug, Clone)]
-struct ModuleStruct {
+pub struct ModuleStruct {
     name: String,
     dependency: Vec<Mod>,
     types: Vec<Datatype>,
@@ -613,7 +689,7 @@ impl ModuleStruct {
             .types
             .binary_search_by(|d| datatype.borrow().name.cmp(&d.borrow().name))
         {
-            Ok(i) => Err(GEKind::DuplicateType(datatype.clone(), self.types[i].clone()).into()),
+            Ok(i) => Err(IGEKind::DuplicateType(datatype.clone(), self.types[i].clone()).into()),
             Err(i) => {
                 self.types.insert(i, datatype);
                 Ok(())
@@ -626,7 +702,7 @@ impl ModuleStruct {
             .functions
             .binary_search_by(|d| fun.borrow().signature.name.cmp(&d.borrow().signature.name))
         {
-            Ok(i) => Err(GEKind::DuplicateFunction(fun.clone(), self.functions[i].clone()).into()),
+            Ok(i) => Err(IGEKind::DuplicateFunction(fun.clone(), self.functions[i].clone()).into()),
             Err(i) => {
                 self.functions.insert(i, fun);
                 Ok(())
@@ -658,7 +734,7 @@ impl ModuleStruct {
 
 macro_rules! builtin_repo {
     (types [$($name:ident: $lit:ident $bits:expr,)*]) => {
-        struct BuiltinRepo {
+        pub struct BuiltinRepo {
             $($name: Datatype,)*
         }
 
@@ -703,7 +779,7 @@ builtin_repo!(
 );
 
 #[derive(Debug, Clone)]
-struct Fun {
+pub struct Fun {
     inner: Rc<RefCell<FunStruct>>,
 }
 
@@ -723,7 +799,7 @@ impl Deref for Fun {
 }
 
 #[derive(Debug, Clone)]
-struct FunStruct {
+pub struct FunStruct {
     signature: FunSignature,
     function: Option<Function>,
 }
@@ -738,12 +814,13 @@ impl FunStruct {
 }
 
 #[derive(Debug, Clone)]
-struct FunSignature {
+pub struct FunSignature {
     id: ExternalName,
     name: StrRef,
     params: Vec<Var>,
     ret: Option<Datatype>,
     cc: CallConv,
+    linkage: Linkage,
 }
 
 impl FunSignature {
@@ -753,6 +830,7 @@ impl FunSignature {
         params: Vec<Var>,
         ret: Option<Datatype>,
         cc: CallConv,
+        linkage: Linkage,
     ) -> Self {
         Self {
             id,
@@ -760,6 +838,7 @@ impl FunSignature {
             params,
             ret,
             cc,
+            linkage,
         }
     }
 
@@ -781,7 +860,7 @@ impl FunSignature {
 }
 
 #[derive(Debug, Clone, PartialEq)]
-struct Datatype {
+pub struct Datatype {
     inner: Rc<RefCell<DatatypeStruct>>,
 }
 
@@ -806,7 +885,7 @@ impl Deref for Datatype {
 }
 
 #[derive(Debug, Clone)]
-struct Var {
+pub struct Var {
     name: StrRef,
     access: VarAccess,
     datatype: Datatype,
@@ -823,14 +902,14 @@ impl Var {
 }
 
 #[derive(Debug, Clone)]
-enum VarAccess {
+pub enum VarAccess {
     Mutable(Variable),
     Immutable(Value),
     Unresolved,
 }
 
 #[derive(Debug, Clone, PartialEq)]
-struct DatatypeStruct {
+pub struct DatatypeStruct {
     name: String,
     kind: DKind,
     size: usize,
@@ -854,10 +933,29 @@ impl DatatypeStruct {
             DKind::Enum(_) => todo!(),
         }
     }
+
+    fn default_value(&self, builder: &mut FunctionBuilder) -> Value {
+        match self.kind {
+            DKind::Builtin(tp) => match tp {
+                I8 => builder.ins().iconst(I8, 0),
+                I16 => builder.ins().iconst(I16, 0),
+                I32 => builder.ins().iconst(I32, 0),
+                I64 => builder.ins().iconst(I64, 0),
+                F32 => builder.ins().f32const(0.0),
+                F64 => builder.ins().f64const(0.0),
+                B1 => builder.ins().bconst(B1, false),
+                _ => panic!("unsupported builtin type"),
+            },
+            DKind::Pointer(_) => todo!(),
+            DKind::Alias(_) => todo!(),
+            DKind::Structure(_) => todo!(),
+            DKind::Enum(_) => todo!(),
+        }
+    }
 }
 
 #[derive(Debug, Clone, PartialEq)]
-enum DKind {
+pub enum DKind {
     Builtin(Type),
     Pointer(Datatype),
     Alias(Datatype),
@@ -866,41 +964,43 @@ enum DKind {
 }
 
 #[derive(Debug, Clone, PartialEq)]
-enum Structure {}
+pub enum Structure {}
 
 #[derive(Debug, Clone, PartialEq)]
-enum Enum {}
+pub enum Enum {}
 
 #[derive(Debug)]
-struct GenError {
-    kind: GEKind,
-    cause: Option<Token>,
+pub struct IrGenError {
+    kind: IGEKind,
+    token: Option<Token>,
 }
 
-impl GenError {
-    fn new(kind: GEKind, cause: Token) -> Self {
+impl IrGenError {
+    fn new(kind: IGEKind, token: Token) -> Self {
         Self {
             kind,
-            cause: Some(cause),
+            token: Some(token),
         }
     }
 }
 
-impl Into<GenError> for AstError {
-    fn into(self) -> GenError {
-        GenError {
-            kind: GEKind::AstError(self.kind),
-            cause: self.token,
+impl Into<IrGenError> for AstError {
+    fn into(self) -> IrGenError {
+        IrGenError {
+            kind: IGEKind::AstError(self.kind),
+            token: self.token,
         }
     }
 }
 
 #[derive(Debug)]
-enum GEKind {
+pub enum IGEKind {
     TypeMismatch(Datatype, Datatype),
     DuplicateType(Datatype, Datatype),
     DuplicateModule(Mod, Mod),
     DuplicateFunction(Fun, Fun),
+    InvalidLinkage,
+    InvalidCallConv,
     ExpectedValue,
     MissingValueInElseBranch,
     UnexpectedValueInThenBranch,
@@ -913,11 +1013,11 @@ enum GEKind {
     AstError(AEKind),
 }
 
-impl Into<GenError> for GEKind {
-    fn into(self) -> GenError {
-        GenError {
+impl Into<IrGenError> for IGEKind {
+    fn into(self) -> IrGenError {
+        IrGenError {
             kind: self,
-            cause: None,
+            token: None,
         }
     }
 }

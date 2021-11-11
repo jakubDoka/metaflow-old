@@ -34,6 +34,7 @@ impl Lexer {
         let value = self.cursor.data.sub(start..end);
         let kind = match value.deref() {
             "fun" => TKind::Fun,
+            "attr" => TKind::Attr,
             "pass" => TKind::Pass,
             "mut" => TKind::Mut,
             "return" => TKind::Return,
@@ -243,6 +244,7 @@ impl PartialEq<TKind> for Token {
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum TKind {
     Fun,
+    Attr,
     Pass,
     Mut,
     Return,
@@ -274,6 +276,7 @@ impl std::fmt::Display for TKind {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.write_str(match *self {
             TKind::Fun => "'fun'",
+            TKind::Attr => "'attr'",
             TKind::Pass => "'pass'",
             TKind::Mut => "'mut'",
             TKind::Return => "'return'",

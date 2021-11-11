@@ -20,3 +20,7 @@ fun conditional -> i64:
     return if true: 10 else: 20
   else:
     return 0
+
+attr inline
+fun inline_fn -> u32:
+  return 10

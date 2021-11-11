@@ -1,5 +1,7 @@
 {
     "cSpell.words": [
+        "bconst",
+        "brnz",
         "bxor",
         "codegen",
         "condcodes",
@@ -19,6 +21,7 @@
         "imul",
         "ishl",
         "isub",
+        "Preemptible",
         "sdiv",
         "srem",
         "sshr",

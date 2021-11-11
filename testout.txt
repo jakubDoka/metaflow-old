@@ -126,17 +126,119 @@ Token { kind: Colon, value: ":", line_data: LineData { line: 25, column: 20, fil
 Token { kind: Indent(1), value: "\n  ", line_data: LineData { line: 25, column: 22, file_name: "test_code.pmh" } }
 Token { kind: Return, value: "return", line_data: LineData { line: 26, column: 2, file_name: "test_code.pmh" } }
 Token { kind: Int(10, 64), value: "10", line_data: LineData { line: 26, column: 9, file_name: "test_code.pmh" } }
-Token { kind: Fun, value: "fun", line_data: LineData { line: 1, column: 0, file_name: "test_code.pmh" } }
-Token { kind: Indent(0), value: "\n\r", line_data: LineData { line: 1, column: 14, file_name: "test_code.pmh" } }
-Token { kind: Indent(0), value: "\n", line_data: LineData { line: 2, column: 1, file_name: "test_code.pmh" } }
-Token { kind: Fun, value: "fun", line_data: LineData { line: 3, column: 0, file_name: "test_code.pmh" } }
-Token { kind: Indent(0), value: "\n\r", line_data: LineData { line: 3, column: 16, file_name: "test_code.pmh" } }
-Token { kind: Indent(0), value: "\n", line_data: LineData { line: 4, column: 1, file_name: "test_code.pmh" } }
-Token { kind: Fun, value: "fun", line_data: LineData { line: 5, column: 0, file_name: "test_code.pmh" } }
-Token { kind: Indent(0), value: "\n\r", line_data: LineData { line: 5, column: 28, file_name: "test_code.pmh" } }
-Token { kind: Indent(0), value: "\n", line_data: LineData { line: 6, column: 1, file_name: "test_code.pmh" } }
-Token { kind: Fun, value: "fun", line_data: LineData { line: 7, column: 0, file_name: "test_code.pmh" } }
-Token { kind: Fun, value: "fun", line_data: LineData { line: 10, column: 0, file_name: "test_code.pmh" } }
-Token { kind: Fun, value: "fun", line_data: LineData { line: 13, column: 0, file_name: "test_code.pmh" } }
-Token { kind: Fun, value: "fun", line_data: LineData { line: 16, column: 0, file_name: "test_code.pmh" } }
-Token { kind: Ident, value: "inline", line_data: LineData { line: 24, column: 5, file_name: "test_code.pmh" } }
+Group 'fun' "fun":
+ Function 'fun' "fun":
+  FunctionHeader 'fun' "fun":
+   Identifier identifier "flo"
+   None ':' ":"
+  Group ':' ":"
+ Function 'fun' "fun":
+  FunctionHeader 'fun' "fun":
+   Identifier identifier "foo"
+   None ':' ":"
+  Group ':' ":"
+ Function 'fun' "fun":
+  FunctionHeader 'fun' "fun":
+   Identifier identifier "goo"
+   FunctionArgument identifier "a":
+    Identifier identifier "a"
+    Identifier identifier "i8"
+   FunctionArgument identifier "b":
+    Identifier identifier "b"
+    Identifier identifier "i8"
+   None ':' ":"
+  Group ':' ":"
+ Function 'fun' "fun":
+  FunctionHeader 'fun' "fun":
+   Identifier identifier "loo"
+   None ':' ":"
+  Group ':' ":"
+ Function 'fun' "fun":
+  FunctionHeader 'fun' "fun":
+   Identifier identifier "main"
+   Identifier identifier "i64"
+  Group ':' ":":
+   ReturnStatement 'return' "return":
+    BinaryOperation operator "-":
+     Identifier operator "-"
+     BinaryOperation operator "+":
+      Identifier operator "+"
+      Literal integer "10"
+      Literal integer "4"
+     BinaryOperation operator "+":
+      Identifier operator "+"
+      BinaryOperation operator "*":
+       Identifier operator "*"
+       Literal integer "2"
+       Literal integer "1"
+      Literal integer "8"
+ Function 'fun' "fun":
+  FunctionHeader 'fun' "fun":
+   Identifier identifier "operator_stress_test"
+   Identifier identifier "i64"
+  Group ':' ":":
+   ReturnStatement 'return' "return":
+    BinaryOperation operator "+":
+     Identifier operator "+"
+     Literal integer "10"
+     BinaryOperation operator "|":
+      Identifier operator "|"
+      BinaryOperation operator "-":
+       Identifier operator "-"
+       BinaryOperation operator "*":
+        Identifier operator "*"
+        Literal integer "2"
+        Literal integer "1"
+       Literal integer "9"
+      BinaryOperation operator "^":
+       Identifier operator "^"
+       BinaryOperation operator "&":
+        Identifier operator "&"
+        Literal integer "4"
+        Literal integer "1"
+       BinaryOperation operator "max":
+        Identifier operator "max"
+        BinaryOperation operator "min":
+         Identifier operator "min"
+         BinaryOperation operator "<<":
+          Identifier operator "<<"
+          BinaryOperation operator ">>":
+           Identifier operator ">>"
+           Literal integer "2"
+           Literal integer "1"
+          Literal integer "7"
+         Literal integer "20"
+        Literal integer "10"
+ Function 'fun' "fun":
+  FunctionHeader 'fun' "fun":
+   Identifier identifier "conditional"
+   Identifier identifier "i64"
+  Group ':' ":":
+   IfExpression 'if' "if":
+    Literal boolean "false"
+    Group ':' ":":
+     ReturnStatement 'return' "return":
+      Literal integer "10"
+    IfExpression 'elif' "elif":
+     Literal boolean "true"
+     Group ':' ":":
+      ReturnStatement 'return' "return":
+       IfExpression 'if' "if":
+        Literal boolean "true"
+        Group ':' ":":
+         Literal integer "10"
+        Group ':' ":":
+         Literal integer "20"
+     Group ':' ":":
+      ReturnStatement 'return' "return":
+       Literal integer "0"
+ Attribute 'attr' "attr":
+  AttributeElement identifier "inline"
+ Function 'fun' "fun":
+  FunctionHeader 'fun' "fun":
+   Identifier identifier "inline_fn"
+   Identifier identifier "u32"
+  Group ':' ":":
+   ReturnStatement 'return' "return":
+    Literal integer "10"
+
