@@ -1,23 +1,22 @@
-use std::{fmt::Debug, ops::{Deref, Range}, str::Chars, sync::Arc};
+use std::{
+    fmt::Debug,
+    ops::{Deref, Range},
+    rc::Rc,
+    str::Chars,
+};
 
 pub struct Lexer {
     cursor: Cursor,
-    file: Arc<String>,
-    file_name: Arc<String>,
-    last_n_line: usize,
-    line: usize,
+    file_name: Rc<String>,
 }
 
 impl Lexer {
     pub fn new(file_name: String, file: String) -> Lexer {
-        let file = Arc::new(file);
-        let file_name = Arc::new(file_name);
+        let file = Rc::new(file);
+        let file_name = Rc::new(file_name);
         Lexer {
             cursor: Cursor::new(StrRef::whole(&file)),
-            file,
             file_name,
-            last_n_line: 0,
-            line: 1,
         }
     }
 
@@ -32,6 +31,8 @@ impl Lexer {
         let kind = match value.deref() {
             "fun" => TKind::Fun,
             "pass" => TKind::Pass,
+            "mut" => TKind::Mut,
+            "return" => TKind::Return,
             _ => TKind::Ident,
         };
         Some(Token::new(kind, value, line_data))
@@ -47,6 +48,7 @@ impl Lexer {
         let value = self.cursor.data.sub(start..end);
         let kind = match value.deref() {
             ":" => TKind::Colon,
+            "->" => TKind::RArrow,
             _ => TKind::Op,
         };
         Some(Token::new(kind, value, line_data))
@@ -55,6 +57,7 @@ impl Lexer {
     fn indent(&mut self) -> Option<Token> {
         let line_data = self.line_data();
         let start = self.cursor.progress();
+        self.cursor.advance();
         let mut indentation = 0;
         loop {
             match self.cursor.peek()? {
@@ -66,10 +69,10 @@ impl Lexer {
                     self.cursor.advance();
                     indentation += 2;
                 }
-                _ => {
+                '\r' => {
                     self.cursor.advance();
-                    break
-                },
+                }
+                _ => break,
             }
         }
         let end = self.cursor.progress();
@@ -77,11 +80,23 @@ impl Lexer {
         Some(Token::new(TKind::Indent(indentation / 2), value, line_data))
     }
 
+    fn number(&mut self) -> Option<Token> {
+        let mut number = 0u64;
+        let start = self.cursor.progress();
+        let line_data = self.line_data();
+        while self.cursor.peek().unwrap_or('\0').is_numeric() {
+            number = number * 10 + (self.cursor.advance().unwrap() as u64 - '0' as u64);
+        }
+        let end = self.cursor.progress();
+        let value = self.cursor.data.sub(start..end);
+        Some(Token::new(TKind::Int(number as i64, 64), value, line_data))
+    }
+
     fn line_data(&self) -> LineData {
         LineData {
             file_name: StrRef::whole(&self.file_name),
-            line: self.line,
-            column: self.cursor.progress() - self.last_n_line,
+            line: self.cursor.line,
+            column: self.cursor.progress() - self.cursor.last_n_line,
         }
     }
 }
@@ -90,20 +105,21 @@ impl<'a> Iterator for Lexer {
     type Item = Token;
 
     fn next(&mut self) -> Option<Self::Item> {
-        
         let char = self.cursor.peek()?;
-        println!("{:?}", char);
         if char.is_alphabetic() {
             return self.ident();
         }
         if char.is_operator() {
             return self.op();
         }
+        if char.is_numeric() {
+            return self.number();
+        }
 
         let kind = match char {
             '\n' => return self.indent(),
-            ' ' => {
-                while self.cursor.peek()?.is_whitespace() {
+            ' ' | '\r' | '\t' => {
+                while matches!(self.cursor.peek()?, ' ' | '\t' | '\r') {
                     self.cursor.advance();
                 }
                 return self.next();
@@ -129,6 +145,8 @@ impl<'a> Iterator for Lexer {
 struct Cursor {
     data: StrRef,
     chars: Chars<'static>,
+    line: usize,
+    last_n_line: usize,
 }
 
 impl Cursor {
@@ -137,6 +155,8 @@ impl Cursor {
             //SAFETY: cursor disposes data only upon drop
             chars: unsafe { data.get_static_ref().chars() },
             data,
+            line: 1,
+            last_n_line: 0,
         }
     }
 
@@ -154,11 +174,16 @@ impl Cursor {
 
     #[inline]
     fn advance(&mut self) -> Option<char> {
-        self.chars.next()
+        let char = self.chars.next();
+        if char == Some('\n') {
+            self.line += 1;
+            self.last_n_line = self.progress();
+        }
+        char
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone, Default)]
 pub struct Token {
     pub kind: TKind,
     pub value: StrRef,
@@ -173,12 +198,35 @@ impl Token {
             line_data,
         }
     }
+
+    pub fn eof() -> Self {
+        Token {
+            kind: TKind::Eof,
+            value: StrRef::empty(),
+            line_data: LineData::default(),
+        }
+    }
 }
 
-#[derive(Debug)]
+impl std::fmt::Display for Token {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{} {:?}", self.kind, self.value)?;
+        Ok(())
+    }
+}
+
+impl PartialEq<TKind> for Token {
+    fn eq(&self, other: &TKind) -> bool {
+        self.kind == *other
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq)]
 pub enum TKind {
     Fun,
     Pass,
+    Mut,
+    Return,
 
     Ident,
     Op,
@@ -187,44 +235,94 @@ pub enum TKind {
     RPar,
     Colon,
     Comma,
+    RArrow,
+
+    Int(i64, i8),
 
     Indent(usize),
+
+    Eof,
+    None,
 }
 
-#[derive(Debug)]
+impl std::fmt::Display for TKind {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(match *self {
+            TKind::Fun => "'fun'",
+            TKind::Pass => "'pass'",
+            TKind::Mut => "'mut'",
+            TKind::Return => "'return'",
+            TKind::Ident => "identifier",
+            TKind::Op => "operator",
+            TKind::LPar => "'('",
+            TKind::RPar => "')'",
+            TKind::Colon => "':'",
+            TKind::Comma => "','",
+            TKind::RArrow => "'->'",
+            TKind::Indent(_) => "indentation",
+            TKind::Int(..) => "integer",
+            TKind::Eof => "end of file",
+            TKind::None => "nothing",
+        })
+    }
+}
+
+impl Default for TKind {
+    fn default() -> Self {
+        TKind::None
+    }
+}
+
+#[derive(Debug, Clone, Default)]
 pub struct LineData {
     pub line: usize,
     pub column: usize,
     pub file_name: StrRef,
 }
 
-#[derive(Clone)]
+#[derive(Clone, PartialEq)]
 pub struct StrRef {
-    rc: Arc<String>,
-    string: *mut str,
+    rc: Option<Rc<String>>,
+    string: *const str,
 }
 
 impl StrRef {
-    pub fn new(rc: &Arc<String>, range: Range<usize>) -> Self {
+    pub fn new(rc: &Rc<String>, range: Range<usize>) -> Self {
         StrRef {
-            rc: rc.clone(),
-            string: &rc[range] as *const str as *mut str,
+            rc: Some(rc.clone()),
+            string: &rc[range] as *const str,
         }
     }
 
-    pub fn whole(rc: &Arc<String>) -> Self {
+    pub fn whole(rc: &Rc<String>) -> Self {
         StrRef {
-            rc: rc.clone(),
-            string: &rc[..] as *const str as *mut str,
+            rc: Some(rc.clone()),
+            string: &rc[..] as *const str,
+        }
+    }
+
+    pub fn empty() -> Self {
+        StrRef {
+            rc: None,
+            string: "" as *const str,
         }
     }
 
     pub fn sub(&self, range: Range<usize>) -> Self {
-        Self::new(&self.rc, range)
+        StrRef {
+            rc: self.rc.clone(),
+            string: &self[range] as *const str,
+        }
     }
 
     unsafe fn get_static_ref(&self) -> &'static str {
         &*self.string as &'static str
+    }
+}
+
+impl Default for StrRef {
+    fn default() -> Self {
+        StrRef::empty()
     }
 }
 
@@ -261,19 +359,10 @@ pub trait IsOperator {
 
 //#[cfg(feature = "testing")]
 pub fn test() {
-    let text_1 = r#"
-fn main: pass
-
-fn main(): pass
-
-fn main(a: i8, b: i8): pass
-
-fn main: 
-    pass
-    "#
-    .to_string();
-
-    let mut lexer = Lexer::new("text_1.pmh".to_string(), text_1);
+    let mut lexer = Lexer::new(
+        "test_code.pmh".to_string(),
+        crate::testing::TEST_CODE.to_string(),
+    );
 
     lexer.for_each(|token| println!("{:?}", token));
 }

@@ -1,0 +1,11 @@
+fun main: pass
+
+fun main(): pass
+
+fun main(a: i8, b: i8) -> i8: pass
+
+fun main:
+  pass
+
+fun main -> i64:
+  return 10 + 4 - 2 * 1 + 8
