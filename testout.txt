@@ -68,11 +68,11 @@ Group 'fun' "fun":
    Identifier identifier "main"
    FunctionArgument identifier "a":
     Identifier identifier "a"
-    Identifier ',' ","
+    Identifier identifier "i8"
    FunctionArgument identifier "b":
     Identifier identifier "b"
-    Identifier ')' ")"
-   Identifier ':' ":"
+    Identifier identifier "i8"
+   Identifier identifier "i8"
   Group ':' ":"
  Function 'fun' "fun":
   FunctionHeader 'fun' "fun":
@@ -82,20 +82,20 @@ Group 'fun' "fun":
  Function 'fun' "fun":
   FunctionHeader 'fun' "fun":
    Identifier identifier "main"
-   Identifier ':' ":"
+   Identifier identifier "i64"
   Group ':' ":":
    ReturnStatement 'return' "return":
     BinaryOperation operator "-":
      Identifier operator "-"
      BinaryOperation operator "+":
       Identifier operator "+"
-      Literal operator "+"
-      Literal operator "-"
+      Literal integer "10"
+      Literal integer "4"
      BinaryOperation operator "+":
       Identifier operator "+"
       BinaryOperation operator "*":
        Identifier operator "*"
-       Literal operator "*"
-       Literal operator "+"
-      Literal end of file ""
+       Literal integer "2"
+       Literal integer "1"
+      Literal integer "8"
 
