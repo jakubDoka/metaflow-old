@@ -100,8 +100,14 @@ Token { kind: Bool(true), value: "true", line_data: LineData { line: 19, column:
 Token { kind: Colon, value: ":", line_data: LineData { line: 19, column: 11, file_name: "test_code.pmh" } }
 Token { kind: Indent(2), value: "\n    ", line_data: LineData { line: 19, column: 13, file_name: "test_code.pmh" } }
 Token { kind: Return, value: "return", line_data: LineData { line: 20, column: 4, file_name: "test_code.pmh" } }
-Token { kind: Int(1, 64), value: "1", line_data: LineData { line: 20, column: 11, file_name: "test_code.pmh" } }
-Token { kind: Indent(1), value: "\n  ", line_data: LineData { line: 20, column: 13, file_name: "test_code.pmh" } }
+Token { kind: If, value: "if", line_data: LineData { line: 20, column: 11, file_name: "test_code.pmh" } }
+Token { kind: Bool(true), value: "true", line_data: LineData { line: 20, column: 14, file_name: "test_code.pmh" } }
+Token { kind: Colon, value: ":", line_data: LineData { line: 20, column: 18, file_name: "test_code.pmh" } }
+Token { kind: Int(10, 64), value: "10", line_data: LineData { line: 20, column: 20, file_name: "test_code.pmh" } }
+Token { kind: Else, value: "else", line_data: LineData { line: 20, column: 23, file_name: "test_code.pmh" } }
+Token { kind: Colon, value: ":", line_data: LineData { line: 20, column: 27, file_name: "test_code.pmh" } }
+Token { kind: Int(20, 64), value: "20", line_data: LineData { line: 20, column: 29, file_name: "test_code.pmh" } }
+Token { kind: Indent(1), value: "\n  ", line_data: LineData { line: 20, column: 32, file_name: "test_code.pmh" } }
 Token { kind: Else, value: "else", line_data: LineData { line: 21, column: 2, file_name: "test_code.pmh" } }
 Token { kind: Colon, value: ":", line_data: LineData { line: 21, column: 6, file_name: "test_code.pmh" } }
 Token { kind: Indent(2), value: "\n    ", line_data: LineData { line: 21, column: 8, file_name: "test_code.pmh" } }
@@ -204,7 +210,12 @@ Group 'fun' "fun":
      Literal boolean "true"
      Group ':' ":":
       ReturnStatement 'return' "return":
-       Literal integer "1"
+       IfExpression 'if' "if":
+        Literal boolean "true"
+        Group ':' ":":
+         Literal integer "10"
+        Group ':' ":":
+         Literal integer "20"
      Group ':' ":":
       ReturnStatement 'return' "return":
        Literal integer "0"
