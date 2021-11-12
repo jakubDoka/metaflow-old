@@ -313,38 +313,35 @@ function u1:6() -> i64 fast {
 block0:
     v0 = bconst.b1 false
     brnz v0, block1
-    jump block3
+    jump block2
 
 block1:
     v1 = iconst.i64 10
     return v1
 
-block3:
+block2:
     v2 = bconst.b1 true
-    brnz v2, block4
+    brnz v2, block3
+    jump block4
+
+block3:
+    v3 = bconst.b1 true
+    brnz v3, block5
     jump block6
 
-block4:
-    v3 = bconst.b1 true
-    brnz v3, block7
-    jump block9
-
-block7:
+block5:
     v4 = iconst.i64 10
-    jump block8(v4)
-
-block9:
-    v6 = iconst.i64 20
-    jump block8(v6)
-
-block8(v5: i64):
-    return v5
+    jump block7(v4)
 
 block6:
+    v6 = iconst.i64 20
+    jump block7(v6)
+
+block7(v5: i64):
+    return v5
+
+block4:
     v7 = iconst.i64 0
     return v7
-
-block5:
-    jump block2
 }
 
