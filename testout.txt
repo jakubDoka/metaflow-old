@@ -1,3 +1,5 @@
+Ok(Arguments { filename: "file", flags: ["flag", "flag"], field_flags: [("flag", "value")], args: ["arg", "arg"] })
+Ok(Arguments { filename: "file", flags: [], field_flags: [], args: ["\"string", "value\""] })
 Token { kind: Fun, value: "fun", line_data: LineData { line: 1, column: 0, file_name: "test_code.pmh" } }
 Token { kind: Ident, value: "flo", line_data: LineData { line: 1, column: 4, file_name: "test_code.pmh" } }
 Token { kind: Colon, value: ":", line_data: LineData { line: 1, column: 7, file_name: "test_code.pmh" } }
