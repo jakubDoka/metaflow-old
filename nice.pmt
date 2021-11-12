@@ -2,4 +2,4 @@ fun main -> i64:
   return if true:
     if false: 4 else: 0
   else:
-    2
+    2 + 4 - 7 * 8

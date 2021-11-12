@@ -1,13 +1,6 @@
 pub mod gen;
 
-use cranelift_codegen::{
-    ir::{
-        condcodes::{FloatCC, IntCC},
-        types::*,
-        AbiParam, ExternalName, Function, InstBuilder, Signature, Type, Value,
-    },
-    isa::CallConv,
-};
+use cranelift_codegen::{ir::{AbiParam, ExtFuncData, ExternalName, FuncRef, Function, Inst, InstBuilder, SigRef, Signature, Type, Value, condcodes::{FloatCC, IntCC}, types::*}, isa::CallConv};
 use cranelift_frontend::{FunctionBuilder, FunctionBuilderContext, Variable};
 use cranelift_module::Linkage;
 use std::{cell::RefCell, ops::Deref, rc::Rc, str::FromStr};
@@ -31,6 +24,8 @@ pub struct Generator {
     module_id_counter: u32,
     global_attributes: Vec<Ast>,
     pushed_attributes: Vec<Ast>,
+    imported_functions: Vec<(ExternalName, FuncRef)>,
+    call_buffer: Vec<Value>
 }
 
 impl Generator {
@@ -48,6 +43,8 @@ impl Generator {
             module_id_counter: 0,
             global_attributes: Vec::new(),
             pushed_attributes: Vec::new(),
+            imported_functions: Vec::new(),
+            call_buffer: Vec::new(),
         }
     }
 
@@ -107,52 +104,58 @@ impl Generator {
     fn function(&mut self, ast: &Ast) -> Result<()> {
         self.variable_counter = 0;
         self.variables.clear();
+        self.imported_functions.clear();
         let mut function_builder_context =
             std::mem::take(&mut self.function_builder_context).unwrap();
 
         let signature_ast = &ast[0];
-        let (signature, mut fun_signature) =
-            self.create_signature(signature_ast)?;
+        let (signature, mut fun_signature) = self.create_signature(signature_ast)?;
 
-        let mut function = Function::with_name_signature(fun_signature.id.clone(), signature);
-        let mut builder = FunctionBuilder::new(&mut function, &mut function_builder_context);
-        let fun = if ast[1].len() > 0 { // its zero if we have no body
-            let entry_point = builder.create_block();
-            builder.append_block_params_for_function_params(entry_point);
-            for (param, sig_param) in builder
-                .block_params(entry_point)
-                .iter()
-                .zip(fun_signature.params.iter_mut())
-            {
-                sig_param.access = VarAccess::Immutable(param.clone());
-            }
+        if ast[1].kind != AKind::None {
+            let mut function = Function::with_name_signature(fun_signature.id.clone(), signature);
+            let mut builder = FunctionBuilder::new(&mut function, &mut function_builder_context);
+            let fun = if ast[1].len() > 0 {
+                // its zero if we have no body
+                let entry_point = builder.create_block();
+                builder.append_block_params_for_function_params(entry_point);
+                for (param, sig_param) in builder
+                    .block_params(entry_point)
+                    .iter()
+                    .zip(fun_signature.params.iter_mut())
+                {
+                    sig_param.access = VarAccess::Immutable(param.clone());
+                }
 
-            self.variables
-                .extend(fun_signature.params.iter().map(|i| Some(i.clone())));
-            let fun = Fun::new(fun_signature);
-            self.current_module.borrow_mut().add_function(fun.clone())?;
+                self.variables
+                    .extend(fun_signature.params.iter().map(|i| Some(i.clone())));
+                let fun = Fun::new(fun_signature);
+                self.current_module.borrow_mut().add_function(fun.clone())?;
 
-            builder.switch_to_block(entry_point);
-            self.generate_function_body(&ast[1], &mut builder)?;
-            builder.seal_current_block();
-            fun
+                builder.switch_to_block(entry_point);
+                self.generate_function_body(&ast[1], &mut builder)?;
+                builder.seal_current_block();
+                fun
+            } else {
+                let entry_point = builder.create_block();
+                builder.append_block_params_for_function_params(entry_point);
+                builder.switch_to_block(entry_point);
+                if let Some(ret) = fun_signature.ret.as_ref() {
+                    let val = ret.borrow().default_value(&mut builder);
+                    builder.ins().return_(&[val]);
+                }
+                builder.seal_current_block();
+                let fun = Fun::new(fun_signature);
+                self.current_module.borrow_mut().add_function(fun.clone())?;
+                fun
+            };
+
+            builder.finalize();
+            fun.borrow_mut().function = Some(function);
         } else {
-            let entry_point = builder.create_block();
-            builder.append_block_params_for_function_params(entry_point);
-            builder.switch_to_block(entry_point);
-            if let Some(ret) = fun_signature.ret.as_ref() {
-                let val = ret.borrow().default_value(&mut builder);
-                builder.ins().return_(&[val]);
-            }
-            builder.seal_current_block();
-            let fun = Fun::new(fun_signature);
-            self.current_module.borrow_mut().add_function(fun.clone())?;
-            fun
+            self.current_module
+                .borrow_mut()
+                .add_function(Fun::new(fun_signature))?;
         };
-
-        builder.finalize();
-
-        fun.borrow_mut().function = Some(function);
 
         self.function_builder_context = Some(function_builder_context);
 
@@ -192,6 +195,9 @@ impl Generator {
             AKind::IfExpression => {
                 return self.if_expression(ast, builder);
             }
+            AKind::Call => {
+                return self.call_expression(ast, builder);
+            }
             _ => {
                 return Ok(Some(self.expression(ast, builder)?));
             }
@@ -221,7 +227,55 @@ impl Generator {
             AKind::IfExpression => self
                 .if_expression(ast, builder)?
                 .ok_or_else(|| IrGenError::new(IGEKind::ExpectedValue, ast.token.clone())),
+            AKind::Identifier => {
+                let var = self.find_variable(&ast.token)?;
+                let val = match var.access {
+                    VarAccess::Mutable(var) => builder.use_var(var),
+                    VarAccess::Immutable(val) => val,
+                    _ => unreachable!(),
+                };
+                Ok((val, var.datatype.clone()))
+            }
+            AKind::Call => self
+                .call_expression(&ast, builder)?
+                .ok_or_else(|| IrGenError::new(IGEKind::ExpectedValue, ast.token.clone())),
             _ => todo!("unmatched expression {}", ast),
+        }
+    }
+
+    fn call_expression(&mut self, ast: &Ast, builder: &mut FunctionBuilder) -> Result<Option<(Value, Datatype)>> {
+        let fun = self.find_function(&ast[0].token)?;
+        let b_fun = fun.borrow();
+
+        let fun_ref = self.imported_functions
+            .iter()
+            .find(|(id, _)| id == &b_fun.signature.id)
+            .map(|(_, func_ref)| *func_ref)
+            .unwrap_or_else(|| {
+                let signature = builder.import_signature(b_fun.signature.to_signature());
+                let data = ExtFuncData { signature, name: b_fun.signature.id.clone(), colocated: false };
+                let fun_ref = builder.import_function(data);
+                self.imported_functions.push((b_fun.signature.id.clone(), fun_ref));
+                fun_ref
+            });
+
+        if b_fun.signature.params.len() != ast.len() - 1 {
+            return Err(IrGenError::new(IGEKind::InvalidAmountOfArguments(
+                b_fun.signature.params.len(), ast.len() - 1), ast.token.clone()))
+        }
+
+        for (i, e) in ast[1..].iter().enumerate() {
+            let (value, datatype) = self.expression(ast, builder)?;
+            self.assert_type(e, &datatype, &b_fun.signature.params[i].datatype)?;
+            self.call_buffer.push(value);
+        }
+
+        let vals = builder.ins().call(fun_ref, &self.call_buffer);
+
+        if let Some(ret) = b_fun.signature.ret.as_ref() {
+            Ok(Some((builder.inst_results(vals)[0], ret.clone())))
+        } else {
+            Ok(None)
         }
     }
 
@@ -449,18 +503,18 @@ impl Generator {
                         let val = builder.ins().fcmp(op, left_val, right_val);
                         return Ok((val, self.builtin_repo.bool.clone()));
                     }
-
-                    "bool" => match op {
-                        "&" => builder.ins().band(left_val, right_val),
-                        "|" => builder.ins().bor(left_val, right_val),
-                        "||" => todo!(),
-                        "&&" => todo!(),
-                        _ => todo!(),
-                    },
-
                     _ => todo!(),
                 },
-                _ => todo!(),
+
+                "bool" => match op {
+                    "&" => builder.ins().band(left_val, right_val),
+                    "|" => builder.ins().bor(left_val, right_val),
+                    "||" => todo!(),
+                    "&&" => todo!(),
+                    _ => todo!(),
+                },
+
+                _ => todo!("unmatched operator {} on type {}", op, right_type.borrow().name.as_str()),
             };
             Ok((value, right_type))
         } else {
@@ -571,14 +625,13 @@ impl Generator {
             .ok_or_else(|| IrGenError::new(IGEKind::FunctionNotFound, token.clone()))
     }
 
-    fn find_variable(&self, token: &Token) -> Result<Var> {
+    fn find_variable(&self, token: &Token) -> Result<&Var> {
         self.variables
             .iter()
             .rev()
             .filter(|v| v.is_some())
             .map(|v| v.as_ref().unwrap())
-            .find(|var| &var.name == &token.value)
-            .map(|var| var.clone())
+            .find(|var| var.name.deref() == token.value.deref())
             .ok_or_else(|| IrGenError::new(IGEKind::VariableNotFound, token.clone()))
     }
 
@@ -614,7 +667,10 @@ impl Generator {
 
     fn assert_atr_len(&self, attr: &Ast, expected: usize) -> Result<()> {
         if attr.len() < expected {
-            Err(IrGenError::new(IGEKind::MissingAttrArgument(attr.len(), expected), attr.token.clone()))
+            Err(IrGenError::new(
+                IGEKind::MissingAttrArgument(attr.len(), expected),
+                attr.token.clone(),
+            ))
         } else {
             Ok(())
         }
@@ -1031,6 +1087,7 @@ pub enum IGEKind {
     DuplicateModule(Mod, Mod),
     DuplicateFunction(Fun, Fun),
     MissingAttrArgument(usize, usize),
+    InvalidAmountOfArguments(usize, usize),
     InvalidInlineLevel,
     InvalidLinkage,
     InvalidCallConv,

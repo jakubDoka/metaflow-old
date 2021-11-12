@@ -1,4 +1,3 @@
-
 #[derive(Debug)]
 pub struct Arguments {
     pub filename: String,
@@ -23,17 +22,15 @@ impl Arguments {
             };
 
             if arg.starts_with("--") || arg.starts_with("-") {
-                let i = if arg.starts_with("--") {
-                    2
-                } else {
-                    1
-                };
+                let i = if arg.starts_with("--") { 2 } else { 1 };
 
                 arg.replace_range(..i, "");
 
                 if arg.ends_with(":") {
                     arg.pop();
-                    let value = args.next().ok_or_else(|| ArgumentError::MissingValue(arg.clone()))?; 
+                    let value = args
+                        .next()
+                        .ok_or_else(|| ArgumentError::MissingValue(arg.clone()))?;
                     result.field_flags.push((arg, value));
                 } else {
                     result.flags.push(arg);
@@ -54,7 +51,7 @@ impl Arguments {
                     if rest.ends_with('"') {
                         arg.remove(0);
                         arg.pop();
-                        break
+                        break;
                     }
                 }
             }
@@ -78,7 +75,7 @@ pub enum ArgumentError {
 
 pub fn test() {
     println!(
-        "{:?}", 
+        "{:?}",
         Arguments::new(
             "file arg -flag --flag: value arg --flag"
                 .split(" ")
@@ -87,11 +84,7 @@ pub fn test() {
     );
 
     println!(
-        "{:?}", 
-        Arguments::new(
-            "file \"string value\""
-                .split(" ")
-                .map(|s| s.to_string())
-        )
+        "{:?}",
+        Arguments::new("file \"string value\"".split(" ").map(|s| s.to_string()))
     );
 }

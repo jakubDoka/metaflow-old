@@ -3,10 +3,10 @@ extern crate cranelift_codegen;
 extern crate cranelift_frontend;
 
 pub mod ast;
+pub mod cli;
 pub mod ir_gen;
 pub mod lexer;
 pub mod testing;
-pub mod cli;
 
 fn main() {
     #[cfg(feature = "testing")]

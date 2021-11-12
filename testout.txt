@@ -332,9 +332,3 @@ Group 'fun' "fun":
          Identifier identifier "v"
          Literal integer "2"
 
-[]
-[]
-[]
-[]
-[Some(Var { name: "v", access: Immutable(v0), datatype: Datatype { inner: RefCell { value: DatatypeStruct { name: "i64", kind: Builtin(types::I64), size: 64 } } } })]
-"v" "v"

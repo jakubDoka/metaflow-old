@@ -9,6 +9,7 @@
         "conv",
         "cranelift",
         "fadd",
+        "Fastcall",
         "fcmp",
         "fdiv",
         "fmax",

@@ -140,6 +140,12 @@ impl<'a> Iterator for Lexer {
             ',' => TKind::Comma,
             '(' => TKind::LPar,
             ')' => TKind::RPar,
+            '{' => TKind::LCurly,
+            '}' => TKind::RCurly,
+            '[' => TKind::LBra,
+            ']' => TKind::RBra,       
+            '.' => TKind::Dot,
+    
             _ => TKind::UnknownCharacter(char),
         };
 
@@ -257,10 +263,15 @@ pub enum TKind {
 
     LPar,
     RPar,
+    LCurly,
+    RCurly,
+    LBra,
+    RBra,
     Colon,
     Comma,
     RArrow,
     Hash,
+    Dot,
 
     Int(i64, u16),
     Bool(bool),
@@ -287,9 +298,14 @@ impl std::fmt::Display for TKind {
             TKind::Op => "operator",
             TKind::LPar => "'('",
             TKind::RPar => "')'",
+            TKind::LCurly => "'{'",
+            TKind::RCurly => "'}'",
+            TKind::LBra => "'['",
+            TKind::RBra => "']'",
             TKind::Colon => "':'",
             TKind::Comma => "','",
             TKind::RArrow => "'->'",
+            TKind::Dot => "'.'",
             TKind::Hash => "'#'",
             TKind::Indent(_) => "indentation",
             TKind::Int(..) => "integer",

@@ -75,7 +75,7 @@ impl AstParser {
                     self.advance();
                     ast.push(self.expression()?);
                 }
-                _ => self.unexpected_str("expected '='")?,
+                _ => self.unexpected_str("expected '=' or '('")?,
             },
             _ => (),
         }
@@ -86,7 +86,11 @@ impl AstParser {
     fn fun(&mut self) -> Result<Ast> {
         let mut ast = self.ast(AKind::Function);
         ast.push(self.fun_header()?);
-        ast.push(self.stmt_block()?);
+        ast.push(if self.current_token == TKind::Colon {
+            self.stmt_block()?
+        } else {
+            Ast::none()
+        });
         Ok(ast)
     }
 
@@ -191,18 +195,82 @@ impl AstParser {
     }
 
     fn simple_expression(&mut self) -> Result<Ast> {
-        let result = match self.current_token.kind {
-            TKind::Ident => self.ast(AKind::Identifier),
+        self.simple_expression_low(false)
+    }
+
+    fn simple_expression_low(&mut self, nested: bool) -> Result<Ast> {
+        let mut ast = match self.current_token.kind {
+            TKind::Ident => self.ident_expression()?,
             TKind::Int(..) => self.ast(AKind::Literal),
             TKind::Bool(..) => self.ast(AKind::Literal),
-            TKind::If => return self.if_expression(),
+            TKind::If => self.if_expression()?,
             _ => todo!(
                 "unmatched simple expression pattern {:?}",
                 self.current_token
             ),
         };
+
+        if ast.kind == AKind::Literal {
+            self.advance();
+        }
+
+        if !nested {
+            loop {
+                match self.current_token.kind {
+                    TKind::Dot => {
+                        let mut new_ast = self.ast(AKind::DotExpr);
+                        new_ast.push(ast);
+                        new_ast.push(self.simple_expression_low(true)?);
+                        ast = new_ast;
+                    }
+                    TKind::LPar => {
+                        let mut new_ast = self.ast(AKind::Call);
+                        if ast.kind == AKind::DotExpr {
+                            ast.drain(..).rev().for_each(|e| new_ast.push(e));
+                        } else {
+                            new_ast.push(ast);
+                        }
+
+                        self.list(&mut new_ast, TKind::LPar, TKind::Comma, TKind::RPar, Self::expression)?;
+
+                        ast = new_ast;
+                    }
+                    TKind::LBra => {
+                        let mut new_ast = self.ast(AKind::Index);
+                        new_ast.push(ast);
+                        self.advance();
+                        self.ignore_newlines();
+                        new_ast.push(self.expression()?);
+                        self.ignore_newlines();
+                        self.expect_str(TKind::RBra, "expected ']'")?;
+                        self.advance();
+
+                        ast = new_ast;
+                    }
+                    
+                    _ => break,
+                }
+            }
+        }
+
+        Ok(ast)
+    }
+
+    fn ident_expression(&mut self) -> Result<Ast> {
+        let mut ast = self.ast(AKind::Identifier);
         self.advance();
-        Ok(result)
+
+        match self.current_token.kind {
+            TKind::LCurly => {
+                let mut temp_ast = self.ast(AKind::Attribute);
+                temp_ast.push(ast);
+                ast = temp_ast;
+                self.list(&mut ast, TKind::LCurly, TKind::Comma, TKind::RCurly, Self::expression)?;
+            } 
+            _ => (),
+        }
+
+        Ok(ast)
     }
 
     fn if_expression(&mut self) -> Result<Ast> {
@@ -455,6 +523,8 @@ pub enum AKind {
     Function,
     FunctionHeader,
     FunctionArgument,
+    Call,
+    Index,
 
     Attribute,
     AttributeElement,
@@ -464,6 +534,7 @@ pub enum AKind {
 
     BinaryOperation,
     IfExpression,
+    DotExpr,
 
     Group,
 

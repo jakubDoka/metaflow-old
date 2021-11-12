@@ -24,3 +24,9 @@ fun conditional -> i64:
 attr inline = always, call_conv = cold
 fun inline_fn -> u32:
   return 10
+
+fun fib(v: i64) -> i64:
+  return if v == 0 | v == 1:
+    1
+  else:
+    fib(v - 1) + fib(v - 2)
