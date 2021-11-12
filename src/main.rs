@@ -6,6 +6,7 @@ pub mod ast;
 pub mod ir_gen;
 pub mod lexer;
 pub mod testing;
+pub mod cli;
 
 fn main() {
     #[cfg(feature = "testing")]
@@ -15,8 +16,15 @@ fn main() {
 }
 
 fn run() {
-    let args = std::env::args().collect::<Vec<_>>();
-    match ir_gen::gen::compile(&args[1]) {
+    let args = match cli::Arguments::new(std::env::args()) {
+        Ok(args) => args,
+        Err(e) => {
+            println!("{:?}", e);
+            return;
+        }
+    };
+
+    match ir_gen::gen::compile(args) {
         Ok(_) => println!("Successfully compiled"),
         Err(err) => println!("Failed to compile: {:?}", err),
     };
@@ -24,7 +32,9 @@ fn run() {
 
 #[cfg(feature = "testing")]
 fn test() {
+    cli::test();
     lexer::test();
     ast::test();
     ir_gen::test();
+    ir_gen::gen::test();
 }

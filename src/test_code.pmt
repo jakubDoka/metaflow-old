@@ -21,6 +21,6 @@ fun conditional -> i64:
   else:
     return 0
 
-attr inline
+attr inline = always, call_conv = cold
 fun inline_fn -> u32:
   return 10

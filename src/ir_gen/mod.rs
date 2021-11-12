@@ -116,7 +116,7 @@ impl Generator {
 
         let mut function = Function::with_name_signature(fun_signature.id.clone(), signature);
         let mut builder = FunctionBuilder::new(&mut function, &mut function_builder_context);
-        let fun = if ast[1].len() > 0 {
+        let fun = if ast[1].len() > 0 { // its zero if we have no body
             let entry_point = builder.create_block();
             builder.append_block_params_for_function_params(entry_point);
             for (param, sig_param) in builder
@@ -190,7 +190,7 @@ impl Generator {
                 self.return_statement(ast, builder)?;
             }
             AKind::IfExpression => {
-                self.if_expression(ast, builder)?;
+                return self.if_expression(ast, builder);
             }
             _ => {
                 return Ok(Some(self.expression(ast, builder)?));
@@ -262,11 +262,13 @@ impl Generator {
         let then_block = builder.create_block();
         builder.ins().brnz(cond_value, then_block, &[]);
 
-        let merge_block = builder.create_block();
+        let mut merge_block = None;
 
         let else_branch = &ast[2];
         let else_block = if else_branch.kind == AKind::None {
-            builder.ins().jump(merge_block, &[]);
+            let block = builder.create_block();
+            builder.ins().jump(block, &[]);
+            merge_block = Some(block);
             None
         } else {
             let else_block = builder.create_block();
@@ -283,25 +285,27 @@ impl Generator {
 
         let mut result = None;
         if let Some((value, datatype)) = then_result {
-            let val = builder.append_block_param(merge_block, datatype.borrow().get_ir_repr());
+            if merge_block.is_some() {
+                return Err(IrGenError::new(
+                    IGEKind::MissingElseBranch,
+                    ast.token.clone(),
+                ));
+            }
+            let block = builder.create_block();
+            let val = builder.append_block_param(block, datatype.borrow().get_ir_repr());
             result = Some((val, datatype));
-            builder.ins().jump(merge_block, &[value]);
+            builder.ins().jump(block, &[value]);
+            merge_block = Some(block);
         } else if !builder.is_filled() {
-            builder.ins().jump(merge_block, &[]);
+            let block = merge_block.unwrap_or_else(|| builder.create_block());
+            builder.ins().jump(block, &[]);
+            merge_block = Some(block);
         }
 
         builder.seal_current_block();
 
         match else_branch.kind {
-            AKind::None => {
-                if result.is_some() {
-                    return Err(IrGenError::new(
-                        IGEKind::MissingElseBranch,
-                        ast.token.clone(),
-                    ));
-                }
-                builder.switch_to_block(merge_block);
-            }
+            AKind::None => (),
             AKind::IfExpression | AKind::Group => {
                 let else_block = else_block.unwrap();
 
@@ -321,7 +325,7 @@ impl Generator {
                             ast.token.clone(),
                         ));
                     }
-                    builder.ins().jump(merge_block, &[value]);
+                    builder.ins().jump(merge_block.unwrap(), &[value]);
                 } else {
                     if result.is_some() {
                         return Err(IrGenError::new(
@@ -330,16 +334,22 @@ impl Generator {
                         ));
                     }
                     if !builder.is_filled() {
-                        builder.ins().jump(merge_block, &[]);
+                        let block = merge_block.unwrap_or_else(|| builder.create_block());
+                        builder.ins().jump(block, &[]);
+                        merge_block = Some(block);
                     }
                 }
 
-                builder.seal_current_block();
+                if merge_block.is_some() {
+                    builder.seal_current_block();
+                }
             }
             _ => unreachable!(),
         }
 
-        builder.switch_to_block(merge_block);
+        if let Some(block) = merge_block {
+            builder.switch_to_block(block);
+        }
 
         Ok(result)
     }
@@ -492,6 +502,7 @@ impl Generator {
         };
 
         let linkage = if let Some(attr) = self.find_attribute("linkage") {
+            self.assert_atr_len(attr, 1)?;
             match attr[0].token.value.deref() {
                 "local" => Linkage::Local,
                 "hidden" => Linkage::Hidden,
@@ -505,20 +516,30 @@ impl Generator {
         };
 
         let cc = if let Some(attr) = self.find_attribute("call_conv") {
+            self.assert_atr_len(attr, 1)?;
             CallConv::from_str(attr[0].token.value.deref())
                 .map_err(|_| IrGenError::new(IGEKind::InvalidCallConv, attr.token.clone()))?
         } else {
             CallConv::Fast
         };
 
-        let fun_signature = FunSignature::new(
-            self.current_module.borrow_mut().new_fun_name(),
+        let inline_level = if let Some(attr) = self.find_attribute("inline") {
+            self.assert_atr_len(attr, 1)?;
+            InlineLevel::from_str(attr[0].token.value.deref())
+                .map_err(|_| IrGenError::new(IGEKind::InvalidInlineLevel, attr.token.clone()))?
+        } else {
+            InlineLevel::Never
+        };
+
+        let fun_signature = FunSignature {
+            id: self.current_module.borrow_mut().new_fun_name(),
             name,
-            fun_params,
-            return_type,
+            params: fun_params,
+            ret: return_type,
             cc,
             linkage,
-        );
+            inline_level,
+        };
 
         signature.call_conv = cc;
 
@@ -589,6 +610,14 @@ impl Generator {
                 .iter()
                 .rev()
                 .find(|a| a.token.value.deref() == name))
+    }
+
+    fn assert_atr_len(&self, attr: &Ast, expected: usize) -> Result<()> {
+        if attr.len() < expected {
+            Err(IrGenError::new(IGEKind::MissingAttrArgument(attr.len(), expected), attr.token.clone()))
+        } else {
+            Ok(())
+        }
     }
 }
 
@@ -821,27 +850,10 @@ pub struct FunSignature {
     ret: Option<Datatype>,
     cc: CallConv,
     linkage: Linkage,
+    inline_level: InlineLevel,
 }
 
 impl FunSignature {
-    fn new(
-        id: ExternalName,
-        name: StrRef,
-        params: Vec<Var>,
-        ret: Option<Datatype>,
-        cc: CallConv,
-        linkage: Linkage,
-    ) -> Self {
-        Self {
-            id,
-            name,
-            params,
-            ret,
-            cc,
-            linkage,
-        }
-    }
-
     fn to_signature(&self) -> Signature {
         Signature {
             call_conv: self.cc,
@@ -855,6 +867,25 @@ impl FunSignature {
             } else {
                 vec![]
             },
+        }
+    }
+}
+
+#[derive(Debug, Clone)]
+pub enum InlineLevel {
+    Never,
+    Auto,
+    Always,
+}
+
+impl FromStr for InlineLevel {
+    type Err = ();
+    fn from_str(s: &str) -> std::result::Result<Self, Self::Err> {
+        match s {
+            "never" => Ok(InlineLevel::Never),
+            "auto" => Ok(InlineLevel::Auto),
+            "always" => Ok(InlineLevel::Always),
+            _ => Err(()),
         }
     }
 }
@@ -999,6 +1030,8 @@ pub enum IGEKind {
     DuplicateType(Datatype, Datatype),
     DuplicateModule(Mod, Mod),
     DuplicateFunction(Fun, Fun),
+    MissingAttrArgument(usize, usize),
+    InvalidInlineLevel,
     InvalidLinkage,
     InvalidCallConv,
     ExpectedValue,
