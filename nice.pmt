@@ -1,5 +1,8 @@
-fun main -> i64:
-  return if true:
-    if false: 4 else: 0
+fun fib(x: i64) -> i64:
+  return if x > 2:
+    1
   else:
-    2 + 4 - 7 * 8
+    fib(x - 1) + fib(x - 2)
+
+fun main -> i64:
+  return fib(1)

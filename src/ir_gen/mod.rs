@@ -1,9 +1,10 @@
 pub mod gen;
 
-use cranelift_codegen::{ir::{AbiParam, ExtFuncData, ExternalName, FuncRef, Function, Inst, InstBuilder, SigRef, Signature, Type, Value, condcodes::{FloatCC, IntCC}, types::*}, isa::CallConv};
+use cranelift_codegen::{ir::{AbiParam, ExtFuncData, ExternalName, FuncRef, Function, InstBuilder, Signature, Type, Value, condcodes::{FloatCC, IntCC}, types::*}, isa::CallConv};
 use cranelift_frontend::{FunctionBuilder, FunctionBuilderContext, Variable};
-use cranelift_module::Linkage;
-use std::{cell::RefCell, ops::Deref, rc::Rc, str::FromStr};
+use cranelift_module::{FuncId, Linkage, Module};
+use cranelift_object::ObjectModule;
+use std::{cell::RefCell, ops::{Deref, DerefMut}, str::FromStr};
 
 use crate::{
     ast::{AEKind, AKind, Ast, AstError, AstParser},
@@ -15,21 +16,23 @@ type Result<T> = std::result::Result<T, IrGenError>;
 
 pub struct Generator {
     builtin_repo: BuiltinRepo,
-    builtin_module: Mod,
+    builtin_module: Cell<Mod>,
     context: Context,
-    current_module: Mod,
+    current_module: Cell<Mod>,
     function_builder_context: Option<FunctionBuilderContext>,
     variables: Vec<Option<Var>>,
     variable_counter: u32,
-    module_id_counter: u32,
+    function_id_counter: u32,
     global_attributes: Vec<Ast>,
     pushed_attributes: Vec<Ast>,
-    imported_functions: Vec<(ExternalName, FuncRef)>,
-    call_buffer: Vec<Value>
+    imported_functions: Vec<(StrRef, FuncRef)>,
+    call_buffer: Vec<Value>,
+    object_module: ObjectModule,
+    codegen_context: cranelift_codegen::Context,
 }
 
 impl Generator {
-    fn new() -> Self {
+    fn new(object_module: ObjectModule) -> Self {
         let builtin_repo = BuiltinRepo::new();
         let builtin_module = builtin_repo.to_module();
         Self {
@@ -40,36 +43,36 @@ impl Generator {
             function_builder_context: Some(FunctionBuilderContext::new()),
             variables: Vec::new(),
             variable_counter: 0,
-            module_id_counter: 0,
+            function_id_counter: 0,
             global_attributes: Vec::new(),
             pushed_attributes: Vec::new(),
             imported_functions: Vec::new(),
             call_buffer: Vec::new(),
+            object_module,
+            codegen_context: cranelift_codegen::Context::new(),
         }
     }
 
-    fn generate(mut self, root_file_name: &str) -> Result<Context> {
+    fn generate(mut self, root_file_name: &str) -> Result<ObjectModule> {
         self.generate_module(root_file_name.to_string())?;
 
-        Ok(self.context)
+        Ok(self.object_module)
     }
 
-    fn generate_module(&mut self, module_path: String) -> Result<Mod> {
+    fn generate_module(&mut self, module_path: String) -> Result<Cell<Mod>> {
         let mut ast = self.load_ast(module_path)?;
 
-        self.module_id_counter += 1; // the 0 is for builtin module
-        self.current_module = Mod::new(
+       
+        self.current_module = Cell::new(Mod::new(
             ast.token.line_data.file_name.to_string(),
-            self.module_id_counter,
-        );
+        ));
         self.current_module
-            .borrow_mut()
             .dependency
             .push(self.builtin_module.clone());
         for mut item in ast.drain(..) {
             match item.kind {
                 AKind::Function => {
-                    self.function(&item)?;
+                    self.function(item)?;
                     self.pushed_attributes.clear();
                 }
                 AKind::Attribute => match item[0].token.value.deref() {
@@ -101,64 +104,10 @@ impl Generator {
         Ok(self.current_module.clone())
     }
 
-    fn function(&mut self, ast: &Ast) -> Result<()> {
-        self.variable_counter = 0;
-        self.variables.clear();
-        self.imported_functions.clear();
-        let mut function_builder_context =
-            std::mem::take(&mut self.function_builder_context).unwrap();
-
-        let signature_ast = &ast[0];
-        let (signature, mut fun_signature) = self.create_signature(signature_ast)?;
-
-        if ast[1].kind != AKind::None {
-            let mut function = Function::with_name_signature(fun_signature.id.clone(), signature);
-            let mut builder = FunctionBuilder::new(&mut function, &mut function_builder_context);
-            let fun = if ast[1].len() > 0 {
-                // its zero if we have no body
-                let entry_point = builder.create_block();
-                builder.append_block_params_for_function_params(entry_point);
-                for (param, sig_param) in builder
-                    .block_params(entry_point)
-                    .iter()
-                    .zip(fun_signature.params.iter_mut())
-                {
-                    sig_param.access = VarAccess::Immutable(param.clone());
-                }
-
-                self.variables
-                    .extend(fun_signature.params.iter().map(|i| Some(i.clone())));
-                let fun = Fun::new(fun_signature);
-                self.current_module.borrow_mut().add_function(fun.clone())?;
-
-                builder.switch_to_block(entry_point);
-                self.generate_function_body(&ast[1], &mut builder)?;
-                builder.seal_current_block();
-                fun
-            } else {
-                let entry_point = builder.create_block();
-                builder.append_block_params_for_function_params(entry_point);
-                builder.switch_to_block(entry_point);
-                if let Some(ret) = fun_signature.ret.as_ref() {
-                    let val = ret.borrow().default_value(&mut builder);
-                    builder.ins().return_(&[val]);
-                }
-                builder.seal_current_block();
-                let fun = Fun::new(fun_signature);
-                self.current_module.borrow_mut().add_function(fun.clone())?;
-                fun
-            };
-
-            builder.finalize();
-            fun.borrow_mut().function = Some(function);
-        } else {
-            self.current_module
-                .borrow_mut()
-                .add_function(Fun::new(fun_signature))?;
-        };
-
-        self.function_builder_context = Some(function_builder_context);
-
+    fn function(&mut self, ast: Ast) -> Result<()> {
+        let fun = self.create_signature(ast)?;
+        self.current_module.add_function(fun)?;
+ 
         Ok(())
     }
 
@@ -171,7 +120,7 @@ impl Generator {
         &mut self,
         ast: &Ast,
         builder: &mut FunctionBuilder,
-    ) -> Result<Option<(Value, Datatype)>> {
+    ) -> Result<Option<(Value, Cell<Datatype>)>> {
         for stmt in ast[0..ast.len() - 1].iter() {
             self.statement(stmt, builder)?;
         }
@@ -187,7 +136,7 @@ impl Generator {
         &mut self,
         ast: &Ast,
         builder: &mut FunctionBuilder,
-    ) -> Result<Option<(Value, Datatype)>> {
+    ) -> Result<Option<(Value, Cell<Datatype>)>> {
         match ast.kind {
             AKind::ReturnStatement => {
                 self.return_statement(ast, builder)?;
@@ -220,7 +169,7 @@ impl Generator {
         &mut self,
         ast: &Ast,
         builder: &mut FunctionBuilder,
-    ) -> Result<(Value, Datatype)> {
+    ) -> Result<(Value, Cell<Datatype>)> {
         match ast.kind {
             AKind::Literal => self.literal(ast, builder),
             AKind::BinaryOperation => self.binary_operation(ast, builder),
@@ -243,43 +192,41 @@ impl Generator {
         }
     }
 
-    fn call_expression(&mut self, ast: &Ast, builder: &mut FunctionBuilder) -> Result<Option<(Value, Datatype)>> {
+    fn call_expression(&mut self, ast: &Ast, builder: &mut FunctionBuilder) -> Result<Option<(Value, Cell<Datatype>)>> {
         let fun = self.find_function(&ast[0].token)?;
-        let b_fun = fun.borrow();
 
         let fun_ref = self.imported_functions
             .iter()
-            .find(|(id, _)| id == &b_fun.signature.id)
-            .map(|(_, func_ref)| *func_ref)
+            .find(|(id, _)| id == &fun.name)
+            .map(|(_, fun_ref)| *fun_ref)
             .unwrap_or_else(|| {
-                let signature = builder.import_signature(b_fun.signature.to_signature());
-                let data = ExtFuncData { signature, name: b_fun.signature.id.clone(), colocated: false };
-                let fun_ref = builder.import_function(data);
-                self.imported_functions.push((b_fun.signature.id.clone(), fun_ref));
+                let fun_ref = self.object_module.declare_func_in_func(fun.id, builder.func);
+                self.imported_functions.push((fun.name.clone(), fun_ref));
                 fun_ref
             });
 
-        if b_fun.signature.params.len() != ast.len() - 1 {
+        if fun.params.len() != ast.len() - 1 {
             return Err(IrGenError::new(IGEKind::InvalidAmountOfArguments(
-                b_fun.signature.params.len(), ast.len() - 1), ast.token.clone()))
+                fun.params.len(), ast.len() - 1), ast.token.clone()))
         }
 
         for (i, e) in ast[1..].iter().enumerate() {
-            let (value, datatype) = self.expression(ast, builder)?;
-            self.assert_type(e, &datatype, &b_fun.signature.params[i].datatype)?;
+            let (value, datatype) = self.expression(e, builder)?;
+            self.assert_type(e, &datatype, &fun.params[i].datatype)?;
             self.call_buffer.push(value);
         }
 
         let vals = builder.ins().call(fun_ref, &self.call_buffer);
+        self.call_buffer.clear();
 
-        if let Some(ret) = b_fun.signature.ret.as_ref() {
+        if let Some(ret) = fun.ret.as_ref() {
             Ok(Some((builder.inst_results(vals)[0], ret.clone())))
         } else {
             Ok(None)
         }
     }
 
-    fn literal(&mut self, ast: &Ast, builder: &mut FunctionBuilder) -> Result<(Value, Datatype)> {
+    fn literal(&mut self, ast: &Ast, builder: &mut FunctionBuilder) -> Result<(Value, Cell<Datatype>)> {
         match ast.token.kind {
             TKind::Int(value, bits) => {
                 let datatype = match bits {
@@ -291,12 +238,12 @@ impl Generator {
                 };
                 let value = builder
                     .ins()
-                    .iconst(datatype.borrow().get_ir_repr(), value as i64);
+                    .iconst(datatype.get_ir_repr(), value as i64);
                 Ok((value, datatype))
             }
             TKind::Bool(value) => {
                 let datatype = self.builtin_repo.bool.clone();
-                let value = builder.ins().bconst(datatype.borrow().get_ir_repr(), value);
+                let value = builder.ins().bconst(datatype.get_ir_repr(), value);
                 Ok((value, datatype))
             }
             _ => todo!(),
@@ -307,7 +254,7 @@ impl Generator {
         &mut self,
         ast: &Ast,
         builder: &mut FunctionBuilder,
-    ) -> Result<Option<(Value, Datatype)>> {
+    ) -> Result<Option<(Value, Cell<Datatype>)>> {
         let cond_expr = &ast[0];
         let (cond_value, cond_type) = self.expression(cond_expr, builder)?;
 
@@ -346,7 +293,7 @@ impl Generator {
                 ));
             }
             let block = builder.create_block();
-            let val = builder.append_block_param(block, datatype.borrow().get_ir_repr());
+            let val = builder.append_block_param(block, datatype.get_ir_repr());
             result = Some((val, datatype));
             builder.ins().jump(block, &[value]);
             merge_block = Some(block);
@@ -412,13 +359,13 @@ impl Generator {
         &mut self,
         ast: &Ast,
         builder: &mut FunctionBuilder,
-    ) -> Result<(Value, Datatype)> {
+    ) -> Result<(Value, Cell<Datatype>)> {
         let (left_val, left_type) = self.expression(&ast[1], builder)?;
         let (right_val, right_type) = self.expression(&ast[2], builder)?;
 
         if left_type == right_type {
             let op = ast[0].token.value.deref();
-            let value = match left_type.borrow().name.as_str() {
+            let value = match left_type.name.as_str() {
                 "i8" | "i16" | "i32" | "i64" => match op {
                     "+" => builder.ins().iadd(left_val, right_val),
                     "-" => builder.ins().isub(left_val, right_val),
@@ -514,7 +461,7 @@ impl Generator {
                     _ => todo!(),
                 },
 
-                _ => todo!("unmatched operator {} on type {}", op, right_type.borrow().name.as_str()),
+                _ => todo!("unmatched operator {} on type {}", op, right_type.name.as_str()),
             };
             Ok((value, right_type))
         } else {
@@ -522,7 +469,8 @@ impl Generator {
         }
     }
 
-    fn create_signature(&self, header: &Ast) -> Result<(Signature, FunSignature)> {
+    fn create_signature(&mut self, mut ast: Ast) -> Result<Cell<Fun>> {
+        let header = &ast[0];
         let mut signature = Signature::new(CallConv::Fast);
         let mut fun_params = Vec::new();
         for args in header[1..header.len() - 1].iter() {
@@ -535,7 +483,7 @@ impl Generator {
                 ));
                 signature
                     .params
-                    .push(AbiParam::new(datatype.borrow().get_ir_repr()));
+                    .push(AbiParam::new(datatype.get_ir_repr()));
             }
         }
         let return_type = header.last().unwrap();
@@ -543,7 +491,7 @@ impl Generator {
             let datatype = self.find_datatype(&return_type.token)?.clone();
             signature
                 .returns
-                .push(AbiParam::new(datatype.borrow().get_ir_repr()));
+                .push(AbiParam::new(datatype.get_ir_repr()));
             Some(datatype)
         } else {
             None
@@ -569,13 +517,15 @@ impl Generator {
             Linkage::Export
         };
 
-        let cc = if let Some(attr) = self.find_attribute("call_conv") {
+        let call_conv = if let Some(attr) = self.find_attribute("call_conv") {
             self.assert_atr_len(attr, 1)?;
             CallConv::from_str(attr[0].token.value.deref())
                 .map_err(|_| IrGenError::new(IGEKind::InvalidCallConv, attr.token.clone()))?
         } else {
             CallConv::Fast
         };
+
+        signature.call_conv = call_conv;
 
         let inline_level = if let Some(attr) = self.find_attribute("inline") {
             self.assert_atr_len(attr, 1)?;
@@ -585,22 +535,22 @@ impl Generator {
             InlineLevel::Never
         };
 
-        let fun_signature = FunSignature {
-            id: self.current_module.borrow_mut().new_fun_name(),
+        signature.call_conv = call_conv;
+
+        let fun = Fun {
+            id: self.object_module.declare_function(name.deref(), linkage, &signature).unwrap(),
             name,
             params: fun_params,
             ret: return_type,
-            cc,
-            linkage,
             inline_level,
+            signature: Some(signature),
+            body: Some(ast.remove(1)),
         };
 
-        signature.call_conv = cc;
-
-        Ok((signature, fun_signature))
+        Ok(Cell::new(fun))
     }
 
-    fn assert_type(&self, ast: &Ast, actual: &Datatype, expected: &Datatype) -> Result<()> {
+    fn assert_type(&self, ast: &Ast, actual: &Cell<Datatype>, expected: &Cell<Datatype>) -> Result<()> {
         if actual != expected {
             Err(IrGenError::new(
                 IGEKind::TypeMismatch(actual.clone(), expected.clone()),
@@ -611,16 +561,14 @@ impl Generator {
         }
     }
 
-    fn find_datatype(&self, token: &Token) -> Result<Datatype> {
+    fn find_datatype(&self, token: &Token) -> Result<Cell<Datatype>> {
         self.current_module
-            .borrow()
             .find_datatype(&token.value)
             .ok_or_else(|| IrGenError::new(IGEKind::TypeNotFound, token.clone()))
     }
 
-    fn find_function(&self, token: &Token) -> Result<Fun> {
+    fn find_function(&self, token: &Token) -> Result<Cell<Fun>> {
         self.current_module
-            .borrow()
             .find_function(token)
             .ok_or_else(|| IrGenError::new(IGEKind::FunctionNotFound, token.clone()))
     }
@@ -678,7 +626,7 @@ impl Generator {
 }
 
 pub struct Context {
-    modules: Vec<Mod>,
+    modules: Vec<Cell<Mod>>,
 }
 
 impl Context {
@@ -688,10 +636,10 @@ impl Context {
         }
     }
 
-    fn add_module(&mut self, module: Mod) -> Result<()> {
+    fn add_module(&mut self, module: Cell<Mod>) -> Result<()> {
         match self
             .modules
-            .binary_search_by(|d| module.borrow().name.cmp(&d.borrow().name))
+            .binary_search_by(|d| module.name.cmp(&d.name))
         {
             Ok(i) => Err(IGEKind::DuplicateModule(module.clone(), self.modules[i].clone()).into()),
             Err(i) => {
@@ -701,10 +649,10 @@ impl Context {
         }
     }
 
-    fn find_module(&self, name: Token) -> Result<Mod> {
+    fn find_module(&self, name: Token) -> Result<Cell<Mod>> {
         match self
             .modules
-            .binary_search_by(|d| name.value.cmp(&d.borrow().name))
+            .binary_search_by(|d| name.value.cmp(&d.name))
         {
             Ok(i) => Ok(self.modules[i].clone()),
             Err(_) => Err(IrGenError::new(IGEKind::ModuleNotFound, name.clone())),
@@ -714,54 +662,30 @@ impl Context {
 
 #[derive(Debug, Clone)]
 pub struct Mod {
-    inner: Rc<RefCell<ModuleStruct>>,
+    name: String,
+    dependency: Vec<Cell<Mod>>,
+    types: Vec<Cell<Datatype>>,
+    functions: Vec<Cell<Fun>>,
 }
 
 impl Mod {
-    fn new(name: String, id: u32) -> Self {
-        Self {
-            inner: Rc::new(RefCell::new(ModuleStruct::new(name, id))),
-        }
-    }
-}
-
-impl Deref for Mod {
-    type Target = RefCell<ModuleStruct>;
-    fn deref(&self) -> &Self::Target {
-        &self.inner
-    }
-}
-
-#[derive(Debug, Clone)]
-pub struct ModuleStruct {
-    name: String,
-    dependency: Vec<Mod>,
-    types: Vec<Datatype>,
-    functions: Vec<Fun>,
-    function_id_counter: u32,
-    id: u32,
-}
-
-impl ModuleStruct {
-    fn new(name: String, id: u32) -> Self {
+    fn new(name: String) -> Self {
         Self {
             name,
             dependency: vec![],
             types: vec![],
             functions: vec![],
-            function_id_counter: 0,
-            id,
         }
     }
 
-    fn find_datatype(&self, name: &str) -> Option<Datatype> {
+    fn find_datatype(&self, name: &str) -> Option<Cell<Datatype>> {
         self.types
-            .binary_search_by(|d| name.cmp(&d.borrow().name))
+            .binary_search_by(|d| name.cmp(&d.name))
             .ok()
             .map(|i| self.types[i].clone())
             .or_else(|| {
                 for dep in self.dependency.iter().rev() {
-                    if let Some(d) = dep.borrow().find_datatype(name) {
+                    if let Some(d) = dep.find_datatype(name) {
                         return Some(d);
                     }
                 }
@@ -769,10 +693,10 @@ impl ModuleStruct {
             })
     }
 
-    fn add_datatype(&mut self, datatype: Datatype) -> Result<()> {
+    fn add_datatype(&mut self, datatype: Cell<Datatype>) -> Result<()> {
         match self
             .types
-            .binary_search_by(|d| datatype.borrow().name.cmp(&d.borrow().name))
+            .binary_search_by(|d| datatype.name.cmp(&d.name))
         {
             Ok(i) => Err(IGEKind::DuplicateType(datatype.clone(), self.types[i].clone()).into()),
             Err(i) => {
@@ -782,10 +706,16 @@ impl ModuleStruct {
         }
     }
 
-    fn add_function(&mut self, fun: Fun) -> Result<()> {
+    fn has_function(&self, name: &str) -> bool {
+        self.functions
+            .binary_search_by(|d| name.cmp(&d.name))
+            .is_ok()
+    }
+
+    fn add_function(&mut self, fun: Cell<Fun>) -> Result<()> {
         match self
             .functions
-            .binary_search_by(|d| fun.borrow().signature.name.cmp(&d.borrow().signature.name))
+            .binary_search_by(|d| fun.name.cmp(&d.name))
         {
             Ok(i) => Err(IGEKind::DuplicateFunction(fun.clone(), self.functions[i].clone()).into()),
             Err(i) => {
@@ -795,53 +725,47 @@ impl ModuleStruct {
         }
     }
 
-    fn find_function(&self, name: &Token) -> Option<Fun> {
+    fn find_function(&self, name: &Token) -> Option<Cell<Fun>> {
         self.functions
-            .binary_search_by(|f| name.value.cmp(&f.borrow().signature.name))
+            .binary_search_by(|f| name.value.cmp(&f.name))
             .ok()
             .map(|i| self.functions[i].clone())
             .or_else(|| {
                 for dep in self.dependency.iter().rev() {
-                    if let Some(d) = dep.borrow().find_function(name) {
+                    if let Some(d) = dep.find_function(name) {
                         return Some(d);
                     }
                 }
                 None
             })
     }
-
-    fn new_fun_name(&mut self) -> ExternalName {
-        let name = ExternalName::user(self.id, self.function_id_counter);
-        self.function_id_counter += 1;
-        name
-    }
 }
 
 macro_rules! builtin_repo {
     (types [$($name:ident: $lit:ident $bits:expr,)*]) => {
         pub struct BuiltinRepo {
-            $($name: Datatype,)*
+            $($name: Cell<Datatype>,)*
         }
 
         impl BuiltinRepo {
             fn new() -> Self {
                 Self {
                     $(
-                        $name: Datatype::with_size(
+                        $name: Cell::new(Datatype::with_size(
                             stringify!($name).to_string(),
                             DKind::Builtin($lit),
                             $bits
-                        ),
+                        )),
                     )*
                 }
             }
 
-            fn to_module(&self) -> Mod {
-                let module = Mod::new("builtin".to_string(), 0);
+            fn to_module(&self) -> Cell<Mod> {
+                let mut module = Mod::new("builtin".to_string());
                 $(
-                    module.borrow_mut().add_datatype(self.$name.clone()).unwrap();
+                    module.add_datatype(self.$name.clone()).unwrap();
                 )*
-                module
+                Cell::new(module)
             }
         }
     }
@@ -865,66 +789,13 @@ builtin_repo!(
 
 #[derive(Debug, Clone)]
 pub struct Fun {
-    inner: Rc<RefCell<FunStruct>>,
-}
-
-impl Fun {
-    fn new(signature: FunSignature) -> Self {
-        Self {
-            inner: Rc::new(RefCell::new(FunStruct::new(signature))),
-        }
-    }
-}
-
-impl Deref for Fun {
-    type Target = RefCell<FunStruct>;
-    fn deref(&self) -> &Self::Target {
-        &self.inner
-    }
-}
-
-#[derive(Debug, Clone)]
-pub struct FunStruct {
-    signature: FunSignature,
-    function: Option<Function>,
-}
-
-impl FunStruct {
-    fn new(signature: FunSignature) -> Self {
-        Self {
-            signature,
-            function: None,
-        }
-    }
-}
-
-#[derive(Debug, Clone)]
-pub struct FunSignature {
-    id: ExternalName,
+    id: FuncId,
     name: StrRef,
     params: Vec<Var>,
-    ret: Option<Datatype>,
-    cc: CallConv,
-    linkage: Linkage,
+    ret: Option<Cell<Datatype>>,
     inline_level: InlineLevel,
-}
-
-impl FunSignature {
-    fn to_signature(&self) -> Signature {
-        Signature {
-            call_conv: self.cc,
-            params: self
-                .params
-                .iter()
-                .map(|v| AbiParam::new(v.datatype.borrow().get_ir_repr()))
-                .collect(),
-            returns: if let Some(ret) = &self.ret {
-                vec![AbiParam::new(ret.borrow().get_ir_repr())]
-            } else {
-                vec![]
-            },
-        }
-    }
+    signature: Option<Signature>,
+    body: Option<Ast>,
 }
 
 #[derive(Debug, Clone)]
@@ -946,40 +817,15 @@ impl FromStr for InlineLevel {
     }
 }
 
-#[derive(Debug, Clone, PartialEq)]
-pub struct Datatype {
-    inner: Rc<RefCell<DatatypeStruct>>,
-}
-
-impl Datatype {
-    fn new(name: String, kind: DKind) -> Self {
-        Self::with_size(name, kind, 0)
-    }
-
-    fn with_size(name: String, kind: DKind, size: usize) -> Self {
-        Self {
-            inner: Rc::new(RefCell::new(DatatypeStruct::with_size(name, kind, size))),
-        }
-    }
-}
-
-impl Deref for Datatype {
-    type Target = RefCell<DatatypeStruct>;
-
-    fn deref(&self) -> &Self::Target {
-        &self.inner
-    }
-}
-
 #[derive(Debug, Clone)]
 pub struct Var {
     name: StrRef,
     access: VarAccess,
-    datatype: Datatype,
+    datatype: Cell<Datatype>,
 }
 
 impl Var {
-    fn new(name: StrRef, access: VarAccess, datatype: Datatype) -> Self {
+    fn new(name: StrRef, access: VarAccess, datatype: Cell<Datatype>) -> Self {
         Self {
             datatype,
             name,
@@ -996,13 +842,13 @@ pub enum VarAccess {
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub struct DatatypeStruct {
+pub struct Datatype {
     name: String,
     kind: DKind,
     size: usize,
 }
 
-impl DatatypeStruct {
+impl Datatype {
     fn new(name: String, kind: DKind) -> Self {
         Self::with_size(name, kind, 0)
     }
@@ -1044,8 +890,8 @@ impl DatatypeStruct {
 #[derive(Debug, Clone, PartialEq)]
 pub enum DKind {
     Builtin(Type),
-    Pointer(Datatype),
-    Alias(Datatype),
+    Pointer(Cell<Datatype>),
+    Alias(Cell<Datatype>),
     Structure(Structure),
     Enum(Enum),
 }
@@ -1082,10 +928,10 @@ impl Into<IrGenError> for AstError {
 
 #[derive(Debug)]
 pub enum IGEKind {
-    TypeMismatch(Datatype, Datatype),
-    DuplicateType(Datatype, Datatype),
-    DuplicateModule(Mod, Mod),
-    DuplicateFunction(Fun, Fun),
+    TypeMismatch(Cell<Datatype>, Cell<Datatype>),
+    DuplicateType(Cell<Datatype>, Cell<Datatype>),
+    DuplicateModule(Cell<Mod>, Cell<Mod>),
+    DuplicateFunction(Cell<Fun>, Cell<Fun>),
     MissingAttrArgument(usize, usize),
     InvalidAmountOfArguments(usize, usize),
     InvalidInlineLevel,
@@ -1122,11 +968,69 @@ trait SealCurrentBlock {
     fn seal_current_block(&mut self);
 }
 
-pub fn test() {
-    let context = Generator::new().generate("src/test_code.pmt").unwrap();
-    for module in context.modules.iter() {
-        for fun in module.borrow().functions.iter() {
-            println!("{}", fun.borrow().function.as_ref().unwrap().display());
+pub struct Cell<T> {
+    inner: *mut (T, usize),
+}
+
+impl<T> Cell<T> {
+    fn new(inner: T) -> Self {
+        Self {
+            inner: Box::into_raw(Box::new((inner, 1))),
         }
+    }
+}
+
+impl<T: PartialEq> PartialEq for Cell<T> {
+    fn eq(&self, other: &Self) -> bool {
+        unsafe {
+            if self.inner == other.inner {
+                return true;
+            }
+            let (a, a_count) = &*self.inner;
+            let (b, b_count) = &*other.inner;
+            *a == *b
+        }
+    }
+}
+
+impl<T: std::fmt::Debug> std::fmt::Debug for Cell<T> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{:?}", unsafe { &*self.inner })
+    }
+}
+
+impl<T> Clone for Cell<T> {
+    fn clone(&self) -> Self {
+        unsafe {
+            (*self.inner).1 += 1;
+            Self {
+                inner: self.inner,
+            }
+        }
+    }
+}
+
+impl<T> Drop for Cell<T> {
+    fn drop(&mut self) {
+        unsafe {
+            (*self.inner).1 -= 1;
+            if (*self.inner).1 == 0 {
+                Box::from_raw(self.inner);
+            }
+        }
+    }
+}
+
+impl<T> DerefMut for Cell<T> {
+    fn deref_mut(&mut self) -> &mut T {
+        unsafe { &mut(*self.inner).0 }
+    }
+}
+
+impl<T> Deref for Cell<T> {
+    type Target = T;
+
+    fn deref(&self) -> &Self::Target {
+        unsafe { &(*self.inner).0 }
     }
 }

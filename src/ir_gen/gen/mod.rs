@@ -72,9 +72,7 @@ pub fn compile(args: Arguments) -> Result<()> {
 }
 
 pub fn generate_obj_file(args: &Arguments) -> Result<Vec<u8>> {
-    let mut context = Generator::new()
-        .generate(&args.args[0])
-        .map_err(Into::into)?;
+    
 
     let mut settings = settings::builder();
     for (_, values) in args.field_flags.iter().filter(|(f, _)| f == "comp_flags") {
@@ -105,43 +103,9 @@ pub fn generate_obj_file(args: &Arguments) -> Result<Vec<u8>> {
     let builder =
         ObjectBuilder::new(isa, "all", cranelift_module::default_libcall_names()).unwrap();
 
-    let mut main_module = ObjectModule::new(builder);
-    let mut ctx = cranelift_codegen::Context::new();
-    for module in &mut context.modules {
-        for mut function in module
-            .borrow_mut()
-            .functions
-            .iter_mut()
-            .map(|f| f.borrow_mut())
-        {
-            let signature = function.signature.to_signature();
-            println!("{:?} {:?}", function.signature.linkage, function.signature.name);
-            let fun_id = main_module
-                .declare_function(
-                    function.signature.name.deref(),
-                    function.signature.linkage,
-                    &signature,
-                )
-                .unwrap();
-            
-            if let Some(function) = std::mem::take(&mut function.function) {
-                ctx.func = function;
-
-                if optimize {
-                    cranelift_preopt::optimize(&mut ctx, main_module.isa()).unwrap();
-                }
-
-                main_module
-                    .define_function(
-                        fun_id,
-                        &mut ctx,
-                        &mut NullTrapSink::default(),
-                        &mut NullStackMapSink {},
-                    )
-                    .unwrap();
-            }
-        }
-    }
+    let main_module = Generator::new(ObjectModule::new(builder))
+        .generate(&args.args[0])
+        .map_err(Into::into)?;
 
     Ok(main_module.finish().emit().unwrap())
 }
