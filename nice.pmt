@@ -1,8 +1,19 @@
-fun fib(x: i64) -> i64:
-  return if x > 2:
-    1
-  else:
-    fib(x - 1) + fib(x - 2)
+
+attr linkage(import), call_conv(windows_fastcall)
+fun putchar(x: i32)
 
 fun main -> i64:
-  return fib(1)
+  putchar('H')
+  putchar('e')
+  putchar('l')
+  putchar('l')
+  putchar('o')
+  putchar(',')
+  putchar(' ')
+  putchar('W')
+  putchar('o')
+  putchar('r')
+  putchar('l')
+  putchar('d')
+  putchar('!')
+  return 0

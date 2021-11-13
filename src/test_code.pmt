@@ -30,3 +30,16 @@ fun fib(v: i64) -> i64:
     1
   else:
     fib(v - 1) + fib(v - 2)
+
+fun fib_loop(v: i64) -> i64:
+  var a: i64 = 1
+  var b: i64 = 1
+  var c: i64 = 0
+  loop:
+    c = a + b
+    a = b
+    b = c
+    v = v - 1
+    if v == 0:
+      break
+  return c

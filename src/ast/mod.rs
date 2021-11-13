@@ -201,8 +201,8 @@ impl AstParser {
     fn simple_expression_low(&mut self, nested: bool) -> Result<Ast> {
         let mut ast = match self.current_token.kind {
             TKind::Ident => self.ident_expression()?,
-            TKind::Int(..) => self.ast(AKind::Literal),
-            TKind::Bool(..) => self.ast(AKind::Literal),
+            TKind::Int(..) | TKind::Uint(..) | 
+            TKind::Bool(..) | TKind::Char(..) => self.ast(AKind::Literal),
             TKind::If => self.if_expression()?,
             _ => todo!(
                 "unmatched simple expression pattern {:?}",

@@ -1,10 +1,10 @@
 pub mod gen;
 
-use cranelift_codegen::{ir::{AbiParam, ExtFuncData, ExternalName, FuncRef, Function, InstBuilder, Signature, Type, Value, condcodes::{FloatCC, IntCC}, types::*}, isa::CallConv};
+use cranelift_codegen::{binemit::{NullStackMapSink, NullTrapSink}, ir::{AbiParam, ExternalName, FuncRef, Function, InstBuilder, Signature, Type, Value, condcodes::{FloatCC, IntCC}, types::*}, isa::CallConv};
 use cranelift_frontend::{FunctionBuilder, FunctionBuilderContext, Variable};
 use cranelift_module::{FuncId, Linkage, Module};
 use cranelift_object::ObjectModule;
-use std::{cell::RefCell, ops::{Deref, DerefMut}, str::FromStr};
+use std::{ops::{Deref, DerefMut}, str::FromStr};
 
 use crate::{
     ast::{AEKind, AKind, Ast, AstError, AstParser},
@@ -19,16 +19,13 @@ pub struct Generator {
     builtin_module: Cell<Mod>,
     context: Context,
     current_module: Cell<Mod>,
-    function_builder_context: Option<FunctionBuilderContext>,
     variables: Vec<Option<Var>>,
     variable_counter: u32,
-    function_id_counter: u32,
     global_attributes: Vec<Ast>,
     pushed_attributes: Vec<Ast>,
     imported_functions: Vec<(StrRef, FuncRef)>,
     call_buffer: Vec<Value>,
     object_module: ObjectModule,
-    codegen_context: cranelift_codegen::Context,
 }
 
 impl Generator {
@@ -40,21 +37,57 @@ impl Generator {
             builtin_repo,
             builtin_module,
             context: Context::new(),
-            function_builder_context: Some(FunctionBuilderContext::new()),
             variables: Vec::new(),
             variable_counter: 0,
-            function_id_counter: 0,
             global_attributes: Vec::new(),
             pushed_attributes: Vec::new(),
             imported_functions: Vec::new(),
             call_buffer: Vec::new(),
             object_module,
-            codegen_context: cranelift_codegen::Context::new(),
         }
     }
 
     fn generate(mut self, root_file_name: &str) -> Result<ObjectModule> {
         self.generate_module(root_file_name.to_string())?;
+
+        let mut codegen_ctx = cranelift_codegen::Context::new();
+        let mut function_context = FunctionBuilderContext::new();
+        let ctx = std::mem::replace(&mut self.context, Context::new());
+        for mut f in ctx.modules.iter().map(|m| m.functions.iter()).flatten().map(Clone::clone) {
+            if let AKind::None = f.body.kind {
+                continue;
+            }
+            self.variables.clear();
+            self.imported_functions.clear();
+            self.variable_counter = 0;
+            let mut function = Function::with_name_signature(
+                ExternalName::default(), 
+                std::mem::take(&mut f.signature).unwrap(),
+            );
+            let mut builder = FunctionBuilder::new(&mut function, &mut function_context);
+            let entry_block = builder.create_block();
+            builder.append_block_params_for_function_params(entry_block);
+            builder.switch_to_block(entry_block);
+
+            for (value, var) in builder.block_params(entry_block).iter().zip(f.params.iter_mut()) {
+                var.access = VarAccess::Immutable(value.clone());
+                self.variables.push(Some(var.clone()));
+            }
+
+            self.generate_function_body(&f.body, &mut builder)?;
+            builder.seal_current_block();
+            builder.finalize();
+            codegen_ctx.func = function;
+            codegen_ctx.compute_cfg();
+            codegen_ctx.compute_domtree();
+            self.object_module.define_function(
+                f.id, 
+                &mut codegen_ctx, 
+                &mut NullTrapSink::default(), 
+                &mut NullStackMapSink {},
+            ).unwrap();
+            
+        };
 
         Ok(self.object_module)
     }
@@ -245,7 +278,12 @@ impl Generator {
                 let value = builder.ins().bconst(datatype.get_ir_repr(), value);
                 Ok((value, datatype))
             }
-            _ => todo!(),
+            TKind::Char(value) => {
+                let datatype = self.builtin_repo.i32.clone();
+                let value = builder.ins().iconst(datatype.get_ir_repr(), value as i64);
+                Ok((value, datatype))
+            }
+            _ => todo!("unmatched literal token {:?}", ast.token),
         }
     }
 
@@ -543,7 +581,7 @@ impl Generator {
             ret: return_type,
             inline_level,
             signature: Some(signature),
-            body: Some(ast.remove(1)),
+            body: ast.remove(1),
         };
 
         Ok(Cell::new(fun))
@@ -794,7 +832,7 @@ pub struct Fun {
     ret: Option<Cell<Datatype>>,
     inline_level: InlineLevel,
     signature: Option<Signature>,
-    body: Option<Ast>,
+    body: Ast,
 }
 
 #[derive(Debug, Clone)]
@@ -985,8 +1023,8 @@ impl<T: PartialEq> PartialEq for Cell<T> {
             if self.inner == other.inner {
                 return true;
             }
-            let (a, a_count) = &*self.inner;
-            let (b, b_count) = &*other.inner;
+            let (a, _a_count) = &*self.inner;
+            let (b, _b_count) = &*other.inner;
             *a == *b
         }
     }

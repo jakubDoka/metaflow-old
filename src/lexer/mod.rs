@@ -99,10 +99,141 @@ impl Lexer {
         while self.cursor.peek().unwrap_or('\0').is_numeric() {
             number = number * 10 + (self.cursor.advance().unwrap() as u64 - '0' as u64);
         }
+        let next_char = self.cursor.peek().unwrap_or('\0');
+        let kind = match next_char {
+            'i' | 'u' => {
+                self.cursor.advance();
+                let mut base = 0u16;
+                while self.cursor.peek().unwrap_or('\0').is_numeric() {
+                    base = base * 10 + (self.cursor.advance().unwrap() as u16 - '0' as u16);
+                }
+                match next_char {
+                    'i' => TKind::Int(number as i64, base),
+                    'u' => TKind::Uint(number, base),
+                    _ => unreachable!(),
+                }
+            }
+            _ => TKind::Int(number as i64, 64),
+        };
         let end = self.cursor.progress();
         let value = self.cursor.data.sub(start..end);
-        Some(Token::new(TKind::Int(number as i64, 64), value, line_data))
+        Some(Token::new(kind, value, line_data))
     }
+
+    fn char_or_label(&mut self) -> Option<Token> {
+        let line_data = self.line_data();
+        let start = self.cursor.progress();
+        self.cursor.advance()?;
+        let current = self.cursor.advance()?;
+
+        let (char, may_be_label) = if current == '\\' {
+            (self.char_escape()?, false)
+        } else {
+            (current, true)
+        };
+
+        let next = self.cursor.peek().unwrap_or('\0');
+
+        if !may_be_label && next != '\'' {
+            return None;
+        }
+
+        if next == '\'' {
+            self.cursor.advance();
+            let end = self.cursor.progress();
+            let value = self.cursor.data.sub(start..end);
+            Some(Token::new(TKind::Char(char), value, line_data))
+        } else {
+            while self.cursor.peek().unwrap_or('\0').is_alphanumeric() {
+                self.cursor.advance();
+            }
+            let end = self.cursor.progress();
+            let value = self.cursor.data.sub(start..end);
+            Some(Token::new(TKind::Label, value, line_data))
+        }
+    }
+
+    fn char_escape(&mut self) -> Option<char> {
+        self.cursor.advance();
+        let current = self.cursor.advance().unwrap_or('\0');
+        Some(match current {
+            'a' | 'b' | 'e' | 'f' | 'n' | 'r' | 't' | 'v' | '\\' | '\'' | '"' => {
+                match current {
+                    'a' => '\x07',
+                    'b' => '\x08',
+                    'e' => '\x1b',
+                    'f' => '\x0c',
+                    'v' => '\x0b',
+                    'n' => '\n',
+                    'r' => '\r',
+                    't' => '\t',
+                    _ => current,
+                }
+            }
+            '0'..='7' => {
+                let mut res = 0u8;
+                for _ in 0..3 {
+                    res = res * 8 + (self.cursor.advance()?.to_digit(8)? as u8 - '0' as u8);
+                }
+                res as char
+            }
+            'x' | 'u' | 'U' => {
+                let len = match current {
+                    'x' => 2,
+                    'u' => 4,
+                    'U' => 8,
+                    _ => unreachable!(),
+                };
+
+                let mut res = 0u32;
+                for _ in 0..len {
+                    res = res * 16 + (self.cursor.advance()?.to_digit(16)? - '0' as u32);
+                }
+                // SAFETY: TODO: check that the value is valid
+                unsafe { char::from_u32_unchecked(res) }
+            }
+            _ => return None,
+        })
+    }
+  /*var res = 0
+  # c escape rules
+  l.advance()
+  case l.currentChar:
+  of 'a', 'b', 'e', 'f', 'n', 'r', 't', 'v', '\\', '\'', '"':
+    res =
+      case l.currentChar: # smart ha
+      of 'a': '\a'.ord
+      of 'b': '\b'.ord
+      of 'e': '\e'.ord
+      of 'f': '\f'.ord
+      of 'n': '\n'.ord
+      of 'r': '\r'.ord
+      of 't': '\t'.ord
+      of 'v': '\v'.ord
+      else: l.currentChar.ord
+    l.advance()
+  of {'0'..'7'}:
+    for i in 0..<3:
+      if l.current.isOctDigit(): 
+        l.info.fail("expected octal digit")
+      res = res * 8 + l.current.ord - ord('0')
+      l.advance()
+  of 'x', 'u', 'U':
+    let advance = 
+      case l.currentChar:
+      of 'x': 2
+      of 'u': 4
+      of 'U': 6
+      else: 0
+    l.advance()
+    for i in 0..<advance:
+      if l.current.isHexDigit(): 
+        l.info.fail("expected hex digit")
+      res = res * 16 + l.currentChar.hexValue
+      l.advance()
+  else: 
+    l.info.fail("unknown escape sequence")
+  return Rune(res)*/
 
     fn line_data(&self) -> LineData {
         LineData {
@@ -136,6 +267,7 @@ impl<'a> Iterator for Lexer {
                 }
                 return self.next();
             }
+            '\'' => return self.char_or_label(),
             '#' => TKind::Hash,
             ',' => TKind::Comma,
             '(' => TKind::LPar,
@@ -258,6 +390,7 @@ pub enum TKind {
     Elif,
     Else,
 
+    Label,
     Ident,
     Op,
 
@@ -274,7 +407,9 @@ pub enum TKind {
     Dot,
 
     Int(i64, u16),
+    Uint(u64, u16),
     Bool(bool),
+    Char(char),
 
     Indent(usize),
 
@@ -294,6 +429,7 @@ impl std::fmt::Display for TKind {
             TKind::If => "'if'",
             TKind::Elif => "'elif'",
             TKind::Else => "'else'",
+            TKind::Label => "'label'",
             TKind::Ident => "identifier",
             TKind::Op => "operator",
             TKind::LPar => "'('",
@@ -309,7 +445,9 @@ impl std::fmt::Display for TKind {
             TKind::Hash => "'#'",
             TKind::Indent(_) => "indentation",
             TKind::Int(..) => "integer",
+            TKind::Uint(..) => "unsigned integer",
             TKind::Bool(_) => "boolean",
+            TKind::Char(_) => "character",
             TKind::UnknownCharacter(_) => "unknown character",
             TKind::Eof => "end of file",
             TKind::None => "nothing",

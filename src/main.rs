@@ -35,6 +35,5 @@ fn test() {
     cli::test();
     lexer::test();
     ast::test();
-    ir_gen::test();
     ir_gen::gen::test();
 }
