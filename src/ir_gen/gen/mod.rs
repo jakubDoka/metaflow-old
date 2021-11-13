@@ -1,9 +1,8 @@
 use cranelift_codegen::{
-    binemit::{NullStackMapSink, NullTrapSink},
     isa::{self, LookupError},
     settings::{self, Configurable, SetError},
 };
-use cranelift_module::Module;
+
 use cranelift_object::{ObjectBuilder, ObjectModule};
 use std::process::Command;
 
@@ -98,7 +97,7 @@ pub fn generate_obj_file(args: &Arguments) -> Result<Vec<u8>> {
         cranelift_native::builder().unwrap().finish(flags)
     };
 
-    let optimize = args.flags.iter().any(|f| f == "opt");
+    let _optimize = args.flags.iter().any(|f| f == "opt");
 
     let builder =
         ObjectBuilder::new(isa, "all", cranelift_module::default_libcall_names()).unwrap();

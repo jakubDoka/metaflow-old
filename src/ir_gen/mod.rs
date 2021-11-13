@@ -107,7 +107,6 @@ impl Generator {
     fn function(&mut self, ast: Ast) -> Result<()> {
         let fun = self.create_signature(ast)?;
         self.current_module.add_function(fun)?;
- 
         Ok(())
     }
 
