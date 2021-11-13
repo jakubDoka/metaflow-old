@@ -406,6 +406,8 @@ Group 'fun' "fun":
      None end of file ""
      Group operator "=":
       Literal integer "1"
+      Identifier identifier "a"
+      Identifier identifier "a"
    Loop 'loop' "loop":
     Identifier 'label' "'a"
     Group ':' ":":
