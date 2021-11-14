@@ -233,6 +233,37 @@ Token { kind: Label, value: "'a", line_data: LineData { line: 42, column: 11, fi
 Token { kind: Indent(1), value: "\n  ", line_data: LineData { line: 42, column: 14, file_name: "test_code.pmh" } }
 Token { kind: Return, value: "return", line_data: LineData { line: 43, column: 2, file_name: "test_code.pmh" } }
 Token { kind: Ident, value: "c", line_data: LineData { line: 43, column: 9, file_name: "test_code.pmh" } }
+Token { kind: Indent(0), value: "\n\r", line_data: LineData { line: 43, column: 11, file_name: "test_code.pmh" } }
+Token { kind: Indent(0), value: "\n", line_data: LineData { line: 44, column: 1, file_name: "test_code.pmh" } }
+Token { kind: Struct, value: "struct", line_data: LineData { line: 45, column: 0, file_name: "test_code.pmh" } }
+Token { kind: Ident, value: "Foo", line_data: LineData { line: 45, column: 7, file_name: "test_code.pmh" } }
+Token { kind: Colon, value: ":", line_data: LineData { line: 45, column: 10, file_name: "test_code.pmh" } }
+Token { kind: Indent(1), value: "\n  ", line_data: LineData { line: 45, column: 12, file_name: "test_code.pmh" } }
+Token { kind: Ident, value: "a", line_data: LineData { line: 46, column: 2, file_name: "test_code.pmh" } }
+Token { kind: Comma, value: ",", line_data: LineData { line: 46, column: 3, file_name: "test_code.pmh" } }
+Token { kind: Ident, value: "b", line_data: LineData { line: 46, column: 5, file_name: "test_code.pmh" } }
+Token { kind: Comma, value: ",", line_data: LineData { line: 46, column: 6, file_name: "test_code.pmh" } }
+Token { kind: Ident, value: "c", line_data: LineData { line: 46, column: 8, file_name: "test_code.pmh" } }
+Token { kind: Colon, value: ":", line_data: LineData { line: 46, column: 9, file_name: "test_code.pmh" } }
+Token { kind: Ident, value: "i64", line_data: LineData { line: 46, column: 11, file_name: "test_code.pmh" } }
+Token { kind: Indent(0), value: "\n\r", line_data: LineData { line: 46, column: 15, file_name: "test_code.pmh" } }
+Token { kind: Indent(0), value: "\n", line_data: LineData { line: 47, column: 1, file_name: "test_code.pmh" } }
+Token { kind: Struct, value: "struct", line_data: LineData { line: 48, column: 0, file_name: "test_code.pmh" } }
+Token { kind: Ident, value: "Goo", line_data: LineData { line: 48, column: 7, file_name: "test_code.pmh" } }
+Token { kind: Colon, value: ":", line_data: LineData { line: 48, column: 10, file_name: "test_code.pmh" } }
+Token { kind: Indent(1), value: "\n  ", line_data: LineData { line: 48, column: 12, file_name: "test_code.pmh" } }
+Token { kind: Embed, value: "embed", line_data: LineData { line: 49, column: 2, file_name: "test_code.pmh" } }
+Token { kind: Ident, value: "foo", line_data: LineData { line: 49, column: 8, file_name: "test_code.pmh" } }
+Token { kind: Colon, value: ":", line_data: LineData { line: 49, column: 11, file_name: "test_code.pmh" } }
+Token { kind: Ident, value: "Foo", line_data: LineData { line: 49, column: 13, file_name: "test_code.pmh" } }
+Token { kind: Indent(1), value: "\n  ", line_data: LineData { line: 49, column: 17, file_name: "test_code.pmh" } }
+Token { kind: Attr, value: "attr", line_data: LineData { line: 50, column: 2, file_name: "test_code.pmh" } }
+Token { kind: Ident, value: "something", line_data: LineData { line: 50, column: 7, file_name: "test_code.pmh" } }
+Token { kind: Indent(1), value: "\n  ", line_data: LineData { line: 50, column: 17, file_name: "test_code.pmh" } }
+Token { kind: Ident, value: "gva", line_data: LineData { line: 51, column: 2, file_name: "test_code.pmh" } }
+Token { kind: Colon, value: ":", line_data: LineData { line: 51, column: 5, file_name: "test_code.pmh" } }
+Token { kind: Ident, value: "i64", line_data: LineData { line: 51, column: 7, file_name: "test_code.pmh" } }
+Token { kind: Indent(0), value: "\n\r", line_data: LineData { line: 51, column: 11, file_name: "test_code.pmh" } }
 Group 'fun' "fun":
  Function 'fun' "fun":
   FunctionHeader 'fun' "fun":
@@ -445,4 +476,23 @@ Group 'fun' "fun":
       None end of file ""
    ReturnStatement 'return' "return":
     Identifier identifier "c"
+ StructDeclaration 'struct' "struct":
+  Identifier identifier "Foo"
+  Group ':' ":":
+   StructField(false) identifier "a":
+    Identifier identifier "a"
+    Identifier identifier "b"
+    Identifier identifier "c"
+    Identifier identifier "i64"
+ StructDeclaration 'struct' "struct":
+  Identifier identifier "Goo"
+  Group ':' ":":
+   StructField(true) identifier "foo":
+    Identifier identifier "foo"
+    Identifier identifier "Foo"
+   Attribute 'attr' "attr":
+    AttributeElement identifier "something"
+   StructField(false) identifier "gva":
+    Identifier identifier "gva"
+    Identifier identifier "i64"
 
