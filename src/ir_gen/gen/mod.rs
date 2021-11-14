@@ -156,37 +156,54 @@ pub fn test() {
         r#"
 fun main -> i64:
   return 0
-    "#,
+        "#,
         0,
     );
     test_sippet(
         r#"
 fun main -> i64:
   return 1 - 1
-    "#,
+        "#,
         0,
     );
     test_sippet(
         r#"
 fun main -> i64:
   return 1 + 1
-    "#,
+        "#,
         2,
     );
     test_sippet(
         r#"
 fun main -> i64:
   return if 1 == 1: 0 else: 1
-    "#,
+        "#,
         0,
     );
     test_sippet(
         r#"
-attr linkage(import), call_conv(windows_fastcall)
-fun genchar -> i32
+fun fib(v: i64) -> i64:
+  return if v < 2:
+    1
+  else:
+    fib(v - 1) + fib(v - 2)
+
+fun fib_loop(v: i64) -> i64:
+  var 
+    a, b, c = 1
+    v = v
+  loop'a:
+    c = a + b
+    a = b
+    b = c
+    v = v - 1
+    if v == 1:
+      break'a
+  return c
 
 fun main -> i64:
-  return 0
+  let v = 10
+  return fib_loop(v) - fib(v)
         "#,
         0,
     );

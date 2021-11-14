@@ -1,6 +1,6 @@
 pub mod gen;
 
-use cranelift_codegen::{binemit::{NullStackMapSink, NullTrapSink}, ir::{AbiParam, ExternalName, FuncRef, Function, InstBuilder, Signature, Type, Value, condcodes::{FloatCC, IntCC}, types::*}, isa::CallConv};
+use cranelift_codegen::{binemit::{NullStackMapSink, NullTrapSink}, entity::EntityRef, ir::{AbiParam, Block, ExternalName, FuncRef, Function, InstBuilder, Signature, Type, Value, condcodes::{FloatCC, IntCC}, types::*}, isa::CallConv};
 use cranelift_frontend::{FunctionBuilder, FunctionBuilderContext, Variable};
 use cranelift_module::{FuncId, Linkage, Module};
 use cranelift_object::ObjectModule;
@@ -13,6 +13,8 @@ use crate::{
 
 type CraneContext = cranelift_codegen::Context;
 type Result<T> = std::result::Result<T, IrGenError>;
+type ExprResult = Result<Option<(Value, Cell<Datatype>)>>;
+type LoopHeader = (StrRef, Block, Block, Option<Option<Cell<Datatype>>>);
 
 pub struct Generator {
     builtin_repo: BuiltinRepo,
@@ -20,7 +22,8 @@ pub struct Generator {
     context: Context,
     current_module: Cell<Mod>,
     variables: Vec<Option<Var>>,
-    variable_counter: u32,
+    loop_headers: Vec<LoopHeader>,
+    variable_counter: usize,
     global_attributes: Vec<Ast>,
     pushed_attributes: Vec<Ast>,
     imported_functions: Vec<(StrRef, FuncRef)>,
@@ -38,6 +41,7 @@ impl Generator {
             builtin_module,
             context: Context::new(),
             variables: Vec::new(),
+            loop_headers: Vec::new(),
             variable_counter: 0,
             global_attributes: Vec::new(),
             pushed_attributes: Vec::new(),
@@ -152,7 +156,7 @@ impl Generator {
         &mut self,
         ast: &Ast,
         builder: &mut FunctionBuilder,
-    ) -> Result<Option<(Value, Cell<Datatype>)>> {
+    ) -> ExprResult {
         for stmt in ast[0..ast.len() - 1].iter() {
             self.statement(stmt, builder)?;
         }
@@ -168,23 +172,71 @@ impl Generator {
         &mut self,
         ast: &Ast,
         builder: &mut FunctionBuilder,
-    ) -> Result<Option<(Value, Cell<Datatype>)>> {
+    ) -> ExprResult {
         match ast.kind {
-            AKind::ReturnStatement => {
-                self.return_statement(ast, builder)?;
-            }
-            AKind::IfExpression => {
-                return self.if_expression(ast, builder);
-            }
-            AKind::Call => {
-                return self.call_expression(ast, builder);
-            }
+            AKind::ReturnStatement => self.return_statement(ast, builder)?,
+            AKind::VarStatement(_) => self.var_statement(ast, builder)?,
+            AKind::Break => self.break_statement(ast, builder)?,
+            
+            AKind::IfExpression => return self.if_expression(ast, builder),
+            AKind::Call => return self.call_expression(ast, builder),
+            AKind::Loop => return self.loop_expression(ast, builder),
             _ => {
                 return Ok(Some(self.expression(ast, builder)?));
             }
         }
 
         Ok(None)
+    }
+
+    fn break_statement(&mut self, ast: &Ast, builder: &mut FunctionBuilder) -> Result<()> {
+        let mut header = self.find_loop_header(&ast[0].token)?;
+        let loop_exit_block = header.2;
+        if let Some(datatype) = header.3 {
+            if let Some(datatype) = datatype {
+                if ast[1].kind == AKind::None {
+                    return Err(IrGenError::new(IGEKind::ExpectedValue, ast.token.clone()))
+                }
+                let (value, real_datatype) = self.expression(&ast[1], builder)?;
+                self.assert_type(ast, &real_datatype, &datatype)?;
+                builder.ins().jump(loop_exit_block.clone(), &[value]);
+            } else {
+                if ast[1].kind != AKind::None {
+                    return Err(IrGenError::new(IGEKind::UnexpectedValue, ast.token.clone()))
+                }
+                builder.ins().jump(loop_exit_block.clone(), &[]); 
+            }
+        } else {
+            header.3 = if ast[1].kind == AKind::None {
+                builder.ins().jump(loop_exit_block.clone(), &[]);
+                Some(None)
+            } else {
+                let (value, real_datatype) = self.expression(&ast[1], builder)?;
+                builder.ins().jump(loop_exit_block.clone(), &[value]);
+                Some(Some(real_datatype))
+            };
+            self.update_loop_header(header);
+        }
+        Ok(())
+    }
+
+    fn find_loop_header(&mut self, name: &Token) -> Result<LoopHeader> {
+        self.loop_headers
+            .iter()
+            .rev()
+            .find(|(header_name, ..)| header_name.deref() == name.value.deref())
+            .map(|h| h.clone())
+            .ok_or_else(|| IrGenError::new(
+                IGEKind::LoopHeaderNotFound,
+                name.clone(),
+            ))
+    }
+
+    fn update_loop_header(&mut self, header: LoopHeader) {
+        self.loop_headers
+            .iter_mut()
+            .find(|(header_name, ..)| header_name.deref() == header.0.deref())
+            .map(|h| *h = header);
     }
 
     fn return_statement(&mut self, ast: &Ast, builder: &mut FunctionBuilder) -> Result<()> {
@@ -203,11 +255,7 @@ impl Generator {
         builder: &mut FunctionBuilder,
     ) -> Result<(Value, Cell<Datatype>)> {
         match ast.kind {
-            AKind::Literal => self.literal(ast, builder),
-            AKind::BinaryOperation => self.binary_operation(ast, builder),
-            AKind::IfExpression => self
-                .if_expression(ast, builder)?
-                .ok_or_else(|| IrGenError::new(IGEKind::ExpectedValue, ast.token.clone())),
+            AKind::Literal => return self.literal(ast, builder),
             AKind::Identifier => {
                 let var = self.find_variable(&ast.token)?;
                 let val = match var.access {
@@ -215,16 +263,87 @@ impl Generator {
                     VarAccess::Immutable(val) => val,
                     _ => unreachable!(),
                 };
-                Ok((val, var.datatype.clone()))
+                return Ok((val, var.datatype.clone()))
             }
-            AKind::Call => self
-                .call_expression(&ast, builder)?
-                .ok_or_else(|| IrGenError::new(IGEKind::ExpectedValue, ast.token.clone())),
+
+            AKind::BinaryOperation => self.binary_operation(ast, builder)?,
+            AKind::IfExpression => self.if_expression(ast, builder)?,
+            AKind::Call => self.call_expression(&ast, builder)?,
+            AKind::Loop => self.loop_expression(ast, builder)?,
             _ => todo!("unmatched expression {}", ast),
-        }
+        }.ok_or_else(|| IrGenError::new(IGEKind::ExpectedValue, ast.token.clone()))
     }
 
-    fn call_expression(&mut self, ast: &Ast, builder: &mut FunctionBuilder) -> Result<Option<(Value, Cell<Datatype>)>> {
+    fn loop_expression(&mut self, ast: &Ast, builder: &mut FunctionBuilder) -> ExprResult {
+        let loop_block = builder.create_block();
+        let loop_exit_block = builder.create_block();
+
+        self.loop_headers.push((ast[0].token.value.clone(), loop_block, loop_exit_block, None));
+
+        builder.ins().jump(loop_block, &[]);
+        builder.seal_current_block();
+        builder.switch_to_block(loop_block);
+        self.statement_list(&ast[1], builder)?;
+        builder.ins().jump(loop_block, &[]);
+        builder.seal_block(loop_block);
+        builder.seal_current_block();
+
+        builder.switch_to_block(loop_exit_block);
+
+        Ok(if let Some((.., Some(Some(datatype)))) = self.loop_headers.pop() {
+            let value = builder.append_block_param(loop_exit_block, datatype.get_ir_repr());
+            Some((value, datatype))
+        } else {
+            None
+        })
+    }
+
+    fn var_statement(&mut self, ast: &Ast, builder: &mut FunctionBuilder) -> Result<()> {
+        let mutable = ast.kind == AKind::VarStatement(true);
+        for var in ast.iter() {
+            let (identifiers, datatype, values) = (&var[0], &var[1], &var[2]);
+            
+            let mut datatype = if let AKind::None = datatype.kind {
+                None
+            } else {
+                Some(self.find_datatype(&datatype.token)?)
+            };
+
+            for (i, ident) in identifiers.iter().map(|i| i.token.value.clone()).enumerate() {
+                let value = if values.kind != AKind::None {
+                    let (value, real_datatype) = self.expression(&values[i], builder)?;
+                    if let Some(datatype) = datatype.as_ref() {
+                        self.assert_type(&values[i], &real_datatype, datatype)?;   
+                    } else {
+                        datatype = Some(real_datatype);
+                    }
+                    value
+                } else {
+                    datatype.as_ref().unwrap().default_value(builder)
+                };
+
+                let access = if mutable {
+                    let var = Variable::new(self.variable_counter);
+                    self.variable_counter += 1;
+                    builder.declare_var(var, datatype.as_ref().unwrap().get_ir_repr());
+                    builder.def_var(var, value);
+                    VarAccess::Mutable(var)
+                } else {
+                    VarAccess::Immutable(value)
+                };
+
+                self.variables.push(Some(Var::new(
+                    ident, 
+                    access,  
+                    datatype.clone().unwrap(),
+                )));
+            }
+        }
+
+        Ok(())
+    }
+
+    fn call_expression(&mut self, ast: &Ast, builder: &mut FunctionBuilder) -> ExprResult {
         let fun = self.find_function(&ast[0].token)?;
 
         let fun_ref = self.imported_functions
@@ -291,7 +410,7 @@ impl Generator {
         &mut self,
         ast: &Ast,
         builder: &mut FunctionBuilder,
-    ) -> Result<Option<(Value, Cell<Datatype>)>> {
+    ) -> ExprResult {
         let cond_expr = &ast[0];
         let (cond_value, cond_type) = self.expression(cond_expr, builder)?;
 
@@ -314,7 +433,13 @@ impl Generator {
             Some(else_block)
         };
 
-        builder.seal_current_block();
+        if let Some((_, loop_block, ..)) = self.loop_headers.last() {
+            if loop_block.to_owned() != builder.current_block().unwrap() {
+                builder.seal_current_block();
+            }
+        } else {
+            builder.seal_current_block();
+        }
 
         let then_branch = &ast[1];
 
@@ -322,6 +447,7 @@ impl Generator {
         let then_result = self.statement_list(then_branch, builder)?;
 
         let mut result = None;
+        let mut then_filled = false;
         if let Some((value, datatype)) = then_result {
             if merge_block.is_some() {
                 return Err(IrGenError::new(
@@ -338,51 +464,51 @@ impl Generator {
             let block = merge_block.unwrap_or_else(|| builder.create_block());
             builder.ins().jump(block, &[]);
             merge_block = Some(block);
+        } else {
+            then_filled = true;
         }
 
         builder.seal_current_block();
 
-        match else_branch.kind {
-            AKind::None => (),
-            AKind::IfExpression | AKind::Group => {
-                let else_block = else_block.unwrap();
+        if else_branch.kind == AKind::Group {
+            let else_block = else_block.unwrap();
 
-                builder.switch_to_block(else_block);
-                let else_result = match else_branch.kind {
-                    AKind::IfExpression => self.if_expression(else_branch, builder)?,
-                    AKind::Group => self.statement_list(else_branch, builder)?,
-                    _ => unreachable!(),
-                };
-
-                if let Some((value, datatype)) = else_result {
-                    if let Some((_, other_datatype)) = result.as_ref() {
-                        self.assert_type(ast, &datatype, &other_datatype)?;
-                    } else {
-                        return Err(IrGenError::new(
-                            IGEKind::UnexpectedValueInThenBranch,
-                            ast.token.clone(),
-                        ));
-                    }
+            builder.switch_to_block(else_block);
+            let else_result = self.statement_list(else_branch, builder)?;
+                
+            if let Some((value, datatype)) = else_result {
+                if let Some((_, other_datatype)) = result.as_ref() {
+                    self.assert_type(ast, &datatype, &other_datatype)?;
                     builder.ins().jump(merge_block.unwrap(), &[value]);
+                } else if then_filled {
+                    let block = builder.create_block();
+                    let val = builder.append_block_param(block, datatype.get_ir_repr());
+                    result = Some((val, datatype));
+                    builder.ins().jump(block, &[value]);
+                    merge_block = Some(block);
                 } else {
-                    if result.is_some() {
-                        return Err(IrGenError::new(
-                            IGEKind::MissingValueInElseBranch,
-                            ast.token.clone(),
-                        ));
-                    }
-                    if !builder.is_filled() {
-                        let block = merge_block.unwrap_or_else(|| builder.create_block());
-                        builder.ins().jump(block, &[]);
-                        merge_block = Some(block);
-                    }
+                    return Err(IrGenError::new(
+                        IGEKind::UnexpectedValueInThenBranch,
+                        ast.token.clone(),
+                    ));
                 }
-
-                if merge_block.is_some() {
-                    builder.seal_current_block();
+            } else {
+                if result.is_some() {
+                    return Err(IrGenError::new(
+                        IGEKind::MissingValueInElseBranch,
+                        ast.token.clone(),
+                    ));
+                }
+                if !builder.is_filled() {
+                    let block = merge_block.unwrap_or_else(|| builder.create_block());
+                    builder.ins().jump(block, &[]);
+                    merge_block = Some(block);
                 }
             }
-            _ => unreachable!(),
+
+            if merge_block.is_some() {
+                builder.seal_current_block();
+            }
         }
 
         if let Some(block) = merge_block {
@@ -396,12 +522,17 @@ impl Generator {
         &mut self,
         ast: &Ast,
         builder: &mut FunctionBuilder,
-    ) -> Result<(Value, Cell<Datatype>)> {
+    ) -> ExprResult {
+        let op = ast[0].token.value.deref();
+
+        if op == "=" {
+            return Ok(Some(self.assign(ast, builder)?));
+        }
+
         let (left_val, left_type) = self.expression(&ast[1], builder)?;
         let (right_val, right_type) = self.expression(&ast[2], builder)?;
 
         if left_type == right_type {
-            let op = ast[0].token.value.deref();
             let value = match left_type.name.as_str() {
                 "i8" | "i16" | "i32" | "i64" => match op {
                     "+" => builder.ins().iadd(left_val, right_val),
@@ -429,10 +560,10 @@ impl Generator {
                         };
 
                         let val = builder.ins().icmp(op, left_val, right_val);
-                        return Ok((val, self.builtin_repo.bool.clone()));
+                        return Ok(Some((val, self.builtin_repo.bool.clone())));
                     }
 
-                    _ => todo!(),
+                    _ => todo!("unsupported int operator {}", op),
                 },
                 "u8" | "u16" | "u32" | "u64" => match op {
                     "+" => builder.ins().iadd(left_val, right_val),
@@ -460,10 +591,10 @@ impl Generator {
                         };
 
                         let val = builder.ins().icmp(op, left_val, right_val);
-                        return Ok((val, self.builtin_repo.bool.clone()));
+                        return Ok(Some((val, self.builtin_repo.bool.clone())));
                     }
 
-                    _ => todo!(),
+                    _ => todo!("unsupported uint operator {}", op),
                 },
                 "f32" | "f64" => match op {
                     "+" => builder.ins().fadd(left_val, right_val),
@@ -485,25 +616,41 @@ impl Generator {
                         };
 
                         let val = builder.ins().fcmp(op, left_val, right_val);
-                        return Ok((val, self.builtin_repo.bool.clone()));
+                        return Ok(Some((val, self.builtin_repo.bool.clone())));
                     }
-                    _ => todo!(),
+                    _ => todo!("unsupported float operation {}", op),
                 },
 
                 "bool" => match op {
                     "&" => builder.ins().band(left_val, right_val),
                     "|" => builder.ins().bor(left_val, right_val),
-                    "||" => todo!(),
-                    "&&" => todo!(),
-                    _ => todo!(),
+                    "||" => todo!("unsupported ||"),
+                    "&&" => todo!("unsupported &&"),
+                    _ => todo!("unsupported bool operation {}", op),
                 },
 
                 _ => todo!("unmatched operator {} on type {}", op, right_type.name.as_str()),
             };
-            Ok((value, right_type))
+            Ok(Some((value, right_type)))
         } else {
-            todo!()
+            todo!("non-matching type of binary operation")
         }
+    }
+
+    fn assign(&mut self, ast: &Ast, builder: &mut FunctionBuilder) -> Result<(Value, Cell<Datatype>)> {
+        let var = self.find_variable(&ast[1].token)?.clone();
+
+        let (val, datatype) = self.expression(&ast[2], builder)?;
+
+        self.assert_type(&ast, &datatype, &var.datatype)?;
+
+        if let VarAccess::Mutable(var) = var.access {
+            builder.def_var(var, val);
+        } else {
+            return Err(IrGenError::new(IGEKind::AssignToImmutable, ast.token.clone()));
+        }
+
+        Ok((val, datatype))
     }
 
     fn create_signature(&mut self, mut ast: Ast) -> Result<Cell<Fun>> {
@@ -618,12 +765,6 @@ impl Generator {
             .map(|v| v.as_ref().unwrap())
             .find(|var| var.name.deref() == token.value.deref())
             .ok_or_else(|| IrGenError::new(IGEKind::VariableNotFound, token.clone()))
-    }
-
-    fn make_variable(&mut self) -> Variable {
-        let var = Variable::with_u32(self.variable_counter);
-        self.variable_counter += 1;
-        var
     }
 
     fn load_ast(&mut self, file_name: String) -> Result<Ast> {
@@ -974,9 +1115,12 @@ pub enum IGEKind {
     InvalidInlineLevel,
     InvalidLinkage,
     InvalidCallConv,
+    AssignToImmutable,
     ExpectedValue,
     MissingValueInElseBranch,
     UnexpectedValueInThenBranch,
+    UnexpectedValue,
+    LoopHeaderNotFound,
     MissingElseBranch,
     FunctionNotFound,
     VariableNotFound,

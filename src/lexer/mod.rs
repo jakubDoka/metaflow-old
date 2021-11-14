@@ -41,6 +41,11 @@ impl Lexer {
             "if" => TKind::If,
             "elif" => TKind::Elif,
             "else" => TKind::Else,
+            "let" => TKind::Let,
+            "var" => TKind::Var,
+            "loop" => TKind::Loop,
+            "break" => TKind::Break,
+            "continue" => TKind::Continue,
             "max" => TKind::Op,
             "min" => TKind::Op,
             "true" => TKind::Bool(true),
@@ -195,45 +200,6 @@ impl Lexer {
             _ => return None,
         })
     }
-  /*var res = 0
-  # c escape rules
-  l.advance()
-  case l.currentChar:
-  of 'a', 'b', 'e', 'f', 'n', 'r', 't', 'v', '\\', '\'', '"':
-    res =
-      case l.currentChar: # smart ha
-      of 'a': '\a'.ord
-      of 'b': '\b'.ord
-      of 'e': '\e'.ord
-      of 'f': '\f'.ord
-      of 'n': '\n'.ord
-      of 'r': '\r'.ord
-      of 't': '\t'.ord
-      of 'v': '\v'.ord
-      else: l.currentChar.ord
-    l.advance()
-  of {'0'..'7'}:
-    for i in 0..<3:
-      if l.current.isOctDigit(): 
-        l.info.fail("expected octal digit")
-      res = res * 8 + l.current.ord - ord('0')
-      l.advance()
-  of 'x', 'u', 'U':
-    let advance = 
-      case l.currentChar:
-      of 'x': 2
-      of 'u': 4
-      of 'U': 6
-      else: 0
-    l.advance()
-    for i in 0..<advance:
-      if l.current.isHexDigit(): 
-        l.info.fail("expected hex digit")
-      res = res * 16 + l.currentChar.hexValue
-      l.advance()
-  else: 
-    l.info.fail("unknown escape sequence")
-  return Rune(res)*/
 
     fn line_data(&self) -> LineData {
         LineData {
@@ -389,6 +355,11 @@ pub enum TKind {
     If,
     Elif,
     Else,
+    Var,
+    Let,
+    Loop,
+    Break,
+    Continue,
 
     Label,
     Ident,
@@ -429,6 +400,11 @@ impl std::fmt::Display for TKind {
             TKind::If => "'if'",
             TKind::Elif => "'elif'",
             TKind::Else => "'else'",
+            TKind::Var => "'var'",
+            TKind::Let => "'let'",
+            TKind::Loop => "'loop'",
+            TKind::Break => "'break'",
+            TKind::Continue => "'continue'",
             TKind::Label => "'label'",
             TKind::Ident => "identifier",
             TKind::Op => "operator",
