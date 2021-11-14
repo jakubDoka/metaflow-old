@@ -29,6 +29,7 @@ pub struct Generator {
     imported_functions: Vec<(StrRef, FuncRef)>,
     call_buffer: Vec<Value>,
     object_module: ObjectModule,
+    seen_structures: Vec<Cell<Datatype>>,
 }
 
 impl Generator {
@@ -48,12 +49,107 @@ impl Generator {
             imported_functions: Vec::new(),
             call_buffer: Vec::new(),
             object_module,
+            seen_structures: Vec::new(),
         }
     }
 
     fn generate(mut self, root_file_name: &str) -> Result<ObjectModule> {
         self.generate_module(root_file_name.to_string())?;
 
+        self.resolve_types()?;
+
+        self.generate_functions()?;
+
+        Ok(self.object_module)
+    }
+
+    fn resolve_types(&mut self) -> Result<()> {
+        let ctx = std::mem::replace(&mut self.context, Context::new());
+        
+        let datatype_iter = ctx.modules.iter().map(|m| m.types.iter()).flatten().map(Clone::clone);
+        
+        for mut datatype in datatype_iter.clone().filter(|d| !d.is_resolved()) {
+            let ast = if let DKind::Unresolved(ast) = std::mem::replace(
+                &mut datatype.kind, 
+                DKind::Unresolved(Ast::none())
+            ) {
+                ast
+            } else {
+                unreachable!();
+            };
+
+            let kind = match ast.kind {
+                AKind::StructDeclaration => {
+                    self.generate_struct(ast)?
+                }
+                _ => todo!("unmatched datatype type {:?}", ast),
+            };
+
+            datatype.kind = kind;
+        }
+
+        for mut datatype in datatype_iter.clone().filter(|d| !d.is_size_resolved()) {
+            self.determinate_size(&mut datatype)?;
+        }
+
+        self.context = ctx;
+        Ok(())
+    }
+
+    fn determinate_size(&mut self, datatype: &mut Datatype) -> Result<()> {
+        if datatype.is_size_resolved() {
+            return Ok(());
+        }
+
+        let mut size = 0;
+
+        match &mut datatype.kind {
+            DKind::Structure(structure) => {
+                if structure.union {
+                    for field in &mut structure.fields {
+                        self.determinate_size(&mut field.datatype)?;
+                        size = size.max(field.datatype.size.unwrap());
+                    }
+                } else {
+                    for field in &mut structure.fields {
+                        self.determinate_size(&mut field.datatype)?;
+                        field.offset = size;
+                        size += field.datatype.size();
+                    }
+                }
+            }
+            _ => todo!("unmatched datatype type {:?}", datatype.kind),
+        }
+
+        Ok(())
+    }
+
+    fn generate_struct(&mut self, ast: Ast) -> Result<DKind> {
+        let mut fields = Vec::new();
+        for raw_fields in ast[1].iter() {
+            match raw_fields.kind {
+                AKind::StructField(embedded) => {
+                    let datatype = self.find_datatype(&raw_fields.last().unwrap().token)?;
+                    for field in raw_fields[0..raw_fields.len() - 1].iter() {
+                        fields.push(Field {
+                            embedded,
+                            offset: 0,
+                            name: field.token.value.clone(), 
+                            datatype: datatype.clone(),
+                        });
+                    }
+                }
+                _ => todo!("unsupported inner struct construct {:?}", raw_fields),
+            }
+        }
+
+        Ok(DKind::Structure(Structure {
+            union: false,
+            fields,
+        }))
+    }
+        
+    fn generate_functions(&mut self) -> Result<()> {
         let mut codegen_ctx = cranelift_codegen::Context::new();
         let mut function_context = FunctionBuilderContext::new();
         let ctx = std::mem::replace(&mut self.context, Context::new());
@@ -93,7 +189,7 @@ impl Generator {
             
         };
 
-        Ok(self.object_module)
+        Ok(())
     }
 
     fn generate_module(&mut self, module_path: String) -> Result<Cell<Mod>> {
@@ -110,6 +206,10 @@ impl Generator {
             match item.kind {
                 AKind::Function => {
                     self.function(item)?;
+                    self.pushed_attributes.clear();
+                }
+                AKind::StructDeclaration => {
+                    self.struct_declaration(item)?;
                     self.pushed_attributes.clear();
                 }
                 AKind::Attribute => match item[0].token.value.deref() {
@@ -132,13 +232,24 @@ impl Generator {
                             .for_each(|item| self.pushed_attributes.push(item));
                     }
                 },
-                _ => todo!(),
+                _ => todo!("unmatched top level expression {:?}", item),
             }
         }
 
         self.context.add_module(self.current_module.clone())?;
 
         Ok(self.current_module.clone())
+    }
+
+    fn struct_declaration(&mut self, ast: Ast) -> Result<()> {
+        let name = ast[0].token.value.clone().to_string();
+
+        self.current_module.add_datatype(Cell::new(Datatype::new(
+            name,
+            DKind::Unresolved(ast),
+        )))?;
+
+        Ok(())
     }
 
     fn function(&mut self, ast: Ast) -> Result<()> {
@@ -1023,7 +1134,7 @@ pub enum VarAccess {
 pub struct Datatype {
     name: String,
     kind: DKind,
-    size: usize,
+    size: Option<usize>,
 }
 
 impl Datatype {
@@ -1032,35 +1143,38 @@ impl Datatype {
     }
 
     fn with_size(name: String, kind: DKind, size: usize) -> Self {
-        Self { name, kind, size }
+        Self { name, kind, size: Some(size) }
+    }
+
+    fn size(&self) -> usize {
+        self.size.unwrap()
+    }
+
+    fn is_resolved(&self) -> bool {
+        !matches!(self.kind, DKind::Builtin(_))
+    }
+
+    fn is_size_resolved(&self) -> bool {
+        self.size.is_some()
     }
 
     fn get_ir_repr(&self) -> Type {
         match self.kind {
             DKind::Builtin(tp) => tp,
-            DKind::Pointer(_) => todo!(),
-            DKind::Alias(_) => todo!(),
-            DKind::Structure(_) => todo!(),
-            DKind::Enum(_) => todo!(),
+            _ => todo!(),
         }
     }
 
     fn default_value(&self, builder: &mut FunctionBuilder) -> Value {
         match self.kind {
             DKind::Builtin(tp) => match tp {
-                I8 => builder.ins().iconst(I8, 0),
-                I16 => builder.ins().iconst(I16, 0),
-                I32 => builder.ins().iconst(I32, 0),
-                I64 => builder.ins().iconst(I64, 0),
+                I8 | I16 | I32 | I64 => builder.ins().iconst(tp, 0),
                 F32 => builder.ins().f32const(0.0),
                 F64 => builder.ins().f64const(0.0),
                 B1 => builder.ins().bconst(B1, false),
                 _ => panic!("unsupported builtin type"),
             },
-            DKind::Pointer(_) => todo!(),
-            DKind::Alias(_) => todo!(),
-            DKind::Structure(_) => todo!(),
-            DKind::Enum(_) => todo!(),
+            _ => todo!(),
         }
     }
 }
@@ -1072,10 +1186,22 @@ pub enum DKind {
     Alias(Cell<Datatype>),
     Structure(Structure),
     Enum(Enum),
+    Unresolved(Ast),
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub enum Structure {}
+pub struct Structure {
+    union: bool,
+    fields: Vec<Field>,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct Field {
+    embedded: bool,
+    offset: usize,
+    name: StrRef,
+    datatype: Cell<Datatype>,
+}
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum Enum {}

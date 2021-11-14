@@ -29,16 +29,44 @@ impl AstParser {
         let mut ast = self.ast(AKind::Group);
         while self.current_token.kind != TKind::Eof {
             match self.current_token.kind {
-                TKind::Fun => {
-                    ast.push(self.fun()?);
-                }
-                TKind::Attr => {
-                    ast.push(self.attr()?);
-                }
+                TKind::Fun => ast.push(self.fun()?),
+                TKind::Attr => ast.push(self.attr()?),
+                TKind::Struct => ast.push(self.struct_declaration()?),
                 TKind::Indent(0) => self.advance(),
-                _ => self.unexpected_str("expected 'fun'")?,
+                _ => self.unexpected_str("expected 'fun' or 'attr' or 'struct'")?,
             }
         }
+        Ok(ast)
+    }
+
+    fn struct_declaration(&mut self) -> Result<Ast> {
+        let mut ast = self.ast(AKind::StructDeclaration);
+        self.advance();
+        ast.push(self.ident_expression()?);
+
+        ast.push(self.block(Self::struct_field)?);
+
+        Ok(ast)
+    }
+
+    fn struct_field(&mut self) -> Result<Ast> {
+        if self.current_token.kind == TKind::Attr {
+            return self.attr();
+        }
+
+        let embedded = if self.current_token == TKind::Embed {
+            self.advance();
+            true
+        } else {
+            false
+        };
+
+        let mut ast = self.ast(AKind::StructField(embedded));
+
+        self.list(&mut ast, TKind::None, TKind::Comma, TKind::Colon, Self::ident)?;
+
+        ast.push(self.expression()?);
+        
         Ok(ast)
     }
 
@@ -166,18 +194,7 @@ impl AstParser {
     fn var_statement_line(&mut self) -> Result<Ast> {
         let mut ast = self.ast(AKind::VarAssign);
         let mut ident_group = self.ast(AKind::Group);
-        self.list(
-            &mut ident_group,
-            TKind::None,
-            TKind::Comma,
-            TKind::None,
-            |s| {
-                s.expect_str(TKind::Ident, "expected identifier")?;
-                let ast = s.ast(AKind::Identifier);
-                s.advance();
-                Ok(ast)
-            },
-        )?;
+        self.list(&mut ident_group, TKind::None, TKind::Comma, TKind::None, Self::ident)?;
         
         let datatype = if self.current_token == TKind::Colon {
             self.advance();
@@ -216,6 +233,13 @@ impl AstParser {
 
         ast.children = vec![ident_group, datatype, values];
 
+        Ok(ast)
+    }
+
+    fn ident(&mut self) -> Result<Ast> {       
+        self.expect_str(TKind::Ident, "expected identifier")?;
+        let ast = self.ast(AKind::Identifier);
+        self.advance();
         Ok(ast)
     }
 
@@ -591,7 +615,7 @@ impl AstParser {
     }
 }
 
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Clone, Default, PartialEq)]
 pub struct Ast {
     pub kind: AKind,
     pub children: Vec<Ast>,
@@ -664,6 +688,9 @@ pub enum AKind {
     FunctionArgument(bool),
     Call,
     Index,
+
+    StructDeclaration,
+    StructField(bool),
 
     Attribute,
     AttributeElement,

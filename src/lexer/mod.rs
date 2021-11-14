@@ -46,6 +46,8 @@ impl Lexer {
             "loop" => TKind::Loop,
             "break" => TKind::Break,
             "continue" => TKind::Continue,
+            "struct" => TKind::Struct,
+            "embed" => TKind::Embed,
             "max" => TKind::Op,
             "min" => TKind::Op,
             "true" => TKind::Bool(true),
@@ -339,6 +341,12 @@ impl std::fmt::Display for Token {
     }
 }
 
+impl PartialEq<Token> for Token {
+    fn eq(&self, other: &Token) -> bool {
+        self.kind == other.kind && self.value == other.value
+    }
+}
+
 impl PartialEq<TKind> for Token {
     fn eq(&self, other: &TKind) -> bool {
         self.kind == *other
@@ -360,6 +368,8 @@ pub enum TKind {
     Loop,
     Break,
     Continue,
+    Struct,
+    Embed,
 
     Label,
     Ident,
@@ -405,6 +415,8 @@ impl std::fmt::Display for TKind {
             TKind::Loop => "'loop'",
             TKind::Break => "'break'",
             TKind::Continue => "'continue'",
+            TKind::Struct => "'struct'",
+            TKind::Embed => "'embed'",
             TKind::Label => "'label'",
             TKind::Ident => "identifier",
             TKind::Op => "operator",

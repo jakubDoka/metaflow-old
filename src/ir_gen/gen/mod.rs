@@ -207,6 +207,23 @@ fun main -> i64:
         "#,
         0,
     );
+    test_sippet(
+        r#"
+struct Point:
+  x, y: i64
+
+struct Point3:
+  embed point: Point
+  z: i64
+
+struct Rect:
+  mi: Point
+  ma: Point
+
+fun main -> i64: return 0
+        "#,
+        0,
+    );
 }
 
 pub fn test_sippet(sippet: &str, exit_code: i32) {

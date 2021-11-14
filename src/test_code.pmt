@@ -41,3 +41,12 @@ fun fib_loop(v: i64) -> i64:
     if v == 0:
       break'a
   return c
+
+struct Foo:
+  a, b, c: i64
+
+struct Goo:
+  embed foo: Foo
+  attr something
+  gva: i64
+
