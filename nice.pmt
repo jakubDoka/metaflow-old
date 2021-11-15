@@ -1,19 +1,28 @@
 
-attr linkage(import), call_conv(windows_fastcall)
-fun putchar(x: i32)
+fun fib(v: i32) -> i32:
+  return if v < 2i32:
+    1i32
+  else:
+    fib(v - 1i32) + fib(v - 2i32)
 
-fun main -> i64:
-  putchar('H')
-  putchar('e')
-  putchar('l')
-  putchar('l')
-  putchar('o')
-  putchar(',')
-  putchar(' ')
-  putchar('W')
-  putchar('o')
-  putchar('r')
-  putchar('l')
-  putchar('d')
-  putchar('!')
-  return 0
+attr linkage(import), call_conv(windows_fastcall)
+fun putchar(c: i32)
+
+fun fib_loop(v: i32) -> i32:
+  var 
+    a, b, c = 1i32
+    v = v
+  loop'a:
+    c = a + b
+    a = b
+    b = c
+    v = v - 1i32
+    putchar(v)
+    if v == 1i32:
+      break'a
+  return c
+
+fun main -> i32:
+  let v = 10i32
+  return fib_loop(v) - fib(v)
+        

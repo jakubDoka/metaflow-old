@@ -182,27 +182,31 @@ fun main -> i64:
     );
     test_sippet(
         r#"
-fun fib(v: i64) -> i64:
-  return if v < 2:
-    1
+fun fib(v: i32) -> i32:
+  return if v < 2i32:
+    1i32
   else:
-    fib(v - 1) + fib(v - 2)
+    fib(v - 1i32) + fib(v - 2i32)
 
-fun fib_loop(v: i64) -> i64:
+attr linkage(import), call_conv(windows_fastcall)
+fun putchar(c: i32)
+
+fun fib_loop(v: i32) -> i32:
   var 
-    a, b, c = 1
+    a, b, c = 1i32
     v = v
   loop'a:
     c = a + b
     a = b
     b = c
-    v = v - 1
-    if v == 1:
+    v = v - 1i32
+    putchar(v)
+    if v == 1i32:
       break'a
   return c
 
-fun main -> i64:
-  let v = 10
+fun main -> i32:
+  let v = 10i32
   return fib_loop(v) - fib(v)
         "#,
         0,
@@ -220,7 +224,12 @@ struct Rect:
   mi: Point
   ma: Point
 
-fun main -> i64: return 0
+fun main -> i64: 
+  var 
+    p: Point
+    p3: Point3
+    r: Rect
+  return 0
         "#,
         0,
     );

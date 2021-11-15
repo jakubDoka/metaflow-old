@@ -24,6 +24,8 @@
         "ishl",
         "isub",
         "libcall",
+        "memmove",
+        "memset",
         "Preemptible",
         "preopt",
         "sdiv",
