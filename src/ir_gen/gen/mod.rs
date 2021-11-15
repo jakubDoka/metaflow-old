@@ -115,10 +115,10 @@ pub struct GenError {
 }
 
 impl Into<GenError> for IrGenError {
-    fn into(self) -> GenError {
+    fn into(mut self) -> GenError {
         GenError {
-            kine: GEKind::IrGenError(self.kind),
-            token: self.token,
+            kine: GEKind::IrGenError(self.take_kind()),
+            token: self.token().clone(),
         }
     }
 }

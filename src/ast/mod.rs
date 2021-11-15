@@ -1,10 +1,12 @@
-use std::{
-    fmt::Write,
-    iter::repeat,
-    ops::{Deref, DerefMut},
-};
+pub mod ast;
+pub mod error;
 
-use crate::lexer::{Lexer, TKind, Token};
+pub use ast::*;
+pub use error::*;
+use crate::lexer::*;
+
+use std::ops::Deref;
+
 
 pub type Result<T> = std::result::Result<T, AstError>;
 
@@ -27,8 +29,8 @@ impl AstParser {
 
     pub fn parse(&mut self) -> Result<Ast> {
         let mut ast = self.ast(AKind::Group);
-        while self.current_token.kind != TKind::Eof {
-            match self.current_token.kind {
+        while self.current_token.kind() != TKind::Eof {
+            match self.current_token.kind() {
                 TKind::Fun => ast.push(self.fun()?),
                 TKind::Attr => ast.push(self.attr()?),
                 TKind::Struct => ast.push(self.struct_declaration()?),
@@ -50,7 +52,7 @@ impl AstParser {
     }
 
     fn struct_field(&mut self) -> Result<Ast> {
-        if self.current_token.kind == TKind::Attr {
+        if self.current_token.kind() == TKind::Attr {
             return self.attr();
         }
 
@@ -95,7 +97,7 @@ impl AstParser {
         let mut ast = self.ast(AKind::AttributeElement);
         self.advance();
 
-        match self.current_token.kind {
+        match self.current_token.kind() {
             TKind::LPar => self.list(
                 &mut ast,
                 TKind::LPar,
@@ -103,9 +105,9 @@ impl AstParser {
                 TKind::RPar,
                 Self::attr_element,
             )?,
-            TKind::Op => match self.current_token.value.deref() {
+            TKind::Op => match self.current_token.value().deref() {
                 "=" => {
-                    ast.kind = AKind::AttributeAssign;
+                    ast.set_kind(AKind::AttributeAssign);
                     self.advance();
                     ast.push(self.expression()?);
                 }
@@ -131,7 +133,7 @@ impl AstParser {
     fn fun_header(&mut self) -> Result<Ast> {
         let mut ast = self.ast(AKind::FunctionHeader);
         self.advance();
-        ast.push(match self.current_token.kind {
+        ast.push(match self.current_token.kind() {
             TKind::Ident | TKind::Op => self.ast(AKind::Identifier),
             _ => Ast::none(),
         });
@@ -158,7 +160,7 @@ impl AstParser {
     }
 
     fn fun_argument(&mut self) -> Result<Ast> {
-        let mutable = if self.current_token.kind == TKind::Var {
+        let mutable = if self.current_token.kind() == TKind::Var {
             self.advance();
             true
         } else {
@@ -180,7 +182,7 @@ impl AstParser {
     }
 
     fn statement(&mut self) -> Result<Ast> {
-        match self.current_token.kind {
+        match self.current_token.kind() {
             TKind::Return => self.return_statement(),
             TKind::Var | TKind::Let => self.var_statement(),
             _ => self.expression(),
@@ -188,7 +190,7 @@ impl AstParser {
     }
 
     fn var_statement(&mut self) -> Result<Ast> {
-        let mut ast = self.ast(AKind::VarStatement(self.current_token.kind == TKind::Var));
+        let mut ast = self.ast(AKind::VarStatement(self.current_token.kind() == TKind::Var));
         self.advance();
         self.walk_block(|s| {
             ast.push(s.var_statement_line()?);
@@ -215,7 +217,7 @@ impl AstParser {
             Ast::none()
         };
 
-        let values = if self.current_token.value.deref() == "=" {
+        let values = if self.current_token.value().deref() == "=" {
             let mut values = self.ast(AKind::Group);
             self.advance();
             self.list(
@@ -239,11 +241,11 @@ impl AstParser {
             Ast::none()
         };
 
-        if datatype.kind == AKind::None && values.kind == AKind::None {
+        if datatype.kind() == AKind::None && values.kind() == AKind::None {
             self.unexpected_str("expected ':' or '='")?;
         }
 
-        ast.children = vec![ident_group, datatype, values];
+        ast.set_children(vec![ident_group, datatype, values]);
 
         Ok(ast)
     }
@@ -258,7 +260,7 @@ impl AstParser {
     fn return_statement(&mut self) -> Result<Ast> {
         let mut ast = self.ast(AKind::ReturnStatement);
         self.advance();
-        let ret_val = if let TKind::Indent(_) = self.current_token.kind {
+        let ret_val = if let TKind::Indent(_) = self.current_token.kind() {
             Ast::none()
         } else {
             self.expression()?
@@ -276,7 +278,7 @@ impl AstParser {
         let mut result = previous;
         while self.current_token == TKind::Op {
             let op = self.current_token.clone();
-            let pre = precedence(op.value.deref());
+            let pre = precedence(op.value().deref());
 
             self.advance();
             self.ignore_newlines();
@@ -284,9 +286,9 @@ impl AstParser {
             let mut next = self.simple_expression()?;
 
             if self.current_token == TKind::Op {
-                let dif = pre - precedence(self.current_token.value.deref());
-                let is_or_or_and = self.current_token.value.deref() == "or"
-                    || self.current_token.value.deref() == "and";
+                let dif = pre - precedence(self.current_token.value().deref());
+                let is_or_or_and = self.current_token.value().deref() == "or"
+                    || self.current_token.value().deref() == "and";
 
                 if dif > 0 || is_or_or_and {
                     next = self.expression_low(next)?;
@@ -308,7 +310,7 @@ impl AstParser {
     }
 
     fn simple_expression_low(&mut self, nested: bool) -> Result<Ast> {
-        let mut ast = match self.current_token.kind {
+        let mut ast = match self.current_token.kind() {
             TKind::Ident => self.ident_expression()?,
             TKind::Int(..) | TKind::Uint(..) | TKind::Bool(..) | TKind::Char(..) => {
                 self.ast(AKind::Literal)
@@ -323,13 +325,13 @@ impl AstParser {
             ),
         };
 
-        if ast.kind == AKind::Literal {
+        if ast.kind() == AKind::Literal {
             self.advance();
         }
 
         if !nested {
             loop {
-                match self.current_token.kind {
+                match self.current_token.kind() {
                     TKind::Dot => {
                         let mut new_ast = self.ast(AKind::DotExpr);
                         new_ast.push(ast);
@@ -339,7 +341,7 @@ impl AstParser {
                     }
                     TKind::LPar => {
                         let mut new_ast = self.ast(AKind::Call);
-                        if ast.kind == AKind::DotExpr {
+                        if ast.kind() == AKind::DotExpr {
                             ast.drain(..).rev().for_each(|e| new_ast.push(e));
                         } else {
                             new_ast.push(ast);
@@ -391,7 +393,7 @@ impl AstParser {
 
         ast.push(self.optional_label());
 
-        ast.push(if let TKind::Indent(_) = self.current_token.kind {
+        ast.push(if let TKind::Indent(_) = self.current_token.kind() {
             Ast::none()
         } else {
             self.expression()?
@@ -425,7 +427,7 @@ impl AstParser {
         let mut ast = self.ast(AKind::Identifier);
         self.advance();
 
-        match self.current_token.kind {
+        match self.current_token.kind() {
             TKind::LCurly => {
                 let mut temp_ast = self.ast(AKind::Attribute);
                 temp_ast.push(ast);
@@ -450,7 +452,7 @@ impl AstParser {
         let condition = self.expression()?;
         let then_block = self.stmt_block()?;
 
-        let else_block = match self.current_token.kind {
+        let else_block = match self.current_token.kind() {
             TKind::Else => {
                 self.advance();
                 self.stmt_block()?
@@ -461,7 +463,7 @@ impl AstParser {
                 ast.push(self.if_expression()?);
                 ast
             }
-            TKind::Indent(_) => match self.peek().kind {
+            TKind::Indent(_) => match self.peek().kind() {
                 TKind::Else => {
                     self.advance();
                     self.advance();
@@ -480,12 +482,12 @@ impl AstParser {
             _ => Ast::none(),
         };
 
-        ast.children = vec![condition, then_block, else_block];
+        ast.set_children(vec![condition, then_block, else_block]);
         Ok(ast)
     }
 
     fn walk_block<F: FnMut(&mut Self) -> Result<()>>(&mut self, mut parser: F) -> Result<()> {
-        if let TKind::Indent(level) = self.current_token.kind {
+        if let TKind::Indent(level) = self.current_token.kind() {
             if level > self.level + 1 {
                 self.unexpected_str(
                     "too deep indentation, one indentation level is equal 2 spaces of one tab",
@@ -522,18 +524,18 @@ impl AstParser {
     }
 
     fn ignore_newlines(&mut self) {
-        while let TKind::Indent(_) = self.current_token.kind {
+        while let TKind::Indent(_) = self.current_token.kind() {
             self.advance();
         }
     }
 
     fn level_continues(&mut self) -> Result<bool> {
-        if !matches!(self.current_token.kind, TKind::Indent(_) | TKind::Eof) {
+        if !matches!(self.current_token.kind(), TKind::Indent(_) | TKind::Eof) {
             self.unexpected_str("expected indentation")?;
         }
 
         loop {
-            match self.peek().kind {
+            match self.peek().kind() {
                 TKind::Indent(_) => {
                     self.advance();
                 }
@@ -542,7 +544,7 @@ impl AstParser {
             }
         }
 
-        match self.current_token.kind {
+        match self.current_token.kind() {
             TKind::Indent(level) => {
                 if level == self.level {
                     self.advance();
@@ -620,7 +622,7 @@ impl AstParser {
     }
 
     fn expect(&self, kind: TKind, message: String) -> Result<()> {
-        if self.current_token.kind == kind {
+        if self.current_token.kind() == kind {
             Ok(())
         } else {
             self.unexpected(message)
@@ -636,144 +638,6 @@ impl AstParser {
             AEKind::UnexpectedToken(message),
             self.current_token.clone(),
         ))
-    }
-}
-
-#[derive(Debug, Clone, Default, PartialEq)]
-pub struct Ast {
-    pub kind: AKind,
-    pub children: Vec<Ast>,
-    pub token: Token,
-}
-
-impl Ast {
-    pub fn new(kind: AKind, token: Token) -> Ast {
-        Self::with_children(kind, token, vec![])
-    }
-
-    pub fn none() -> Ast {
-        Self::new(AKind::None, Token::eof())
-    }
-
-    pub fn with_children(kind: AKind, token: Token, children: Vec<Ast>) -> Ast {
-        Ast {
-            kind,
-            children,
-            token,
-        }
-    }
-
-    pub fn push(&mut self, ast: Ast) {
-        self.children.push(ast);
-    }
-
-    fn log(&self, level: usize, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        repeat(' ')
-            .take(level)
-            .for_each(|_| f.write_char(' ').unwrap());
-        write!(f, "{:?} {}", self.kind, self.token)?;
-        if self.children.len() > 0 {
-            write!(f, ":\n")?;
-            for child in &self.children {
-                child.log(level + 1, f)?;
-            }
-        } else {
-            write!(f, "\n")?;
-        }
-
-        Ok(())
-    }
-}
-
-impl std::fmt::Display for Ast {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        self.log(0, f)
-    }
-}
-
-impl DerefMut for Ast {
-    fn deref_mut(&mut self) -> &mut Vec<Ast> {
-        &mut self.children
-    }
-}
-
-impl Deref for Ast {
-    type Target = Vec<Ast>;
-
-    fn deref(&self) -> &Self::Target {
-        &self.children
-    }
-}
-
-#[derive(Debug, Clone, PartialEq)]
-pub enum AKind {
-    Function,
-    FunctionHeader,
-    FunctionArgument(bool),
-    Call,
-    Index,
-
-    StructDeclaration,
-    StructField(bool),
-
-    Attribute,
-    AttributeElement,
-    AttributeAssign,
-
-    VarStatement(bool),
-    VarAssign,
-
-    ReturnStatement,
-
-    BinaryOperation,
-    IfExpression,
-    DotExpr,
-
-    Loop,
-    Break,
-    Continue,
-
-    Group,
-
-    Identifier,
-    Literal,
-
-    None,
-}
-
-impl Default for AKind {
-    fn default() -> Self {
-        AKind::None
-    }
-}
-
-#[derive(Debug)]
-pub struct AstError {
-    pub kind: AEKind,
-    pub token: Option<Token>,
-}
-
-impl AstError {
-    pub fn new(kind: AEKind, token: Token) -> AstError {
-        AstError {
-            kind,
-            token: Some(token),
-        }
-    }
-}
-
-#[derive(Debug)]
-pub enum AEKind {
-    UnexpectedToken(String),
-    UnexpectedEof,
-}
-
-impl Into<AstError> for AEKind {
-    fn into(self) -> AstError {
-        AstError {
-            kind: self,
-            token: None,
-        }
     }
 }
 
