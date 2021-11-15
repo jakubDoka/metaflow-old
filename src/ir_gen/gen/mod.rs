@@ -27,7 +27,8 @@ pub fn compile(args: Arguments) -> Result<()> {
         .next()
         .unwrap();
 
-    let output_name = args.field_flags
+    let output_name = args
+        .field_flags
         .iter()
         .find(|(f, _)| f == "o")
         .map(|(_, v)| v.as_str())
@@ -71,8 +72,6 @@ pub fn compile(args: Arguments) -> Result<()> {
 }
 
 pub fn generate_obj_file(args: &Arguments) -> Result<Vec<u8>> {
-    
-
     let mut settings = settings::builder();
     for (_, values) in args.field_flags.iter().filter(|(f, _)| f == "comp_flags") {
         for value in values.split(" ") {
@@ -229,7 +228,13 @@ fun main -> i64:
     p: Point
     p3: Point3
     r: Rect
-  return 0
+  
+  p.x = 1
+  p3.point = p
+  p3.y = 2
+  r.mi = p3.point
+
+  return r.mi.x - r.mi.y + 1
         "#,
         0,
     );

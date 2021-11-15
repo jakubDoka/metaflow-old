@@ -164,19 +164,17 @@ impl Lexer {
         self.cursor.advance();
         let current = self.cursor.advance().unwrap_or('\0');
         Some(match current {
-            'a' | 'b' | 'e' | 'f' | 'n' | 'r' | 't' | 'v' | '\\' | '\'' | '"' => {
-                match current {
-                    'a' => '\x07',
-                    'b' => '\x08',
-                    'e' => '\x1b',
-                    'f' => '\x0c',
-                    'v' => '\x0b',
-                    'n' => '\n',
-                    'r' => '\r',
-                    't' => '\t',
-                    _ => current,
-                }
-            }
+            'a' | 'b' | 'e' | 'f' | 'n' | 'r' | 't' | 'v' | '\\' | '\'' | '"' => match current {
+                'a' => '\x07',
+                'b' => '\x08',
+                'e' => '\x1b',
+                'f' => '\x0c',
+                'v' => '\x0b',
+                'n' => '\n',
+                'r' => '\r',
+                't' => '\t',
+                _ => current,
+            },
             '0'..='7' => {
                 let mut res = 0u8;
                 for _ in 0..3 {
@@ -243,9 +241,9 @@ impl<'a> Iterator for Lexer {
             '{' => TKind::LCurly,
             '}' => TKind::RCurly,
             '[' => TKind::LBra,
-            ']' => TKind::RBra,       
+            ']' => TKind::RBra,
             '.' => TKind::Dot,
-    
+
             _ => TKind::UnknownCharacter(char),
         };
 

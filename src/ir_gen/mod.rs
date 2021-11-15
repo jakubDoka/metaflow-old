@@ -1,10 +1,23 @@
 pub mod gen;
 
-use cranelift_codegen::{binemit::{NullStackMapSink, NullTrapSink}, entity::EntityRef, ir::{AbiParam, Block, ExternalName, FuncRef, Function, InstBuilder, MemFlags, Signature, StackSlotData, StackSlotKind, Type, Value, condcodes::{FloatCC, IntCC}, types::*}, isa::{CallConv, TargetIsa}};
+use cranelift_codegen::{
+    binemit::{NullStackMapSink, NullTrapSink},
+    entity::EntityRef,
+    ir::{
+        condcodes::{FloatCC, IntCC},
+        types::*,
+        AbiParam, Block, ExternalName, FuncRef, Function, InstBuilder, MemFlags, Signature,
+        StackSlotData, StackSlotKind, Type, Value,
+    },
+    isa::{CallConv, TargetIsa},
+};
 use cranelift_frontend::{FunctionBuilder, FunctionBuilderContext, Variable};
 use cranelift_module::{FuncId, Linkage, Module};
 use cranelift_object::ObjectModule;
-use std::{ops::{Deref, DerefMut}, str::FromStr};
+use std::{
+    ops::{Deref, DerefMut},
+    str::FromStr,
+};
 
 use crate::{
     ast::{AEKind, AKind, Ast, AstError, AstParser},
@@ -65,23 +78,25 @@ impl Generator {
 
     fn resolve_types(&mut self) -> Result<()> {
         let ctx = std::mem::replace(&mut self.context, Context::new());
-        
-        let datatype_iter = ctx.modules.iter().map(|m| m.types.iter()).flatten().map(Clone::clone);
-        
+
+        let datatype_iter = ctx
+            .modules
+            .iter()
+            .map(|m| m.types.iter())
+            .flatten()
+            .map(Clone::clone);
+
         for mut datatype in datatype_iter.clone().filter(|d| !d.is_resolved()) {
-            let ast = if let DKind::Unresolved(ast) = std::mem::replace(
-                &mut datatype.kind, 
-                DKind::Unresolved(Ast::none())
-            ) {
+            let ast = if let DKind::Unresolved(ast) =
+                std::mem::replace(&mut datatype.kind, DKind::Unresolved(Ast::none()))
+            {
                 ast
             } else {
                 unreachable!();
             };
 
             let kind = match ast.kind {
-                AKind::StructDeclaration => {
-                    self.generate_struct(ast)?
-                }
+                AKind::StructDeclaration => self.generate_struct(ast)?,
                 _ => todo!("unmatched datatype type {:?}", ast),
             };
 
@@ -136,7 +151,7 @@ impl Generator {
                         fields.push(Field {
                             embedded,
                             offset: 0,
-                            name: field.token.value.clone(), 
+                            name: field.token.value.clone(),
                             datatype: datatype.clone(),
                         });
                     }
@@ -150,12 +165,18 @@ impl Generator {
             fields,
         }))
     }
-        
+
     fn generate_functions(&mut self) -> Result<()> {
         let mut codegen_ctx = cranelift_codegen::Context::new();
         let mut function_context = FunctionBuilderContext::new();
         let ctx = std::mem::replace(&mut self.context, Context::new());
-        for mut f in ctx.modules.iter().map(|m| m.functions.iter()).flatten().map(Clone::clone) {
+        for mut f in ctx
+            .modules
+            .iter()
+            .map(|m| m.functions.iter())
+            .flatten()
+            .map(Clone::clone)
+        {
             if let AKind::None = f.body.kind {
                 continue;
             }
@@ -163,7 +184,7 @@ impl Generator {
             self.imported_functions.clear();
             self.variable_counter = 0;
             let mut function = Function::with_name_signature(
-                ExternalName::default(), 
+                ExternalName::default(),
                 std::mem::take(&mut f.signature).unwrap(),
             );
             let mut builder = FunctionBuilder::new(&mut function, &mut function_context);
@@ -171,7 +192,11 @@ impl Generator {
             builder.append_block_params_for_function_params(entry_block);
             builder.switch_to_block(entry_block);
 
-            for (value, var) in builder.block_params(entry_block).iter().zip(f.params.iter_mut()) {
+            for (value, var) in builder
+                .block_params(entry_block)
+                .iter()
+                .zip(f.params.iter_mut())
+            {
                 var.value.kind = VKind::Immutable(value.clone());
                 self.variables.push(Some(var.clone()));
             }
@@ -179,18 +204,18 @@ impl Generator {
             self.generate_function_body(&f.body, &mut builder)?;
             builder.seal_current_block();
             builder.finalize();
-            println!("{}", function.display());
             codegen_ctx.func = function;
             codegen_ctx.compute_cfg();
             codegen_ctx.compute_domtree();
-            self.object_module.define_function(
-                f.id, 
-                &mut codegen_ctx, 
-                &mut NullTrapSink::default(), 
-                &mut NullStackMapSink {},
-            ).unwrap();
-            
-        };
+            self.object_module
+                .define_function(
+                    f.id,
+                    &mut codegen_ctx,
+                    &mut NullTrapSink::default(),
+                    &mut NullStackMapSink {},
+                )
+                .unwrap();
+        }
 
         Ok(())
     }
@@ -198,10 +223,7 @@ impl Generator {
     fn generate_module(&mut self, module_path: String) -> Result<Cell<Mod>> {
         let mut ast = self.load_ast(module_path)?;
 
-       
-        self.current_module = Cell::new(Mod::new(
-            ast.token.line_data.file_name.to_string(),
-        ));
+        self.current_module = Cell::new(Mod::new(ast.token.line_data.file_name.to_string()));
         self.current_module
             .dependency
             .push(self.builtin_module.clone());
@@ -247,10 +269,8 @@ impl Generator {
     fn struct_declaration(&mut self, ast: Ast) -> Result<()> {
         let name = ast[0].token.value.clone().to_string();
 
-        self.current_module.add_datatype(Cell::new(Datatype::new(
-            name,
-            DKind::Unresolved(ast),
-        )))?;
+        self.current_module
+            .add_datatype(Cell::new(Datatype::new(name, DKind::Unresolved(ast))))?;
 
         Ok(())
     }
@@ -266,11 +286,7 @@ impl Generator {
         Ok(())
     }
 
-    fn statement_list(
-        &mut self,
-        ast: &Ast,
-        builder: &mut FunctionBuilder,
-    ) -> ExprResult {
+    fn statement_list(&mut self, ast: &Ast, builder: &mut FunctionBuilder) -> ExprResult {
         for stmt in ast[0..ast.len() - 1].iter() {
             self.statement(stmt, builder)?;
         }
@@ -282,16 +298,12 @@ impl Generator {
         Ok(None)
     }
 
-    fn statement(
-        &mut self,
-        ast: &Ast,
-        builder: &mut FunctionBuilder,
-    ) -> ExprResult {
+    fn statement(&mut self, ast: &Ast, builder: &mut FunctionBuilder) -> ExprResult {
         match ast.kind {
             AKind::ReturnStatement => self.return_statement(ast, builder)?,
             AKind::VarStatement(_) => self.var_statement(ast, builder)?,
             AKind::Break => self.break_statement(ast, builder)?,
-            
+
             AKind::IfExpression => return self.if_expression(ast, builder),
             AKind::Call => return self.call_expression(ast, builder),
             AKind::Loop => return self.loop_expression(ast, builder),
@@ -309,21 +321,21 @@ impl Generator {
         if let Some(val) = header.3 {
             if let Some(val) = val {
                 if ast[1].kind == AKind::None {
-                    return Err(IrGenError::new(IGEKind::ExpectedValue, ast.token.clone()))
+                    return Err(IrGenError::new(IGEKind::ExpectedValue, ast.token.clone()));
                 }
                 let value = self.expression(&ast[1], builder)?;
                 if value.datatype.is_on_stack() {
-                    val.write(&value, &ast.token, builder)?;
+                    val.write(&value, &ast.token, builder, self.isa())?;
                     builder.ins().jump(loop_exit_block.clone(), &[]);
                 } else {
-                    let value = value.read(builder);
+                    let value = value.read(builder, self.isa());
                     builder.ins().jump(loop_exit_block.clone(), &[value]);
                 }
             } else {
                 if ast[1].kind != AKind::None {
-                    return Err(IrGenError::new(IGEKind::UnexpectedValue, ast.token.clone()))
+                    return Err(IrGenError::new(IGEKind::UnexpectedValue, ast.token.clone()));
                 }
-                builder.ins().jump(loop_exit_block.clone(), &[]); 
+                builder.ins().jump(loop_exit_block.clone(), &[]);
             }
         } else {
             header.3 = if ast[1].kind == AKind::None {
@@ -333,10 +345,10 @@ impl Generator {
                 let value = self.expression(&ast[1], builder)?;
                 let val = Val::new_stack(false, &value.datatype, builder);
                 if value.datatype.is_on_stack() {
-                    val.write(&value, &ast.token, builder)?;
+                    val.write(&value, &ast.token, builder, self.isa())?;
                     builder.ins().jump(loop_exit_block.clone(), &[]);
                 } else {
-                    let value = value.read(builder);
+                    let value = value.read(builder, self.isa());
                     builder.ins().jump(loop_exit_block.clone(), &[value]);
                 }
                 Some(Some(val))
@@ -352,10 +364,7 @@ impl Generator {
             .rev()
             .find(|(header_name, ..)| header_name.deref() == name.value.deref())
             .map(|h| h.clone())
-            .ok_or_else(|| IrGenError::new(
-                IGEKind::LoopHeaderNotFound,
-                name.clone(),
-            ))
+            .ok_or_else(|| IrGenError::new(IGEKind::LoopHeaderNotFound, name.clone()))
     }
 
     fn update_loop_header(&mut self, header: LoopHeader) {
@@ -370,37 +379,39 @@ impl Generator {
 
         let ret_value = self.expression(ret_expr, builder)?;
 
-        let value = ret_value.read(builder);
+        let value = ret_value.read(builder, self.isa());
         builder.ins().return_(&[value]);
 
         Ok(())
     }
 
-    fn expression(
-        &mut self,
-        ast: &Ast,
-        builder: &mut FunctionBuilder,
-    ) -> Result<Val> {
+    fn expression(&mut self, ast: &Ast, builder: &mut FunctionBuilder) -> Result<Val> {
         match ast.kind {
             AKind::Literal => return self.literal(ast, builder),
             AKind::BinaryOperation => return self.binary_operation(ast, builder),
             AKind::Identifier => {
                 let var = self.find_variable(&ast.token)?;
-                return Ok(var.value.clone())
+                return Ok(var.value.clone());
             }
-
+            AKind::DotExpr => return self.dot_expr(ast, builder),
             AKind::IfExpression => self.if_expression(ast, builder)?,
             AKind::Call => self.call_expression(&ast, builder)?,
             AKind::Loop => self.loop_expression(ast, builder)?,
             _ => todo!("unmatched expression {}", ast),
-        }.ok_or_else(|| IrGenError::new(IGEKind::ExpectedValue, ast.token.clone()))
+        }
+        .ok_or_else(|| IrGenError::new(IGEKind::ExpectedValue, ast.token.clone()))
     }
 
     fn loop_expression(&mut self, ast: &Ast, builder: &mut FunctionBuilder) -> ExprResult {
         let loop_block = builder.create_block();
         let loop_exit_block = builder.create_block();
 
-        self.loop_headers.push((ast[0].token.value.clone(), loop_block, loop_exit_block, None));
+        self.loop_headers.push((
+            ast[0].token.value.clone(),
+            loop_block,
+            loop_exit_block,
+            None,
+        ));
 
         builder.ins().jump(loop_block, &[]);
         builder.seal_current_block();
@@ -412,47 +423,53 @@ impl Generator {
 
         builder.switch_to_block(loop_exit_block);
 
-        Ok(if let Some((.., Some(Some(val)))) = self.loop_headers.pop() {
-            if val.datatype.is_on_stack() {
-                Some(val)
+        Ok(
+            if let Some((.., Some(Some(val)))) = self.loop_headers.pop() {
+                if val.datatype.is_on_stack() {
+                    Some(val)
+                } else {
+                    let value = builder
+                        .append_block_param(loop_exit_block, val.datatype.ir_repr(self.isa()));
+                    Some(Val::immutable(value, val.datatype.clone()))
+                }
             } else {
-                let value = builder.append_block_param(loop_exit_block, val.datatype.ir_repr(self.isa()));
-                Some(Val::immutable(value, val.datatype.clone()))
-            }
-        } else {
-            None
-        })
+                None
+            },
+        )
     }
 
     fn var_statement(&mut self, ast: &Ast, builder: &mut FunctionBuilder) -> Result<()> {
         for var in ast.iter() {
             let (identifiers, datatype, values) = (&var[0], &var[1], &var[2]);
-            
+
             let mut datatype = if let AKind::None = datatype.kind {
                 None
             } else {
                 Some(self.find_datatype(&datatype.token)?)
             };
 
-            for (i, name) in identifiers.iter().map(|i| i.token.value.clone()).enumerate() {
+            for (i, name) in identifiers
+                .iter()
+                .map(|i| i.token.value.clone())
+                .enumerate()
+            {
                 let value = if values.kind != AKind::None {
                     let mut value = self.expression(&values[i], builder)?;
                     if let Some(datatype) = datatype.as_ref() {
-                        assert_type(&values[i].token, &value.datatype, datatype)?;   
+                        assert_type(&values[i].token, &value.datatype, datatype)?;
                     } else {
                         datatype = Some(value.datatype.clone());
                     }
 
-                    
                     if ast.kind == AKind::VarStatement(true) {
                         if value.datatype.is_on_stack() {
                             value.set_mutability(true);
                         } else {
                             let variable = Variable::new(self.variable_counter);
                             self.variable_counter += 1;
-                            
+
                             builder.declare_var(variable, value.datatype.ir_repr(self.isa()));
-                            let val = value.read(builder);
+                            let val = value.read(builder, self.isa());
                             value.kind = VKind::Mutable(variable);
                             builder.def_var(variable, val);
                         }
@@ -462,8 +479,12 @@ impl Generator {
                 } else {
                     let datatype = datatype.as_ref().unwrap();
                     if datatype.is_on_stack() {
-                        let val = Val::new_stack(ast.kind == AKind::VarStatement(true), datatype, builder);
-                        static_memset(val.read(builder), 0, datatype.size(), builder);
+                        let val = Val::new_stack(
+                            ast.kind == AKind::VarStatement(true),
+                            datatype,
+                            builder,
+                        );
+                        static_memset(val.read(builder, self.isa()), 0, 0, datatype.size(), builder);
                         val
                     } else {
                         let default_value = datatype.default_value(builder);
@@ -478,11 +499,7 @@ impl Generator {
                         }
                     }
                 };
-                self.variables.push(Some(Var {
-                    name, 
-                    value,  
-                }));
-
+                self.variables.push(Some(Var { name, value }));
             }
         }
 
@@ -492,37 +509,42 @@ impl Generator {
     fn call_expression(&mut self, ast: &Ast, builder: &mut FunctionBuilder) -> ExprResult {
         let fun = self.find_function(&ast[0].token)?;
 
-        let fun_ref = self.imported_functions
+        let fun_ref = self
+            .imported_functions
             .iter()
             .find(|(id, _)| id == &fun.name)
             .map(|(_, fun_ref)| *fun_ref)
             .unwrap_or_else(|| {
-                let fun_ref = self.object_module.declare_func_in_func(fun.id, builder.func);
+                let fun_ref = self
+                    .object_module
+                    .declare_func_in_func(fun.id, builder.func);
                 self.imported_functions.push((fun.name.clone(), fun_ref));
                 fun_ref
             });
 
         if fun.params.len() != ast.len() - 1 {
-            return Err(IrGenError::new(IGEKind::InvalidAmountOfArguments(
-                fun.params.len(), ast.len() - 1), ast.token.clone()))
+            return Err(IrGenError::new(
+                IGEKind::InvalidAmountOfArguments(fun.params.len(), ast.len() - 1),
+                ast.token.clone(),
+            ));
         }
-        
+
         let return_value = if let Some(return_type) = fun.return_type.as_ref() {
             if return_type.is_on_stack() {
                 let value = Val::new_stack(false, return_type, builder);
-                self.call_buffer.push(value.read(builder));
-                Some(value)    
+                self.call_buffer.push(value.read(builder, self.isa()));
+                Some(value)
             } else {
                 None
             }
         } else {
             None
         };
-        
+
         for (i, e) in ast[1..].iter().enumerate() {
             let value = self.expression(e, builder)?;
             assert_type(&e.token, &value.datatype, &fun.params[i].value.datatype)?;
-            self.call_buffer.push(value.read(builder));
+            self.call_buffer.push(value.read(builder, self.isa()));
         }
 
         let vals = builder.ins().call(fun_ref, &self.call_buffer);
@@ -532,7 +554,10 @@ impl Generator {
             if return_type.is_on_stack() {
                 Ok(return_value)
             } else {
-                Ok(Some(Val::immutable(builder.inst_results(vals)[0], return_type.clone())))
+                Ok(Some(Val::immutable(
+                    builder.inst_results(vals)[0],
+                    return_type.clone(),
+                )))
             }
         } else {
             Ok(None)
@@ -549,11 +574,9 @@ impl Generator {
                     64 => self.builtin_repo.i64.clone(),
                     _ => unreachable!(),
                 };
-                print!("{:?}", value);
                 let value = builder
                     .ins()
                     .iconst(datatype.ir_repr(self.isa()), value as i64);
-                println!(">{:?}", value);
                 Ok(Val::immutable(value, datatype))
             }
             TKind::Bool(value) => {
@@ -563,25 +586,27 @@ impl Generator {
             }
             TKind::Char(value) => {
                 let datatype = self.builtin_repo.i32.clone();
-                let value = builder.ins().iconst(datatype.ir_repr(self.isa()), value as i64);
+                let value = builder
+                    .ins()
+                    .iconst(datatype.ir_repr(self.isa()), value as i64);
                 Ok(Val::immutable(value, datatype))
             }
             _ => todo!("unmatched literal token {:?}", ast.token),
         }
     }
 
-    fn if_expression(
-        &mut self,
-        ast: &Ast,
-        builder: &mut FunctionBuilder,
-    ) -> ExprResult {
+    fn if_expression(&mut self, ast: &Ast, builder: &mut FunctionBuilder) -> ExprResult {
         let cond_expr = &ast[0];
         let cond_val = self.expression(cond_expr, builder)?;
 
-        assert_type(&cond_expr.token, &cond_val.datatype, &self.builtin_repo.bool)?;
+        assert_type(
+            &cond_expr.token,
+            &cond_val.datatype,
+            &self.builtin_repo.bool,
+        )?;
 
         let then_block = builder.create_block();
-        let value = cond_val.read(builder);
+        let value = cond_val.read(builder, self.isa());
         builder.ins().brnz(value, then_block, &[]);
 
         let mut merge_block = None;
@@ -623,12 +648,17 @@ impl Generator {
             let block = builder.create_block();
             if val.datatype.is_on_stack() {
                 let value = Val::new_stack(false, &val.datatype, builder);
-                value.write(&val, &then_branch.last().unwrap().token, builder)?;
+                value.write(
+                    &val,
+                    &then_branch.last().unwrap().token,
+                    builder,
+                    self.isa(),
+                )?;
                 builder.ins().jump(block, &[]);
                 result = Some(value);
             } else {
                 let value = builder.append_block_param(block, val.datatype.ir_repr(self.isa()));
-                let v = val.read(builder);
+                let v = val.read(builder, self.isa());
                 result = Some(Val::immutable(value, val.datatype));
                 builder.ins().jump(block, &[v]);
                 merge_block = Some(block);
@@ -648,29 +678,30 @@ impl Generator {
 
             builder.switch_to_block(else_block);
             let else_result = self.statement_list(else_branch, builder)?;
-                
+
             if let Some(val) = else_result {
                 let value_token = &else_branch.last().unwrap().token;
                 if let Some(result) = result.as_ref() {
                     let merge_block = merge_block.unwrap();
                     if val.datatype.is_on_stack() {
-                        result.write(&val, value_token, builder)?;
+                        result.write(&val, value_token, builder, self.isa())?;
                         builder.ins().jump(merge_block, &[]);
                     } else {
                         assert_type(value_token, &val.datatype, &result.datatype)?;
-                        let value = val.read(builder);
+                        let value = val.read(builder, self.isa());
                         builder.ins().jump(merge_block, &[value]);
                     }
                 } else if then_filled {
                     let block = builder.create_block();
                     if val.datatype.is_on_stack() {
                         let value = Val::new_stack(false, &val.datatype, builder);
-                        value.write(&val, value_token, builder)?;
+                        value.write(&val, value_token, builder, self.isa())?;
                         builder.ins().jump(block, &[]);
                         result = Some(value);
                     } else {
-                        let value = builder.append_block_param(block, val.datatype.ir_repr(self.isa()));
-                        let v = val.read(builder);
+                        let value =
+                            builder.append_block_param(block, val.datatype.ir_repr(self.isa()));
+                        let v = val.read(builder, self.isa());
                         builder.ins().jump(block, &[v]);
                         result = Some(Val::immutable(value, val.datatype));
                         merge_block = Some(block);
@@ -707,11 +738,7 @@ impl Generator {
         Ok(result)
     }
 
-    fn binary_operation(
-        &mut self,
-        ast: &Ast,
-        builder: &mut FunctionBuilder,
-    ) -> Result<Val> {
+    fn binary_operation(&mut self, ast: &Ast, builder: &mut FunctionBuilder) -> Result<Val> {
         let op = ast[0].token.value.deref();
 
         if op == "=" {
@@ -721,11 +748,10 @@ impl Generator {
         let left = self.expression(&ast[1], builder)?;
         let right = self.expression(&ast[2], builder)?;
 
-        let left_val = left.read(builder);
-        let right_val = right.read(builder);
+        let left_val = left.read(builder, self.isa());
+        let right_val = right.read(builder, self.isa());
 
         if left.datatype == right.datatype {
-
             let value = match left.datatype.name.as_str() {
                 "i8" | "i16" | "i32" | "i64" => match op {
                     "+" => builder.ins().iadd(left_val, right_val),
@@ -822,7 +848,11 @@ impl Generator {
                     _ => todo!("unsupported bool operation {}", op),
                 },
 
-                _ => todo!("unmatched operator {} on type {}", op, right.datatype.name.as_str()),
+                _ => todo!(
+                    "unmatched operator {} on type {}",
+                    op,
+                    right.datatype.name.as_str()
+                ),
             };
             Ok(Val::immutable(value, right.datatype))
         } else {
@@ -833,23 +863,52 @@ impl Generator {
     fn assign(&mut self, ast: &Ast, builder: &mut FunctionBuilder) -> Result<Val> {
         let val = self.expression(&ast[2], builder)?;
 
-        let var = self.find_variable(&ast[1].token)?;
+        let var = match ast[1].kind {
+            AKind::Identifier => self.find_variable(&ast[1].token)?.value.clone(),
+            AKind::DotExpr => self.dot_expr(&ast[1], builder)?,
+            _ => todo!("unsupported assignment target"),
+        };
 
-        var.value.write(&val, &ast.token, builder)?;
+        var.write(&val, &ast.token, builder, self.isa())?;
 
         Ok(val)
+    }
+
+    fn dot_expr(&mut self, ast: &Ast, builder: &mut FunctionBuilder) -> Result<Val> {
+        let mut header = self.expression(&ast[0], builder)?;
+
+        if !header.datatype.is_on_stack() {
+            return Err(IrGenError::new(
+                IGEKind::InvalidFieldAccess,
+                ast.token.clone(),
+            ));
+        }
+
+        let field = match &header.datatype.kind {
+            DKind::Structure(structure) => structure
+                .load_field(&ast[1].token)
+                .ok_or_else(|| IrGenError::new(IGEKind::FieldNotFound, ast.token.clone()))?,
+            _ => unreachable!(),
+        };
+
+        header.add_offset(field.offset);
+        header.datatype = field.datatype;
+
+        Ok(header)
     }
 
     fn create_signature(&mut self, mut ast: Ast) -> Result<Cell<Fun>> {
         let header = &ast[0];
         let mut signature = Signature::new(CallConv::Fast);
         let mut fun_params = Vec::new();
-        
+
         let return_type = header.last().unwrap();
         let return_type = if return_type.kind != AKind::None {
             let datatype = self.find_datatype(&return_type.token)?.clone();
             if datatype.is_on_stack() {
-                signature.params.push(AbiParam::new(datatype.ir_repr(self.isa())));
+                signature
+                    .params
+                    .push(AbiParam::new(datatype.ir_repr(self.isa())));
             }
             signature
                 .returns
@@ -858,7 +917,7 @@ impl Generator {
         } else {
             None
         };
-        
+
         for args in header[1..header.len() - 1].iter() {
             let datatype = self.find_datatype(&args.last().unwrap().token)?;
             for arg in args[0..args.len() - 1].iter() {
@@ -871,7 +930,7 @@ impl Generator {
                     .push(AbiParam::new(datatype.ir_repr(self.isa())));
             }
         }
-        
+
         let name = header.first().unwrap();
         let name = if name.kind != AKind::None {
             name.token.value.clone()
@@ -914,7 +973,10 @@ impl Generator {
         signature.call_conv = call_conv;
 
         let fun = Fun {
-            id: self.object_module.declare_function(name.deref(), linkage, &signature).unwrap(),
+            id: self
+                .object_module
+                .declare_function(name.deref(), linkage, &signature)
+                .unwrap(),
             name,
             params: fun_params,
             return_type,
@@ -1000,10 +1062,7 @@ impl Context {
     }
 
     fn add_module(&mut self, module: Cell<Mod>) -> Result<()> {
-        match self
-            .modules
-            .binary_search_by(|d| module.name.cmp(&d.name))
-        {
+        match self.modules.binary_search_by(|d| module.name.cmp(&d.name)) {
             Ok(i) => Err(IGEKind::DuplicateModule(module.clone(), self.modules[i].clone()).into()),
             Err(i) => {
                 self.modules.insert(i, module);
@@ -1013,10 +1072,7 @@ impl Context {
     }
 
     fn find_module(&self, name: Token) -> Result<Cell<Mod>> {
-        match self
-            .modules
-            .binary_search_by(|d| name.value.cmp(&d.name))
-        {
+        match self.modules.binary_search_by(|d| name.value.cmp(&d.name)) {
             Ok(i) => Ok(self.modules[i].clone()),
             Err(_) => Err(IrGenError::new(IGEKind::ModuleNotFound, name.clone())),
         }
@@ -1057,10 +1113,7 @@ impl Mod {
     }
 
     fn add_datatype(&mut self, datatype: Cell<Datatype>) -> Result<()> {
-        match self
-            .types
-            .binary_search_by(|d| datatype.name.cmp(&d.name))
-        {
+        match self.types.binary_search_by(|d| datatype.name.cmp(&d.name)) {
             Ok(i) => Err(IGEKind::DuplicateType(datatype.clone(), self.types[i].clone()).into()),
             Err(i) => {
                 self.types.insert(i, datatype);
@@ -1076,10 +1129,7 @@ impl Mod {
     }
 
     fn add_function(&mut self, fun: Cell<Fun>) -> Result<()> {
-        match self
-            .functions
-            .binary_search_by(|d| fun.name.cmp(&d.name))
-        {
+        match self.functions.binary_search_by(|d| fun.name.cmp(&d.name)) {
             Ok(i) => Err(IGEKind::DuplicateFunction(fun.clone(), self.functions[i].clone()).into()),
             Err(i) => {
                 self.functions.insert(i, fun);
@@ -1194,20 +1244,17 @@ pub struct Val {
 
 impl Val {
     fn new(kind: VKind, datatype: Cell<Datatype>) -> Self {
-        Self {
-            kind,
-            datatype,
-        }
+        Self { kind, datatype }
     }
 
     fn new_stack(mutable: bool, datatype: &Cell<Datatype>, builder: &mut FunctionBuilder) -> Self {
-        let slot = builder.create_stack_slot(StackSlotData { 
-            kind: StackSlotKind::ExplicitSlot, 
-            size: datatype.size() 
+        let slot = builder.create_stack_slot(StackSlotData {
+            kind: StackSlotKind::ExplicitSlot,
+            size: datatype.size(),
         });
         let value = builder.ins().stack_addr(I64, slot, 0);
         Self {
-            kind: VKind::Address(value, mutable),
+            kind: VKind::Address(value, mutable, 0),
             datatype: datatype.clone(),
         }
     }
@@ -1225,31 +1272,56 @@ impl Val {
     }
 
     fn address(value: Value, mutable: bool, datatype: Cell<Datatype>) -> Self {
-        Self::new(VKind::Address(value, mutable), datatype)
+        Self::new(VKind::Address(value, mutable, 0), datatype)
     }
 
-    fn read(&self, builder: &mut FunctionBuilder) -> Value {
+    fn read(&self, builder: &mut FunctionBuilder, isa: &dyn TargetIsa) -> Value {
         match &self.kind {
             VKind::Immutable(value) => value.clone(),
             VKind::Mutable(variable) => builder.use_var(*variable),
-            VKind::Address(value, _) => value.clone(),
+            VKind::Address(value, _, offset) => {
+                if self.datatype.is_on_stack() {
+                    value.clone()
+                } else {
+                    builder.ins().load(
+                        self.datatype.ir_repr(isa),
+                        MemFlags::new(),
+                        *value,
+                        *offset as i32,
+                    )
+                }
+            }
             _ => unreachable!(),
         }
     }
 
-    fn write(&self, value: &Val, token: &Token, builder: &mut FunctionBuilder) -> Result<()> {
+    fn write(
+        &self,
+        value: &Val,
+        token: &Token,
+        builder: &mut FunctionBuilder,
+        isa: &dyn TargetIsa,
+    ) -> Result<()> {
         assert_type(token, &self.datatype, &value.datatype)?;
 
-        let value = value.read(builder); 
+        let src_value = value.read(builder, isa);
 
         match &self.kind {
-            VKind::Immutable(_) => return Err(IrGenError::new(IGEKind::AssignToImmutable, token.clone())),
-            VKind::Mutable(variable) => builder.def_var(*variable, value), 
-            VKind::Address(dst_value, mutable) => {
+            VKind::Immutable(_) => {
+                return Err(IrGenError::new(IGEKind::AssignToImmutable, token.clone()))
+            }
+            VKind::Mutable(variable) => builder.def_var(*variable, src_value),
+            VKind::Address(dst_value, mutable, offset) => {
                 if *mutable {
-                    static_memmove(*dst_value, value, self.datatype.size(), builder)
+                    if value.datatype.is_on_stack() {
+                        static_memmove(*dst_value, *offset, src_value, value.offset(), self.datatype.size(), builder);
+                    } else {
+                        builder
+                            .ins()
+                            .store(MemFlags::new(), src_value, *dst_value, *offset as i32);
+                    }
                 } else {
-                    return Err(IrGenError::new(IGEKind::AssignToImmutable, token.clone()))
+                    return Err(IrGenError::new(IGEKind::AssignToImmutable, token.clone()));
                 }
             }
             _ => unreachable!(),
@@ -1260,8 +1332,22 @@ impl Val {
 
     fn set_mutability(&mut self, arg: bool) {
         match &mut self.kind {
-            VKind::Address(_, mutable) => *mutable = arg,
+            VKind::Address(_, mutable, _) => *mutable = arg,
             _ => panic!("set_mutability called on non-address"),
+        }
+    }
+
+    fn add_offset(&mut self, offset: u32) {
+        match &mut self.kind {
+            VKind::Address(.., off) => *off += offset,
+            _ => panic!("add_offset called on non-address"),
+        }
+    }
+
+    fn offset(&self) -> u32 {
+        match &self.kind {
+            VKind::Address(_, _, off) => *off,
+            _ => panic!("offset called on non-address"),
         }
     }
 }
@@ -1270,7 +1356,7 @@ impl Val {
 pub enum VKind {
     Mutable(Variable),
     Immutable(Value),
-    Address(Value, bool),
+    Address(Value, bool, u32),
     Unresolved,
 }
 
@@ -1294,11 +1380,19 @@ pub struct Datatype {
 
 impl Datatype {
     fn new(name: String, kind: DKind) -> Self {
-        Self { name, kind, size: None }
+        Self {
+            name,
+            kind,
+            size: None,
+        }
     }
 
     fn with_size(name: String, kind: DKind, size: u32) -> Self {
-        Self { name, kind, size: Some(size) }
+        Self {
+            name,
+            kind,
+            size: Some(size),
+        }
     }
 
     fn size(&self) -> u32 {
@@ -1355,6 +1449,39 @@ pub struct Structure {
     fields: Vec<Field>,
 }
 
+impl Structure {
+    fn load_field(&self, name: &Token) -> Option<Field> {
+        self.fields
+            .iter()
+            .find(|f| f.name.deref() == name.value.deref())
+            .map(Clone::clone)
+            .or_else(|| {
+                self.fields
+                    .iter()
+                    .filter(|f| f.embedded && f.datatype.is_on_stack())
+                    .map(|f| {
+                        (
+                            f,
+                            match &f.datatype.kind {
+                                DKind::Structure(s) => s.load_field(name),
+                                _ => unreachable!(),
+                            },
+                        )
+                    })
+                    .find(|(_, f)| f.is_some())
+                    .map(|(f, ef)| {
+                        let ef = ef.unwrap();
+                        Field {
+                            name: StrRef::empty(),
+                            datatype: ef.datatype.clone(),
+                            offset: f.offset + ef.offset,
+                            embedded: false,
+                        }
+                    })
+            })
+    }
+}
+
 #[derive(Debug, Clone, PartialEq)]
 pub struct Field {
     embedded: bool,
@@ -1401,6 +1528,8 @@ pub enum IGEKind {
     InvalidInlineLevel,
     InvalidLinkage,
     InvalidCallConv,
+    InvalidFieldAccess,
+    FieldNotFound,
     AssignToImmutable,
     ExpectedValue,
     MissingValueInElseBranch,
@@ -1470,9 +1599,7 @@ impl<T> Clone for Cell<T> {
     fn clone(&self) -> Self {
         unsafe {
             (*self.inner).1 += 1;
-            Self {
-                inner: self.inner,
-            }
+            Self { inner: self.inner }
         }
     }
 }
@@ -1490,7 +1617,7 @@ impl<T> Drop for Cell<T> {
 
 impl<T> DerefMut for Cell<T> {
     fn deref_mut(&mut self) -> &mut T {
-        unsafe { &mut(*self.inner).0 }
+        unsafe { &mut (*self.inner).0 }
     }
 }
 
@@ -1512,11 +1639,22 @@ fn find_best_mover(size: u32) -> (Type, u32) {
         .iter()
         .rev()
         .position(|&s| s <= size)
-        .map(|i| (MOVERS[MOVERS.len() - i - 1], MOVER_SIZES[MOVER_SIZES.len() - i - 1]))
+        .map(|i| {
+            (
+                MOVERS[MOVERS.len() - i - 1],
+                MOVER_SIZES[MOVER_SIZES.len() - i - 1],
+            )
+        })
         .unwrap()
 }
 
-fn static_memset(pointer: Value, value: i8, size: u32, builder: &mut FunctionBuilder) {
+fn static_memset(
+    pointer: Value,
+    pointer_offset: u32,
+    value: i8,
+    size: u32,
+    builder: &mut FunctionBuilder,
+) {
     let (mover, mover_size) = find_best_mover(size);
 
     let flags = MemFlags::new();
@@ -1525,39 +1663,70 @@ fn static_memset(pointer: Value, value: i8, size: u32, builder: &mut FunctionBui
 
     let mut offset = 0;
     loop {
-        builder.ins().store(flags, value, pointer, offset as i32);
+        builder
+            .ins()
+            .store(flags, value, pointer, (offset + pointer_offset) as i32);
         offset += mover_size;
         if offset + mover_size >= size {
             break;
         }
     }
 
-    if size > offset { // overlap should not matter
+    if size > offset {
+        // overlap should not matter
         let offset = size - mover_size;
-        builder.ins().store(flags, value, pointer, offset as i32);
-    }   
+        builder
+            .ins()
+            .store(flags, value, pointer, (offset + pointer_offset) as i32);
+    }
 }
 
-
-fn static_memmove(dst_pointer: Value, src_pointer: Value, size: u32, builder: &mut FunctionBuilder) {
+fn static_memmove(
+    dst_pointer: Value,
+    dst_pointer_offset: u32,
+    src_pointer: Value,
+    src_pointer_offset: u32,
+    size: u32,
+    builder: &mut FunctionBuilder,
+) {
     let (mover, mover_size) = find_best_mover(size);
 
     let flags = MemFlags::new();
 
     let mut offset = 0;
     loop {
-        let off = offset as i32;
-        let value = builder.ins().load(mover, flags, src_pointer, off);
-        builder.ins().store(flags, value, dst_pointer, off);
+        let value = builder.ins().load(
+            mover,
+            flags,
+            src_pointer,
+            (offset + src_pointer_offset) as i32,
+        );
+        builder.ins().store(
+            flags,
+            value,
+            dst_pointer,
+            (offset + dst_pointer_offset) as i32,
+        );
         offset += mover_size;
         if offset + mover_size > size {
             break;
         }
     }
 
-    if size > offset { // overlap should not matter
-        let offset = (size - mover_size) as i32;
-        let value = builder.ins().load(mover, flags, src_pointer, offset);
-        builder.ins().store(flags, value, dst_pointer, offset as i32);
-    }   
+    if size > offset {
+        // overlap should not matter
+        let offset = size - mover_size;
+        let value = builder.ins().load(
+            mover,
+            flags,
+            src_pointer,
+            (offset + src_pointer_offset) as i32,
+        );
+        builder.ins().store(
+            flags,
+            value,
+            dst_pointer,
+            (offset + dst_pointer_offset) as i32,
+        );
+    }
 }

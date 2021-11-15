@@ -63,10 +63,16 @@ impl AstParser {
 
         let mut ast = self.ast(AKind::StructField(embedded));
 
-        self.list(&mut ast, TKind::None, TKind::Comma, TKind::Colon, Self::ident)?;
+        self.list(
+            &mut ast,
+            TKind::None,
+            TKind::Comma,
+            TKind::Colon,
+            Self::ident,
+        )?;
 
         ast.push(self.expression()?);
-        
+
         Ok(ast)
     }
 
@@ -194,16 +200,20 @@ impl AstParser {
     fn var_statement_line(&mut self) -> Result<Ast> {
         let mut ast = self.ast(AKind::VarAssign);
         let mut ident_group = self.ast(AKind::Group);
-        self.list(&mut ident_group, TKind::None, TKind::Comma, TKind::None, Self::ident)?;
-        
+        self.list(
+            &mut ident_group,
+            TKind::None,
+            TKind::Comma,
+            TKind::None,
+            Self::ident,
+        )?;
+
         let datatype = if self.current_token == TKind::Colon {
             self.advance();
-            self.simple_expression()? 
+            self.simple_expression()?
         } else {
             Ast::none()
         };
-        
-
 
         let values = if self.current_token.value.deref() == "=" {
             let mut values = self.ast(AKind::Group);
@@ -220,7 +230,9 @@ impl AstParser {
                     .take(ident_group.len() - 1)
                     .for_each(|n| values.push(n));
             } else if values.len() != ident_group.len() {
-                self.unexpected_str("expected one value per identifier or one value for all identifiers")?;
+                self.unexpected_str(
+                    "expected one value per identifier or one value for all identifiers",
+                )?;
             }
             values
         } else {
@@ -236,7 +248,7 @@ impl AstParser {
         Ok(ast)
     }
 
-    fn ident(&mut self) -> Result<Ast> {       
+    fn ident(&mut self) -> Result<Ast> {
         self.expect_str(TKind::Ident, "expected identifier")?;
         let ast = self.ast(AKind::Identifier);
         self.advance();
@@ -298,8 +310,9 @@ impl AstParser {
     fn simple_expression_low(&mut self, nested: bool) -> Result<Ast> {
         let mut ast = match self.current_token.kind {
             TKind::Ident => self.ident_expression()?,
-            TKind::Int(..) | TKind::Uint(..) | 
-            TKind::Bool(..) | TKind::Char(..) => self.ast(AKind::Literal),
+            TKind::Int(..) | TKind::Uint(..) | TKind::Bool(..) | TKind::Char(..) => {
+                self.ast(AKind::Literal)
+            }
             TKind::If => return self.if_expression(),
             TKind::Loop => return self.loop_expression(),
             TKind::Break => return self.break_expression(),
@@ -320,6 +333,7 @@ impl AstParser {
                     TKind::Dot => {
                         let mut new_ast = self.ast(AKind::DotExpr);
                         new_ast.push(ast);
+                        self.advance();
                         new_ast.push(self.simple_expression_low(true)?);
                         ast = new_ast;
                     }
@@ -331,7 +345,13 @@ impl AstParser {
                             new_ast.push(ast);
                         }
 
-                        self.list(&mut new_ast, TKind::LPar, TKind::Comma, TKind::RPar, Self::expression)?;
+                        self.list(
+                            &mut new_ast,
+                            TKind::LPar,
+                            TKind::Comma,
+                            TKind::RPar,
+                            Self::expression,
+                        )?;
 
                         ast = new_ast;
                     }
@@ -347,7 +367,7 @@ impl AstParser {
 
                         ast = new_ast;
                     }
-                    
+
                     _ => break,
                 }
             }
@@ -356,11 +376,10 @@ impl AstParser {
         Ok(ast)
     }
 
-    
     fn continue_expression(&mut self) -> Result<Ast> {
         let mut ast = self.ast(AKind::Break);
         self.advance();
-        
+
         ast.push(self.optional_label());
 
         Ok(ast)
@@ -369,7 +388,7 @@ impl AstParser {
     fn break_expression(&mut self) -> Result<Ast> {
         let mut ast = self.ast(AKind::Break);
         self.advance();
-        
+
         ast.push(self.optional_label());
 
         ast.push(if let TKind::Indent(_) = self.current_token.kind {
@@ -384,7 +403,7 @@ impl AstParser {
     fn loop_expression(&mut self) -> Result<Ast> {
         let mut ast = self.ast(AKind::Loop);
         self.advance();
-        
+
         ast.push(self.optional_label());
 
         ast.push(self.stmt_block()?);
@@ -411,8 +430,14 @@ impl AstParser {
                 let mut temp_ast = self.ast(AKind::Attribute);
                 temp_ast.push(ast);
                 ast = temp_ast;
-                self.list(&mut ast, TKind::LCurly, TKind::Comma, TKind::RCurly, Self::expression)?;
-            } 
+                self.list(
+                    &mut ast,
+                    TKind::LCurly,
+                    TKind::Comma,
+                    TKind::RCurly,
+                    Self::expression,
+                )?;
+            }
             _ => (),
         }
 
@@ -425,14 +450,13 @@ impl AstParser {
         let condition = self.expression()?;
         let then_block = self.stmt_block()?;
 
-        
         let else_block = match self.current_token.kind {
             TKind::Else => {
                 self.advance();
                 self.stmt_block()?
             }
             TKind::Elif => {
-                // simplify later parsing 
+                // simplify later parsing
                 let mut ast = self.ast(AKind::Group);
                 ast.push(self.if_expression()?);
                 ast
@@ -443,16 +467,16 @@ impl AstParser {
                     self.advance();
                     let val = self.stmt_block()?;
                     val
-                } 
+                }
                 TKind::Elif => {
                     self.advance();
-                    // simplify later parsing 
+                    // simplify later parsing
                     let mut ast = self.ast(AKind::Group);
                     ast.push(self.if_expression()?);
                     ast
                 }
                 _ => Ast::none(),
-            }
+            },
             _ => Ast::none(),
         };
 
