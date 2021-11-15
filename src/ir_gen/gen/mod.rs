@@ -13,13 +13,13 @@ use super::*;
 pub type Result<T> = std::result::Result<T, GenError>;
 
 pub fn compile(args: Arguments) -> Result<()> {
-    if args.args.len() < 1 {
+    if args.len() < 1 {
         return Err(GEKind::NoFiles.into());
     }
 
     let obj_file = generate_obj_file(&args)?;
 
-    let name = args.args[0]
+    let name = args[0]
         .split("/")
         .last()
         .unwrap()
@@ -28,25 +28,21 @@ pub fn compile(args: Arguments) -> Result<()> {
         .unwrap();
 
     let output_name = args
-        .field_flags
-        .iter()
-        .find(|(f, _)| f == "o")
-        .map(|(_, v)| v.as_str())
+        .get_flag("o")
+        .or(args.get_flag("output"))
         .unwrap_or(name);
 
     let obj_name = format!("{}.o", output_name);
 
     std::fs::write(&obj_name, obj_file).map_err(Into::into)?;
 
-    if args.flags.iter().any(|f| f == "obj") {
+    if args.enabled("obj") {
         return Ok(());
     }
 
     let link_with = args
-        .field_flags
-        .iter()
-        .find(|(f, _)| f == "lw")
-        .map(|(_, f)| f.as_str())
+        .get_flag("lv")
+        .or(args.get_flag("link-with"))
         .unwrap_or("")
         .split(";")
         .filter(|s| !s.is_empty());
@@ -73,8 +69,8 @@ pub fn compile(args: Arguments) -> Result<()> {
 
 pub fn generate_obj_file(args: &Arguments) -> Result<Vec<u8>> {
     let mut settings = settings::builder();
-    for (_, values) in args.field_flags.iter().filter(|(f, _)| f == "comp_flags") {
-        for value in values.split(" ") {
+    if let Some(s) = args.get_flag("co").or(args.get_flag("compiler-options")) {
+        for value in s.split(" ") {
             let mut value = value.split("=");
             let flag = value.next().unwrap();
             if let Some(value) = value.next() {
@@ -88,7 +84,7 @@ pub fn generate_obj_file(args: &Arguments) -> Result<Vec<u8>> {
 
     let flags = settings::Flags::new(settings);
 
-    let isa = if let Some((_, triplet)) = args.field_flags.iter().find(|(n, _)| n == "triplet") {
+    let isa = if let Some(triplet) = args.get_flag("triplet") {
         isa::lookup_by_name(triplet)
             .map_err(|e| GEKind::InvalidTriplet(e).into())?
             .finish(flags)
@@ -96,13 +92,11 @@ pub fn generate_obj_file(args: &Arguments) -> Result<Vec<u8>> {
         cranelift_native::builder().unwrap().finish(flags)
     };
 
-    let _optimize = args.flags.iter().any(|f| f == "opt");
-
     let builder =
         ObjectBuilder::new(isa, "all", cranelift_module::default_libcall_names()).unwrap();
 
     let main_module = Generator::new(ObjectModule::new(builder))
-        .generate(&args.args[0])
+        .generate(&args[0])
         .map_err(Into::into)?;
 
     Ok(main_module.finish().emit().unwrap())

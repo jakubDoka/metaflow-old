@@ -1,9 +1,11 @@
+use std::ops::Deref;
+
 #[derive(Debug)]
 pub struct Arguments {
-    pub filename: String,
-    pub flags: Vec<String>,
-    pub field_flags: Vec<(String, String)>,
-    pub args: Vec<String>,
+    filename: String,
+    flags: Vec<String>,
+    field_flags: Vec<(String, String)>,
+    args: Vec<String>,
 }
 
 impl Arguments {
@@ -64,6 +66,25 @@ impl Arguments {
 
     pub fn from_str(s: &str) -> Result<Arguments, ArgumentError> {
         Arguments::new(s.split_whitespace().map(|s| s.to_string()))
+    }
+
+    pub fn enabled(&self, flag: &str) -> bool {
+        self.flags.iter().any(|f| f == flag)
+    }
+
+    pub fn get_flag(&self, flag: &str) -> Option<&str> {
+        self.field_flags
+            .iter()
+            .find(|(f, _)| f == flag)
+            .map(|(_, v)| v.as_str())
+    }
+}
+
+impl Deref for Arguments {
+    type Target = Vec<String>;
+
+    fn deref(&self) -> &Self::Target {
+        &self.args
     }
 }
 

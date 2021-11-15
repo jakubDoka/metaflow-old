@@ -941,7 +941,6 @@ impl Generator {
            return Ok(value)
         }
         
-        
         if !target_datatype.is_builtin() || !source_datatype.is_builtin() {
             todo!("dispatch method on non builtin datatype")
         }
