@@ -28,6 +28,9 @@ fn run() {
         Ok(_) => println!("Successfully compiled"),
         Err(err) => println!("Failed to compile: {:?}", err),
     };
+
+    #[cfg(debug_assertions)]
+    assert!(ir_gen::cell::report_cell_state() == 0);
 }
 
 #[cfg(feature = "testing")]

@@ -1,17 +1,12 @@
-pub mod token;
 pub mod line_data;
 pub mod str_ref;
+pub mod token;
 
-pub use token::*;
 pub use line_data::*;
 pub use str_ref::*;
+pub use token::*;
 
-use std::{
-    fmt::Debug,
-    ops::Deref,
-    rc::Rc,
-    str::Chars,
-};
+use std::{fmt::Debug, ops::Deref, rc::Rc, str::Chars};
 
 pub struct Lexer {
     cursor: Cursor,
@@ -56,9 +51,9 @@ impl Lexer {
             "continue" => TKind::Continue,
             "struct" => TKind::Struct,
             "embed" => TKind::Embed,
-            "max" | "min" | "as" => TKind::Op,
+            "max" | "min" | "as" | "abs" => TKind::Op,
             "true" => TKind::Bool(true),
-            "false" => TKind::Bool(false), 
+            "false" => TKind::Bool(false),
             _ => TKind::Ident,
         };
         Some(Token::new(kind, value, line_data))
@@ -108,14 +103,24 @@ impl Lexer {
 
     fn number(&mut self) -> Option<Token> {
         let mut number = 0u64;
+        let mut fraction = 0u64;
+        let mut exponent = 1i64;
         let start = self.cursor.progress();
         let line_data = self.line_data();
         while self.cursor.peek().unwrap_or('\0').is_numeric() {
             number = number * 10 + (self.cursor.advance().unwrap() as u64 - '0' as u64);
         }
+        let is_float = self.cursor.peek()? == '.';
+        if is_float {
+            self.cursor.advance();
+            while self.cursor.peek().unwrap_or('\0').is_numeric() {
+                fraction = fraction * 10 + (self.cursor.advance().unwrap() as u64 - '0' as u64);
+                exponent *= 10;
+            }
+        }
         let next_char = self.cursor.peek().unwrap_or('\0');
         let kind = match next_char {
-            'i' | 'u' => {
+            'i' | 'u' | 'f' => {
                 self.cursor.advance();
                 let mut base = 0u16;
                 while self.cursor.peek().unwrap_or('\0').is_numeric() {
@@ -124,10 +129,15 @@ impl Lexer {
                 match next_char {
                     'i' => TKind::Int(number as i64, base),
                     'u' => TKind::Uint(number, base),
+                    'f' => TKind::Float(number as f64 + fraction as f64 / exponent as f64, base),
                     _ => unreachable!(),
                 }
             }
-            _ => TKind::Int(number as i64, 64),
+            _ => if fraction == 0 && !is_float {
+                TKind::Int(number as i64, 64)
+            } else {
+                TKind::Float(number as f64 + fraction as f64 / exponent as f64, 64)
+            }
         };
         let end = self.cursor.progress();
         let value = self.cursor.data.sub(start..end);

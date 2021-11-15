@@ -1,11 +1,25 @@
-use std::ops::{DerefMut, Deref};
+use std::ops::{Deref, DerefMut};
 
+#[cfg(debug_assertions)]
+static mut DEBUG_CELL_COUNT: usize = 0;
+
+#[cfg(debug_assertions)]
+pub fn report_cell_state() -> usize {
+    unsafe { DEBUG_CELL_COUNT }
+}
+
+// basically a Rc that allows mutating the inner value
 pub struct Cell<T> {
     inner: *mut (T, usize),
 }
 
 impl<T> Cell<T> {
     pub fn new(inner: T) -> Self {
+        #[cfg(debug_assertions)]
+        unsafe {
+            DEBUG_CELL_COUNT += 1;
+        }
+
         Self {
             inner: Box::into_raw(Box::new((inner, 1))),
         }
@@ -46,6 +60,10 @@ impl<T> Drop for Cell<T> {
             (*self.inner).1 -= 1;
             if (*self.inner).1 == 0 {
                 Box::from_raw(self.inner);
+                #[cfg(debug_assertions)]
+                {
+                    DEBUG_CELL_COUNT -= 1;
+                }
             }
         }
     }

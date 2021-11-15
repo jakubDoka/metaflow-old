@@ -65,7 +65,6 @@ impl Datatype {
         }
     }
 
-    
     pub fn is_bool(&self) -> bool {
         match &self.kind {
             DKind::Builtin(tp) => tp.is_bool(),

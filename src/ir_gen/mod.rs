@@ -1,25 +1,25 @@
-pub mod gen;
 pub mod cell;
 pub mod context;
+pub mod datatype;
 pub mod error;
+pub mod field;
+pub mod fun;
+pub mod gen;
 pub mod module;
+pub mod structure;
 pub mod val;
 pub mod var;
-pub mod field;
-pub mod datatype;
-pub mod structure;
-pub mod fun;
 
 pub use cell::*;
 pub use context::*;
+pub use datatype::*;
 pub use error::*;
+pub use field::*;
+pub use fun::*;
 pub use module::*;
+pub use structure::*;
 pub use val::*;
 pub use var::*;
-pub use field::*;
-pub use datatype::*;
-pub use structure::*;
-pub use fun::*;
 
 use cranelift_codegen::{
     binemit::{NullStackMapSink, NullTrapSink},
@@ -35,12 +35,7 @@ use cranelift_codegen::{
 use cranelift_frontend::{FunctionBuilder, FunctionBuilderContext, Variable};
 use cranelift_module::{FuncId, Linkage, Module};
 use cranelift_object::ObjectModule;
-use std::{
-    ops::Deref,
-    str::FromStr,
-};
-
-
+use std::{ops::Deref, str::FromStr};
 
 use crate::{
     ast::{AEKind, AKind, Ast, AstError, AstParser},
@@ -106,7 +101,12 @@ impl Generator {
                 AKind::StructField(embedded) => {
                     let datatype = self.find_datatype(&raw_fields.last().unwrap().token())?;
                     for field in raw_fields[0..raw_fields.len() - 1].iter() {
-                        fields.push(Field::new(embedded, 0, field.token().value().clone(), datatype.clone()));
+                        fields.push(Field::new(
+                            embedded,
+                            0,
+                            field.token().value().clone(),
+                            datatype.clone(),
+                        ));
                     }
                 }
                 _ => todo!("unsupported inner struct construct {:?}", raw_fields),
@@ -144,19 +144,25 @@ impl Generator {
 
             let params = builder.block_params(entry_block);
 
-            let skip = f.return_type()
-                .map(|t| if t.is_on_stack() { 
-                    self.variables.push(Some(Var::new(StrRef::empty(), Val::address(params[0], true, t.clone()))));
-                    1 
-                } else { 
-                    0 
+            let skip = f
+                .return_type()
+                .map(|t| {
+                    if t.is_on_stack() {
+                        self.variables.push(Some(Var::new(
+                            StrRef::empty(),
+                            Val::address(params[0], true, t.clone()),
+                        )));
+                        1
+                    } else {
+                        0
+                    }
                 })
                 .unwrap_or(0);
 
             for (value, var) in params.iter().skip(skip).zip(f.params_mut().iter_mut()) {
-                var.set_kind(if var.value().datatype().is_on_stack() { 
+                var.set_kind(if var.value().datatype().is_on_stack() {
                     VKind::Address(*value, false, 0)
-                } else { 
+                } else {
                     VKind::Immutable(*value)
                 });
                 self.variables.push(Some(var.clone()));
@@ -189,7 +195,7 @@ impl Generator {
         self.current_module
             .dependency_mut()
             .push(self.builtin_module.clone());
-        
+
         for item in ast.iter_mut() {
             match &item.kind() {
                 AKind::StructDeclaration => {
@@ -208,7 +214,7 @@ impl Generator {
                     self.function(item)?;
                     self.pushed_attributes.clear();
                 }
-                
+
                 AKind::Attribute => match item[0].token().value().deref() {
                     "push" => {
                         self.global_attributes.push(Ast::none());
@@ -241,7 +247,11 @@ impl Generator {
 
     fn resolve_types(&mut self) -> Result<()> {
         let mut current_module = self.current_module.clone();
-        for datatype in current_module.types_mut().iter_mut().filter(|d| !d.is_resolved()) {
+        for datatype in current_module
+            .types_mut()
+            .iter_mut()
+            .filter(|d| !d.is_resolved())
+        {
             let ast = if let DKind::Unresolved(ast) =
                 std::mem::replace(datatype.kind_mut(), DKind::Unresolved(Ast::none()))
             {
@@ -315,7 +325,12 @@ impl Generator {
         Ok(())
     }
 
-    fn statement_list(&mut self, ast: &Ast, builder: &mut FunctionBuilder, is_scope: bool) -> ExprResult {
+    fn statement_list(
+        &mut self,
+        ast: &Ast,
+        builder: &mut FunctionBuilder,
+        is_scope: bool,
+    ) -> ExprResult {
         if is_scope {
             self.start_scope();
         }
@@ -337,12 +352,15 @@ impl Generator {
     }
 
     fn end_scope(&mut self) {
-        let new_len = self.variables.len() - 1 - self.variables
-            .iter()
-            .rev()
-            .position(|e| e.is_none())
-            .unwrap();
-        
+        let new_len = self.variables.len()
+            - 1
+            - self
+                .variables
+                .iter()
+                .rev()
+                .position(|e| e.is_none())
+                .unwrap();
+
         self.variables.truncate(new_len);
     }
 
@@ -381,7 +399,10 @@ impl Generator {
                 }
             } else {
                 if ast[1].kind() != AKind::None {
-                    return Err(IrGenError::new(IGEKind::UnexpectedValue, ast.token().clone()));
+                    return Err(IrGenError::new(
+                        IGEKind::UnexpectedValue,
+                        ast.token().clone(),
+                    ));
                 }
                 builder.ins().jump(loop_exit_block.clone(), &[]);
             }
@@ -428,32 +449,105 @@ impl Generator {
         let ret_value = self.expression(ret_expr, builder)?;
 
         if let Ok(ret_stack) = self.find_variable(&Token::eof()) {
-            ret_stack.value().write(&ret_value, &ast.token(), builder, self.isa())?;
+            ret_stack
+                .value()
+                .write(&ret_value, &ast.token(), builder, self.isa())?;
             let value = ret_stack.value().read(builder, self.isa());
             builder.ins().return_(&[value]);
         } else {
             let value = ret_value.read(builder, self.isa());
-            builder.ins().return_(&[value]);    
+            builder.ins().return_(&[value]);
         }
-        
+
         Ok(())
     }
 
     fn expression(&mut self, ast: &Ast, builder: &mut FunctionBuilder) -> Result<Val> {
         match ast.kind() {
             AKind::Literal => return self.literal(ast, builder),
-            AKind::BinaryOperation => return self.binary_operation(ast, builder),
             AKind::Identifier => {
                 let var = self.find_variable(&ast.token())?;
                 return Ok(var.value().clone());
             }
             AKind::DotExpr => return self.dot_expr(ast, builder),
+            AKind::BinaryOperation => self.binary_operation(ast, builder)?,
+            AKind::UnaryOperation => self.unary_operation(ast, builder)?,
             AKind::IfExpression => self.if_expression(ast, builder)?,
             AKind::Call => self.call_expression(&ast, builder)?,
             AKind::Loop => self.loop_expression(ast, builder)?,
             _ => todo!("unmatched expression {}", ast),
         }
-        .ok_or_else(|| IrGenError::new(IGEKind::ExpectedValue, ast.token().clone()))
+        .ok_or_else(|| {
+            panic!(
+                "{:?}",
+                IrGenError::new(IGEKind::ExpectedValue, ast.token().clone())
+            )
+        })
+    }
+
+    fn unary_operation(&mut self, ast: &Ast, builder: &mut FunctionBuilder) -> ExprResult {
+        let op = ast[0].token().value().deref();
+        let value = self.expression(&ast[1], builder)?;
+        let datatype = value.datatype();
+        let red_value = value.read(builder, self.isa());
+        match op {
+            "!" | "~" => {
+                if datatype.is_builtin() {
+                    if datatype.is_bool() {
+                        let f = builder.ins().bconst(B1, false);
+                        let t = builder.ins().bconst(B1, true); 
+                        return Ok(Some(Val::immutable(
+                            builder.ins().select(red_value, f, t),
+                            datatype.clone(),
+                        )));
+                    } 
+                    return Ok(Some(Val::immutable(
+                        builder.ins().bnot(red_value),
+                        datatype.clone(),
+                    )));
+                }
+            }
+            "-" => {
+                if datatype.is_int() {
+                    return Ok(Some(Val::immutable(
+                        builder.ins().ineg(red_value),
+                        datatype.clone(),
+                    )));
+                } else if datatype.is_float() {
+                    return Ok(Some(Val::immutable(
+                        builder.ins().fneg(red_value),
+                        datatype.clone(),
+                    )));
+                }
+            }
+            "++" | "--" => {
+                let val = if op == "++" { 1 } else { -1 };
+                if datatype.is_int() || datatype.is_uint() {
+                    return Ok(Some(Val::immutable(
+                        builder.ins().iadd_imm(red_value, val),
+                        datatype.clone(),
+                    )));
+                }
+            }
+            "abs" => {
+                if datatype.is_float() {
+                    return Ok(Some(Val::immutable(
+                        builder.ins().fabs(red_value),
+                        datatype.clone(),
+                    )));
+                } else if datatype.is_int() {
+                    let cond = builder.ins().icmp_imm(IntCC::SignedGreaterThan, red_value, 0);
+                    let inverted = builder.ins().ineg(red_value); 
+                    return Ok(Some(Val::immutable(
+                        builder.ins().select(cond, red_value, inverted),
+                        datatype.clone(),
+                    )));
+                }
+            }
+            _ => (),
+        }
+
+        todo!("dispatch custom unary op ({})", op)
     }
 
     fn loop_expression(&mut self, ast: &Ast, builder: &mut FunctionBuilder) -> ExprResult {
@@ -538,7 +632,13 @@ impl Generator {
                             datatype,
                             builder,
                         );
-                        static_memset(val.read(builder, self.isa()), 0, 0, datatype.size(), builder);
+                        static_memset(
+                            val.read(builder, self.isa()),
+                            0,
+                            0,
+                            datatype.size(),
+                            builder,
+                        );
                         val
                     } else {
                         let default_value = datatype.default_value(builder);
@@ -561,9 +661,10 @@ impl Generator {
     }
 
     fn call_expression(&mut self, ast: &Ast, builder: &mut FunctionBuilder) -> ExprResult {
-        if let Ok(result) = self.builtin_call(ast, builder) {
-            return Ok(result); 
+        if let Some(result) = self.builtin_call(ast, builder)? {
+            return Ok(result);
         }
+
         let fun = self.find_function(&ast[0].token())?;
 
         let fun_ref = self
@@ -600,7 +701,11 @@ impl Generator {
 
         for (i, e) in ast[1..].iter().enumerate() {
             let value = self.expression(e, builder)?;
-            assert_type(&e.token(), &value.datatype(), &fun.params()[i].value().datatype())?;
+            assert_type(
+                &e.token(),
+                &value.datatype(),
+                &fun.params()[i].value().datatype(),
+            )?;
             self.call_buffer.push(value.read(builder, self.isa()));
         }
 
@@ -621,14 +726,21 @@ impl Generator {
         }
     }
 
-    fn builtin_call(&mut self, ast: &Ast, builder: &mut FunctionBuilder) -> ExprResult {
+    fn builtin_call(
+        &mut self,
+        ast: &Ast,
+        builder: &mut FunctionBuilder,
+    ) -> Result<Option<Option<Val>>> {
         let name = ast[0].token().value().deref();
         match name {
             "sizeof" => {
                 assert_arg_count(ast, 1)?;
                 let size = self.find_datatype(&ast[1].token())?.size();
                 let size = builder.ins().iconst(I64, size as i64);
-                Ok(Some(Val::immutable(size, self.builtin_repo.i64().clone())))
+                Ok(Some(Some(Val::immutable(
+                    size,
+                    self.builtin_repo.i64().clone(),
+                ))))
             }
             _ => Ok(None),
         }
@@ -638,16 +750,36 @@ impl Generator {
         match ast.token().kind() {
             TKind::Int(value, bits) => {
                 let datatype = match bits {
-                    8 => self.builtin_repo.i8().clone(),
-                    16 => self.builtin_repo.i16().clone(),
-                    32 => self.builtin_repo.i32().clone(),
-                    64 => self.builtin_repo.i64().clone(),
-                    _ => unreachable!(),
-                };
+                    8 => self.builtin_repo.i8(),
+                    16 => self.builtin_repo.i16(),
+                    32 => self.builtin_repo.i32(),
+                    _ => self.builtin_repo.i64(),
+                }.clone();
                 let value = builder
                     .ins()
                     .iconst(datatype.ir_repr(self.isa()), value as i64);
                 Ok(Val::immutable(value, datatype))
+            }
+            TKind::Uint(value, bits) => {
+                let datatype = match bits {
+                    8 => self.builtin_repo.u8(),
+                    16 => self.builtin_repo.u16(),
+                    32 => self.builtin_repo.u32(),
+                    _ => self.builtin_repo.u64(),
+                }.clone();
+                let value = builder
+                    .ins()
+                    .iconst(datatype.ir_repr(self.isa()), value as i64);
+                Ok(Val::immutable(value, datatype))
+            }
+            TKind::Float(value, bits) => {
+                if bits == 32 {
+                    let value = builder.ins().f32const(value as f32);
+                    Ok(Val::immutable(value, self.builtin_repo.f32().clone()))
+                } else {
+                    let value = builder.ins().f64const(value);
+                    Ok(Val::immutable(value, self.builtin_repo.f64().clone()))
+                }
             }
             TKind::Bool(value) => {
                 let datatype = self.builtin_repo.bool().clone();
@@ -808,12 +940,12 @@ impl Generator {
         Ok(result)
     }
 
-    fn binary_operation(&mut self, ast: &Ast, builder: &mut FunctionBuilder) -> Result<Val> {
+    fn binary_operation(&mut self, ast: &Ast, builder: &mut FunctionBuilder) -> ExprResult {
         let op = ast[0].token().value().deref();
 
         match op {
-            "=" => return Ok(self.assign(ast, builder)?),
-            "as" => return Ok(self.convert(ast, builder)?),
+            "=" => return Ok(Some(self.assign(ast, builder)?)),
+            "as" => return Ok(Some(self.convert(ast, builder)?)),
             _ => (),
         }
 
@@ -851,7 +983,7 @@ impl Generator {
                         };
 
                         let val = builder.ins().icmp(op, left_val, right_val);
-                        return Ok(Val::immutable(val, self.builtin_repo.bool().clone()));
+                        return Ok(Some(Val::immutable(val, self.builtin_repo.bool().clone())));
                     }
 
                     _ => todo!("unsupported int operator {}", op),
@@ -882,7 +1014,7 @@ impl Generator {
                         };
 
                         let val = builder.ins().icmp(op, left_val, right_val);
-                        return Ok(Val::immutable(val, self.builtin_repo.bool().clone()));
+                        return Ok(Some(Val::immutable(val, self.builtin_repo.bool().clone())));
                     }
 
                     _ => todo!("unsupported uint operator {}", op),
@@ -907,7 +1039,7 @@ impl Generator {
                         };
 
                         let val = builder.ins().fcmp(op, left_val, right_val);
-                        return Ok(Val::immutable(val, self.builtin_repo.bool().clone()));
+                        return Ok(Some(Val::immutable(val, self.builtin_repo.bool().clone())));
                     }
                     _ => todo!("unsupported float operation {}", op),
                 },
@@ -926,27 +1058,27 @@ impl Generator {
                     right.datatype().name()
                 ),
             };
-            Ok(Val::immutable(value, right.datatype().clone()))
+            Ok(Some(Val::immutable(value, right.datatype().clone())))
         } else {
-            todo!("non-matching type of binary operation")
+            todo!("non-matching type of binary operation {} {} {}", left.datatype().name(), op, right.datatype().name())
         }
     }
 
     fn convert(&mut self, ast: &Ast, builder: &mut FunctionBuilder) -> Result<Val> {
         let target_datatype = self.find_datatype(ast[2].token())?;
         let value = self.expression(&ast[1], builder)?;
-        let source_datatype = value.datatype(); 
-        if &target_datatype == source_datatype { 
+        let source_datatype = value.datatype();
+        if &target_datatype == source_datatype {
             // TODO: emit warming
-           return Ok(value)
+            return Ok(value);
         }
-        
+
         if !target_datatype.is_builtin() || !source_datatype.is_builtin() {
             todo!("dispatch method on non builtin datatype")
         }
 
         let extend = target_datatype.size() > source_datatype.size();
-        let target_ir = target_datatype.ir_repr(self.isa()); 
+        let target_ir = target_datatype.ir_repr(self.isa());
         let red_value = value.read(builder, self.isa());
 
         let ret = if target_datatype.is_float() {
@@ -969,54 +1101,53 @@ impl Generator {
         } else if target_datatype.is_int() {
             if source_datatype.is_float() {
                 builder.ins().fcvt_to_sint(target_ir, red_value)
-            } else if target_datatype.is_int() {
+            } else if source_datatype.is_int() {
                 if extend {
                     builder.ins().sextend(target_ir, red_value)
                 } else {
                     builder.ins().ireduce(target_ir, red_value)
-                } 
-            } else if target_datatype.is_uint() {
+                }
+            } else if source_datatype.is_uint() {
                 if extend {
                     builder.ins().uextend(target_ir, red_value)
                 } else {
                     builder.ins().ireduce(target_ir, red_value)
                 }
-            } else if target_datatype.is_bool() {
+            } else if source_datatype.is_bool() {
                 builder.ins().bint(target_ir, red_value)
             } else {
                 unreachable!();
             }
-
         } else if target_datatype.is_uint() {
             if source_datatype.is_float() {
                 builder.ins().fcvt_to_uint(target_ir, red_value)
-            } else if target_datatype.is_int() {
-                if extend {
-                    builder.ins().uextend(target_ir, red_value)
-                } else {
-                    builder.ins().ireduce(target_ir, red_value)
-                } 
-            } else if target_datatype.is_uint() {
+            } else if source_datatype.is_int() {
                 if extend {
                     builder.ins().uextend(target_ir, red_value)
                 } else {
                     builder.ins().ireduce(target_ir, red_value)
                 }
-            } else if target_datatype.is_bool() {
+            } else if source_datatype.is_uint() {
+                if extend {
+                    builder.ins().uextend(target_ir, red_value)
+                } else {
+                    builder.ins().ireduce(target_ir, red_value)
+                }
+            } else if source_datatype.is_bool() {
                 builder.ins().bint(target_ir, red_value)
             } else {
                 unreachable!();
-            }   
+            }
         } else if target_datatype.is_bool() {
             if source_datatype.is_float() {
                 let zero = source_datatype.default_value(builder);
                 builder.ins().fcmp(FloatCC::NotEqual, red_value, zero)
-            } else if target_datatype.is_int() || target_datatype.is_uint() {
-                let zero = target_datatype.default_value(builder);
-                builder.ins().icmp(IntCC::NotEqual, red_value, zero)  
+            } else if source_datatype.is_int() || source_datatype.is_uint() {
+                let zero = source_datatype.default_value(builder);
+                builder.ins().icmp(IntCC::NotEqual, red_value, zero)
             } else {
                 unreachable!();
-            }   
+            }
         } else {
             unreachable!();
         };
@@ -1085,7 +1216,10 @@ impl Generator {
         for args in header[1..header.len() - 1].iter() {
             let datatype = self.find_datatype(&args.last().unwrap().token())?;
             for arg in args[0..args.len() - 1].iter() {
-                fun_params.push(Var::new(arg.token().value().clone(), Val::unresolved(datatype.clone())));
+                fun_params.push(Var::new(
+                    arg.token().value().clone(),
+                    Val::unresolved(datatype.clone()),
+                ));
                 signature
                     .params
                     .push(AbiParam::new(datatype.ir_repr(self.isa())));
@@ -1107,7 +1241,12 @@ impl Generator {
                 "import" => Linkage::Import,
                 "export" => Linkage::Export,
                 "preemptible" => Linkage::Preemptible,
-                _ => return Err(IrGenError::new(IGEKind::InvalidLinkage, attr.token().clone())),
+                _ => {
+                    return Err(IrGenError::new(
+                        IGEKind::InvalidLinkage,
+                        attr.token().clone(),
+                    ))
+                }
             }
         } else {
             Linkage::Export
@@ -1134,8 +1273,7 @@ impl Generator {
         signature.call_conv = call_conv;
 
         let fun = Fun::new(
-            self
-                .object_module
+            self.object_module
                 .declare_function(name.deref(), linkage, &signature)
                 .unwrap(),
             name,

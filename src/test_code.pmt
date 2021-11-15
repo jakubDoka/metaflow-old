@@ -42,6 +42,9 @@ fun fib_loop(v: i64) -> i64:
       break'a
   return c
 
+fun unary_operators(a: i64) -> i64:
+  return -a + ~a + !a + ++a + --a
+
 struct Foo:
   a, b, c: i64
 

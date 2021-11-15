@@ -100,6 +100,7 @@ pub enum TKind {
 
     Int(i64, u16),
     Uint(u64, u16),
+    Float(f64, u16),
     Bool(bool),
     Char(char),
 
@@ -145,6 +146,7 @@ impl std::fmt::Display for TKind {
             TKind::Indent(_) => "indentation",
             TKind::Int(..) => "integer",
             TKind::Uint(..) => "unsigned integer",
+            TKind::Float(..) => "float",
             TKind::Bool(_) => "boolean",
             TKind::Char(_) => "character",
             TKind::UnknownCharacter(_) => "unknown character",

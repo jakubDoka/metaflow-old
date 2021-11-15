@@ -11,7 +11,11 @@ impl Val {
         Self { kind, datatype }
     }
 
-    pub fn new_stack(mutable: bool, datatype: &Cell<Datatype>, builder: &mut FunctionBuilder) -> Self {
+    pub fn new_stack(
+        mutable: bool,
+        datatype: &Cell<Datatype>,
+        builder: &mut FunctionBuilder,
+    ) -> Self {
         let slot = builder.create_stack_slot(StackSlotData {
             kind: StackSlotKind::ExplicitSlot,
             size: datatype.size(),
@@ -78,7 +82,14 @@ impl Val {
             VKind::Address(dst_value, mutable, offset) => {
                 if *mutable {
                     if value.datatype.is_on_stack() {
-                        static_memmove(*dst_value, *offset, src_value, value.offset(), self.datatype.size(), builder);
+                        static_memmove(
+                            *dst_value,
+                            *offset,
+                            src_value,
+                            value.offset(),
+                            self.datatype.size(),
+                            builder,
+                        );
                     } else {
                         builder
                             .ins()

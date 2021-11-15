@@ -10,7 +10,12 @@ pub struct Field {
 
 impl Field {
     pub fn new(embedded: bool, offset: u32, name: StrRef, datatype: Cell<Datatype>) -> Self {
-        Self { embedded, offset, name, datatype }
+        Self {
+            embedded,
+            offset,
+            name,
+            datatype,
+        }
     }
 
     pub fn name(&self) -> &StrRef {

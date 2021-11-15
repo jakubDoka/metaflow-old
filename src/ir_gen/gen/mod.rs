@@ -10,7 +10,7 @@ use crate::cli::Arguments;
 
 use super::*;
 
-pub type Result<T> = std::result::Result<T, GenError>;
+type Result<T> = std::result::Result<T, GenError>;
 
 pub fn compile(args: Arguments) -> Result<()> {
     if args.len() < 1 {
@@ -181,9 +181,6 @@ fun fib(v: i32) -> i32:
   else:
     fib(v - 1i32) + fib(v - 2i32)
 
-attr linkage(import), call_conv(windows_fastcall)
-fun putchar(c: i32)
-
 fun fib_loop(v: i32) -> i32:
   var 
     a, b, c = 1i32
@@ -193,7 +190,6 @@ fun fib_loop(v: i32) -> i32:
     a = b
     b = c
     v = v - 1i32
-    putchar(v)
     if v == 1i32:
       break'a
   return c
@@ -255,6 +251,28 @@ fun main -> i64:
   q = q.set(3, 4)
   p = p.add(q)
   return p.x + p.y - 10
+        "#,
+        0,
+    );
+    test_sippet(
+        r#"
+fun main -> i64:
+  var a: i64
+  ++a
+  --a
+  return !true as i64 + ~1 + 2 + abs -1 - 1 + a
+        "#,
+        0,
+    );
+    test_sippet(
+        r#"
+fun main -> i64:
+  var a = 1.0
+  loop:
+    a = a + 1.0
+    if a > 100.0:
+      break
+  return a as i64 - 101
         "#,
         0,
     );

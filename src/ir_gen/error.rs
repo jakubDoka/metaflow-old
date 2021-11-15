@@ -62,6 +62,7 @@ pub enum IGEKind {
     ModuleNotFound,
     CannotOpenFile(std::io::Error),
     AstError(AEKind),
+    BuiltinMethodNotFound,
     None,
 }
 

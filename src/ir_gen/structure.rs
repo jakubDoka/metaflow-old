@@ -8,10 +8,7 @@ pub struct Structure {
 
 impl Structure {
     pub fn new(union: bool, fields: Vec<Field>) -> Self {
-        Structure {
-            union,
-            fields,
-        }
+        Structure { union, fields }
     }
 
     pub fn union(&self) -> bool {

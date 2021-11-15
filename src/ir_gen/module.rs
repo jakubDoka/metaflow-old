@@ -34,7 +34,10 @@ impl Mod {
     }
 
     pub fn add_datatype(&mut self, datatype: Cell<Datatype>) -> Result<()> {
-        match self.types.binary_search_by(|d| datatype.name().cmp(&d.name())) {
+        match self
+            .types
+            .binary_search_by(|d| datatype.name().cmp(&d.name()))
+        {
             Ok(i) => Err(IGEKind::DuplicateType(datatype.clone(), self.types[i].clone()).into()),
             Err(i) => {
                 self.types.insert(i, datatype);
@@ -50,7 +53,10 @@ impl Mod {
     }
 
     pub fn add_function(&mut self, fun: Cell<Fun>) -> Result<()> {
-        match self.functions.binary_search_by(|d| fun.name().cmp(d.name())) {
+        match self
+            .functions
+            .binary_search_by(|d| fun.name().cmp(d.name()))
+        {
             Ok(i) => Err(IGEKind::DuplicateFunction(fun.clone(), self.functions[i].clone()).into()),
             Err(i) => {
                 self.functions.insert(i, fun);

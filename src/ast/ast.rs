@@ -1,4 +1,7 @@
-use std::{fmt::Write, ops::{Deref, DerefMut}};
+use std::{
+    fmt::Write,
+    ops::{Deref, DerefMut},
+};
 
 use crate::lexer::*;
 
@@ -57,7 +60,7 @@ impl Ast {
 
     pub fn set_children(&mut self, children: Vec<Ast>) {
         self.children = children;
-    } 
+    }
 
     pub fn set_kind(&mut self, kind: AKind) {
         self.kind = kind;
@@ -105,6 +108,7 @@ pub enum AKind {
     ReturnStatement,
 
     BinaryOperation,
+    UnaryOperation,
     IfExpression,
     DotExpr,
 

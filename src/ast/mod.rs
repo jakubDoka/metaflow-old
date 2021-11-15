@@ -1,12 +1,11 @@
 pub mod ast;
 pub mod error;
 
+use crate::lexer::*;
 pub use ast::*;
 pub use error::*;
-use crate::lexer::*;
 
 use std::ops::Deref;
-
 
 pub type Result<T> = std::result::Result<T, AstError>;
 
@@ -312,13 +311,21 @@ impl AstParser {
     fn simple_expression_low(&mut self, nested: bool) -> Result<Ast> {
         let mut ast = match self.current_token.kind() {
             TKind::Ident => self.ident_expression()?,
-            TKind::Int(..) | TKind::Uint(..) | TKind::Bool(..) | TKind::Char(..) => {
+            TKind::Int(..) | TKind::Uint(..) | TKind::Bool(..) | 
+            TKind::Char(..) | TKind::Float(..) => {
                 self.ast(AKind::Literal)
             }
             TKind::If => return self.if_expression(),
             TKind::Loop => return self.loop_expression(),
             TKind::Break => return self.break_expression(),
             TKind::Continue => return self.continue_expression(),
+            TKind::Op => {
+                let mut ast = self.ast(AKind::UnaryOperation);
+                ast.push(self.ast(AKind::Identifier));
+                self.advance();
+                ast.push(self.simple_expression()?);
+                return Ok(ast);
+            }
             _ => todo!(
                 "unmatched simple expression pattern {:?}",
                 self.current_token
@@ -645,7 +652,7 @@ pub const ASSIGN_PRECEDENCE: i64 = 15;
 
 pub fn precedence(op: &str) -> i64 {
     match op {
-        "." => 2,
+        "as" => 2,
         "*" | "/" | "%" => 3,
         "+" | "-" => 4,
         "<<" | ">>" => 5,

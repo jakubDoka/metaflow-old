@@ -1,4 +1,8 @@
-use std::{ops::{Range, Deref}, rc::Rc, fmt::Debug};
+use std::{
+    fmt::Debug,
+    ops::{Deref, Range},
+    rc::Rc,
+};
 
 #[derive(Clone, PartialEq)]
 pub struct StrRef {
