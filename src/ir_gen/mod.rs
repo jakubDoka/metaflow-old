@@ -561,6 +561,9 @@ impl Generator {
     }
 
     fn call_expression(&mut self, ast: &Ast, builder: &mut FunctionBuilder) -> ExprResult {
+        if let Ok(result) = self.builtin_call(ast, builder) {
+            return Ok(result); 
+        }
         let fun = self.find_function(&ast[0].token())?;
 
         let fun_ref = self
@@ -615,6 +618,19 @@ impl Generator {
             }
         } else {
             Ok(None)
+        }
+    }
+
+    fn builtin_call(&mut self, ast: &Ast, builder: &mut FunctionBuilder) -> ExprResult {
+        let name = ast[0].token().value().deref();
+        match name {
+            "sizeof" => {
+                assert_arg_count(ast, 1)?;
+                let size = self.find_datatype(&ast[1].token())?.size();
+                let size = builder.ins().iconst(I64, size as i64);
+                Ok(Some(Val::immutable(size, self.builtin_repo.i64().clone())))
+            }
+            _ => Ok(None),
         }
     }
 
@@ -795,8 +811,10 @@ impl Generator {
     fn binary_operation(&mut self, ast: &Ast, builder: &mut FunctionBuilder) -> Result<Val> {
         let op = ast[0].token().value().deref();
 
-        if op == "=" {
-            return Ok(self.assign(ast, builder)?);
+        match op {
+            "=" => return Ok(self.assign(ast, builder)?),
+            "as" => return Ok(self.convert(ast, builder)?),
+            _ => (),
         }
 
         let left = self.expression(&ast[1], builder)?;
@@ -912,6 +930,99 @@ impl Generator {
         } else {
             todo!("non-matching type of binary operation")
         }
+    }
+
+    fn convert(&mut self, ast: &Ast, builder: &mut FunctionBuilder) -> Result<Val> {
+        let target_datatype = self.find_datatype(ast[2].token())?;
+        let value = self.expression(&ast[1], builder)?;
+        let source_datatype = value.datatype(); 
+        if &target_datatype == source_datatype { 
+            // TODO: emit warming
+           return Ok(value)
+        }
+        
+        
+        if !target_datatype.is_builtin() || !source_datatype.is_builtin() {
+            todo!("dispatch method on non builtin datatype")
+        }
+
+        let extend = target_datatype.size() > source_datatype.size();
+        let target_ir = target_datatype.ir_repr(self.isa()); 
+        let red_value = value.read(builder, self.isa());
+
+        let ret = if target_datatype.is_float() {
+            if source_datatype.is_float() {
+                if extend {
+                    builder.ins().fpromote(target_ir, red_value)
+                } else {
+                    builder.ins().fdemote(target_ir, red_value)
+                }
+            } else if source_datatype.is_int() {
+                builder.ins().fcvt_from_sint(target_ir, red_value)
+            } else if source_datatype.is_uint() {
+                builder.ins().fcvt_from_uint(target_ir, red_value)
+            } else if source_datatype.is_bool() {
+                let val = builder.ins().bint(I64, red_value);
+                builder.ins().fcvt_from_sint(target_ir, val)
+            } else {
+                unreachable!();
+            }
+        } else if target_datatype.is_int() {
+            if source_datatype.is_float() {
+                builder.ins().fcvt_to_sint(target_ir, red_value)
+            } else if target_datatype.is_int() {
+                if extend {
+                    builder.ins().sextend(target_ir, red_value)
+                } else {
+                    builder.ins().ireduce(target_ir, red_value)
+                } 
+            } else if target_datatype.is_uint() {
+                if extend {
+                    builder.ins().uextend(target_ir, red_value)
+                } else {
+                    builder.ins().ireduce(target_ir, red_value)
+                }
+            } else if target_datatype.is_bool() {
+                builder.ins().bint(target_ir, red_value)
+            } else {
+                unreachable!();
+            }
+
+        } else if target_datatype.is_uint() {
+            if source_datatype.is_float() {
+                builder.ins().fcvt_to_uint(target_ir, red_value)
+            } else if target_datatype.is_int() {
+                if extend {
+                    builder.ins().uextend(target_ir, red_value)
+                } else {
+                    builder.ins().ireduce(target_ir, red_value)
+                } 
+            } else if target_datatype.is_uint() {
+                if extend {
+                    builder.ins().uextend(target_ir, red_value)
+                } else {
+                    builder.ins().ireduce(target_ir, red_value)
+                }
+            } else if target_datatype.is_bool() {
+                builder.ins().bint(target_ir, red_value)
+            } else {
+                unreachable!();
+            }   
+        } else if target_datatype.is_bool() {
+            if source_datatype.is_float() {
+                let zero = source_datatype.default_value(builder);
+                builder.ins().fcmp(FloatCC::NotEqual, red_value, zero)
+            } else if target_datatype.is_int() || target_datatype.is_uint() {
+                let zero = target_datatype.default_value(builder);
+                builder.ins().icmp(IntCC::NotEqual, red_value, zero)  
+            } else {
+                unreachable!();
+            }   
+        } else {
+            unreachable!();
+        };
+
+        Ok(Val::immutable(ret, target_datatype.clone()))
     }
 
     fn assign(&mut self, ast: &Ast, builder: &mut FunctionBuilder) -> Result<Val> {
@@ -1098,6 +1209,17 @@ impl Generator {
         } else {
             Ok(())
         }
+    }
+}
+
+fn assert_arg_count(ast: &Ast, expected: usize) -> Result<()> {
+    if ast.len() - 1 < expected {
+        Err(IrGenError::new(
+            IGEKind::InvalidAmountOfArguments(ast.len(), expected),
+            ast.token().clone(),
+        ))
+    } else {
+        Ok(())
     }
 }
 

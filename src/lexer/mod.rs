@@ -56,10 +56,9 @@ impl Lexer {
             "continue" => TKind::Continue,
             "struct" => TKind::Struct,
             "embed" => TKind::Embed,
-            "max" => TKind::Op,
-            "min" => TKind::Op,
+            "max" | "min" | "as" => TKind::Op,
             "true" => TKind::Bool(true),
-            "false" => TKind::Bool(false),
+            "false" => TKind::Bool(false), 
             _ => TKind::Ident,
         };
         Some(Token::new(kind, value, line_data))

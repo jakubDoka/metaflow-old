@@ -44,6 +44,39 @@ impl Datatype {
         self.size.unwrap()
     }
 
+    pub fn is_int(&self) -> bool {
+        match &self.kind {
+            DKind::Builtin(tp) => tp.is_int() && self.name.starts_with('i'),
+            _ => false,
+        }
+    }
+
+    pub fn is_uint(&self) -> bool {
+        match &self.kind {
+            DKind::Builtin(tp) => tp.is_int() && self.name.starts_with('u'),
+            _ => false,
+        }
+    }
+
+    pub fn is_float(&self) -> bool {
+        match &self.kind {
+            DKind::Builtin(tp) => tp.is_float(),
+            _ => false,
+        }
+    }
+
+    
+    pub fn is_bool(&self) -> bool {
+        match &self.kind {
+            DKind::Builtin(tp) => tp.is_bool(),
+            _ => false,
+        }
+    }
+
+    pub fn is_builtin(&self) -> bool {
+        matches!(self.kind, DKind::Builtin(_))
+    }
+
     pub fn is_resolved(&self) -> bool {
         !matches!(self.kind, DKind::Unresolved(_))
     }
