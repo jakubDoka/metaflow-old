@@ -238,6 +238,32 @@ fun main -> i64:
         "#,
         0,
     );
+    test_sippet(
+        r#"
+struct Point:
+  x, y: i64
+
+fun set(p: Point, x: i64, y: i64) -> Point:
+  var p = p
+  p.x = x
+  p.y = y
+  return p
+
+fun add(a, b: Point) -> Point:
+  var a = a
+  a.x = a.x + b.x
+  a.y = a.y + b.y
+  return a
+
+fun main -> i64:
+  var p, q: Point
+  p = p.set(1, 2)
+  q = q.set(3, 4)
+  p = p.add(q)
+  return p.x + p.y - 10
+        "#,
+        0,
+    );
 }
 
 pub fn test_sippet(sippet: &str, exit_code: i32) {

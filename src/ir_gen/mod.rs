@@ -69,76 +69,9 @@ impl Generator {
     fn generate(mut self, root_file_name: &str) -> Result<ObjectModule> {
         self.generate_module(root_file_name.to_string())?;
 
-        self.resolve_types()?;
-
         self.generate_functions()?;
 
         Ok(self.object_module)
-    }
-
-    fn resolve_types(&mut self) -> Result<()> {
-        let ctx = std::mem::replace(&mut self.context, Context::new());
-
-        let datatype_iter = ctx
-            .modules
-            .iter()
-            .map(|m| m.types.iter())
-            .flatten()
-            .map(Clone::clone);
-
-        for mut datatype in datatype_iter.clone().filter(|d| !d.is_resolved()) {
-            let ast = if let DKind::Unresolved(ast) =
-                std::mem::replace(&mut datatype.kind, DKind::Unresolved(Ast::none()))
-            {
-                ast
-            } else {
-                unreachable!();
-            };
-
-            let kind = match ast.kind {
-                AKind::StructDeclaration => self.generate_struct(ast)?,
-                _ => todo!("unmatched datatype type {:?}", ast),
-            };
-
-            datatype.kind = kind;
-        }
-
-        for mut datatype in datatype_iter.clone() {
-            self.determinate_size(&mut datatype)?;
-        }
-
-        self.context = ctx;
-        Ok(())
-    }
-
-    fn determinate_size(&mut self, datatype: &mut Datatype) -> Result<()> {
-        if datatype.is_size_resolved() {
-            return Ok(());
-        }
-
-        let mut size = 0;
-
-        match &mut datatype.kind {
-            DKind::Structure(structure) => {
-                if structure.union {
-                    for field in &mut structure.fields {
-                        self.determinate_size(&mut field.datatype)?;
-                        size = size.max(field.datatype.size.unwrap());
-                    }
-                } else {
-                    for field in &mut structure.fields {
-                        self.determinate_size(&mut field.datatype)?;
-                        field.offset = size;
-                        size += field.datatype.size();
-                    }
-                }
-            }
-            _ => todo!("unmatched datatype type {:?}", datatype.kind),
-        }
-
-        datatype.size = Some(size);
-
-        Ok(())
     }
 
     fn generate_struct(&mut self, ast: Ast) -> Result<DKind> {
@@ -197,13 +130,19 @@ impl Generator {
                 .iter()
                 .zip(f.params.iter_mut())
             {
-                var.value.kind = VKind::Immutable(value.clone());
+                var.value.kind = if var.value.datatype.is_on_stack() { 
+                    VKind::Address(*value, false, 0)
+                } else { 
+                    VKind::Immutable(*value)
+                };
                 self.variables.push(Some(var.clone()));
             }
 
             self.generate_function_body(&f.body, &mut builder)?;
             builder.seal_current_block();
             builder.finalize();
+            println!("{}", function.display());
+
             codegen_ctx.func = function;
             codegen_ctx.compute_cfg();
             codegen_ctx.compute_domtree();
@@ -227,16 +166,26 @@ impl Generator {
         self.current_module
             .dependency
             .push(self.builtin_module.clone());
+        
+        for item in ast.iter_mut() {
+            match &item.kind {
+                AKind::StructDeclaration => {
+                    self.struct_declaration(std::mem::take(item))?;
+                    self.pushed_attributes.clear();
+                }
+                _ => (),
+            }
+        }
+
+        self.resolve_types()?;
+
         for mut item in ast.drain(..) {
             match item.kind {
                 AKind::Function => {
                     self.function(item)?;
                     self.pushed_attributes.clear();
                 }
-                AKind::StructDeclaration => {
-                    self.struct_declaration(item)?;
-                    self.pushed_attributes.clear();
-                }
+                
                 AKind::Attribute => match item[0].token.value.deref() {
                     "push" => {
                         self.global_attributes.push(Ast::none());
@@ -257,6 +206,7 @@ impl Generator {
                             .for_each(|item| self.pushed_attributes.push(item));
                     }
                 },
+                AKind::None => (),
                 _ => todo!("unmatched top level expression {:?}", item),
             }
         }
@@ -264,6 +214,62 @@ impl Generator {
         self.context.add_module(self.current_module.clone())?;
 
         Ok(self.current_module.clone())
+    }
+
+    fn resolve_types(&mut self) -> Result<()> {
+        let mut current_module = self.current_module.clone();
+        for datatype in current_module.types.iter_mut().filter(|d| !d.is_resolved()) {
+            let ast = if let DKind::Unresolved(ast) =
+                std::mem::replace(&mut datatype.kind, DKind::Unresolved(Ast::none()))
+            {
+                ast
+            } else {
+                unreachable!();
+            };
+
+            let kind = match ast.kind {
+                AKind::StructDeclaration => self.generate_struct(ast)?,
+                _ => todo!("unmatched datatype type {:?}", ast),
+            };
+
+            datatype.kind = kind;
+        }
+
+        for mut datatype in current_module.types.iter_mut() {
+            self.determinate_size(&mut datatype)?;
+        }
+
+        Ok(())
+    }
+
+    fn determinate_size(&mut self, datatype: &mut Datatype) -> Result<()> {
+        if datatype.is_size_resolved() {
+            return Ok(());
+        }
+
+        let mut size = 0;
+
+        match &mut datatype.kind {
+            DKind::Structure(structure) => {
+                if structure.union {
+                    for field in &mut structure.fields {
+                        self.determinate_size(&mut field.datatype)?;
+                        size = size.max(field.datatype.size.unwrap());
+                    }
+                } else {
+                    for field in &mut structure.fields {
+                        self.determinate_size(&mut field.datatype)?;
+                        field.offset = size;
+                        size += field.datatype.size();
+                    }
+                }
+            }
+            _ => todo!("unmatched datatype type {:?}", datatype.kind),
+        }
+
+        datatype.size = Some(size);
+
+        Ok(())
     }
 
     fn struct_declaration(&mut self, ast: Ast) -> Result<()> {
@@ -1415,7 +1421,7 @@ impl Datatype {
         match self.kind {
             DKind::Builtin(tp) => tp,
             DKind::Structure(_) => isa.pointer_type(),
-            _ => todo!(),
+            _ => todo!("unimplemented type kind {:?}", self.kind),
         }
     }
 
