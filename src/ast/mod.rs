@@ -311,9 +311,18 @@ impl AstParser {
     fn simple_expression_low(&mut self, nested: bool) -> Result<Ast> {
         let mut ast = match self.current_token.kind() {
             TKind::Ident => self.ident_expression()?,
-            TKind::Int(..) | TKind::Uint(..) | TKind::Bool(..) | 
-            TKind::Char(..) | TKind::Float(..) => {
-                self.ast(AKind::Literal)
+            TKind::Int(..)
+            | TKind::Uint(..)
+            | TKind::Bool(..)
+            | TKind::Char(..)
+            | TKind::Float(..)
+            | TKind::String(..) => self.ast(AKind::Literal),
+            TKind::LPar => {
+                self.advance();
+                let expr = self.expression()?;
+                self.expect_str(TKind::RPar, "expected ')'")?;
+                self.advance();
+                expr
             }
             TKind::If => return self.if_expression(),
             TKind::Loop => return self.loop_expression(),
@@ -577,7 +586,7 @@ impl AstParser {
         mut parser: F,
     ) -> Result<()> {
         if start != TKind::None {
-            self.expect(start, format!("expected {}", start))?;
+            self.expect(start.clone(), format!("expected {}", start))?;
             self.advance();
             self.ignore_newlines();
         }
@@ -597,7 +606,7 @@ impl AstParser {
 
         if end != TKind::None {
             self.ignore_newlines();
-            self.expect(end, format!("expected {}", end))?;
+            self.expect(end.clone(), format!("expected {}", end))?;
             self.advance();
         }
 

@@ -33,7 +33,7 @@ impl Token {
     }
 
     pub fn kind(&self) -> TKind {
-        self.kind
+        self.kind.clone()
     }
 
     pub fn value(&self) -> &StrRef {
@@ -64,7 +64,7 @@ impl PartialEq<TKind> for Token {
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq)]
+#[derive(Debug, Clone, PartialEq)]
 pub enum TKind {
     Fun,
     Attr,
@@ -75,6 +75,7 @@ pub enum TKind {
     Elif,
     Else,
     Var,
+    Svar,
     Let,
     Loop,
     Break,
@@ -103,6 +104,8 @@ pub enum TKind {
     Float(f64, u16),
     Bool(bool),
     Char(char),
+    InvalidChar,
+    String(Rc<Vec<u8>>),
 
     Indent(usize),
 
@@ -123,6 +126,7 @@ impl std::fmt::Display for TKind {
             TKind::Elif => "'elif'",
             TKind::Else => "'else'",
             TKind::Var => "'var'",
+            TKind::Svar => "'svar'",
             TKind::Let => "'let'",
             TKind::Loop => "'loop'",
             TKind::Break => "'break'",
@@ -149,6 +153,8 @@ impl std::fmt::Display for TKind {
             TKind::Float(..) => "float",
             TKind::Bool(_) => "boolean",
             TKind::Char(_) => "character",
+            TKind::InvalidChar => "invalid character",
+            TKind::String(_) => "string",
             TKind::UnknownCharacter(_) => "unknown character",
             TKind::Eof => "end of file",
             TKind::None => "nothing",

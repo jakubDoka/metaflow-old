@@ -40,11 +40,13 @@
         "sint",
         "srem",
         "sshr",
+        "Svar",
         "udiv",
         "uextend",
         "umax",
         "umin",
         "urem",
-        "ushr"
+        "ushr",
+        "zeroinit"
     ]
 }

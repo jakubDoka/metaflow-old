@@ -44,9 +44,14 @@ impl Datatype {
         self.size.unwrap()
     }
 
+    pub fn is_pointer(&self) -> bool {
+        matches!(self.kind, DKind::Pointer(..))
+    }
+
     pub fn is_int(&self) -> bool {
         match &self.kind {
             DKind::Builtin(tp) => tp.is_int() && self.name.starts_with('i'),
+            DKind::Pointer(..) => true,
             _ => false,
         }
     }
@@ -92,11 +97,12 @@ impl Datatype {
         match self.kind {
             DKind::Builtin(tp) => tp,
             DKind::Structure(_) => isa.pointer_type(),
+            DKind::Pointer(..) => isa.pointer_type(),
             _ => todo!("unimplemented type kind {:?}", self.kind),
         }
     }
 
-    pub fn default_value(&self, builder: &mut FunctionBuilder) -> Value {
+    pub fn default_value(&self, builder: &mut FunctionBuilder, isa: &dyn TargetIsa) -> Value {
         match self.kind {
             DKind::Builtin(tp) => match tp {
                 I8 | I16 | I32 | I64 => builder.ins().iconst(tp, 0),
@@ -105,6 +111,7 @@ impl Datatype {
                 B1 => builder.ins().bconst(B1, false),
                 _ => panic!("unsupported builtin type"),
             },
+            DKind::Pointer(..) => builder.ins().null(isa.pointer_type()),
             _ => todo!(),
         }
     }
@@ -112,14 +119,19 @@ impl Datatype {
     pub fn set_kind(&mut self, kind: DKind) {
         self.kind = kind;
     }
+
+    pub fn clear(&mut self) {
+        self.kind = DKind::Cleared
+    } 
 }
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum DKind {
     Builtin(Type),
-    Pointer(Cell<Datatype>),
+    Pointer(Cell<Datatype>, bool),
     Alias(Cell<Datatype>),
     Structure(Structure),
     Enum(Enum),
     Unresolved(Ast),
+    Cleared,
 }

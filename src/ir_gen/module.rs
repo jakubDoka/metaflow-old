@@ -18,15 +18,15 @@ impl Mod {
         }
     }
 
-    pub fn find_datatype(&self, name: &str) -> Option<Cell<Datatype>> {
+    pub fn find_datatype(&self, name: &str) -> Option<(Cell<Datatype>, Option<Cell<Mod>>)> {
         self.types
             .binary_search_by(|d| name.cmp(&d.name()))
             .ok()
-            .map(|i| self.types[i].clone())
+            .map(|i| (self.types[i].clone(), None))
             .or_else(|| {
                 for dep in self.dependency.iter().rev() {
-                    if let Some(d) = dep.find_datatype(name) {
-                        return Some(d);
+                    if let Some((d, _)) = dep.find_datatype(name) {
+                        return Some((d, Some(dep.clone())));
                     }
                 }
                 None
@@ -65,15 +65,15 @@ impl Mod {
         }
     }
 
-    pub fn find_function(&self, name: &Token) -> Option<Cell<Fun>> {
+    pub fn find_function(&self, name: &Token) -> Option<(Cell<Fun>, Option<Cell<Mod>>)> {
         self.functions
             .binary_search_by(|f| name.value().cmp(&f.name()))
             .ok()
-            .map(|i| self.functions[i].clone())
+            .map(|i| (self.functions[i].clone(), None))
             .or_else(|| {
                 for dep in self.dependency.iter().rev() {
-                    if let Some(d) = dep.find_function(name) {
-                        return Some(d);
+                    if let Some((d, _)) = dep.find_function(name) {
+                        return Some((d, Some(dep.clone())));
                     }
                 }
                 None
@@ -106,21 +106,35 @@ impl Mod {
 }
 
 macro_rules! builtin_repo {
-    (types [$($name:ident: $lit:ident $bits:expr,)*]) => {
+    (
+        $isa:ident,
+        primitives [
+            $($name:ident: $lit:ident $bits:expr,)*
+        ]
+        raw [
+            $($struct_name:ident: $struct_value:expr,)*
+        ]
+    ) => {
         pub struct BuiltinRepo {
             $($name: Cell<Datatype>,)*
+            $($struct_name: Cell<Datatype>,)*
         }
 
         impl BuiltinRepo {
-            pub fn new() -> Self {
+            pub fn new($isa: &dyn TargetIsa) -> Self {
+                $(
+                    let $name = Cell::new(Datatype::with_size(
+                        stringify!($name).to_string(),
+                        DKind::Builtin($lit),
+                        $bits
+                    ));
+                )*
+                $(
+                    let $struct_name = $struct_value;
+                )*
                 Self {
-                    $(
-                        $name: Cell::new(Datatype::with_size(
-                            stringify!($name).to_string(),
-                            DKind::Builtin($lit),
-                            $bits
-                        )),
-                    )*
+                    $($name,)*
+                    $($struct_name,)*
                 }
             }
 
@@ -129,11 +143,19 @@ macro_rules! builtin_repo {
                     &self.$name
                 }
             )*
+            $(
+                pub fn $struct_name(&self) -> &Cell<Datatype> {
+                    &self.$struct_name
+                }
+            )*
 
             pub fn to_module(&self) -> Cell<Mod> {
                 let mut module = Mod::new("builtin".to_string());
                 $(
                     module.add_datatype(self.$name.clone()).unwrap();
+                )*
+                $(
+                    module.add_datatype(self.$struct_name.clone()).unwrap();
                 )*
                 Cell::new(module)
             }
@@ -142,7 +164,8 @@ macro_rules! builtin_repo {
 }
 
 builtin_repo!(
-    types [
+    isa,
+    primitives [
         i8: I8 1,
         i16: I16 2,
         i32: I32 4,
@@ -154,5 +177,23 @@ builtin_repo!(
         f32: F32 4,
         f64: F64 8,
         bool: B1 1,
+    ]
+
+    raw [
+        string: Cell::new(Datatype::with_size(
+            "string".to_string(),
+            DKind::Structure(Structure::new(false, vec![
+                Field::new(false, 0, StrRef::infinite("cap"), u32.clone()),
+                Field::new(false, 4, StrRef::infinite("len"), u32.clone()),
+                Field::new(false, 8, StrRef::infinite("data"), 
+                    Cell::new(Datatype::with_size(
+                        "&u8".to_string(), 
+                        DKind::Pointer(u8.clone(), true), 
+                        isa.pointer_bytes() as u32
+                    ))
+                ),
+            ])),
+            16,
+        )),
     ]
 );

@@ -33,7 +33,7 @@ use cranelift_codegen::{
     isa::{CallConv, TargetIsa},
 };
 use cranelift_frontend::{FunctionBuilder, FunctionBuilderContext, Variable};
-use cranelift_module::{FuncId, Linkage, Module};
+use cranelift_module::{DataContext, DataId, FuncId, Linkage, Module};
 use cranelift_object::ObjectModule;
 use std::{ops::Deref, str::FromStr};
 
@@ -51,22 +51,26 @@ pub struct Generator {
     builtin_repo: BuiltinRepo,
     builtin_module: Cell<Mod>,
     context: Context,
+    data_context: DataContext,
     current_module: Cell<Mod>,
     current_signature: Option<Cell<Fun>>,
     variables: Vec<Option<Var>>,
     loop_headers: Vec<LoopHeader>,
     variable_counter: usize,
+    string_counter: usize,
     global_attributes: Vec<Ast>,
     pushed_attributes: Vec<Ast>,
     imported_functions: Vec<(StrRef, FuncRef)>,
     call_buffer: Vec<Value>,
     object_module: ObjectModule,
     seen_structures: Vec<Cell<Datatype>>,
+
+    datatype_pool: Pool<Datatype>,
 }
 
 impl Generator {
     fn new(object_module: ObjectModule) -> Self {
-        let builtin_repo = BuiltinRepo::new();
+        let builtin_repo = BuiltinRepo::new(object_module.isa());
         let builtin_module = builtin_repo.to_module();
         Self {
             current_module: builtin_module.clone(), // just an place holder
@@ -74,15 +78,19 @@ impl Generator {
             builtin_module,
             current_signature: None,
             context: Context::new(),
+            data_context: DataContext::new(),
             variables: Vec::new(),
             loop_headers: Vec::new(),
             variable_counter: 0,
+            string_counter: 0,
             global_attributes: Vec::new(),
             pushed_attributes: Vec::new(),
             imported_functions: Vec::new(),
             call_buffer: Vec::new(),
             object_module,
             seen_structures: Vec::new(),
+
+            datatype_pool: Pool::new(),
         }
     }
 
@@ -90,6 +98,14 @@ impl Generator {
         self.generate_module(root_file_name.to_string())?;
 
         self.generate_functions()?;
+
+        // get rid of cyclic references
+        self.context
+            .modules_mut()
+            .iter_mut()
+            .map(|m| m.types_mut().iter_mut())
+            .flatten()
+            .for_each(|t| t.clear());
 
         Ok(self.object_module)
     }
@@ -99,7 +115,7 @@ impl Generator {
         for raw_fields in ast[1].iter() {
             match raw_fields.kind() {
                 AKind::StructField(embedded) => {
-                    let datatype = self.find_datatype(&raw_fields.last().unwrap().token())?;
+                    let datatype = self.find_datatype(raw_fields.last().unwrap())?;
                     for field in raw_fields[0..raw_fields.len() - 1].iter() {
                         fields.push(Field::new(
                             embedded,
@@ -308,8 +324,11 @@ impl Generator {
     fn struct_declaration(&mut self, ast: Ast) -> Result<()> {
         let name = ast[0].token().value().clone().to_string();
 
+        let datatype = self.datatype_pool
+            .wrap(Datatype::new(name, DKind::Unresolved(ast)));
+
         self.current_module
-            .add_datatype(Cell::new(Datatype::new(name, DKind::Unresolved(ast))))?;
+            .add_datatype(datatype)?;
 
         Ok(())
     }
@@ -491,16 +510,34 @@ impl Generator {
         let datatype = value.datatype();
         let red_value = value.read(builder, self.isa());
         match op {
+            "*" => {
+                match datatype.kind() {
+                    DKind::Pointer(base, mutable) => {
+                        let val = value.read(builder, self.isa());
+                        return Ok(Some(Val::address(val, *mutable, base.clone())));
+                    }
+                    _ => (),
+                }
+            }
+            "&" => {
+                let ptr_datatype = self.pointer_of(value.is_mutable(), &datatype);
+                if datatype.is_on_stack() {
+                    return Ok(Some(Val::immutable(red_value, ptr_datatype)));
+                } else {
+                    return Err(IrGenError::new(IGEKind::CannotTakeAddressOfRegister, ast.token().clone()));
+                }
+            }
+            
             "!" | "~" => {
                 if datatype.is_builtin() {
                     if datatype.is_bool() {
                         let f = builder.ins().bconst(B1, false);
-                        let t = builder.ins().bconst(B1, true); 
+                        let t = builder.ins().bconst(B1, true);
                         return Ok(Some(Val::immutable(
                             builder.ins().select(red_value, f, t),
                             datatype.clone(),
                         )));
-                    } 
+                    }
                     return Ok(Some(Val::immutable(
                         builder.ins().bnot(red_value),
                         datatype.clone(),
@@ -536,8 +573,10 @@ impl Generator {
                         datatype.clone(),
                     )));
                 } else if datatype.is_int() {
-                    let cond = builder.ins().icmp_imm(IntCC::SignedGreaterThan, red_value, 0);
-                    let inverted = builder.ins().ineg(red_value); 
+                    let cond = builder
+                        .ins()
+                        .icmp_imm(IntCC::SignedGreaterThan, red_value, 0);
+                    let inverted = builder.ins().ineg(red_value);
                     return Ok(Some(Val::immutable(
                         builder.ins().select(cond, red_value, inverted),
                         datatype.clone(),
@@ -593,7 +632,7 @@ impl Generator {
             let mut datatype = if let AKind::None = datatype.kind() {
                 None
             } else {
-                Some(self.find_datatype(&datatype.token())?)
+                Some(self.find_datatype(datatype)?)
             };
 
             for (i, name) in identifiers
@@ -641,7 +680,7 @@ impl Generator {
                         );
                         val
                     } else {
-                        let default_value = datatype.default_value(builder);
+                        let default_value = datatype.default_value(builder, self.isa());
                         if ast.kind() == AKind::VarStatement(true) {
                             let var = Variable::new(self.variable_counter);
                             self.variable_counter += 1;
@@ -735,7 +774,7 @@ impl Generator {
         match name {
             "sizeof" => {
                 assert_arg_count(ast, 1)?;
-                let size = self.find_datatype(&ast[1].token())?.size();
+                let size = self.find_datatype(&ast[1])?.size();
                 let size = builder.ins().iconst(I64, size as i64);
                 Ok(Some(Some(Val::immutable(
                     size,
@@ -754,7 +793,8 @@ impl Generator {
                     16 => self.builtin_repo.i16(),
                     32 => self.builtin_repo.i32(),
                     _ => self.builtin_repo.i64(),
-                }.clone();
+                }
+                .clone();
                 let value = builder
                     .ins()
                     .iconst(datatype.ir_repr(self.isa()), value as i64);
@@ -766,7 +806,8 @@ impl Generator {
                     16 => self.builtin_repo.u16(),
                     32 => self.builtin_repo.u32(),
                     _ => self.builtin_repo.u64(),
-                }.clone();
+                }
+                .clone();
                 let value = builder
                     .ins()
                     .iconst(datatype.ir_repr(self.isa()), value as i64);
@@ -792,6 +833,25 @@ impl Generator {
                     .ins()
                     .iconst(datatype.ir_repr(self.isa()), value as i64);
                 Ok(Val::immutable(value, datatype))
+            }
+            TKind::String(value) => {
+                let id = self.create_static_data(
+                    "",
+                    DataContentOption::Data(&value),
+                    Linkage::Export,
+                    false,
+                    false,
+                )?;
+                let data = self.object_module.declare_data_in_func(id, builder.func);
+                let val = builder.ins().global_value(self.isa().pointer_type(), data);
+                let datatype = self.builtin_repo.string().clone();
+                let new_stack = Val::new_stack(false, &datatype, builder);
+                let addr = new_stack.read(builder, self.isa());
+                let len = builder.ins().iconst(I32, value.len() as i64);
+                builder.ins().store(MemFlags::new(), len, addr, 0);
+                builder.ins().store(MemFlags::new(), len, addr, 4);
+                builder.ins().store(MemFlags::new(), val, addr, 8);
+                Ok(new_stack)
             }
             _ => todo!("unmatched literal token {:?}", ast.token()),
         }
@@ -955,31 +1015,64 @@ impl Generator {
         let left_val = left.read(builder, self.isa());
         let right_val = right.read(builder, self.isa());
 
+        let left_ir = left.datatype().ir_repr(self.isa());
+
         if left.datatype() == right.datatype() {
-            let value = match left.datatype().name() {
-                "i8" | "i16" | "i32" | "i64" => match op {
+            let value = if left_ir.is_int() {
+                let signed = left.datatype().is_int();
+                match op {
                     "+" => builder.ins().iadd(left_val, right_val),
                     "-" => builder.ins().isub(left_val, right_val),
                     "*" => builder.ins().imul(left_val, right_val),
-                    "/" => builder.ins().sdiv(left_val, right_val),
-                    "%" => builder.ins().srem(left_val, right_val),
+                    "/" => {
+                        if signed {
+                            builder.ins().sdiv(left_val, right_val)
+                        } else {
+                            builder.ins().udiv(left_val, right_val)
+                        }
+                    }
+                    "%" => {
+                        if signed {
+                            builder.ins().srem(left_val, right_val)
+                        } else {
+                            builder.ins().urem(left_val, right_val)
+                        }
+                    }
                     "&" => builder.ins().band(left_val, right_val),
                     "|" => builder.ins().bor(left_val, right_val),
                     "^" => builder.ins().bxor(left_val, right_val),
                     "<<" => builder.ins().ishl(left_val, right_val),
-                    ">>" => builder.ins().sshr(left_val, right_val),
+                    ">>" => {
+                        if signed {
+                            builder.ins().sshr(left_val, right_val)
+                        } else {
+                            builder.ins().ushr(left_val, right_val)
+                        }
+                    }
                     "max" => builder.ins().imax(left_val, right_val),
                     "min" => builder.ins().imin(left_val, right_val),
 
                     "==" | "!=" | "<" | ">" | ">=" | "<=" => {
-                        let op = match op {
-                            "==" => IntCC::Equal,
-                            "!=" => IntCC::NotEqual,
-                            "<" => IntCC::SignedLessThan,
-                            ">" => IntCC::SignedGreaterThan,
-                            ">=" => IntCC::SignedGreaterThanOrEqual,
-                            "<=" => IntCC::SignedLessThanOrEqual,
-                            _ => unreachable!(),
+                        let op = if signed {
+                            match op {
+                                "==" => IntCC::Equal,
+                                "!=" => IntCC::NotEqual,
+                                "<" => IntCC::SignedLessThan,
+                                ">" => IntCC::SignedGreaterThan,
+                                ">=" => IntCC::SignedGreaterThanOrEqual,
+                                "<=" => IntCC::SignedLessThanOrEqual,
+                                _ => unreachable!(),
+                            }
+                        } else {
+                            match op {
+                                "==" => IntCC::Equal,
+                                "!=" => IntCC::NotEqual,
+                                "<" => IntCC::UnsignedLessThan,
+                                ">" => IntCC::UnsignedGreaterThan,
+                                ">=" => IntCC::UnsignedGreaterThanOrEqual,
+                                "<=" => IntCC::UnsignedLessThanOrEqual,
+                                _ => unreachable!(),
+                            }
                         };
 
                         let val = builder.ins().icmp(op, left_val, right_val);
@@ -987,46 +1080,15 @@ impl Generator {
                     }
 
                     _ => todo!("unsupported int operator {}", op),
-                },
-                "u8" | "u16" | "u32" | "u64" => match op {
-                    "+" => builder.ins().iadd(left_val, right_val),
-                    "-" => builder.ins().isub(left_val, right_val),
-                    "*" => builder.ins().imul(left_val, right_val),
-                    "/" => builder.ins().udiv(left_val, right_val),
-                    "%" => builder.ins().urem(left_val, right_val),
-                    "&" => builder.ins().band(left_val, right_val),
-                    "|" => builder.ins().bor(left_val, right_val),
-                    "^" => builder.ins().bxor(left_val, right_val),
-                    "<<" => builder.ins().ishl(left_val, right_val),
-                    ">>" => builder.ins().ushr(left_val, right_val),
-                    "max" => builder.ins().umax(left_val, right_val),
-                    "min" => builder.ins().umin(left_val, right_val),
-
-                    "==" | "!=" | "<" | ">" | ">=" | "<=" => {
-                        let op = match op {
-                            "==" => IntCC::Equal,
-                            "!=" => IntCC::NotEqual,
-                            "<" => IntCC::UnsignedLessThan,
-                            ">" => IntCC::UnsignedGreaterThan,
-                            ">=" => IntCC::UnsignedGreaterThanOrEqual,
-                            "<=" => IntCC::UnsignedLessThanOrEqual,
-                            _ => unreachable!(),
-                        };
-
-                        let val = builder.ins().icmp(op, left_val, right_val);
-                        return Ok(Some(Val::immutable(val, self.builtin_repo.bool().clone())));
-                    }
-
-                    _ => todo!("unsupported uint operator {}", op),
-                },
-                "f32" | "f64" => match op {
+                }
+            } else if left_ir.is_float() {
+                match op {
                     "+" => builder.ins().fadd(left_val, right_val),
                     "-" => builder.ins().fsub(left_val, right_val),
                     "*" => builder.ins().fmul(left_val, right_val),
                     "/" => builder.ins().fdiv(left_val, right_val),
                     "max" => builder.ins().fmax(left_val, right_val),
                     "min" => builder.ins().fmin(left_val, right_val),
-
                     "==" | "=!" | "<" | ">" | ">=" | "<=" => {
                         let op = match op {
                             "==" => FloatCC::Equal,
@@ -1042,30 +1104,31 @@ impl Generator {
                         return Ok(Some(Val::immutable(val, self.builtin_repo.bool().clone())));
                     }
                     _ => todo!("unsupported float operation {}", op),
-                },
-
-                "bool" => match op {
+                }
+            } else if left_ir.is_bool() {
+                match op {
                     "&" => builder.ins().band(left_val, right_val),
                     "|" => builder.ins().bor(left_val, right_val),
                     "||" => todo!("unsupported ||"),
                     "&&" => todo!("unsupported &&"),
                     _ => todo!("unsupported bool operation {}", op),
-                },
-
-                _ => todo!(
-                    "unmatched operator {} on type {}",
-                    op,
-                    right.datatype().name()
-                ),
+                }
+            } else {
+                unreachable!();
             };
             Ok(Some(Val::immutable(value, right.datatype().clone())))
         } else {
-            todo!("non-matching type of binary operation {} {} {}", left.datatype().name(), op, right.datatype().name())
+            todo!(
+                "non-matching type of binary operation {} {} {}",
+                left.datatype().name(),
+                op,
+                right.datatype().name()
+            )
         }
     }
 
     fn convert(&mut self, ast: &Ast, builder: &mut FunctionBuilder) -> Result<Val> {
-        let target_datatype = self.find_datatype(ast[2].token())?;
+        let target_datatype = self.find_datatype(&ast[2])?;
         let value = self.expression(&ast[1], builder)?;
         let source_datatype = value.datatype();
         if &target_datatype == source_datatype {
@@ -1073,20 +1136,20 @@ impl Generator {
             return Ok(value);
         }
 
-        if !target_datatype.is_builtin() || !source_datatype.is_builtin() {
-            todo!("dispatch method on non builtin datatype")
-        }
-
         let extend = target_datatype.size() > source_datatype.size();
+        let reduce = target_datatype.size() < source_datatype.size();
         let target_ir = target_datatype.ir_repr(self.isa());
         let red_value = value.read(builder, self.isa());
+        let cannot_convert = Err(IrGenError::cannot_convert(&ast.token(), &source_datatype, &target_datatype));
 
         let ret = if target_datatype.is_float() {
             if source_datatype.is_float() {
                 if extend {
                     builder.ins().fpromote(target_ir, red_value)
-                } else {
+                } else if reduce {
                     builder.ins().fdemote(target_ir, red_value)
+                } else {
+                    red_value
                 }
             } else if source_datatype.is_int() {
                 builder.ins().fcvt_from_sint(target_ir, red_value)
@@ -1096,7 +1159,7 @@ impl Generator {
                 let val = builder.ins().bint(I64, red_value);
                 builder.ins().fcvt_from_sint(target_ir, val)
             } else {
-                unreachable!();
+                return cannot_convert;
             }
         } else if target_datatype.is_int() {
             if source_datatype.is_float() {
@@ -1104,19 +1167,23 @@ impl Generator {
             } else if source_datatype.is_int() {
                 if extend {
                     builder.ins().sextend(target_ir, red_value)
-                } else {
+                } else if reduce {
                     builder.ins().ireduce(target_ir, red_value)
+                } else {
+                    red_value
                 }
             } else if source_datatype.is_uint() {
                 if extend {
                     builder.ins().uextend(target_ir, red_value)
-                } else {
+                } else if reduce {
                     builder.ins().ireduce(target_ir, red_value)
+                } else {
+                    red_value
                 }
             } else if source_datatype.is_bool() {
                 builder.ins().bint(target_ir, red_value)
             } else {
-                unreachable!();
+                return cannot_convert;
             }
         } else if target_datatype.is_uint() {
             if source_datatype.is_float() {
@@ -1124,32 +1191,36 @@ impl Generator {
             } else if source_datatype.is_int() {
                 if extend {
                     builder.ins().uextend(target_ir, red_value)
-                } else {
+                } else if reduce {
                     builder.ins().ireduce(target_ir, red_value)
+                } else {
+                    red_value
                 }
             } else if source_datatype.is_uint() {
                 if extend {
                     builder.ins().uextend(target_ir, red_value)
-                } else {
+                } else if reduce {
                     builder.ins().ireduce(target_ir, red_value)
+                } else {
+                    red_value
                 }
             } else if source_datatype.is_bool() {
                 builder.ins().bint(target_ir, red_value)
             } else {
-                unreachable!();
+                return cannot_convert;
             }
         } else if target_datatype.is_bool() {
             if source_datatype.is_float() {
-                let zero = source_datatype.default_value(builder);
+                let zero = source_datatype.default_value(builder, self.isa());
                 builder.ins().fcmp(FloatCC::NotEqual, red_value, zero)
             } else if source_datatype.is_int() || source_datatype.is_uint() {
-                let zero = source_datatype.default_value(builder);
+                let zero = source_datatype.default_value(builder, self.isa());
                 builder.ins().icmp(IntCC::NotEqual, red_value, zero)
             } else {
-                unreachable!();
+                return cannot_convert;
             }
         } else {
-            unreachable!();
+            return cannot_convert;
         };
 
         Ok(Val::immutable(ret, target_datatype.clone()))
@@ -1199,7 +1270,7 @@ impl Generator {
 
         let return_type = header.last().unwrap();
         let return_type = if return_type.kind() != AKind::None {
-            let datatype = self.find_datatype(&return_type.token())?.clone();
+            let datatype = self.find_datatype(return_type)?.clone();
             if datatype.is_on_stack() {
                 signature
                     .params
@@ -1214,7 +1285,7 @@ impl Generator {
         };
 
         for args in header[1..header.len() - 1].iter() {
-            let datatype = self.find_datatype(&args.last().unwrap().token())?;
+            let datatype = self.find_datatype(args.last().unwrap())?;
             for arg in args[0..args.len() - 1].iter() {
                 fun_params.push(Var::new(
                     arg.token().value().clone(),
@@ -1287,19 +1358,79 @@ impl Generator {
         Ok(Cell::new(fun))
     }
 
+    fn create_static_data(
+        &mut self,
+        name: &str,
+        content: DataContentOption,
+        linkage: Linkage,
+        mutable: bool,
+        tls: bool,
+    ) -> Result<DataId> {
+        let id = self
+            .object_module
+            .declare_data(name, linkage, mutable, tls)
+            .unwrap();
+
+        if linkage != Linkage::Import {
+            match content {
+                DataContentOption::Data(content) => {
+                    self.data_context
+                        .define(content.to_vec().into_boxed_slice());
+                }
+                DataContentOption::ZeroMem(size) => {
+                    self.data_context.define_zeroinit(size);
+                }
+                _ => panic!("not imported data has to have a form"),
+            }
+
+            self.object_module
+                .define_data(id, &self.data_context)
+                .unwrap();
+
+            self.data_context.clear();
+        } else if content != DataContentOption::None {
+            panic!("imported data cannot have a form");
+        }
+
+        Ok(id)
+    }
+
     fn isa(&self) -> &dyn TargetIsa {
         self.object_module.isa()
     }
 
-    fn find_datatype(&self, token: &Token) -> Result<Cell<Datatype>> {
-        self.current_module
-            .find_datatype(&token.value())
-            .ok_or_else(|| IrGenError::new(IGEKind::TypeNotFound, token.clone()))
+    fn pointer_of(&mut self, mutable: bool, datatype: &Cell<Datatype>) -> Cell<Datatype> {
+        let datatype = Datatype::with_size(
+            format!("ptr {}", datatype.name()),
+            DKind::Pointer(datatype.clone(), mutable),
+            self.isa().pointer_type().bytes(),
+        );
+
+        self.datatype_pool.wrap(datatype)
+    } 
+
+    fn find_datatype(&mut self, ast: &Ast) -> Result<Cell<Datatype>> {
+        let is_pointer = ast.kind() == AKind::UnaryOperation && ast.token().value().deref() == "&";
+        let token = if is_pointer {
+            ast[1].token()
+        } else {
+            ast.token()
+        };
+        let datatype = self.current_module
+            .find_datatype(token.value())
+            .map(|d| d.0)
+            .ok_or_else(|| IrGenError::new(IGEKind::TypeNotFound, token.clone()))?;
+        Ok(if is_pointer {
+            self.pointer_of(false, &datatype)
+        } else {
+            datatype
+        })
     }
 
     fn find_function(&self, token: &Token) -> Result<Cell<Fun>> {
         self.current_module
             .find_function(token)
+            .map(|f| f.0)
             .ok_or_else(|| IrGenError::new(IGEKind::FunctionNotFound, token.clone()))
     }
 
@@ -1484,4 +1615,11 @@ fn static_memmove(
             (offset + dst_pointer_offset) as i32,
         );
     }
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub enum DataContentOption<'a> {
+    None,
+    Data(&'a [u8]),
+    ZeroMem(usize),
 }

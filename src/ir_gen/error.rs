@@ -25,6 +25,13 @@ impl IrGenError {
     pub fn token(&self) -> &Option<Token> {
         &self.token
     }
+
+    pub fn cannot_convert(token: &Token, from: &Cell<Datatype>, to: &Cell<Datatype>) -> Self {
+        Self::new(
+            IGEKind::CannotConvert(from.clone(), to.clone()),
+            token.clone(),
+        )
+    }
 }
 
 impl Into<IrGenError> for AstError {
@@ -44,12 +51,14 @@ pub enum IGEKind {
     DuplicateFunction(Cell<Fun>, Cell<Fun>),
     MissingAttrArgument(usize, usize),
     InvalidAmountOfArguments(usize, usize),
+    CannotTakeAddressOfRegister,
     InvalidInlineLevel,
     InvalidLinkage,
     InvalidCallConv,
     InvalidFieldAccess,
     FieldNotFound,
     AssignToImmutable,
+    CannotConvert(Cell<Datatype>, Cell<Datatype>),
     ExpectedValue,
     MissingValueInElseBranch,
     UnexpectedValueInThenBranch,

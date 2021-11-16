@@ -43,6 +43,10 @@ impl Val {
         Self::new(VKind::Address(value, mutable, 0), datatype)
     }
 
+    pub fn is_mutable(&self) -> bool {
+        matches!(self.kind, VKind::Mutable(_) | VKind::Address(_, true, _))
+    }
+
     pub fn read(&self, builder: &mut FunctionBuilder, isa: &dyn TargetIsa) -> Value {
         match &self.kind {
             VKind::Immutable(value) => value.clone(),

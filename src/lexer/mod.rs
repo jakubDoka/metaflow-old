@@ -1,7 +1,9 @@
+pub mod cursor;
 pub mod line_data;
 pub mod str_ref;
 pub mod token;
 
+pub use cursor::*;
 pub use line_data::*;
 pub use str_ref::*;
 pub use token::*;
@@ -34,7 +36,7 @@ impl Lexer {
             self.cursor.advance();
         }
         let end = self.cursor.progress();
-        let value = self.cursor.data.sub(start..end);
+        let value = self.cursor.sub(start..end);
         let kind = match value.deref() {
             "fun" => TKind::Fun,
             "attr" => TKind::Attr,
@@ -46,6 +48,7 @@ impl Lexer {
             "else" => TKind::Else,
             "let" => TKind::Let,
             "var" => TKind::Var,
+            "svar" => TKind::Svar,
             "loop" => TKind::Loop,
             "break" => TKind::Break,
             "continue" => TKind::Continue,
@@ -66,7 +69,7 @@ impl Lexer {
             self.cursor.advance();
         }
         let end = self.cursor.progress();
-        let value = self.cursor.data.sub(start..end);
+        let value = self.cursor.sub(start..end);
         let kind = match value.deref() {
             ":" => TKind::Colon,
             "->" => TKind::RArrow,
@@ -97,7 +100,7 @@ impl Lexer {
             }
         }
         let end = self.cursor.progress();
-        let value = self.cursor.data.sub(start..end);
+        let value = self.cursor.sub(start..end);
         Some(Token::new(TKind::Indent(indentation / 2), value, line_data))
     }
 
@@ -133,14 +136,16 @@ impl Lexer {
                     _ => unreachable!(),
                 }
             }
-            _ => if fraction == 0 && !is_float {
-                TKind::Int(number as i64, 64)
-            } else {
-                TKind::Float(number as f64 + fraction as f64 / exponent as f64, 64)
+            _ => {
+                if fraction == 0 && !is_float {
+                    TKind::Int(number as i64, 64)
+                } else {
+                    TKind::Float(number as f64 + fraction as f64 / exponent as f64, 64)
+                }
             }
         };
         let end = self.cursor.progress();
-        let value = self.cursor.data.sub(start..end);
+        let value = self.cursor.sub(start..end);
         Some(Token::new(kind, value, line_data))
     }
 
@@ -151,7 +156,21 @@ impl Lexer {
         let current = self.cursor.advance()?;
 
         let (char, may_be_label) = if current == '\\' {
-            (self.char_escape()?, false)
+            let start = self.cursor.progress();
+            (
+                match self.char_escape() {
+                    Some(c) => c,
+                    None => {
+                        let end = self.cursor.progress();
+                        return Some(Token::new(
+                            TKind::InvalidChar,
+                            self.cursor.sub(start..end),
+                            self.line_data(),
+                        ));
+                    }
+                },
+                false,
+            )
         } else {
             (current, true)
         };
@@ -165,16 +184,64 @@ impl Lexer {
         if next == '\'' {
             self.cursor.advance();
             let end = self.cursor.progress();
-            let value = self.cursor.data.sub(start..end);
+            let value = self.cursor.sub(start..end);
             Some(Token::new(TKind::Char(char), value, line_data))
         } else {
             while self.cursor.peek().unwrap_or('\0').is_alphanumeric() {
                 self.cursor.advance();
             }
             let end = self.cursor.progress();
-            let value = self.cursor.data.sub(start..end);
+            let value = self.cursor.sub(start..end);
             Some(Token::new(TKind::Label, value, line_data))
         }
+    }
+
+    fn string(&mut self) -> Option<Token> {
+        let line_data = self.line_data();
+        let start = self.cursor.progress();
+        self.cursor.advance()?;
+        let mut string_data = Vec::new();
+        loop {
+            match self.cursor.peek()? {
+                '\\' => {
+                    let start = self.cursor.progress();
+                    match self.char_escape() {
+                        Some(ch) => {
+                            let len = string_data.len();
+                            string_data.resize(len + ch.len_utf8(), 0);
+                            ch.encode_utf8(&mut string_data[len..]);
+                        }
+                        None => {
+                            let end = self.cursor.progress();
+                            return Some(Token::new(
+                                TKind::InvalidChar,
+                                self.cursor.sub(start..end),
+                                self.line_data(),
+                            ));
+                        }
+                    }
+                }
+                '"' => {
+                    self.cursor.advance();
+                    break;
+                }
+                _ => {
+                    let ch = self.cursor.advance()?;
+                    let len = string_data.len();
+                    string_data.resize(len + ch.len_utf8(), 0);
+                    ch.encode_utf8(&mut string_data[len..]);
+                }
+            }
+        }
+
+        // note: we don't care if string has incorrect encoding
+        let end = self.cursor.progress();
+        let value = self.cursor.sub(start..end);
+        Some(Token::new(
+            TKind::String(Rc::new(string_data)),
+            value,
+            line_data,
+        ))
     }
 
     fn char_escape(&mut self) -> Option<char> {
@@ -211,19 +278,18 @@ impl Lexer {
                 for _ in 0..len {
                     res = res * 16 + (self.cursor.advance()?.to_digit(16)? - '0' as u32);
                 }
-                // SAFETY: TODO: check that the value is valid
-                unsafe { char::from_u32_unchecked(res) }
+                return char::from_u32(res);
             }
             _ => return None,
         })
     }
 
     fn line_data(&self) -> LineData {
-        LineData {
-            file_name: StrRef::whole(&self.file_name),
-            line: self.cursor.line,
-            column: self.cursor.progress() - self.cursor.last_n_line,
-        }
+        LineData::new(
+            self.cursor.line(),
+            self.cursor.column(),
+            StrRef::whole(&self.file_name),
+        )
     }
 }
 
@@ -251,6 +317,7 @@ impl<'a> Iterator for Lexer {
                 return self.next();
             }
             '\'' => return self.char_or_label(),
+            '"' => return self.string(),
             '#' => TKind::Hash,
             ',' => TKind::Comma,
             '(' => TKind::LPar,
@@ -269,50 +336,9 @@ impl<'a> Iterator for Lexer {
         self.cursor.advance();
         Some(Token::new(
             kind,
-            self.cursor.data.sub(start..start + 1),
+            self.cursor.sub(start..start + 1),
             line_data,
         ))
-    }
-}
-
-struct Cursor {
-    data: StrRef,
-    chars: Chars<'static>,
-    line: usize,
-    last_n_line: usize,
-}
-
-impl Cursor {
-    fn new(data: StrRef) -> Self {
-        Cursor {
-            //SAFETY: cursor disposes data only upon drop
-            chars: unsafe { data.get_static_ref().chars() },
-            data,
-            line: 1,
-            last_n_line: 0,
-        }
-    }
-
-    fn peek(&self) -> Option<char> {
-        self.chars.clone().next()
-    }
-
-    fn peek_n(&self, n: usize) -> Option<char> {
-        self.chars.clone().nth(n)
-    }
-
-    fn progress(&self) -> usize {
-        self.data.len() - self.chars.as_str().len()
-    }
-
-    #[inline]
-    fn advance(&mut self) -> Option<char> {
-        let char = self.chars.next();
-        if char == Some('\n') {
-            self.line += 1;
-            self.last_n_line = self.progress();
-        }
-        char
     }
 }
 

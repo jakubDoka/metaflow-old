@@ -276,6 +276,34 @@ fun main -> i64:
         "#,
         0,
     );
+    test_sippet(
+        r#"
+attr linkage(import), call_conv(windows_fastcall)
+fun putchar(i: i32)
+
+fun main -> i64:
+  var 
+    a = "Hello, World!"
+    b = 0
+  let addr = a.data  
+  loop:
+    putchar(*((a.data as i64 + b) as &u8) as i32)
+    b = b + 1
+    if b >= a.len as i64:
+      break
+  return 0
+        "#,
+        0,
+    );
+    test_sippet(
+        r#"
+fun main -> i64:
+  svar 
+    b = 0
+  return &b as i64
+        "#,
+        0,
+    );
 }
 
 pub fn test_sippet(sippet: &str, exit_code: i32) {

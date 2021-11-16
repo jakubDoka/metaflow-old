@@ -53,3 +53,7 @@ struct Goo:
   attr something
   gva: i64
 
+fun strings -> i64:
+  var hello = "hello"
+  return 0
+

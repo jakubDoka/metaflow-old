@@ -38,4 +38,8 @@ impl Context {
     pub fn modules(&self) -> &[Cell<Mod>] {
         &self.modules
     }
+
+    pub fn modules_mut(&mut self) -> &mut [Cell<Mod>] {
+        &mut self.modules
+    }
 }
