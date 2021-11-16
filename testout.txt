@@ -292,6 +292,21 @@ Token { kind: Ident, value: "gva", line_data: LineData { line: 54, column: 2, fi
 Token { kind: Colon, value: ":", line_data: LineData { line: 54, column: 5, file_name: "test_code.pmh" } }
 Token { kind: Ident, value: "i64", line_data: LineData { line: 54, column: 7, file_name: "test_code.pmh" } }
 Token { kind: Indent(0), value: "\n\r", line_data: LineData { line: 54, column: 11, file_name: "test_code.pmh" } }
+Token { kind: Indent(0), value: "\n", line_data: LineData { line: 55, column: 1, file_name: "test_code.pmh" } }
+Token { kind: Fun, value: "fun", line_data: LineData { line: 56, column: 0, file_name: "test_code.pmh" } }
+Token { kind: Ident, value: "strings", line_data: LineData { line: 56, column: 4, file_name: "test_code.pmh" } }
+Token { kind: RArrow, value: "->", line_data: LineData { line: 56, column: 12, file_name: "test_code.pmh" } }
+Token { kind: Ident, value: "i64", line_data: LineData { line: 56, column: 15, file_name: "test_code.pmh" } }
+Token { kind: Colon, value: ":", line_data: LineData { line: 56, column: 18, file_name: "test_code.pmh" } }
+Token { kind: Indent(1), value: "\n  ", line_data: LineData { line: 56, column: 20, file_name: "test_code.pmh" } }
+Token { kind: Var, value: "var", line_data: LineData { line: 57, column: 2, file_name: "test_code.pmh" } }
+Token { kind: Ident, value: "hello", line_data: LineData { line: 57, column: 6, file_name: "test_code.pmh" } }
+Token { kind: Op, value: "=", line_data: LineData { line: 57, column: 12, file_name: "test_code.pmh" } }
+Token { kind: String([104, 101, 108, 108, 111]), value: "\"hello\"", line_data: LineData { line: 57, column: 14, file_name: "test_code.pmh" } }
+Token { kind: Indent(1), value: "\n  ", line_data: LineData { line: 57, column: 22, file_name: "test_code.pmh" } }
+Token { kind: Return, value: "return", line_data: LineData { line: 58, column: 2, file_name: "test_code.pmh" } }
+Token { kind: Int(0, 64), value: "0", line_data: LineData { line: 58, column: 9, file_name: "test_code.pmh" } }
+Token { kind: Indent(0), value: "\n\r", line_data: LineData { line: 58, column: 11, file_name: "test_code.pmh" } }
 Group 'fun' "fun":
  Function 'fun' "fun":
   FunctionHeader 'fun' "fun":
@@ -555,4 +570,18 @@ Group 'fun' "fun":
    StructField(false) identifier "gva":
     Identifier identifier "gva"
     Identifier identifier "i64"
+ Function 'fun' "fun":
+  FunctionHeader 'fun' "fun":
+   Identifier identifier "strings"
+   Identifier identifier "i64"
+  Group ':' ":":
+   VarStatement(true) 'var' "var":
+    VarAssign identifier "hello":
+     Group identifier "hello":
+      Identifier identifier "hello"
+     None end of file ""
+     Group operator "=":
+      Literal string "\"hello\""
+   ReturnStatement 'return' "return":
+    Literal integer "0"
 
