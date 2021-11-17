@@ -56,6 +56,17 @@ impl Val {
         }
     }
 
+    pub fn deref(&self, builder: &mut FunctionBuilder, isa: &dyn TargetIsa) -> Self {
+        match self.datatype.kind() {
+            DKind::Pointer(datatype, mutable) => {
+                let val = self.read(builder, isa);
+                return Self::address(val, *mutable, datatype.clone());
+            }
+            _ => panic!("deref on non-pointer"),
+        }
+        
+    }
+
     pub fn read(&self, builder: &mut FunctionBuilder, isa: &dyn TargetIsa) -> Value {
         match &self.kind {
             VKind::Immutable(value) => value.clone(),

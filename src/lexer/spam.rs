@@ -60,6 +60,30 @@ impl Spam {
     pub unsafe fn get_static_ref(&self) -> &'static str {
         &*self.string as &'static str
     }
+
+    pub fn join(&self, other: &Self, trim: bool) -> Self {
+        let rc = self.rc.clone().unwrap();
+        if self.rc != other.rc {
+            if other.rc.is_none() {
+                return Self::new(&rc, self.range.start..rc.len());
+            }
+            panic!("Spam::join: Spams must be from the same String");
+        }
+
+        let end = if trim {
+            let mut init = other.range.start;
+            while (rc.as_bytes()[init - 1] as char).is_whitespace() {
+                init -= 1;
+            }
+            init
+        } else {
+            self.range.end.max(other.range.end)
+        };
+
+        let new_range = self.range.start.min(other.range.start)..end;
+
+        Self::new(self.rc.as_ref().unwrap(), new_range)
+    }
 }
 
 impl Default for Spam {

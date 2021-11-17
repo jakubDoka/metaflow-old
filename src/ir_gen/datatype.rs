@@ -112,7 +112,7 @@ impl Datatype {
                 _ => panic!("unsupported builtin type"),
             },
             DKind::Pointer(..) => builder.ins().null(isa.pointer_type()),
-            _ => todo!(),
+            _ => todo!("not implemented for type kind {:?}", self.kind),
         }
     }
 

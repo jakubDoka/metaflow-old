@@ -74,6 +74,8 @@ impl AstParser {
 
         ast.push(self.expression()?);
 
+        ast.token_mut().to_group(&self.current_token, true);
+
         Ok(ast)
     }
 
@@ -88,6 +90,8 @@ impl AstParser {
             TKind::None,
             Self::attr_element,
         )?;
+
+        ast.token_mut().to_group(&self.current_token, true);
 
         Ok(ast)
     }
@@ -115,6 +119,8 @@ impl AstParser {
             _ => (),
         }
 
+        ast.token_mut().to_group(&self.current_token, true);
+
         Ok(ast)
     }
 
@@ -126,6 +132,9 @@ impl AstParser {
         } else {
             Ast::none()
         });
+
+        ast.token_mut().to_group(&self.current_token, true);
+
         Ok(ast)
     }
 
@@ -155,6 +164,8 @@ impl AstParser {
             Ast::none()
         });
 
+        ast.token_mut().to_group(&self.current_token, true);
+
         Ok(ast)
     }
 
@@ -173,6 +184,9 @@ impl AstParser {
             Ok(ident)
         })?;
         ast.push(self.expression()?);
+        
+        ast.token_mut().to_group(&self.current_token, true);
+
         Ok(ast)
     }
 
@@ -198,6 +212,9 @@ impl AstParser {
             ast.push(s.var_statement_line()?);
             Ok(())
         })?;
+        
+        ast.token_mut().to_group(&self.current_token, true);
+
         Ok(ast)
     }
 
@@ -249,6 +266,8 @@ impl AstParser {
 
         ast.set_children(vec![ident_group, datatype, values]);
 
+        ast.token_mut().to_group(&self.current_token, true);
+
         Ok(ast)
     }
 
@@ -268,6 +287,9 @@ impl AstParser {
             self.expression()?
         };
         ast.push(ret_val);
+
+        ast.token_mut().to_group(&self.current_token, true);
+
         Ok(ast)
     }
 
@@ -297,11 +319,52 @@ impl AstParser {
                 }
             }
 
-            result = Ast::with_children(
-                AKind::BinaryOperation,
-                op.clone(),
-                vec![Ast::new(AKind::Identifier, op), result, next],
-            );
+            let mut token = result.token().clone();
+            token.to_group(&next.token(), false);
+
+            // this handles the '{op}=' sugar
+            result = if pre == ASSIGN_PRECEDENCE && op.value().as_bytes().last().unwrap() == &b'=' {
+                let operator = Ast::new(
+                    AKind::Identifier, 
+                    Token::new(
+                        TKind::Op, 
+                        op.value().sub(0..op.value().len() - 1), 
+                        op.line_data().clone(),
+                    ),
+                );
+                let eq = Ast::new(
+                    AKind::Identifier,
+                    Token::new(
+                        TKind::Op,
+                        op.value().sub(op.value().len() - 1..op.value().len()), 
+                        op.line_data().clone(),
+                    ),
+                );
+
+                Ast::with_children(
+                    AKind::BinaryOperation, 
+                    token.clone(),
+                    vec![
+                        eq,
+                        result.clone(),
+                        Ast::with_children(
+                            AKind::BinaryOperation, 
+                            token, 
+                            vec![
+                                operator,
+                                result,
+                                next,
+                            ],
+                        ),
+                    ],
+                )
+            } else {
+                Ast::with_children(
+                    AKind::BinaryOperation,
+                    token,
+                    vec![Ast::new(AKind::Identifier, op), result, next],
+                )
+            };
         }
 
         Ok(result)
@@ -352,7 +415,7 @@ impl AstParser {
             loop {
                 match self.current_token.kind() {
                     TKind::Dot => {
-                        let mut new_ast = self.ast(AKind::DotExpr);
+                        let mut new_ast = Ast::new(AKind::DotExpr, ast.token().clone());
                         new_ast.push(ast);
                         self.advance();
                         new_ast.push(self.simple_expression_low(true)?);
@@ -394,6 +457,10 @@ impl AstParser {
             }
         }
 
+        if ast.kind() != AKind::Identifier {
+            ast.token_mut().to_group(&self.current_token, true);
+        }
+
         Ok(ast)
     }
 
@@ -402,6 +469,8 @@ impl AstParser {
         self.advance();
 
         ast.push(self.optional_label());
+
+        ast.token_mut().to_group(&self.current_token, true);
 
         Ok(ast)
     }
@@ -418,6 +487,8 @@ impl AstParser {
             self.expression()?
         });
 
+        ast.token_mut().to_group(&self.current_token, true);
+
         Ok(ast)
     }
 
@@ -428,6 +499,8 @@ impl AstParser {
         ast.push(self.optional_label());
 
         ast.push(self.stmt_block()?);
+
+        ast.token_mut().to_group(&self.current_token, true);
 
         Ok(ast)
     }
@@ -461,6 +534,8 @@ impl AstParser {
             }
             _ => (),
         }
+
+        ast.token_mut().to_group(&self.current_token, true);
 
         Ok(ast)
     }
@@ -502,6 +577,9 @@ impl AstParser {
         };
 
         ast.set_children(vec![condition, then_block, else_block]);
+
+        ast.token_mut().to_group(&self.current_token, true);
+
         Ok(ast)
     }
 

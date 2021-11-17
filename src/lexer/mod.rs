@@ -1,11 +1,11 @@
 pub mod cursor;
 pub mod line_data;
-pub mod str_ref;
+pub mod spam;
 pub mod token;
 
 pub use cursor::*;
 pub use line_data::*;
-pub use str_ref::*;
+pub use spam::*;
 pub use token::*;
 
 use std::{fmt::Debug, ops::Deref, rc::Rc, str::Chars};

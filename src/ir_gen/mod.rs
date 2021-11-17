@@ -330,7 +330,39 @@ impl Generator {
     }
 
     fn generate_function_body(&mut self, ast: &Ast, builder: &mut FunctionBuilder) -> Result<()> {
-        self.statement_list(ast, builder, false)?;
+        if let Some(expr) = self.statement_list(ast, builder, false)? {
+            let return_type = self.current_signature.as_ref().unwrap().return_type();
+            if return_type == Some(expr.datatype()) {
+                let value = expr.read(builder, self.isa());
+                builder.ins().return_(&[value]);
+            } else if let Some(return_type) = return_type {
+                let value = if let Ok(ret_stack) = self.find_variable(&Token::eof()) {
+                    let value = ret_stack.value().read(builder, self.isa());
+                    static_memset(value, 0, 0, return_type.size(), builder);
+                    value
+                } else {
+                    return_type.default_value(builder, self.isa())
+                };
+                builder.ins().return_(&[value]);
+            } else {
+                builder.ins().return_(&[]);
+            }
+        } else if !builder.is_filled() {
+            let return_type = self.current_signature.as_ref().unwrap().return_type();
+            if let Some(return_type) = return_type {
+                let value = if let Ok(ret_stack) = self.find_variable(&Token::eof()) {
+                    let value = ret_stack.value().read(builder, self.isa());
+                    static_memset(value, 0, 0, return_type.size(), builder);
+                    value
+                } else {
+                    return_type.default_value(builder, self.isa())
+                };
+                builder.ins().return_(&[value]);
+            } else {
+                builder.ins().return_(&[]);
+            }
+        }
+        
         Ok(())
     }
 
@@ -340,6 +372,10 @@ impl Generator {
         builder: &mut FunctionBuilder,
         is_scope: bool,
     ) -> ExprResult {
+        if ast.is_empty() {
+            return Ok(None);
+        }
+
         if is_scope {
             self.start_scope();
         }
@@ -509,12 +545,8 @@ impl Generator {
         let red_value = value.read(builder, self.isa());
         match op {
             "*" => {
-                match datatype.kind() {
-                    DKind::Pointer(base, mutable) => {
-                        let val = value.read(builder, self.isa());
-                        return Ok(Some(Val::address(val, *mutable, base.clone())));
-                    }
-                    _ => (),
+                if let DKind::Pointer(..) = datatype.kind() {
+                    return Ok(Some(value.deref(builder, self.isa())));
                 }
             }
             
@@ -1048,8 +1080,24 @@ impl Generator {
                             builder.ins().ushr(left_val, right_val)
                         }
                     }
-                    "max" => builder.ins().imax(left_val, right_val),
-                    "min" => builder.ins().imin(left_val, right_val),
+                    "max" => {
+                        let comp = if signed {
+                            IntCC::SignedGreaterThan
+                        } else {
+                            IntCC::UnsignedGreaterThan
+                        };
+                        let cond = builder.ins().icmp(comp, left_val, right_val);
+                        builder.ins().select(cond, left_val, right_val)
+                    }
+                    "min" => {
+                        let comp = if signed {
+                            IntCC::SignedLessThan
+                        } else {
+                            IntCC::UnsignedLessThan
+                        };
+                        let cond = builder.ins().icmp(comp, left_val, right_val);
+                        builder.ins().select(cond, left_val, right_val)
+                    }
 
                     "==" | "!=" | "<" | ">" | ">=" | "<=" => {
                         let op = if signed {
@@ -1242,12 +1290,16 @@ impl Generator {
     fn dot_expr(&mut self, ast: &Ast, builder: &mut FunctionBuilder) -> Result<Val> {
         let mut header = self.expression(&ast[0], builder)?;
 
+        if header.datatype().is_pointer() {
+            header = header.deref(builder, self.isa());
+        }
+        
         if !header.datatype().is_on_stack() {
             return Err(IrGenError::new(
                 IGEKind::InvalidFieldAccess,
                 ast.token().clone(),
             ));
-        }
+        } 
 
         let field = match &header.datatype().kind() {
             DKind::Structure(structure) => structure
@@ -1271,13 +1323,14 @@ impl Generator {
         let return_type = if return_type.kind() != AKind::None {
             let datatype = self.find_datatype(return_type)?.clone();
             if datatype.is_on_stack() {
+                let param = AbiParam::special(datatype.ir_repr(self.isa()), ArgumentPurpose::StructReturn);
+                signature.params.push(param);
+                signature.returns.push(param);
+            } else {
                 signature
-                    .params
-                    .push(AbiParam::special(datatype.ir_repr(self.isa()), ArgumentPurpose::StructReturn));
+                    .returns
+                    .push(AbiParam::new(datatype.ir_repr(self.isa())));
             }
-            signature
-                .returns
-                .push(AbiParam::new(datatype.ir_repr(self.isa())));
             Some(datatype)
         } else {
             None
@@ -1294,11 +1347,11 @@ impl Generator {
                     .params
                     .push(AbiParam::special(
                         datatype.ir_repr(self.isa()),
-                        if datatype.is_on_stack() {
-                            ArgumentPurpose::StructArgument(datatype.size())
-                        } else {
+                        //if datatype.is_on_stack() {
+                          //  ArgumentPurpose::StructArgument(datatype.size())
+                        //} else {
                             ArgumentPurpose::Normal
-                        }, 
+                        //}, 
                     ));
             }
         }
@@ -1407,7 +1460,7 @@ impl Generator {
 
     fn pointer_of(&mut self, mutable: bool, datatype: &Cell<Datatype>) -> Cell<Datatype> {
         let datatype = Datatype::with_size(
-            format!("ptr {}", datatype.name()),
+            String::new(),
             DKind::Pointer(datatype.clone(), mutable),
             self.isa().pointer_type().bytes(),
         );
@@ -1417,17 +1470,21 @@ impl Generator {
 
     fn find_datatype(&mut self, ast: &Ast) -> Result<Cell<Datatype>> {
         let is_pointer = ast.kind() == AKind::UnaryOperation && ast.token().value().deref() == "&";
-        let token = if is_pointer {
-            ast[1].token()
+        let (token, is_mutable) = if is_pointer {
+            if ast[1].kind() == AKind::UnaryOperation && ast[1].token().kind() == TKind::Var {
+                (ast[1][1].token(), true)
+            } else {
+                (ast[1].token(), false)
+            }
         } else {
-            ast.token()
+            (ast.token(), false)
         };
         let datatype = self.current_module
             .find_datatype(token.value())
             .map(|d| d.0)
             .ok_or_else(|| IrGenError::new(IGEKind::TypeNotFound, token.clone()))?;
         Ok(if is_pointer {
-            self.pointer_of(false, &datatype)
+            self.pointer_of(is_mutable, &datatype)
         } else {
             datatype
         })

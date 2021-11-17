@@ -43,6 +43,10 @@ impl Token {
     pub fn line_data(&self) -> &LineData {
         &self.line_data
     }
+
+    pub fn to_group(&mut self, end: &Token, trim: bool) {
+        self.value = self.value.join(&end.value, trim);
+    }
 }
 
 impl std::fmt::Display for Token {
@@ -109,6 +113,8 @@ pub enum TKind {
 
     Indent(usize),
 
+    Group,
+
     UnknownCharacter(char),
     Eof,
     None,
@@ -155,6 +161,7 @@ impl std::fmt::Display for TKind {
             TKind::Char(_) => "character",
             TKind::InvalidChar => "invalid character",
             TKind::String(_) => "string",
+            TKind::Group => "group",
             TKind::UnknownCharacter(_) => "unknown character",
             TKind::Eof => "end of file",
             TKind::None => "nothing",

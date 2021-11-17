@@ -58,6 +58,10 @@ impl Ast {
         &self.token
     }
 
+    pub fn token_mut(&mut self) -> &mut Token {
+        &mut self.token
+    }
+
     pub fn set_children(&mut self, children: Vec<Ast>) {
         self.children = children;
     }
