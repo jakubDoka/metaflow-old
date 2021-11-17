@@ -21,17 +21,7 @@ pub use structure::*;
 pub use val::*;
 pub use var::*;
 
-use cranelift_codegen::{
-    binemit::{NullStackMapSink, NullTrapSink},
-    entity::EntityRef,
-    ir::{
-        condcodes::{FloatCC, IntCC},
-        types::*,
-        AbiParam, Block, ExternalName, FuncRef, Function, InstBuilder, MemFlags, Signature,
-        StackSlotData, StackSlotKind, Type, Value,
-    },
-    isa::{CallConv, TargetIsa},
-};
+use cranelift_codegen::{binemit::{NullStackMapSink, NullTrapSink}, entity::EntityRef, ir::{AbiParam, ArgumentPurpose, Block, ExternalName, FuncRef, Function, InstBuilder, MemFlags, Signature, StackSlotData, StackSlotKind, Type, Value, condcodes::{FloatCC, IntCC}, types::*}, isa::{CallConv, TargetIsa}};
 use cranelift_frontend::{FunctionBuilder, FunctionBuilderContext, Variable};
 use cranelift_module::{DataContext, DataId, FuncId, Linkage, Module};
 use cranelift_object::ObjectModule;
@@ -1283,7 +1273,7 @@ impl Generator {
             if datatype.is_on_stack() {
                 signature
                     .params
-                    .push(AbiParam::new(datatype.ir_repr(self.isa())));
+                    .push(AbiParam::special(datatype.ir_repr(self.isa()), ArgumentPurpose::StructReturn));
             }
             signature
                 .returns
@@ -1302,7 +1292,14 @@ impl Generator {
                 ));
                 signature
                     .params
-                    .push(AbiParam::new(datatype.ir_repr(self.isa())));
+                    .push(AbiParam::special(
+                        datatype.ir_repr(self.isa()),
+                        if datatype.is_on_stack() {
+                            ArgumentPurpose::StructArgument(datatype.size())
+                        } else {
+                            ArgumentPurpose::Normal
+                        }, 
+                    ));
             }
         }
 
