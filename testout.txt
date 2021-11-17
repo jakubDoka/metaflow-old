@@ -354,10 +354,10 @@ Group 'fun' "fun":
    Identifier identifier "goo"
    FunctionArgument(false) identifier "a":
     Identifier identifier "a"
-    Identifier identifier "i8"
+    Identifier identifier "i8,"
    FunctionArgument(false) identifier "b":
     Identifier identifier "b"
-    Identifier identifier "i8"
+    Identifier identifier "i8)"
    None end of file ""
   Group ':' ":"
  Function 'fun' "fun":
@@ -368,141 +368,141 @@ Group 'fun' "fun":
  Function 'fun' "fun":
   FunctionHeader 'fun' "fun":
    Identifier identifier "main"
-   Identifier identifier "i64"
+   Identifier identifier "i64:"
   Group ':' ":":
    ReturnStatement 'return' "return":
-    BinaryOperation operator "-":
+    BinaryOperation integer "10 + 4 - 2 * 1 + 8\r\n\r":
      Identifier operator "-"
-     BinaryOperation operator "+":
+     BinaryOperation integer "10 + 4 -":
       Identifier operator "+"
-      Literal integer "10"
-      Literal integer "4"
-     BinaryOperation operator "+":
+      Literal integer "10 +"
+      Literal integer "4 -"
+     BinaryOperation integer "2 * 1 + 8\r\n\r":
       Identifier operator "+"
-      BinaryOperation operator "*":
+      BinaryOperation integer "2 * 1 +":
        Identifier operator "*"
-       Literal integer "2"
-       Literal integer "1"
-      Literal integer "8"
+       Literal integer "2 *"
+       Literal integer "1 +"
+      Literal integer "8\r\n\r"
  Function 'fun' "fun":
   FunctionHeader 'fun' "fun":
    Identifier identifier "operator_stress_test"
-   Identifier identifier "i64"
+   Identifier identifier "i64:"
   Group ':' ":":
    ReturnStatement 'return' "return":
-    BinaryOperation operator "+":
+    BinaryOperation integer "10 + 2 * 1 - 9 | 4 & 1 ^ 2 >> 1 << 7 min 20 max 10\r\n\r":
      Identifier operator "+"
-     Literal integer "10"
-     BinaryOperation operator "|":
+     Literal integer "10 +"
+     BinaryOperation integer "2 * 1 - 9 | 4 & 1 ^ 2 >> 1 << 7 min 20 max 10\r\n\r":
       Identifier operator "|"
-      BinaryOperation operator "-":
+      BinaryOperation integer "2 * 1 - 9 |":
        Identifier operator "-"
-       BinaryOperation operator "*":
+       BinaryOperation integer "2 * 1 -":
         Identifier operator "*"
-        Literal integer "2"
-        Literal integer "1"
-       Literal integer "9"
-      BinaryOperation operator "^":
+        Literal integer "2 *"
+        Literal integer "1 -"
+       Literal integer "9 |"
+      BinaryOperation integer "4 & 1 ^ 2 >> 1 << 7 min 20 max 10\r\n\r":
        Identifier operator "^"
-       BinaryOperation operator "&":
+       BinaryOperation integer "4 & 1 ^":
         Identifier operator "&"
-        Literal integer "4"
-        Literal integer "1"
-       BinaryOperation operator "max":
+        Literal integer "4 &"
+        Literal integer "1 ^"
+       BinaryOperation integer "2 >> 1 << 7 min 20 max 10\r\n\r":
         Identifier operator "max"
-        BinaryOperation operator "min":
+        BinaryOperation integer "2 >> 1 << 7 min 20 max":
          Identifier operator "min"
-         BinaryOperation operator "<<":
+         BinaryOperation integer "2 >> 1 << 7 min":
           Identifier operator "<<"
-          BinaryOperation operator ">>":
+          BinaryOperation integer "2 >> 1 <<":
            Identifier operator ">>"
-           Literal integer "2"
-           Literal integer "1"
-          Literal integer "7"
-         Literal integer "20"
-        Literal integer "10"
+           Literal integer "2 >>"
+           Literal integer "1 <<"
+          Literal integer "7 min"
+         Literal integer "20 max"
+        Literal integer "10\r\n\r"
  Function 'fun' "fun":
   FunctionHeader 'fun' "fun":
    Identifier identifier "conditional"
-   Identifier identifier "i64"
+   Identifier identifier "i64:"
   Group ':' ":":
    IfExpression 'if' "if":
-    Literal boolean "false"
+    Literal boolean "false:"
     Group ':' ":":
      ReturnStatement 'return' "return":
-      Literal integer "10"
+      Literal integer "10\r\n  "
     Group 'elif' "elif":
      IfExpression 'elif' "elif":
-      Literal boolean "true"
+      Literal boolean "true:"
       Group ':' ":":
        ReturnStatement 'return' "return":
         IfExpression 'if' "if":
-         Literal boolean "true"
+         Literal boolean "true:"
          Group ':' ":":
-          Literal integer "10"
+          Literal integer "10 else"
          Group ':' ":":
-          Literal integer "20"
+          Literal integer "20\r\n  "
       Group ':' ":":
        ReturnStatement 'return' "return":
-        Literal integer "0"
+        Literal integer "0\r\n\r"
  Attribute 'attr' "attr":
   AttributeAssign identifier "inline":
-   Identifier identifier "always"
+   Identifier identifier "always,"
   AttributeAssign identifier "call_conv":
-   Identifier identifier "cold"
+   Identifier identifier "cold\r\n"
  Function 'fun' "fun":
   FunctionHeader 'fun' "fun":
    Identifier identifier "inline_fn"
-   Identifier identifier "u32"
+   Identifier identifier "u32:"
   Group ':' ":":
    ReturnStatement 'return' "return":
-    Literal integer "10"
+    Literal integer "10\r\n\r"
  Function 'fun' "fun":
   FunctionHeader 'fun' "fun":
    Identifier identifier "fib"
    FunctionArgument(false) identifier "v":
     Identifier identifier "v"
-    Identifier identifier "i64"
-   Identifier identifier "i64"
+    Identifier identifier "i64)"
+   Identifier identifier "i64:"
   Group ':' ":":
    ReturnStatement 'return' "return":
     IfExpression 'if' "if":
-     BinaryOperation operator "|":
+     BinaryOperation identifier "v == 0 | v == 1:":
       Identifier operator "|"
-      BinaryOperation operator "==":
+      BinaryOperation identifier "v == 0 |":
        Identifier operator "=="
-       Identifier identifier "v"
-       Literal integer "0"
-      BinaryOperation operator "==":
+       Identifier identifier "v =="
+       Literal integer "0 |"
+      BinaryOperation identifier "v == 1:":
        Identifier operator "=="
-       Identifier identifier "v"
-       Literal integer "1"
+       Identifier identifier "v =="
+       Literal integer "1:"
      Group ':' ":":
-      Literal integer "1"
+      Literal integer "1\r\n  "
      Group ':' ":":
-      BinaryOperation operator "+":
+      BinaryOperation '(' "(v - 1) + fib(v - 2)\r\n\r":
        Identifier operator "+"
-       Call '(' "(":
+       Call '(' "(v - 1) +":
         Identifier identifier "fib"
-        BinaryOperation operator "-":
+        BinaryOperation identifier "v - 1)":
          Identifier operator "-"
-         Identifier identifier "v"
-         Literal integer "1"
-       Call '(' "(":
+         Identifier identifier "v -"
+         Literal integer "1)"
+       Call '(' "(v - 2)\r\n\r":
         Identifier identifier "fib"
-        BinaryOperation operator "-":
+        BinaryOperation identifier "v - 2)":
          Identifier operator "-"
-         Identifier identifier "v"
-         Literal integer "2"
+         Identifier identifier "v -"
+         Literal integer "2)"
  Function 'fun' "fun":
   FunctionHeader 'fun' "fun":
    Identifier identifier "fib_loop"
    FunctionArgument(false) identifier "v":
     Identifier identifier "v"
-    Identifier identifier "i64"
-   Identifier identifier "i64"
+    Identifier identifier "i64)"
+   Identifier identifier "i64:"
   Group ':' ":":
-   VarStatement(true, false) 'var' "var":
+   VarStatement(true, false) 'var' "var a, b, c = 1\r\n  ":
     VarAssign identifier "a":
      Group identifier "a":
       Identifier identifier "a"
@@ -510,78 +510,78 @@ Group 'fun' "fun":
       Identifier identifier "c"
      None end of file ""
      Group operator "=":
-      Literal integer "1"
+      Literal integer "1\r\n  "
       Identifier identifier "a"
       Identifier identifier "a"
    Loop 'loop' "loop":
     Identifier 'label' "'a"
     Group ':' ":":
-     BinaryOperation operator "=":
+     BinaryOperation identifier "c = a + b\r\n    ":
       Identifier operator "="
-      Identifier identifier "c"
-      BinaryOperation operator "+":
+      Identifier identifier "c ="
+      BinaryOperation identifier "a + b\r\n    ":
        Identifier operator "+"
-       Identifier identifier "a"
-       Identifier identifier "b"
-     BinaryOperation operator "=":
+       Identifier identifier "a +"
+       Identifier identifier "b\r\n    "
+     BinaryOperation identifier "a = b\r\n    ":
       Identifier operator "="
-      Identifier identifier "a"
-      Identifier identifier "b"
-     BinaryOperation operator "=":
+      Identifier identifier "a ="
+      Identifier identifier "b\r\n    "
+     BinaryOperation identifier "b = c\r\n    ":
       Identifier operator "="
-      Identifier identifier "b"
-      Identifier identifier "c"
-     BinaryOperation operator "=":
+      Identifier identifier "b ="
+      Identifier identifier "c\r\n    "
+     BinaryOperation identifier "v = v - 1\r\n    ":
       Identifier operator "="
-      Identifier identifier "v"
-      BinaryOperation operator "-":
+      Identifier identifier "v ="
+      BinaryOperation identifier "v - 1\r\n    ":
        Identifier operator "-"
-       Identifier identifier "v"
-       Literal integer "1"
+       Identifier identifier "v -"
+       Literal integer "1\r\n    "
      IfExpression 'if' "if":
-      BinaryOperation operator "==":
+      BinaryOperation identifier "v == 0:":
        Identifier operator "=="
-       Identifier identifier "v"
-       Literal integer "0"
+       Identifier identifier "v =="
+       Literal integer "0:"
       Group ':' ":":
        Break 'break' "break":
         Identifier 'label' "'a"
         None end of file ""
       None end of file ""
    ReturnStatement 'return' "return":
-    Identifier identifier "c"
+    Identifier identifier "c\r\n\r"
  Function 'fun' "fun":
   FunctionHeader 'fun' "fun":
    Identifier identifier "unary_operators"
    FunctionArgument(false) identifier "a":
     Identifier identifier "a"
-    Identifier identifier "i64"
-   Identifier identifier "i64"
+    Identifier identifier "i64)"
+   Identifier identifier "i64:"
   Group ':' ":":
    ReturnStatement 'return' "return":
-    BinaryOperation operator "+":
+    BinaryOperation operator "-a + ~a + !a + ++a + --":
      Identifier operator "+"
-     BinaryOperation operator "+":
+     BinaryOperation operator "-a + ~a + !a + ++":
       Identifier operator "+"
-      BinaryOperation operator "+":
+      BinaryOperation operator "-a + ~a + !":
        Identifier operator "+"
-       BinaryOperation operator "+":
+       BinaryOperation operator "-a + ~":
         Identifier operator "+"
         UnaryOperation operator "-":
          Identifier operator "-"
-         Identifier identifier "a"
+         Identifier identifier "a +"
         UnaryOperation operator "~":
          Identifier operator "~"
-         Identifier identifier "a"
+         Identifier identifier "a +"
        UnaryOperation operator "!":
         Identifier operator "!"
-        Identifier identifier "a"
+        Identifier identifier "a +"
       UnaryOperation operator "++":
        Identifier operator "++"
-       Identifier identifier "a"
+       Identifier identifier "a +"
      UnaryOperation operator "--":
       Identifier operator "--"
-      Identifier identifier "a"
+      Identifier identifier "a\r\n\r"
  StructDeclaration 'struct' "struct":
   Identifier identifier "Foo"
   Group ':' ":":
@@ -589,32 +589,32 @@ Group 'fun' "fun":
     Identifier identifier "a"
     Identifier identifier "b"
     Identifier identifier "c"
-    Identifier identifier "i64"
+    Identifier identifier "i64\r\n\r"
  StructDeclaration 'struct' "struct":
   Identifier identifier "Goo"
   Group ':' ":":
    StructField(true) identifier "foo":
     Identifier identifier "foo"
-    Identifier identifier "Foo"
+    Identifier identifier "Foo\r\n  "
    Attribute 'attr' "attr":
     AttributeElement identifier "something"
    StructField(false) identifier "gva":
     Identifier identifier "gva"
-    Identifier identifier "i64"
+    Identifier identifier "i64\r\n\r"
  Function 'fun' "fun":
   FunctionHeader 'fun' "fun":
    Identifier identifier "strings"
-   Identifier identifier "i64"
+   Identifier identifier "i64:"
   Group ':' ":":
-   VarStatement(true, false) 'var' "var":
+   VarStatement(true, false) 'var' "var hello = \"hello\"\r\n  ":
     VarAssign identifier "hello":
      Group identifier "hello":
       Identifier identifier "hello"
      None end of file ""
      Group operator "=":
-      Literal string "\"hello\""
+      Literal string "\"hello\"\r\n  "
    ReturnStatement 'return' "return":
-    Literal integer "0"
+    Literal integer "0\r\n\r"
  Function 'fun' "fun":
   FunctionHeader 'fun' "fun":
    Identifier identifier "mutable_ref"
@@ -624,25 +624,25 @@ Group 'fun' "fun":
      Identifier operator "&"
      UnaryOperation 'var' "var":
       Identifier 'var' "var"
-      Identifier identifier "Foo"
+      Identifier identifier "Foo)"
    None end of file ""
   Group ':' ":":
-   BinaryOperation operator "=":
+   BinaryOperation '.' ".a = 10\r\n  ":
     Identifier operator "="
-    DotExpr '.' ".":
+    DotExpr '.' ".a =":
      Identifier identifier "a"
-     Identifier identifier "a"
-    Literal integer "10"
-   BinaryOperation operator "=":
+     Identifier identifier "a ="
+    Literal integer "10\r\n  "
+   BinaryOperation '.' ".b = 20\r\n  ":
     Identifier operator "="
-    DotExpr '.' ".":
+    DotExpr '.' ".b =":
      Identifier identifier "a"
-     Identifier identifier "b"
-    Literal integer "20"
-   BinaryOperation operator "=":
+     Identifier identifier "b ="
+    Literal integer "20\r\n  "
+   BinaryOperation '.' ".c = 30\r\n\r":
     Identifier operator "="
-    DotExpr '.' ".":
+    DotExpr '.' ".c =":
      Identifier identifier "a"
-     Identifier identifier "c"
-    Literal integer "30"
+     Identifier identifier "c ="
+    Literal integer "30\r\n\r"
 
