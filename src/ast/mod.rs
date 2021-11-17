@@ -325,7 +325,7 @@ impl AstParser {
             // this handles the '{op}=' sugar
             result = if pre == ASSIGN_PRECEDENCE && op.value().as_bytes().last().unwrap() == &b'=' {
                 let operator = Ast::new(
-                    AKind::Identifier, 
+                    AKind::Identifier,
                     Token::new(
                         TKind::Op, 
                         op.value().sub(0..op.value().len() - 1), 
@@ -457,7 +457,7 @@ impl AstParser {
             }
         }
 
-        if ast.kind() != AKind::Identifier {
+        if !matches!(ast.kind(), AKind::Identifier) {
             ast.token_mut().to_group(&self.current_token, true);
         }
 

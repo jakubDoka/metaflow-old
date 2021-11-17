@@ -105,30 +105,30 @@ impl Lexer {
     }
 
     fn number(&mut self) -> Option<Token> {
-        let mut number = 0u64;
-        let mut fraction = 0u64;
-        let mut exponent = 1i64;
         let start = self.cursor.progress();
         let line_data = self.line_data();
-        while self.cursor.peek().unwrap_or('\0').is_numeric() {
-            number = number * 10 + (self.cursor.advance().unwrap() as u64 - '0' as u64);
-        }
+        let number = match self.parse_number_err(10) {
+            Ok((number, _)) => number,
+            Err(token) => return Some(token),
+        };
         let is_float = self.cursor.peek()? == '.';
-        if is_float {
+        let (fraction, exponent) = if is_float {
             self.cursor.advance();
-            while self.cursor.peek().unwrap_or('\0').is_numeric() {
-                fraction = fraction * 10 + (self.cursor.advance().unwrap() as u64 - '0' as u64);
-                exponent *= 10;
+            match self.parse_number_err(10) {
+                Ok(number) => number,
+                Err(token) => return Some(token),
             }
-        }
+        } else {
+            (0, 0)
+        };
         let next_char = self.cursor.peek().unwrap_or('\0');
         let kind = match next_char {
             'i' | 'u' | 'f' => {
                 self.cursor.advance();
-                let mut base = 0u16;
-                while self.cursor.peek().unwrap_or('\0').is_numeric() {
-                    base = base * 10 + (self.cursor.advance().unwrap() as u16 - '0' as u16);
-                }
+                let base = match self.parse_number_err(10) {
+                    Ok((number, _)) => number as u16,
+                    Err(token) => return Some(token),
+                };
                 match next_char {
                     'i' => TKind::Int(number as i64, base),
                     'u' => TKind::Uint(number, base),
@@ -147,6 +147,34 @@ impl Lexer {
         let end = self.cursor.progress();
         let value = self.cursor.sub(start..end);
         Some(Token::new(kind, value, line_data))
+    }
+
+    fn parse_number_err(&mut self, base: u64) -> Result<(u64, u64), Token> {
+        let start = self.cursor.progress();
+        self.parse_number(base).ok_or_else(|| {
+            let line_data = self.line_data();
+            let end = self.cursor.progress();
+            let value = self.cursor.sub(start..end);
+            Token::new(TKind::InvalidChar, value, line_data)
+        })
+    }
+
+    fn parse_number(&mut self, base: u64) -> Option<(u64, u64)> {
+        let mut number = 0u64;
+        let mut exponent = 1u64;
+        let base32 = base as u32;
+        loop {
+            let ch = self.cursor.peek().unwrap_or('\0');
+            if ch == '_' {
+                self.cursor.advance();
+                continue;
+            }
+            if !ch.is_numeric() {
+                break Some((number, exponent));
+            }
+            number = number * base + self.cursor.advance().unwrap().to_digit(base32)? as u64;
+            exponent *= base;
+        }
     }
 
     fn char_or_label(&mut self) -> Option<Token> {

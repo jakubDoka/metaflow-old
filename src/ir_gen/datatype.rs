@@ -122,7 +122,7 @@ impl Datatype {
 
     pub fn clear(&mut self) {
         self.kind = DKind::Cleared
-    } 
+    }
 }
 
 #[derive(Debug, Clone, PartialEq)]

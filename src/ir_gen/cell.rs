@@ -1,4 +1,8 @@
-use std::{cell::RefCell, ops::{Deref, DerefMut}, rc::Rc};
+use std::{
+    cell::RefCell,
+    ops::{Deref, DerefMut},
+    rc::Rc,
+};
 
 #[cfg(debug_assertions)]
 static mut DEBUG_CELL_COUNT: usize = 0;
@@ -30,7 +34,7 @@ impl<T> Cell<T> {
     }
 
     fn load_pool(&mut self, inner: T, pool: Pool<T>) {
-        unsafe { 
+        unsafe {
             *self.inner = (inner, 1, Some(pool));
         }
     }
@@ -67,7 +71,7 @@ impl<T> Clone for Cell<T> {
 impl<T> Drop for Cell<T> {
     fn drop(&mut self) {
         unsafe {
-            (*self.inner).1 -= 1; 
+            (*self.inner).1 -= 1;
             if (*self.inner).1 == 0 {
                 if let Some(mut pool) = (*self.inner).2.take() {
                     pool.push(self.clone());
@@ -112,9 +116,9 @@ impl<T> Pool<T> {
         match self.cells.borrow_mut().pop() {
             Some(mut cell) => {
                 cell.load_pool(value, self.clone());
-                
+
                 cell
-            },
+            }
             None => Cell::with_pool(value, Some(self.clone())),
         }
     }

@@ -21,7 +21,17 @@ pub use structure::*;
 pub use val::*;
 pub use var::*;
 
-use cranelift_codegen::{binemit::{NullStackMapSink, NullTrapSink}, entity::EntityRef, ir::{AbiParam, ArgumentPurpose, Block, ExternalName, FuncRef, Function, InstBuilder, MemFlags, Signature, StackSlotData, StackSlotKind, Type, Value, condcodes::{FloatCC, IntCC}, types::*}, isa::{CallConv, TargetIsa}};
+use cranelift_codegen::{
+    binemit::{NullStackMapSink, NullTrapSink},
+    entity::EntityRef,
+    ir::{
+        condcodes::{FloatCC, IntCC},
+        types::*,
+        AbiParam, ArgumentPurpose, Block, ExternalName, FuncRef, Function, InstBuilder, MemFlags,
+        Signature, StackSlotData, StackSlotKind, Type, Value,
+    },
+    isa::{CallConv, TargetIsa},
+};
 use cranelift_frontend::{FunctionBuilder, FunctionBuilderContext, Variable};
 use cranelift_module::{DataContext, DataId, FuncId, Linkage, Module};
 use cranelift_object::ObjectModule;
@@ -56,10 +66,12 @@ pub struct Generator {
     seen_structures: Vec<Cell<Datatype>>,
 
     datatype_pool: Pool<Datatype>,
+
+    const_fold: bool,
 }
 
 impl Generator {
-    fn new(object_module: ObjectModule) -> Self {
+    fn new(object_module: ObjectModule, const_fold: bool) -> Self {
         let builtin_repo = BuiltinRepo::new(object_module.isa());
         let builtin_module = builtin_repo.to_module();
         Self {
@@ -81,6 +93,8 @@ impl Generator {
             seen_structures: Vec::new(),
 
             datatype_pool: Pool::new(),
+
+            const_fold,
         }
     }
 
@@ -178,9 +192,16 @@ impl Generator {
             builder.seal_current_block();
             builder.finalize();
 
+            println!("{}", function.display());
+
             codegen_ctx.func = function;
             codegen_ctx.compute_cfg();
             codegen_ctx.compute_domtree();
+
+            if self.const_fold {
+                cranelift_preopt::fold_constants(&mut codegen_ctx, self.isa()).unwrap();
+            }
+
             self.object_module
                 .define_function(
                     f.id(),
@@ -314,11 +335,11 @@ impl Generator {
     fn struct_declaration(&mut self, ast: Ast) -> Result<()> {
         let name = ast[0].token().value().clone().to_string();
 
-        let datatype = self.datatype_pool
+        let datatype = self
+            .datatype_pool
             .wrap(Datatype::new(name, DKind::Unresolved(ast)));
 
-        self.current_module
-            .add_datatype(datatype)?;
+        self.current_module.add_datatype(datatype)?;
 
         Ok(())
     }
@@ -362,7 +383,7 @@ impl Generator {
                 builder.ins().return_(&[]);
             }
         }
-        
+
         Ok(())
     }
 
@@ -522,12 +543,7 @@ impl Generator {
             AKind::Loop => self.loop_expression(ast, builder)?,
             _ => todo!("unmatched expression {}", ast),
         }
-        .ok_or_else(|| {
-            panic!(
-                "{:?}",
-                IrGenError::new(IGEKind::ExpectedValue, ast.token().clone())
-            )
-        })
+        .ok_or_else(|| IrGenError::new(IGEKind::ExpectedValue, ast.token().clone()))
     }
 
     fn unary_operation(&mut self, ast: &Ast, builder: &mut FunctionBuilder) -> ExprResult {
@@ -539,7 +555,10 @@ impl Generator {
             if value.is_addressable() {
                 return Ok(Some(Val::immutable(value.take_address(), ptr_datatype)));
             } else {
-                return Err(IrGenError::new(IGEKind::CannotTakeAddressOfRegister, ast.token().clone()));
+                return Err(IrGenError::new(
+                    IGEKind::CannotTakeAddressOfRegister,
+                    ast.token().clone(),
+                ));
             }
         }
         let red_value = value.read(builder, self.isa());
@@ -549,7 +568,7 @@ impl Generator {
                     return Ok(Some(value.deref(builder, self.isa())));
                 }
             }
-            
+
             "!" | "~" => {
                 if datatype.is_builtin() {
                     if datatype.is_bool() {
@@ -582,10 +601,12 @@ impl Generator {
             "++" | "--" => {
                 let val = if op == "++" { 1 } else { -1 };
                 if datatype.is_int() || datatype.is_uint() {
-                    return Ok(Some(Val::immutable(
+                    let val = Val::immutable(
                         builder.ins().iadd_imm(red_value, val),
                         datatype.clone(),
-                    )));
+                    );
+                    value.write(&val, ast.token(), builder, self.isa())?;
+                    return Ok(Some(val));
                 }
             }
             "abs" => {
@@ -697,11 +718,7 @@ impl Generator {
                 } else {
                     let datatype = datatype.as_ref().unwrap();
                     if datatype.is_on_stack() {
-                        let val = Val::new_stack(
-                            is_mutable,
-                            datatype,
-                            builder,
-                        );
+                        let val = Val::new_stack(is_mutable, datatype, builder);
                         static_memset(
                             val.read(builder, self.isa()),
                             0,
@@ -1187,7 +1204,11 @@ impl Generator {
         let reduce = target_datatype.size() < source_datatype.size();
         let target_ir = target_datatype.ir_repr(self.isa());
         let red_value = value.read(builder, self.isa());
-        let cannot_convert = Err(IrGenError::cannot_convert(&ast.token(), &source_datatype, &target_datatype));
+        let cannot_convert = Err(IrGenError::cannot_convert(
+            &ast.token(),
+            &source_datatype,
+            &target_datatype,
+        ));
 
         let ret = if target_datatype.is_float() {
             if source_datatype.is_float() {
@@ -1293,13 +1314,13 @@ impl Generator {
         if header.datatype().is_pointer() {
             header = header.deref(builder, self.isa());
         }
-        
+
         if !header.datatype().is_on_stack() {
             return Err(IrGenError::new(
                 IGEKind::InvalidFieldAccess,
                 ast.token().clone(),
             ));
-        } 
+        }
 
         let field = match &header.datatype().kind() {
             DKind::Structure(structure) => structure
@@ -1323,7 +1344,8 @@ impl Generator {
         let return_type = if return_type.kind() != AKind::None {
             let datatype = self.find_datatype(return_type)?.clone();
             if datatype.is_on_stack() {
-                let param = AbiParam::special(datatype.ir_repr(self.isa()), ArgumentPurpose::StructReturn);
+                let param =
+                    AbiParam::special(datatype.ir_repr(self.isa()), ArgumentPurpose::StructReturn);
                 signature.params.push(param);
                 signature.returns.push(param);
             } else {
@@ -1343,16 +1365,13 @@ impl Generator {
                     arg.token().value().clone(),
                     Val::unresolved(datatype.clone()),
                 ));
-                signature
-                    .params
-                    .push(AbiParam::special(
-                        datatype.ir_repr(self.isa()),
-                        //if datatype.is_on_stack() {
-                          //  ArgumentPurpose::StructArgument(datatype.size())
-                        //} else {
-                            ArgumentPurpose::Normal
-                        //}, 
-                    ));
+                signature.params.push(AbiParam::special(
+                    datatype.ir_repr(self.isa()),
+                    //if datatype.is_on_stack() {
+                    //  ArgumentPurpose::StructArgument(datatype.size())
+                    //} else {
+                    ArgumentPurpose::Normal, //},
+                ));
             }
         }
 
@@ -1466,7 +1485,7 @@ impl Generator {
         );
 
         self.datatype_pool.wrap(datatype)
-    } 
+    }
 
     fn find_datatype(&mut self, ast: &Ast) -> Result<Cell<Datatype>> {
         let is_pointer = ast.kind() == AKind::UnaryOperation && ast.token().value().deref() == "&";
@@ -1479,7 +1498,8 @@ impl Generator {
         } else {
             (ast.token(), false)
         };
-        let datatype = self.current_module
+        let datatype = self
+            .current_module
             .find_datatype(token.value())
             .map(|d| d.0)
             .ok_or_else(|| IrGenError::new(IGEKind::TypeNotFound, token.clone()))?;

@@ -185,10 +185,10 @@ builtin_repo!(
             DKind::Structure(Structure::new(false, vec![
                 Field::new(false, 0, Spam::infinite("cap"), u32.clone()),
                 Field::new(false, 4, Spam::infinite("len"), u32.clone()),
-                Field::new(false, 8, Spam::infinite("data"), 
+                Field::new(false, 8, Spam::infinite("data"),
                     Cell::new(Datatype::with_size(
-                        "&u8".to_string(), 
-                        DKind::Pointer(u8.clone(), true), 
+                        "&u8".to_string(),
+                        DKind::Pointer(u8.clone(), true),
                         isa.pointer_bytes() as u32
                     ))
                 ),

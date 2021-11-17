@@ -49,9 +49,7 @@ impl Val {
 
     pub fn take_address(&self) -> Value {
         match self.kind {
-            VKind::Address(value, ..) => {
-                value.clone()
-            }
+            VKind::Address(value, ..) => value.clone(),
             _ => panic!("take_address on non-address"),
         }
     }
@@ -64,7 +62,6 @@ impl Val {
             }
             _ => panic!("deref on non-pointer"),
         }
-        
     }
 
     pub fn read(&self, builder: &mut FunctionBuilder, isa: &dyn TargetIsa) -> Value {

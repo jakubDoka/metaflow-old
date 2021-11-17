@@ -82,6 +82,14 @@ pub fn generate_obj_file(args: &Arguments) -> Result<Vec<u8>> {
         }
     }
 
+    let const_fold = args.enabled("const-fold") || args.enabled("cf");
+
+    if let Some(opt_level) = args.get_flag("opt_level").or(args.get_flag("ol")) {
+        settings
+            .set("opt_level", opt_level)
+            .map_err(|e| GEKind::CompilationFlagError(e).into())?;
+    }
+
     let flags = settings::Flags::new(settings);
 
     let isa = if let Some(triplet) = args.get_flag("triplet") {
@@ -95,7 +103,7 @@ pub fn generate_obj_file(args: &Arguments) -> Result<Vec<u8>> {
     let builder =
         ObjectBuilder::new(isa, "all", cranelift_module::default_libcall_names()).unwrap();
 
-    let main_module = Generator::new(ObjectModule::new(builder))
+    let main_module = Generator::new(ObjectModule::new(builder), const_fold)
         .generate(&args[0])
         .map_err(Into::into)?;
 
