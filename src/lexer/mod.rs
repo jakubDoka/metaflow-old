@@ -20,7 +20,7 @@ impl Lexer {
         let file = Rc::new(file);
         let file_name = Rc::new(file_name);
         Lexer {
-            cursor: Cursor::new(StrRef::whole(&file)),
+            cursor: Cursor::new(Spam::whole(&file)),
             file_name,
         }
     }
@@ -288,7 +288,7 @@ impl Lexer {
         LineData::new(
             self.cursor.line(),
             self.cursor.column(),
-            StrRef::whole(&self.file_name),
+            Spam::whole(&self.file_name),
         )
     }
 }

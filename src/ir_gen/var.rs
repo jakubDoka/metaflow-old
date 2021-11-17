@@ -2,16 +2,16 @@ use super::*;
 
 #[derive(Debug, Clone)]
 pub struct Var {
-    name: StrRef,
+    name: Spam,
     value: Val,
 }
 
 impl Var {
-    pub fn new(name: StrRef, value: Val) -> Self {
+    pub fn new(name: Spam, value: Val) -> Self {
         Self { name, value }
     }
 
-    pub fn name(&self) -> &StrRef {
+    pub fn name(&self) -> &Spam {
         &self.name
     }
 

@@ -183,9 +183,9 @@ builtin_repo!(
         string: Cell::new(Datatype::with_size(
             "string".to_string(),
             DKind::Structure(Structure::new(false, vec![
-                Field::new(false, 0, StrRef::infinite("cap"), u32.clone()),
-                Field::new(false, 4, StrRef::infinite("len"), u32.clone()),
-                Field::new(false, 8, StrRef::infinite("data"), 
+                Field::new(false, 0, Spam::infinite("cap"), u32.clone()),
+                Field::new(false, 4, Spam::infinite("len"), u32.clone()),
+                Field::new(false, 8, Spam::infinite("data"), 
                     Cell::new(Datatype::with_size(
                         "&u8".to_string(), 
                         DKind::Pointer(u8.clone(), true), 

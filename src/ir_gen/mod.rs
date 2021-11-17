@@ -39,13 +39,13 @@ use std::{ops::Deref, str::FromStr};
 
 use crate::{
     ast::{AEKind, AKind, Ast, AstError, AstParser},
-    lexer::{Lexer, StrRef, TKind, Token},
+    lexer::{Lexer, Spam, TKind, Token},
 };
 
 type CraneContext = cranelift_codegen::Context;
 type Result<T> = std::result::Result<T, IrGenError>;
 type ExprResult = Result<Option<Val>>;
-type LoopHeader = (StrRef, Block, Block, Option<Option<Val>>);
+type LoopHeader = (Spam, Block, Block, Option<Option<Val>>);
 
 pub struct Generator {
     builtin_repo: BuiltinRepo,
@@ -60,7 +60,7 @@ pub struct Generator {
     string_counter: usize,
     global_attributes: Vec<Ast>,
     pushed_attributes: Vec<Ast>,
-    imported_functions: Vec<(StrRef, FuncRef)>,
+    imported_functions: Vec<(Spam, FuncRef)>,
     call_buffer: Vec<Value>,
     object_module: ObjectModule,
     seen_structures: Vec<Cell<Datatype>>,
@@ -165,7 +165,7 @@ impl Generator {
                 .map(|t| {
                     if t.is_on_stack() {
                         self.variables.push(Some(Var::new(
-                            StrRef::empty(),
+                            Spam::empty(),
                             Val::address(params[0], true, t.clone()),
                         )));
                         1
@@ -386,7 +386,7 @@ impl Generator {
     fn statement(&mut self, ast: &Ast, builder: &mut FunctionBuilder) -> ExprResult {
         match ast.kind() {
             AKind::ReturnStatement => self.return_statement(ast, builder)?,
-            AKind::VarStatement(_) => self.var_statement(ast, builder)?,
+            AKind::VarStatement(..) => self.var_statement(ast, builder)?,
             AKind::Break => self.break_statement(ast, builder)?,
 
             AKind::IfExpression => return self.if_expression(ast, builder),
@@ -508,6 +508,14 @@ impl Generator {
         let op = ast[0].token().value().deref();
         let value = self.expression(&ast[1], builder)?;
         let datatype = value.datatype();
+        if op == "&" {
+            let ptr_datatype = self.pointer_of(value.is_mutable(), &datatype);
+            if value.is_addressable() {
+                return Ok(Some(Val::immutable(value.take_address(), ptr_datatype)));
+            } else {
+                return Err(IrGenError::new(IGEKind::CannotTakeAddressOfRegister, ast.token().clone()));
+            }
+        }
         let red_value = value.read(builder, self.isa());
         match op {
             "*" => {
@@ -517,14 +525,6 @@ impl Generator {
                         return Ok(Some(Val::address(val, *mutable, base.clone())));
                     }
                     _ => (),
-                }
-            }
-            "&" => {
-                let ptr_datatype = self.pointer_of(value.is_mutable(), &datatype);
-                if datatype.is_on_stack() {
-                    return Ok(Some(Val::immutable(red_value, ptr_datatype)));
-                } else {
-                    return Err(IrGenError::new(IGEKind::CannotTakeAddressOfRegister, ast.token().clone()));
                 }
             }
             
@@ -640,6 +640,11 @@ impl Generator {
                 .map(|i| i.token().value().clone())
                 .enumerate()
             {
+                let (is_mutable, is_on_stack) = match ast.kind() {
+                    AKind::VarStatement(m, s) => (m, s),
+                    _ => unreachable!(),
+                };
+
                 let value = if values.kind() != AKind::None {
                     let mut value = self.expression(&values[i], builder)?;
                     if let Some(datatype) = datatype.as_ref() {
@@ -648,9 +653,13 @@ impl Generator {
                         datatype = Some(value.datatype().clone());
                     }
 
-                    if ast.kind() == AKind::VarStatement(true) {
+                    if is_mutable {
                         if value.datatype().is_on_stack() {
                             value.set_mutability(true);
+                        } else if is_on_stack {
+                            let val = Val::new_stack(true, value.datatype(), builder);
+                            val.write(&value, values[i].token(), builder, self.isa())?;
+                            value = val;
                         } else {
                             let variable = Variable::new(self.variable_counter);
                             self.variable_counter += 1;
@@ -667,7 +676,7 @@ impl Generator {
                     let datatype = datatype.as_ref().unwrap();
                     if datatype.is_on_stack() {
                         let val = Val::new_stack(
-                            ast.kind() == AKind::VarStatement(true),
+                            is_mutable,
                             datatype,
                             builder,
                         );
@@ -681,7 +690,7 @@ impl Generator {
                         val
                     } else {
                         let default_value = datatype.default_value(builder, self.isa());
-                        if ast.kind() == AKind::VarStatement(true) {
+                        if is_mutable {
                             let var = Variable::new(self.variable_counter);
                             self.variable_counter += 1;
                             builder.declare_var(var, datatype.ir_repr(self.isa()));
@@ -1301,7 +1310,7 @@ impl Generator {
         let name = if name.kind() != AKind::None {
             name.token().value().clone()
         } else {
-            StrRef::empty()
+            Spam::empty()
         };
 
         let linkage = if let Some(attr) = self.find_attribute("linkage") {

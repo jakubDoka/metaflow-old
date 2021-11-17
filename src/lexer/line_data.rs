@@ -4,11 +4,11 @@ use super::*;
 pub struct LineData {
     line: usize,
     column: usize,
-    file_name: StrRef,
+    file_name: Spam,
 }
 
 impl LineData {
-    pub fn new(line: usize, column: usize, file_name: StrRef) -> Self {
+    pub fn new(line: usize, column: usize, file_name: Spam) -> Self {
         Self {
             line,
             column,
@@ -16,7 +16,7 @@ impl LineData {
         }
     }
 
-    pub fn file_name(&self) -> &StrRef {
+    pub fn file_name(&self) -> &Spam {
         &self.file_name
     }
 }

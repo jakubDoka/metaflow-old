@@ -47,6 +47,15 @@ impl Val {
         matches!(self.kind, VKind::Mutable(_) | VKind::Address(_, true, _))
     }
 
+    pub fn take_address(&self) -> Value {
+        match self.kind {
+            VKind::Address(value, ..) => {
+                value.clone()
+            }
+            _ => panic!("take_address on non-address"),
+        }
+    }
+
     pub fn read(&self, builder: &mut FunctionBuilder, isa: &dyn TargetIsa) -> Value {
         match &self.kind {
             VKind::Immutable(value) => value.clone(),
@@ -144,6 +153,10 @@ impl Val {
 
     pub fn set_kind(&mut self, kind: VKind) {
         self.kind = kind;
+    }
+
+    pub fn is_addressable(&self) -> bool {
+        matches!(self.kind, VKind::Address(..))
     }
 }
 

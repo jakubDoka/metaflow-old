@@ -3,7 +3,7 @@ use super::*;
 #[derive(Debug, Clone, Default)]
 pub struct Token {
     kind: TKind,
-    value: StrRef,
+    value: Spam,
     line_data: LineData,
 }
 
@@ -11,12 +11,12 @@ impl Token {
     pub fn builtin(value: &'static str) -> Self {
         Token {
             kind: TKind::Ident,
-            value: StrRef::infinite(value),
+            value: Spam::infinite(value),
             line_data: LineData::default(),
         }
     }
 
-    pub fn new(kind: TKind, value: StrRef, line_data: LineData) -> Self {
+    pub fn new(kind: TKind, value: Spam, line_data: LineData) -> Self {
         Token {
             kind,
             value,
@@ -27,7 +27,7 @@ impl Token {
     pub fn eof() -> Self {
         Token {
             kind: TKind::Eof,
-            value: StrRef::empty(),
+            value: Spam::empty(),
             line_data: LineData::default(),
         }
     }
@@ -36,7 +36,7 @@ impl Token {
         self.kind.clone()
     }
 
-    pub fn value(&self) -> &StrRef {
+    pub fn value(&self) -> &Spam {
         &self.value
     }
 

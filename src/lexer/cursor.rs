@@ -3,14 +3,14 @@ use std::ops::Range;
 use super::*;
 
 pub struct Cursor {
-    data: StrRef,
+    data: Spam,
     chars: Chars<'static>,
     line: usize,
     last_n_line: usize,
 }
 
 impl Cursor {
-    pub fn new(data: StrRef) -> Self {
+    pub fn new(data: Spam) -> Self {
         Cursor {
             //SAFETY: cursor disposes data only upon drop
             chars: unsafe { data.get_static_ref().chars() },
@@ -42,7 +42,7 @@ impl Cursor {
         char
     }
 
-    pub fn sub(&self, range: Range<usize>) -> StrRef {
+    pub fn sub(&self, range: Range<usize>) -> Spam {
         self.data.sub(range)
     }
 

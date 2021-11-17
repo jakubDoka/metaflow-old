@@ -299,8 +299,8 @@ fun main -> i64:
         r#"
 fun main -> i64:
   svar 
-    b = 0
-  return &b as i64
+    b = 2
+  return (&b as i64 == 0) as i64
         "#,
         0,
     );

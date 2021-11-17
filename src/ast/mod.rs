@@ -183,13 +183,16 @@ impl AstParser {
     fn statement(&mut self) -> Result<Ast> {
         match self.current_token.kind() {
             TKind::Return => self.return_statement(),
-            TKind::Var | TKind::Let => self.var_statement(),
+            TKind::Var | TKind::Let | TKind::Svar => self.var_statement(),
             _ => self.expression(),
         }
     }
 
     fn var_statement(&mut self) -> Result<Ast> {
-        let mut ast = self.ast(AKind::VarStatement(self.current_token.kind() == TKind::Var));
+        let mut ast = self.ast(AKind::VarStatement(
+            matches!(self.current_token.kind(), TKind::Var | TKind::Svar),
+            self.current_token.kind() == TKind::Svar,
+        ));
         self.advance();
         self.walk_block(|s| {
             ast.push(s.var_statement_line()?);
@@ -328,7 +331,7 @@ impl AstParser {
             TKind::Loop => return self.loop_expression(),
             TKind::Break => return self.break_expression(),
             TKind::Continue => return self.continue_expression(),
-            TKind::Op => {
+            TKind::Op | TKind::Var => {
                 let mut ast = self.ast(AKind::UnaryOperation);
                 ast.push(self.ast(AKind::Identifier));
                 self.advance();

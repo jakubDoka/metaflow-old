@@ -4,12 +4,12 @@ use super::*;
 pub struct Field {
     embedded: bool,
     offset: u32,
-    name: StrRef,
+    name: Spam,
     datatype: Cell<Datatype>,
 }
 
 impl Field {
-    pub fn new(embedded: bool, offset: u32, name: StrRef, datatype: Cell<Datatype>) -> Self {
+    pub fn new(embedded: bool, offset: u32, name: Spam, datatype: Cell<Datatype>) -> Self {
         Self {
             embedded,
             offset,
@@ -18,7 +18,7 @@ impl Field {
         }
     }
 
-    pub fn name(&self) -> &StrRef {
+    pub fn name(&self) -> &Spam {
         &self.name
     }
 

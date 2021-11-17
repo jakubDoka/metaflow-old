@@ -102,7 +102,7 @@ pub enum AKind {
     AttributeElement,
     AttributeAssign,
 
-    VarStatement(bool),
+    VarStatement(bool, bool), // is_mut, is_on_stack
     VarAssign,
 
     ReturnStatement,

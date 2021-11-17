@@ -3,7 +3,7 @@ use super::*;
 #[derive(Debug, Clone)]
 pub struct Fun {
     id: FuncId,
-    name: StrRef,
+    name: Spam,
     params: Vec<Var>,
     return_type: Option<Cell<Datatype>>,
     inline_level: InlineLevel,
@@ -14,7 +14,7 @@ pub struct Fun {
 impl Fun {
     pub fn new(
         id: FuncId,
-        name: StrRef,
+        name: Spam,
         params: Vec<Var>,
         return_type: Option<Cell<Datatype>>,
         inline_level: InlineLevel,
@@ -36,7 +36,7 @@ impl Fun {
         self.id
     }
 
-    pub fn name(&self) -> &StrRef {
+    pub fn name(&self) -> &Spam {
         &self.name
     }
 

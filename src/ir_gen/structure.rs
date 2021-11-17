@@ -47,7 +47,7 @@ impl Structure {
                         Field::new(
                             false,
                             f.offset() + ef.offset(),
-                            StrRef::empty(),
+                            Spam::empty(),
                             ef.datatype().clone(),
                         )
                     })
