@@ -7,9 +7,9 @@ use crate::lexer::*;
 
 #[derive(Debug, Clone, Default, PartialEq)]
 pub struct Ast {
-    kind: AKind,
-    children: Vec<Ast>,
-    token: Token,
+    pub kind: AKind,
+    pub children: Vec<Ast>,
+    pub token: Token,
 }
 
 impl Ast {
@@ -48,26 +48,6 @@ impl Ast {
         }
 
         Ok(())
-    }
-
-    pub fn kind(&self) -> AKind {
-        self.kind.clone()
-    }
-
-    pub fn token(&self) -> &Token {
-        &self.token
-    }
-
-    pub fn token_mut(&mut self) -> &mut Token {
-        &mut self.token
-    }
-
-    pub fn set_children(&mut self, children: Vec<Ast>) {
-        self.children = children;
-    }
-
-    pub fn set_kind(&mut self, kind: AKind) {
-        self.kind = kind;
     }
 }
 

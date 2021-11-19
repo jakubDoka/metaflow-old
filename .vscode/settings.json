@@ -38,6 +38,7 @@
         "memset",
         "Preemptible",
         "preopt",
+        "putchar",
         "sdiv",
         "sextend",
         "sint",

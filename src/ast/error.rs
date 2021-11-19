@@ -2,8 +2,8 @@ use super::*;
 
 #[derive(Debug)]
 pub struct AstError {
-    kind: AEKind,
-    token: Option<Token>,
+    pub kind: AEKind,
+    pub token: Option<Token>,
 }
 
 impl AstError {
@@ -12,14 +12,6 @@ impl AstError {
             kind,
             token: Some(token),
         }
-    }
-
-    pub fn kind(&self) -> &AEKind {
-        &self.kind
-    }
-
-    pub fn token(&self) -> &Option<Token> {
-        &self.token
     }
 }
 

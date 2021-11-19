@@ -1,26 +1,19 @@
-pub mod cursor;
-pub mod line_data;
 pub mod spam;
-pub mod token;
 
-pub use cursor::*;
-pub use line_data::*;
 pub use spam::*;
-pub use token::*;
 
-use std::{fmt::Debug, ops::Deref, rc::Rc, str::Chars};
+use std::{fmt::Debug, ops::{Deref, Range}, rc::Rc, str::Chars};
 
 pub struct Lexer {
     cursor: Cursor,
-    file_name: Rc<String>,
+    file_name: &'static str,
 }
 
 impl Lexer {
     pub fn new(file_name: String, file: String) -> Lexer {
-        let file = Rc::new(file);
-        let file_name = Rc::new(file_name);
+        let file_name = Box::leak(file_name.into_boxed_str());
         Lexer {
-            cursor: Cursor::new(Spam::whole(&file)),
+            cursor: Cursor::new(file),
             file_name,
         }
     }
@@ -314,7 +307,7 @@ impl Lexer {
 
     fn line_data(&self) -> LineData {
         LineData::new(
-            self.cursor.line(),
+            self.cursor.line,
             self.cursor.column(),
             Spam::whole(&self.file_name),
         )
@@ -391,4 +384,238 @@ pub fn test() {
     );
 
     lexer.for_each(|token| println!("{:?}", token));
+}
+
+pub struct Cursor {
+    data: &'static str,
+    chars: Chars<'static>,
+    line: usize,
+    last_n_line: usize,
+}
+
+impl Cursor {
+    pub fn new(data: String) -> Self {
+        let data = Box::leak(data.into_boxed_str());
+        Cursor {
+            //SAFETY: cursor disposes data only upon drop
+            chars: data.chars(),
+            data,
+            line: 1,
+            last_n_line: 0,
+        }
+    }
+
+    pub fn peek(&self) -> Option<char> {
+        self.chars.clone().next()
+    }
+
+    pub fn peek_n(&self, n: usize) -> Option<char> {
+        self.chars.clone().nth(n)
+    }
+
+    pub fn progress(&self) -> usize {
+        self.data.len() - self.chars.as_str().len()
+    }
+
+    #[inline]
+    pub fn advance(&mut self) -> Option<char> {
+        let char = self.chars.next();
+        if char == Some('\n') {
+            self.line += 1;
+            self.last_n_line = self.progress();
+        }
+        char
+    }
+
+    pub fn sub(&self, range: Range<usize>) -> Spam {
+        Spam::new(self.data, range)
+    }
+
+    pub fn column(&self) -> usize {
+        self.progress() - self.last_n_line
+    }
+}
+
+#[derive(Debug, Clone, Default)]
+pub struct Token {
+    pub kind: TKind,
+    pub spam: Spam,
+    pub line_data: LineData,
+}
+
+impl Token {
+    pub fn builtin(spam: &'static str) -> Self {
+        Token {
+            kind: TKind::Ident,
+            spam: Spam::whole(spam),
+            line_data: LineData::default(),
+        }
+    }
+
+    pub fn new(kind: TKind, spam: Spam, line_data: LineData) -> Self {
+        Token {
+            kind,
+            spam,
+            line_data,
+        }
+    }
+
+    pub fn eof() -> Self {
+        Token {
+            kind: TKind::Eof,
+            spam: Spam::default(),
+            line_data: LineData::default(),
+        }
+    }
+
+    pub fn to_group(&mut self, end: &Token, trim: bool) {
+        self.spam = self.spam.join(&end.spam, trim);
+    }
+}
+
+impl std::fmt::Display for Token {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{} {:?}", self.kind, self.spam)?;
+        Ok(())
+    }
+}
+
+impl PartialEq<Token> for Token {
+    fn eq(&self, other: &Token) -> bool {
+        self.kind == other.kind && self.spam == other.spam
+    }
+}
+
+impl PartialEq<TKind> for Token {
+    fn eq(&self, other: &TKind) -> bool {
+        self.kind == *other
+    }
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub enum TKind {
+    Fun,
+    Attr,
+    Pass,
+    Mut,
+    Return,
+    If,
+    Elif,
+    Else,
+    Var,
+    Svar,
+    Let,
+    Loop,
+    Break,
+    Continue,
+    Struct,
+    Embed,
+
+    Label,
+    Ident,
+    Op,
+
+    LPar,
+    RPar,
+    LCurly,
+    RCurly,
+    LBra,
+    RBra,
+    Colon,
+    Comma,
+    RArrow,
+    Hash,
+    Dot,
+
+    Int(i64, u16),
+    Uint(u64, u16),
+    Float(f64, u16),
+    Bool(bool),
+    Char(char),
+    InvalidChar,
+    String(Rc<Vec<u8>>),
+
+    Indent(usize),
+
+    Group,
+
+    UnknownCharacter(char),
+    Eof,
+    None,
+}
+
+impl std::fmt::Display for TKind {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(match *self {
+            TKind::Fun => "'fun'",
+            TKind::Attr => "'attr'",
+            TKind::Pass => "'pass'",
+            TKind::Mut => "'mut'",
+            TKind::Return => "'return'",
+            TKind::If => "'if'",
+            TKind::Elif => "'elif'",
+            TKind::Else => "'else'",
+            TKind::Var => "'var'",
+            TKind::Svar => "'svar'",
+            TKind::Let => "'let'",
+            TKind::Loop => "'loop'",
+            TKind::Break => "'break'",
+            TKind::Continue => "'continue'",
+            TKind::Struct => "'struct'",
+            TKind::Embed => "'embed'",
+            TKind::Label => "'label'",
+            TKind::Ident => "identifier",
+            TKind::Op => "operator",
+            TKind::LPar => "'('",
+            TKind::RPar => "')'",
+            TKind::LCurly => "'{'",
+            TKind::RCurly => "'}'",
+            TKind::LBra => "'['",
+            TKind::RBra => "']'",
+            TKind::Colon => "':'",
+            TKind::Comma => "','",
+            TKind::RArrow => "'->'",
+            TKind::Dot => "'.'",
+            TKind::Hash => "'#'",
+            TKind::Indent(_) => "indentation",
+            TKind::Int(..) => "integer",
+            TKind::Uint(..) => "unsigned integer",
+            TKind::Float(..) => "float",
+            TKind::Bool(_) => "boolean",
+            TKind::Char(_) => "character",
+            TKind::InvalidChar => "invalid character",
+            TKind::String(_) => "string",
+            TKind::Group => "group",
+            TKind::UnknownCharacter(_) => "unknown character",
+            TKind::Eof => "end of file",
+            TKind::None => "nothing",
+        })
+    }
+}
+
+impl Default for TKind {
+    fn default() -> Self {
+        TKind::None
+    }
+}
+
+#[derive(Debug, Clone, Default)]
+pub struct LineData {
+    pub line: usize,
+    pub column: usize,
+    pub file_name: Spam,
+}
+
+impl LineData {
+    pub fn new(line: usize, column: usize, file_name: Spam) -> Self {
+        Self {
+            line,
+            column,
+            file_name,
+        }
+    }
+
+    pub fn file_name(&self) -> &Spam {
+        &self.file_name
+    }
 }
