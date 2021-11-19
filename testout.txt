@@ -1,343 +1,343 @@
 Ok(Arguments { filename: "file", flags: ["flag", "flag"], field_flags: [("flag", "value")], args: ["arg", "arg"] })
 Ok(Arguments { filename: "file", flags: [], field_flags: [], args: ["string value"] })
-Token { kind: Fun, value: "fun", line_data: LineData { line: 1, column: 0, file_name: "test_code.pmh" } }
-Token { kind: Ident, value: "flo", line_data: LineData { line: 1, column: 4, file_name: "test_code.pmh" } }
-Token { kind: Colon, value: ":", line_data: LineData { line: 1, column: 7, file_name: "test_code.pmh" } }
-Token { kind: Pass, value: "pass", line_data: LineData { line: 1, column: 9, file_name: "test_code.pmh" } }
-Token { kind: Indent(0), value: "\n\r", line_data: LineData { line: 1, column: 14, file_name: "test_code.pmh" } }
-Token { kind: Indent(0), value: "\n", line_data: LineData { line: 2, column: 1, file_name: "test_code.pmh" } }
-Token { kind: Fun, value: "fun", line_data: LineData { line: 3, column: 0, file_name: "test_code.pmh" } }
-Token { kind: Ident, value: "foo", line_data: LineData { line: 3, column: 4, file_name: "test_code.pmh" } }
-Token { kind: LPar, value: "(", line_data: LineData { line: 3, column: 7, file_name: "test_code.pmh" } }
-Token { kind: RPar, value: ")", line_data: LineData { line: 3, column: 8, file_name: "test_code.pmh" } }
-Token { kind: Colon, value: ":", line_data: LineData { line: 3, column: 9, file_name: "test_code.pmh" } }
-Token { kind: Pass, value: "pass", line_data: LineData { line: 3, column: 11, file_name: "test_code.pmh" } }
-Token { kind: Indent(0), value: "\n\r", line_data: LineData { line: 3, column: 16, file_name: "test_code.pmh" } }
-Token { kind: Indent(0), value: "\n", line_data: LineData { line: 4, column: 1, file_name: "test_code.pmh" } }
-Token { kind: Fun, value: "fun", line_data: LineData { line: 5, column: 0, file_name: "test_code.pmh" } }
-Token { kind: Ident, value: "goo", line_data: LineData { line: 5, column: 4, file_name: "test_code.pmh" } }
-Token { kind: LPar, value: "(", line_data: LineData { line: 5, column: 7, file_name: "test_code.pmh" } }
-Token { kind: Ident, value: "a", line_data: LineData { line: 5, column: 8, file_name: "test_code.pmh" } }
-Token { kind: Colon, value: ":", line_data: LineData { line: 5, column: 9, file_name: "test_code.pmh" } }
-Token { kind: Ident, value: "i8", line_data: LineData { line: 5, column: 11, file_name: "test_code.pmh" } }
-Token { kind: Comma, value: ",", line_data: LineData { line: 5, column: 13, file_name: "test_code.pmh" } }
-Token { kind: Ident, value: "b", line_data: LineData { line: 5, column: 15, file_name: "test_code.pmh" } }
-Token { kind: Colon, value: ":", line_data: LineData { line: 5, column: 16, file_name: "test_code.pmh" } }
-Token { kind: Ident, value: "i8", line_data: LineData { line: 5, column: 18, file_name: "test_code.pmh" } }
-Token { kind: RPar, value: ")", line_data: LineData { line: 5, column: 20, file_name: "test_code.pmh" } }
-Token { kind: Colon, value: ":", line_data: LineData { line: 5, column: 21, file_name: "test_code.pmh" } }
-Token { kind: Pass, value: "pass", line_data: LineData { line: 5, column: 23, file_name: "test_code.pmh" } }
-Token { kind: Indent(0), value: "\n\r", line_data: LineData { line: 5, column: 28, file_name: "test_code.pmh" } }
-Token { kind: Indent(0), value: "\n", line_data: LineData { line: 6, column: 1, file_name: "test_code.pmh" } }
-Token { kind: Fun, value: "fun", line_data: LineData { line: 7, column: 0, file_name: "test_code.pmh" } }
-Token { kind: Ident, value: "loo", line_data: LineData { line: 7, column: 4, file_name: "test_code.pmh" } }
-Token { kind: Colon, value: ":", line_data: LineData { line: 7, column: 7, file_name: "test_code.pmh" } }
-Token { kind: Indent(1), value: "\n  ", line_data: LineData { line: 7, column: 9, file_name: "test_code.pmh" } }
-Token { kind: Pass, value: "pass", line_data: LineData { line: 8, column: 2, file_name: "test_code.pmh" } }
-Token { kind: Indent(0), value: "\n\r", line_data: LineData { line: 8, column: 7, file_name: "test_code.pmh" } }
-Token { kind: Indent(0), value: "\n", line_data: LineData { line: 9, column: 1, file_name: "test_code.pmh" } }
-Token { kind: Fun, value: "fun", line_data: LineData { line: 10, column: 0, file_name: "test_code.pmh" } }
-Token { kind: Ident, value: "main", line_data: LineData { line: 10, column: 4, file_name: "test_code.pmh" } }
-Token { kind: RArrow, value: "->", line_data: LineData { line: 10, column: 9, file_name: "test_code.pmh" } }
-Token { kind: Ident, value: "i64", line_data: LineData { line: 10, column: 12, file_name: "test_code.pmh" } }
-Token { kind: Colon, value: ":", line_data: LineData { line: 10, column: 15, file_name: "test_code.pmh" } }
-Token { kind: Indent(1), value: "\n  ", line_data: LineData { line: 10, column: 17, file_name: "test_code.pmh" } }
-Token { kind: Return, value: "return", line_data: LineData { line: 11, column: 2, file_name: "test_code.pmh" } }
-Token { kind: Int(10, 64), value: "10", line_data: LineData { line: 11, column: 9, file_name: "test_code.pmh" } }
-Token { kind: Op, value: "+", line_data: LineData { line: 11, column: 12, file_name: "test_code.pmh" } }
-Token { kind: Int(4, 64), value: "4", line_data: LineData { line: 11, column: 14, file_name: "test_code.pmh" } }
-Token { kind: Op, value: "-", line_data: LineData { line: 11, column: 16, file_name: "test_code.pmh" } }
-Token { kind: Int(2, 64), value: "2", line_data: LineData { line: 11, column: 18, file_name: "test_code.pmh" } }
-Token { kind: Op, value: "*", line_data: LineData { line: 11, column: 20, file_name: "test_code.pmh" } }
-Token { kind: Int(1, 64), value: "1", line_data: LineData { line: 11, column: 22, file_name: "test_code.pmh" } }
-Token { kind: Op, value: "+", line_data: LineData { line: 11, column: 24, file_name: "test_code.pmh" } }
-Token { kind: Int(8, 64), value: "8", line_data: LineData { line: 11, column: 26, file_name: "test_code.pmh" } }
-Token { kind: Indent(0), value: "\n\r", line_data: LineData { line: 11, column: 28, file_name: "test_code.pmh" } }
-Token { kind: Indent(0), value: "\n", line_data: LineData { line: 12, column: 1, file_name: "test_code.pmh" } }
-Token { kind: Fun, value: "fun", line_data: LineData { line: 13, column: 0, file_name: "test_code.pmh" } }
-Token { kind: Ident, value: "operator_stress_test", line_data: LineData { line: 13, column: 4, file_name: "test_code.pmh" } }
-Token { kind: RArrow, value: "->", line_data: LineData { line: 13, column: 25, file_name: "test_code.pmh" } }
-Token { kind: Ident, value: "i64", line_data: LineData { line: 13, column: 28, file_name: "test_code.pmh" } }
-Token { kind: Colon, value: ":", line_data: LineData { line: 13, column: 31, file_name: "test_code.pmh" } }
-Token { kind: Indent(1), value: "\n  ", line_data: LineData { line: 13, column: 33, file_name: "test_code.pmh" } }
-Token { kind: Return, value: "return", line_data: LineData { line: 14, column: 2, file_name: "test_code.pmh" } }
-Token { kind: Int(10, 64), value: "10", line_data: LineData { line: 14, column: 9, file_name: "test_code.pmh" } }
-Token { kind: Op, value: "+", line_data: LineData { line: 14, column: 12, file_name: "test_code.pmh" } }
-Token { kind: Int(2, 64), value: "2", line_data: LineData { line: 14, column: 14, file_name: "test_code.pmh" } }
-Token { kind: Op, value: "*", line_data: LineData { line: 14, column: 16, file_name: "test_code.pmh" } }
-Token { kind: Int(1, 64), value: "1", line_data: LineData { line: 14, column: 18, file_name: "test_code.pmh" } }
-Token { kind: Op, value: "-", line_data: LineData { line: 14, column: 20, file_name: "test_code.pmh" } }
-Token { kind: Int(9, 64), value: "9", line_data: LineData { line: 14, column: 22, file_name: "test_code.pmh" } }
-Token { kind: Op, value: "|", line_data: LineData { line: 14, column: 24, file_name: "test_code.pmh" } }
-Token { kind: Int(4, 64), value: "4", line_data: LineData { line: 14, column: 26, file_name: "test_code.pmh" } }
-Token { kind: Op, value: "&", line_data: LineData { line: 14, column: 28, file_name: "test_code.pmh" } }
-Token { kind: Int(1, 64), value: "1", line_data: LineData { line: 14, column: 30, file_name: "test_code.pmh" } }
-Token { kind: Op, value: "^", line_data: LineData { line: 14, column: 32, file_name: "test_code.pmh" } }
-Token { kind: Int(2, 64), value: "2", line_data: LineData { line: 14, column: 34, file_name: "test_code.pmh" } }
-Token { kind: Op, value: ">>", line_data: LineData { line: 14, column: 36, file_name: "test_code.pmh" } }
-Token { kind: Int(1, 64), value: "1", line_data: LineData { line: 14, column: 39, file_name: "test_code.pmh" } }
-Token { kind: Op, value: "<<", line_data: LineData { line: 14, column: 41, file_name: "test_code.pmh" } }
-Token { kind: Int(7, 64), value: "7", line_data: LineData { line: 14, column: 44, file_name: "test_code.pmh" } }
-Token { kind: Op, value: "min", line_data: LineData { line: 14, column: 46, file_name: "test_code.pmh" } }
-Token { kind: Int(20, 64), value: "20", line_data: LineData { line: 14, column: 50, file_name: "test_code.pmh" } }
-Token { kind: Op, value: "max", line_data: LineData { line: 14, column: 53, file_name: "test_code.pmh" } }
-Token { kind: Int(10, 64), value: "10", line_data: LineData { line: 14, column: 57, file_name: "test_code.pmh" } }
-Token { kind: Indent(0), value: "\n\r", line_data: LineData { line: 14, column: 60, file_name: "test_code.pmh" } }
-Token { kind: Indent(0), value: "\n", line_data: LineData { line: 15, column: 1, file_name: "test_code.pmh" } }
-Token { kind: Fun, value: "fun", line_data: LineData { line: 16, column: 0, file_name: "test_code.pmh" } }
-Token { kind: Ident, value: "conditional", line_data: LineData { line: 16, column: 4, file_name: "test_code.pmh" } }
-Token { kind: RArrow, value: "->", line_data: LineData { line: 16, column: 16, file_name: "test_code.pmh" } }
-Token { kind: Ident, value: "i64", line_data: LineData { line: 16, column: 19, file_name: "test_code.pmh" } }
-Token { kind: Colon, value: ":", line_data: LineData { line: 16, column: 22, file_name: "test_code.pmh" } }
-Token { kind: Indent(1), value: "\n  ", line_data: LineData { line: 16, column: 24, file_name: "test_code.pmh" } }
-Token { kind: If, value: "if", line_data: LineData { line: 17, column: 2, file_name: "test_code.pmh" } }
-Token { kind: Bool(false), value: "false", line_data: LineData { line: 17, column: 5, file_name: "test_code.pmh" } }
-Token { kind: Colon, value: ":", line_data: LineData { line: 17, column: 10, file_name: "test_code.pmh" } }
-Token { kind: Indent(2), value: "\n    ", line_data: LineData { line: 17, column: 12, file_name: "test_code.pmh" } }
-Token { kind: Return, value: "return", line_data: LineData { line: 18, column: 4, file_name: "test_code.pmh" } }
-Token { kind: Int(10, 64), value: "10", line_data: LineData { line: 18, column: 11, file_name: "test_code.pmh" } }
-Token { kind: Indent(1), value: "\n  ", line_data: LineData { line: 18, column: 14, file_name: "test_code.pmh" } }
-Token { kind: Elif, value: "elif", line_data: LineData { line: 19, column: 2, file_name: "test_code.pmh" } }
-Token { kind: Bool(true), value: "true", line_data: LineData { line: 19, column: 7, file_name: "test_code.pmh" } }
-Token { kind: Colon, value: ":", line_data: LineData { line: 19, column: 11, file_name: "test_code.pmh" } }
-Token { kind: Indent(2), value: "\n    ", line_data: LineData { line: 19, column: 13, file_name: "test_code.pmh" } }
-Token { kind: Return, value: "return", line_data: LineData { line: 20, column: 4, file_name: "test_code.pmh" } }
-Token { kind: If, value: "if", line_data: LineData { line: 20, column: 11, file_name: "test_code.pmh" } }
-Token { kind: Bool(true), value: "true", line_data: LineData { line: 20, column: 14, file_name: "test_code.pmh" } }
-Token { kind: Colon, value: ":", line_data: LineData { line: 20, column: 18, file_name: "test_code.pmh" } }
-Token { kind: Int(10, 64), value: "10", line_data: LineData { line: 20, column: 20, file_name: "test_code.pmh" } }
-Token { kind: Else, value: "else", line_data: LineData { line: 20, column: 23, file_name: "test_code.pmh" } }
-Token { kind: Colon, value: ":", line_data: LineData { line: 20, column: 27, file_name: "test_code.pmh" } }
-Token { kind: Int(20, 64), value: "20", line_data: LineData { line: 20, column: 29, file_name: "test_code.pmh" } }
-Token { kind: Indent(1), value: "\n  ", line_data: LineData { line: 20, column: 32, file_name: "test_code.pmh" } }
-Token { kind: Else, value: "else", line_data: LineData { line: 21, column: 2, file_name: "test_code.pmh" } }
-Token { kind: Colon, value: ":", line_data: LineData { line: 21, column: 6, file_name: "test_code.pmh" } }
-Token { kind: Indent(2), value: "\n    ", line_data: LineData { line: 21, column: 8, file_name: "test_code.pmh" } }
-Token { kind: Return, value: "return", line_data: LineData { line: 22, column: 4, file_name: "test_code.pmh" } }
-Token { kind: Int(0, 64), value: "0", line_data: LineData { line: 22, column: 11, file_name: "test_code.pmh" } }
-Token { kind: Indent(0), value: "\n\r", line_data: LineData { line: 22, column: 13, file_name: "test_code.pmh" } }
-Token { kind: Indent(0), value: "\n", line_data: LineData { line: 23, column: 1, file_name: "test_code.pmh" } }
-Token { kind: Attr, value: "attr", line_data: LineData { line: 24, column: 0, file_name: "test_code.pmh" } }
-Token { kind: Ident, value: "inline", line_data: LineData { line: 24, column: 5, file_name: "test_code.pmh" } }
-Token { kind: Op, value: "=", line_data: LineData { line: 24, column: 12, file_name: "test_code.pmh" } }
-Token { kind: Ident, value: "always", line_data: LineData { line: 24, column: 14, file_name: "test_code.pmh" } }
-Token { kind: Comma, value: ",", line_data: LineData { line: 24, column: 20, file_name: "test_code.pmh" } }
-Token { kind: Ident, value: "call_conv", line_data: LineData { line: 24, column: 22, file_name: "test_code.pmh" } }
-Token { kind: Op, value: "=", line_data: LineData { line: 24, column: 32, file_name: "test_code.pmh" } }
-Token { kind: Ident, value: "cold", line_data: LineData { line: 24, column: 34, file_name: "test_code.pmh" } }
-Token { kind: Indent(0), value: "\n", line_data: LineData { line: 24, column: 39, file_name: "test_code.pmh" } }
-Token { kind: Fun, value: "fun", line_data: LineData { line: 25, column: 0, file_name: "test_code.pmh" } }
-Token { kind: Ident, value: "inline_fn", line_data: LineData { line: 25, column: 4, file_name: "test_code.pmh" } }
-Token { kind: RArrow, value: "->", line_data: LineData { line: 25, column: 14, file_name: "test_code.pmh" } }
-Token { kind: Ident, value: "u32", line_data: LineData { line: 25, column: 17, file_name: "test_code.pmh" } }
-Token { kind: Colon, value: ":", line_data: LineData { line: 25, column: 20, file_name: "test_code.pmh" } }
-Token { kind: Indent(1), value: "\n  ", line_data: LineData { line: 25, column: 22, file_name: "test_code.pmh" } }
-Token { kind: Return, value: "return", line_data: LineData { line: 26, column: 2, file_name: "test_code.pmh" } }
-Token { kind: Int(10, 64), value: "10", line_data: LineData { line: 26, column: 9, file_name: "test_code.pmh" } }
-Token { kind: Indent(0), value: "\n\r", line_data: LineData { line: 26, column: 12, file_name: "test_code.pmh" } }
-Token { kind: Indent(0), value: "\n", line_data: LineData { line: 27, column: 1, file_name: "test_code.pmh" } }
-Token { kind: Fun, value: "fun", line_data: LineData { line: 28, column: 0, file_name: "test_code.pmh" } }
-Token { kind: Ident, value: "fib", line_data: LineData { line: 28, column: 4, file_name: "test_code.pmh" } }
-Token { kind: LPar, value: "(", line_data: LineData { line: 28, column: 7, file_name: "test_code.pmh" } }
-Token { kind: Ident, value: "v", line_data: LineData { line: 28, column: 8, file_name: "test_code.pmh" } }
-Token { kind: Colon, value: ":", line_data: LineData { line: 28, column: 9, file_name: "test_code.pmh" } }
-Token { kind: Ident, value: "i64", line_data: LineData { line: 28, column: 11, file_name: "test_code.pmh" } }
-Token { kind: RPar, value: ")", line_data: LineData { line: 28, column: 14, file_name: "test_code.pmh" } }
-Token { kind: RArrow, value: "->", line_data: LineData { line: 28, column: 16, file_name: "test_code.pmh" } }
-Token { kind: Ident, value: "i64", line_data: LineData { line: 28, column: 19, file_name: "test_code.pmh" } }
-Token { kind: Colon, value: ":", line_data: LineData { line: 28, column: 22, file_name: "test_code.pmh" } }
-Token { kind: Indent(1), value: "\n  ", line_data: LineData { line: 28, column: 24, file_name: "test_code.pmh" } }
-Token { kind: Return, value: "return", line_data: LineData { line: 29, column: 2, file_name: "test_code.pmh" } }
-Token { kind: If, value: "if", line_data: LineData { line: 29, column: 9, file_name: "test_code.pmh" } }
-Token { kind: Ident, value: "v", line_data: LineData { line: 29, column: 12, file_name: "test_code.pmh" } }
-Token { kind: Op, value: "==", line_data: LineData { line: 29, column: 14, file_name: "test_code.pmh" } }
-Token { kind: Int(0, 64), value: "0", line_data: LineData { line: 29, column: 17, file_name: "test_code.pmh" } }
-Token { kind: Op, value: "|", line_data: LineData { line: 29, column: 19, file_name: "test_code.pmh" } }
-Token { kind: Ident, value: "v", line_data: LineData { line: 29, column: 21, file_name: "test_code.pmh" } }
-Token { kind: Op, value: "==", line_data: LineData { line: 29, column: 23, file_name: "test_code.pmh" } }
-Token { kind: Int(1, 64), value: "1", line_data: LineData { line: 29, column: 26, file_name: "test_code.pmh" } }
-Token { kind: Colon, value: ":", line_data: LineData { line: 29, column: 27, file_name: "test_code.pmh" } }
-Token { kind: Indent(2), value: "\n    ", line_data: LineData { line: 29, column: 29, file_name: "test_code.pmh" } }
-Token { kind: Int(1, 64), value: "1", line_data: LineData { line: 30, column: 4, file_name: "test_code.pmh" } }
-Token { kind: Indent(1), value: "\n  ", line_data: LineData { line: 30, column: 6, file_name: "test_code.pmh" } }
-Token { kind: Else, value: "else", line_data: LineData { line: 31, column: 2, file_name: "test_code.pmh" } }
-Token { kind: Colon, value: ":", line_data: LineData { line: 31, column: 6, file_name: "test_code.pmh" } }
-Token { kind: Indent(2), value: "\n    ", line_data: LineData { line: 31, column: 8, file_name: "test_code.pmh" } }
-Token { kind: Ident, value: "fib", line_data: LineData { line: 32, column: 4, file_name: "test_code.pmh" } }
-Token { kind: LPar, value: "(", line_data: LineData { line: 32, column: 7, file_name: "test_code.pmh" } }
-Token { kind: Ident, value: "v", line_data: LineData { line: 32, column: 8, file_name: "test_code.pmh" } }
-Token { kind: Op, value: "-", line_data: LineData { line: 32, column: 10, file_name: "test_code.pmh" } }
-Token { kind: Int(1, 64), value: "1", line_data: LineData { line: 32, column: 12, file_name: "test_code.pmh" } }
-Token { kind: RPar, value: ")", line_data: LineData { line: 32, column: 13, file_name: "test_code.pmh" } }
-Token { kind: Op, value: "+", line_data: LineData { line: 32, column: 15, file_name: "test_code.pmh" } }
-Token { kind: Ident, value: "fib", line_data: LineData { line: 32, column: 17, file_name: "test_code.pmh" } }
-Token { kind: LPar, value: "(", line_data: LineData { line: 32, column: 20, file_name: "test_code.pmh" } }
-Token { kind: Ident, value: "v", line_data: LineData { line: 32, column: 21, file_name: "test_code.pmh" } }
-Token { kind: Op, value: "-", line_data: LineData { line: 32, column: 23, file_name: "test_code.pmh" } }
-Token { kind: Int(2, 64), value: "2", line_data: LineData { line: 32, column: 25, file_name: "test_code.pmh" } }
-Token { kind: RPar, value: ")", line_data: LineData { line: 32, column: 26, file_name: "test_code.pmh" } }
-Token { kind: Indent(0), value: "\n\r", line_data: LineData { line: 32, column: 28, file_name: "test_code.pmh" } }
-Token { kind: Indent(0), value: "\n", line_data: LineData { line: 33, column: 1, file_name: "test_code.pmh" } }
-Token { kind: Fun, value: "fun", line_data: LineData { line: 34, column: 0, file_name: "test_code.pmh" } }
-Token { kind: Ident, value: "fib_loop", line_data: LineData { line: 34, column: 4, file_name: "test_code.pmh" } }
-Token { kind: LPar, value: "(", line_data: LineData { line: 34, column: 12, file_name: "test_code.pmh" } }
-Token { kind: Ident, value: "v", line_data: LineData { line: 34, column: 13, file_name: "test_code.pmh" } }
-Token { kind: Colon, value: ":", line_data: LineData { line: 34, column: 14, file_name: "test_code.pmh" } }
-Token { kind: Ident, value: "i64", line_data: LineData { line: 34, column: 16, file_name: "test_code.pmh" } }
-Token { kind: RPar, value: ")", line_data: LineData { line: 34, column: 19, file_name: "test_code.pmh" } }
-Token { kind: RArrow, value: "->", line_data: LineData { line: 34, column: 21, file_name: "test_code.pmh" } }
-Token { kind: Ident, value: "i64", line_data: LineData { line: 34, column: 24, file_name: "test_code.pmh" } }
-Token { kind: Colon, value: ":", line_data: LineData { line: 34, column: 27, file_name: "test_code.pmh" } }
-Token { kind: Indent(1), value: "\n  ", line_data: LineData { line: 34, column: 29, file_name: "test_code.pmh" } }
-Token { kind: Var, value: "var", line_data: LineData { line: 35, column: 2, file_name: "test_code.pmh" } }
-Token { kind: Ident, value: "a", line_data: LineData { line: 35, column: 6, file_name: "test_code.pmh" } }
-Token { kind: Comma, value: ",", line_data: LineData { line: 35, column: 7, file_name: "test_code.pmh" } }
-Token { kind: Ident, value: "b", line_data: LineData { line: 35, column: 9, file_name: "test_code.pmh" } }
-Token { kind: Comma, value: ",", line_data: LineData { line: 35, column: 10, file_name: "test_code.pmh" } }
-Token { kind: Ident, value: "c", line_data: LineData { line: 35, column: 12, file_name: "test_code.pmh" } }
-Token { kind: Op, value: "=", line_data: LineData { line: 35, column: 14, file_name: "test_code.pmh" } }
-Token { kind: Int(1, 64), value: "1", line_data: LineData { line: 35, column: 16, file_name: "test_code.pmh" } }
-Token { kind: Indent(1), value: "\n  ", line_data: LineData { line: 35, column: 18, file_name: "test_code.pmh" } }
-Token { kind: Loop, value: "loop", line_data: LineData { line: 36, column: 2, file_name: "test_code.pmh" } }
-Token { kind: Label, value: "'a", line_data: LineData { line: 36, column: 6, file_name: "test_code.pmh" } }
-Token { kind: Colon, value: ":", line_data: LineData { line: 36, column: 8, file_name: "test_code.pmh" } }
-Token { kind: Indent(2), value: "\n    ", line_data: LineData { line: 36, column: 10, file_name: "test_code.pmh" } }
-Token { kind: Ident, value: "c", line_data: LineData { line: 37, column: 4, file_name: "test_code.pmh" } }
-Token { kind: Op, value: "=", line_data: LineData { line: 37, column: 6, file_name: "test_code.pmh" } }
-Token { kind: Ident, value: "a", line_data: LineData { line: 37, column: 8, file_name: "test_code.pmh" } }
-Token { kind: Op, value: "+", line_data: LineData { line: 37, column: 10, file_name: "test_code.pmh" } }
-Token { kind: Ident, value: "b", line_data: LineData { line: 37, column: 12, file_name: "test_code.pmh" } }
-Token { kind: Indent(2), value: "\n    ", line_data: LineData { line: 37, column: 14, file_name: "test_code.pmh" } }
-Token { kind: Ident, value: "a", line_data: LineData { line: 38, column: 4, file_name: "test_code.pmh" } }
-Token { kind: Op, value: "=", line_data: LineData { line: 38, column: 6, file_name: "test_code.pmh" } }
-Token { kind: Ident, value: "b", line_data: LineData { line: 38, column: 8, file_name: "test_code.pmh" } }
-Token { kind: Indent(2), value: "\n    ", line_data: LineData { line: 38, column: 10, file_name: "test_code.pmh" } }
-Token { kind: Ident, value: "b", line_data: LineData { line: 39, column: 4, file_name: "test_code.pmh" } }
-Token { kind: Op, value: "=", line_data: LineData { line: 39, column: 6, file_name: "test_code.pmh" } }
-Token { kind: Ident, value: "c", line_data: LineData { line: 39, column: 8, file_name: "test_code.pmh" } }
-Token { kind: Indent(2), value: "\n    ", line_data: LineData { line: 39, column: 10, file_name: "test_code.pmh" } }
-Token { kind: Ident, value: "v", line_data: LineData { line: 40, column: 4, file_name: "test_code.pmh" } }
-Token { kind: Op, value: "=", line_data: LineData { line: 40, column: 6, file_name: "test_code.pmh" } }
-Token { kind: Ident, value: "v", line_data: LineData { line: 40, column: 8, file_name: "test_code.pmh" } }
-Token { kind: Op, value: "-", line_data: LineData { line: 40, column: 10, file_name: "test_code.pmh" } }
-Token { kind: Int(1, 64), value: "1", line_data: LineData { line: 40, column: 12, file_name: "test_code.pmh" } }
-Token { kind: Indent(2), value: "\n    ", line_data: LineData { line: 40, column: 14, file_name: "test_code.pmh" } }
-Token { kind: If, value: "if", line_data: LineData { line: 41, column: 4, file_name: "test_code.pmh" } }
-Token { kind: Ident, value: "v", line_data: LineData { line: 41, column: 7, file_name: "test_code.pmh" } }
-Token { kind: Op, value: "==", line_data: LineData { line: 41, column: 9, file_name: "test_code.pmh" } }
-Token { kind: Int(0, 64), value: "0", line_data: LineData { line: 41, column: 12, file_name: "test_code.pmh" } }
-Token { kind: Colon, value: ":", line_data: LineData { line: 41, column: 13, file_name: "test_code.pmh" } }
-Token { kind: Indent(3), value: "\n      ", line_data: LineData { line: 41, column: 15, file_name: "test_code.pmh" } }
-Token { kind: Break, value: "break", line_data: LineData { line: 42, column: 6, file_name: "test_code.pmh" } }
-Token { kind: Label, value: "'a", line_data: LineData { line: 42, column: 11, file_name: "test_code.pmh" } }
-Token { kind: Indent(1), value: "\n  ", line_data: LineData { line: 42, column: 14, file_name: "test_code.pmh" } }
-Token { kind: Return, value: "return", line_data: LineData { line: 43, column: 2, file_name: "test_code.pmh" } }
-Token { kind: Ident, value: "c", line_data: LineData { line: 43, column: 9, file_name: "test_code.pmh" } }
-Token { kind: Indent(0), value: "\n\r", line_data: LineData { line: 43, column: 11, file_name: "test_code.pmh" } }
-Token { kind: Indent(0), value: "\n", line_data: LineData { line: 44, column: 1, file_name: "test_code.pmh" } }
-Token { kind: Fun, value: "fun", line_data: LineData { line: 45, column: 0, file_name: "test_code.pmh" } }
-Token { kind: Ident, value: "unary_operators", line_data: LineData { line: 45, column: 4, file_name: "test_code.pmh" } }
-Token { kind: LPar, value: "(", line_data: LineData { line: 45, column: 19, file_name: "test_code.pmh" } }
-Token { kind: Ident, value: "a", line_data: LineData { line: 45, column: 20, file_name: "test_code.pmh" } }
-Token { kind: Colon, value: ":", line_data: LineData { line: 45, column: 21, file_name: "test_code.pmh" } }
-Token { kind: Ident, value: "i64", line_data: LineData { line: 45, column: 23, file_name: "test_code.pmh" } }
-Token { kind: RPar, value: ")", line_data: LineData { line: 45, column: 26, file_name: "test_code.pmh" } }
-Token { kind: RArrow, value: "->", line_data: LineData { line: 45, column: 28, file_name: "test_code.pmh" } }
-Token { kind: Ident, value: "i64", line_data: LineData { line: 45, column: 31, file_name: "test_code.pmh" } }
-Token { kind: Colon, value: ":", line_data: LineData { line: 45, column: 34, file_name: "test_code.pmh" } }
-Token { kind: Indent(1), value: "\n  ", line_data: LineData { line: 45, column: 36, file_name: "test_code.pmh" } }
-Token { kind: Return, value: "return", line_data: LineData { line: 46, column: 2, file_name: "test_code.pmh" } }
-Token { kind: Op, value: "-", line_data: LineData { line: 46, column: 9, file_name: "test_code.pmh" } }
-Token { kind: Ident, value: "a", line_data: LineData { line: 46, column: 10, file_name: "test_code.pmh" } }
-Token { kind: Op, value: "+", line_data: LineData { line: 46, column: 12, file_name: "test_code.pmh" } }
-Token { kind: Op, value: "~", line_data: LineData { line: 46, column: 14, file_name: "test_code.pmh" } }
-Token { kind: Ident, value: "a", line_data: LineData { line: 46, column: 15, file_name: "test_code.pmh" } }
-Token { kind: Op, value: "+", line_data: LineData { line: 46, column: 17, file_name: "test_code.pmh" } }
-Token { kind: Op, value: "!", line_data: LineData { line: 46, column: 19, file_name: "test_code.pmh" } }
-Token { kind: Ident, value: "a", line_data: LineData { line: 46, column: 20, file_name: "test_code.pmh" } }
-Token { kind: Op, value: "+", line_data: LineData { line: 46, column: 22, file_name: "test_code.pmh" } }
-Token { kind: Op, value: "++", line_data: LineData { line: 46, column: 24, file_name: "test_code.pmh" } }
-Token { kind: Ident, value: "a", line_data: LineData { line: 46, column: 26, file_name: "test_code.pmh" } }
-Token { kind: Op, value: "+", line_data: LineData { line: 46, column: 28, file_name: "test_code.pmh" } }
-Token { kind: Op, value: "--", line_data: LineData { line: 46, column: 30, file_name: "test_code.pmh" } }
-Token { kind: Ident, value: "a", line_data: LineData { line: 46, column: 32, file_name: "test_code.pmh" } }
-Token { kind: Indent(0), value: "\n\r", line_data: LineData { line: 46, column: 34, file_name: "test_code.pmh" } }
-Token { kind: Indent(0), value: "\n", line_data: LineData { line: 47, column: 1, file_name: "test_code.pmh" } }
-Token { kind: Struct, value: "struct", line_data: LineData { line: 48, column: 0, file_name: "test_code.pmh" } }
-Token { kind: Ident, value: "Foo", line_data: LineData { line: 48, column: 7, file_name: "test_code.pmh" } }
-Token { kind: Colon, value: ":", line_data: LineData { line: 48, column: 10, file_name: "test_code.pmh" } }
-Token { kind: Indent(1), value: "\n  ", line_data: LineData { line: 48, column: 12, file_name: "test_code.pmh" } }
-Token { kind: Ident, value: "a", line_data: LineData { line: 49, column: 2, file_name: "test_code.pmh" } }
-Token { kind: Comma, value: ",", line_data: LineData { line: 49, column: 3, file_name: "test_code.pmh" } }
-Token { kind: Ident, value: "b", line_data: LineData { line: 49, column: 5, file_name: "test_code.pmh" } }
-Token { kind: Comma, value: ",", line_data: LineData { line: 49, column: 6, file_name: "test_code.pmh" } }
-Token { kind: Ident, value: "c", line_data: LineData { line: 49, column: 8, file_name: "test_code.pmh" } }
-Token { kind: Colon, value: ":", line_data: LineData { line: 49, column: 9, file_name: "test_code.pmh" } }
-Token { kind: Ident, value: "i64", line_data: LineData { line: 49, column: 11, file_name: "test_code.pmh" } }
-Token { kind: Indent(0), value: "\n\r", line_data: LineData { line: 49, column: 15, file_name: "test_code.pmh" } }
-Token { kind: Indent(0), value: "\n", line_data: LineData { line: 50, column: 1, file_name: "test_code.pmh" } }
-Token { kind: Struct, value: "struct", line_data: LineData { line: 51, column: 0, file_name: "test_code.pmh" } }
-Token { kind: Ident, value: "Goo", line_data: LineData { line: 51, column: 7, file_name: "test_code.pmh" } }
-Token { kind: Colon, value: ":", line_data: LineData { line: 51, column: 10, file_name: "test_code.pmh" } }
-Token { kind: Indent(1), value: "\n  ", line_data: LineData { line: 51, column: 12, file_name: "test_code.pmh" } }
-Token { kind: Embed, value: "embed", line_data: LineData { line: 52, column: 2, file_name: "test_code.pmh" } }
-Token { kind: Ident, value: "foo", line_data: LineData { line: 52, column: 8, file_name: "test_code.pmh" } }
-Token { kind: Colon, value: ":", line_data: LineData { line: 52, column: 11, file_name: "test_code.pmh" } }
-Token { kind: Ident, value: "Foo", line_data: LineData { line: 52, column: 13, file_name: "test_code.pmh" } }
-Token { kind: Indent(1), value: "\n  ", line_data: LineData { line: 52, column: 17, file_name: "test_code.pmh" } }
-Token { kind: Attr, value: "attr", line_data: LineData { line: 53, column: 2, file_name: "test_code.pmh" } }
-Token { kind: Ident, value: "something", line_data: LineData { line: 53, column: 7, file_name: "test_code.pmh" } }
-Token { kind: Indent(1), value: "\n  ", line_data: LineData { line: 53, column: 17, file_name: "test_code.pmh" } }
-Token { kind: Ident, value: "gva", line_data: LineData { line: 54, column: 2, file_name: "test_code.pmh" } }
-Token { kind: Colon, value: ":", line_data: LineData { line: 54, column: 5, file_name: "test_code.pmh" } }
-Token { kind: Ident, value: "i64", line_data: LineData { line: 54, column: 7, file_name: "test_code.pmh" } }
-Token { kind: Indent(0), value: "\n\r", line_data: LineData { line: 54, column: 11, file_name: "test_code.pmh" } }
-Token { kind: Indent(0), value: "\n", line_data: LineData { line: 55, column: 1, file_name: "test_code.pmh" } }
-Token { kind: Fun, value: "fun", line_data: LineData { line: 56, column: 0, file_name: "test_code.pmh" } }
-Token { kind: Ident, value: "strings", line_data: LineData { line: 56, column: 4, file_name: "test_code.pmh" } }
-Token { kind: RArrow, value: "->", line_data: LineData { line: 56, column: 12, file_name: "test_code.pmh" } }
-Token { kind: Ident, value: "i64", line_data: LineData { line: 56, column: 15, file_name: "test_code.pmh" } }
-Token { kind: Colon, value: ":", line_data: LineData { line: 56, column: 18, file_name: "test_code.pmh" } }
-Token { kind: Indent(1), value: "\n  ", line_data: LineData { line: 56, column: 20, file_name: "test_code.pmh" } }
-Token { kind: Var, value: "var", line_data: LineData { line: 57, column: 2, file_name: "test_code.pmh" } }
-Token { kind: Ident, value: "hello", line_data: LineData { line: 57, column: 6, file_name: "test_code.pmh" } }
-Token { kind: Op, value: "=", line_data: LineData { line: 57, column: 12, file_name: "test_code.pmh" } }
-Token { kind: String([104, 101, 108, 108, 111]), value: "\"hello\"", line_data: LineData { line: 57, column: 14, file_name: "test_code.pmh" } }
-Token { kind: Indent(1), value: "\n  ", line_data: LineData { line: 57, column: 22, file_name: "test_code.pmh" } }
-Token { kind: Return, value: "return", line_data: LineData { line: 58, column: 2, file_name: "test_code.pmh" } }
-Token { kind: Int(0, 64), value: "0", line_data: LineData { line: 58, column: 9, file_name: "test_code.pmh" } }
-Token { kind: Indent(0), value: "\n\r", line_data: LineData { line: 58, column: 11, file_name: "test_code.pmh" } }
-Token { kind: Indent(0), value: "\n", line_data: LineData { line: 59, column: 1, file_name: "test_code.pmh" } }
-Token { kind: Fun, value: "fun", line_data: LineData { line: 60, column: 0, file_name: "test_code.pmh" } }
-Token { kind: Ident, value: "mutable_ref", line_data: LineData { line: 60, column: 4, file_name: "test_code.pmh" } }
-Token { kind: LPar, value: "(", line_data: LineData { line: 60, column: 15, file_name: "test_code.pmh" } }
-Token { kind: Ident, value: "a", line_data: LineData { line: 60, column: 16, file_name: "test_code.pmh" } }
-Token { kind: Colon, value: ":", line_data: LineData { line: 60, column: 17, file_name: "test_code.pmh" } }
-Token { kind: Op, value: "&", line_data: LineData { line: 60, column: 19, file_name: "test_code.pmh" } }
-Token { kind: Var, value: "var", line_data: LineData { line: 60, column: 20, file_name: "test_code.pmh" } }
-Token { kind: Ident, value: "Foo", line_data: LineData { line: 60, column: 24, file_name: "test_code.pmh" } }
-Token { kind: RPar, value: ")", line_data: LineData { line: 60, column: 27, file_name: "test_code.pmh" } }
-Token { kind: Colon, value: ":", line_data: LineData { line: 60, column: 28, file_name: "test_code.pmh" } }
-Token { kind: Indent(1), value: "\n  ", line_data: LineData { line: 60, column: 30, file_name: "test_code.pmh" } }
-Token { kind: Ident, value: "a", line_data: LineData { line: 61, column: 2, file_name: "test_code.pmh" } }
-Token { kind: Dot, value: ".", line_data: LineData { line: 61, column: 3, file_name: "test_code.pmh" } }
-Token { kind: Ident, value: "a", line_data: LineData { line: 61, column: 4, file_name: "test_code.pmh" } }
-Token { kind: Op, value: "=", line_data: LineData { line: 61, column: 6, file_name: "test_code.pmh" } }
-Token { kind: Int(10, 64), value: "10", line_data: LineData { line: 61, column: 8, file_name: "test_code.pmh" } }
-Token { kind: Indent(1), value: "\n  ", line_data: LineData { line: 61, column: 11, file_name: "test_code.pmh" } }
-Token { kind: Ident, value: "a", line_data: LineData { line: 62, column: 2, file_name: "test_code.pmh" } }
-Token { kind: Dot, value: ".", line_data: LineData { line: 62, column: 3, file_name: "test_code.pmh" } }
-Token { kind: Ident, value: "b", line_data: LineData { line: 62, column: 4, file_name: "test_code.pmh" } }
-Token { kind: Op, value: "=", line_data: LineData { line: 62, column: 6, file_name: "test_code.pmh" } }
-Token { kind: Int(20, 64), value: "20", line_data: LineData { line: 62, column: 8, file_name: "test_code.pmh" } }
-Token { kind: Indent(1), value: "\n  ", line_data: LineData { line: 62, column: 11, file_name: "test_code.pmh" } }
-Token { kind: Ident, value: "a", line_data: LineData { line: 63, column: 2, file_name: "test_code.pmh" } }
-Token { kind: Dot, value: ".", line_data: LineData { line: 63, column: 3, file_name: "test_code.pmh" } }
-Token { kind: Ident, value: "c", line_data: LineData { line: 63, column: 4, file_name: "test_code.pmh" } }
-Token { kind: Op, value: "=", line_data: LineData { line: 63, column: 6, file_name: "test_code.pmh" } }
-Token { kind: Int(30, 64), value: "30", line_data: LineData { line: 63, column: 8, file_name: "test_code.pmh" } }
-Token { kind: Indent(0), value: "\n\r", line_data: LineData { line: 63, column: 11, file_name: "test_code.pmh" } }
-Token { kind: Indent(0), value: "\n\r", line_data: LineData { line: 64, column: 1, file_name: "test_code.pmh" } }
+Token { kind: Fun, spam: "fun", line_data: LineData { line: 1, column: 0, file_name: "test_code.pmh" } }
+Token { kind: Ident, spam: "flo", line_data: LineData { line: 1, column: 4, file_name: "test_code.pmh" } }
+Token { kind: Colon, spam: ":", line_data: LineData { line: 1, column: 7, file_name: "test_code.pmh" } }
+Token { kind: Pass, spam: "pass", line_data: LineData { line: 1, column: 9, file_name: "test_code.pmh" } }
+Token { kind: Indent(0), spam: "\n\r", line_data: LineData { line: 1, column: 14, file_name: "test_code.pmh" } }
+Token { kind: Indent(0), spam: "\n", line_data: LineData { line: 2, column: 1, file_name: "test_code.pmh" } }
+Token { kind: Fun, spam: "fun", line_data: LineData { line: 3, column: 0, file_name: "test_code.pmh" } }
+Token { kind: Ident, spam: "foo", line_data: LineData { line: 3, column: 4, file_name: "test_code.pmh" } }
+Token { kind: LPar, spam: "(", line_data: LineData { line: 3, column: 7, file_name: "test_code.pmh" } }
+Token { kind: RPar, spam: ")", line_data: LineData { line: 3, column: 8, file_name: "test_code.pmh" } }
+Token { kind: Colon, spam: ":", line_data: LineData { line: 3, column: 9, file_name: "test_code.pmh" } }
+Token { kind: Pass, spam: "pass", line_data: LineData { line: 3, column: 11, file_name: "test_code.pmh" } }
+Token { kind: Indent(0), spam: "\n\r", line_data: LineData { line: 3, column: 16, file_name: "test_code.pmh" } }
+Token { kind: Indent(0), spam: "\n", line_data: LineData { line: 4, column: 1, file_name: "test_code.pmh" } }
+Token { kind: Fun, spam: "fun", line_data: LineData { line: 5, column: 0, file_name: "test_code.pmh" } }
+Token { kind: Ident, spam: "goo", line_data: LineData { line: 5, column: 4, file_name: "test_code.pmh" } }
+Token { kind: LPar, spam: "(", line_data: LineData { line: 5, column: 7, file_name: "test_code.pmh" } }
+Token { kind: Ident, spam: "a", line_data: LineData { line: 5, column: 8, file_name: "test_code.pmh" } }
+Token { kind: Colon, spam: ":", line_data: LineData { line: 5, column: 9, file_name: "test_code.pmh" } }
+Token { kind: Ident, spam: "i8", line_data: LineData { line: 5, column: 11, file_name: "test_code.pmh" } }
+Token { kind: Comma, spam: ",", line_data: LineData { line: 5, column: 13, file_name: "test_code.pmh" } }
+Token { kind: Ident, spam: "b", line_data: LineData { line: 5, column: 15, file_name: "test_code.pmh" } }
+Token { kind: Colon, spam: ":", line_data: LineData { line: 5, column: 16, file_name: "test_code.pmh" } }
+Token { kind: Ident, spam: "i8", line_data: LineData { line: 5, column: 18, file_name: "test_code.pmh" } }
+Token { kind: RPar, spam: ")", line_data: LineData { line: 5, column: 20, file_name: "test_code.pmh" } }
+Token { kind: Colon, spam: ":", line_data: LineData { line: 5, column: 21, file_name: "test_code.pmh" } }
+Token { kind: Pass, spam: "pass", line_data: LineData { line: 5, column: 23, file_name: "test_code.pmh" } }
+Token { kind: Indent(0), spam: "\n\r", line_data: LineData { line: 5, column: 28, file_name: "test_code.pmh" } }
+Token { kind: Indent(0), spam: "\n", line_data: LineData { line: 6, column: 1, file_name: "test_code.pmh" } }
+Token { kind: Fun, spam: "fun", line_data: LineData { line: 7, column: 0, file_name: "test_code.pmh" } }
+Token { kind: Ident, spam: "loo", line_data: LineData { line: 7, column: 4, file_name: "test_code.pmh" } }
+Token { kind: Colon, spam: ":", line_data: LineData { line: 7, column: 7, file_name: "test_code.pmh" } }
+Token { kind: Indent(1), spam: "\n  ", line_data: LineData { line: 7, column: 9, file_name: "test_code.pmh" } }
+Token { kind: Pass, spam: "pass", line_data: LineData { line: 8, column: 2, file_name: "test_code.pmh" } }
+Token { kind: Indent(0), spam: "\n\r", line_data: LineData { line: 8, column: 7, file_name: "test_code.pmh" } }
+Token { kind: Indent(0), spam: "\n", line_data: LineData { line: 9, column: 1, file_name: "test_code.pmh" } }
+Token { kind: Fun, spam: "fun", line_data: LineData { line: 10, column: 0, file_name: "test_code.pmh" } }
+Token { kind: Ident, spam: "main", line_data: LineData { line: 10, column: 4, file_name: "test_code.pmh" } }
+Token { kind: RArrow, spam: "->", line_data: LineData { line: 10, column: 9, file_name: "test_code.pmh" } }
+Token { kind: Ident, spam: "i64", line_data: LineData { line: 10, column: 12, file_name: "test_code.pmh" } }
+Token { kind: Colon, spam: ":", line_data: LineData { line: 10, column: 15, file_name: "test_code.pmh" } }
+Token { kind: Indent(1), spam: "\n  ", line_data: LineData { line: 10, column: 17, file_name: "test_code.pmh" } }
+Token { kind: Return, spam: "return", line_data: LineData { line: 11, column: 2, file_name: "test_code.pmh" } }
+Token { kind: Int(10, 64), spam: "10", line_data: LineData { line: 11, column: 9, file_name: "test_code.pmh" } }
+Token { kind: Op, spam: "+", line_data: LineData { line: 11, column: 12, file_name: "test_code.pmh" } }
+Token { kind: Int(4, 64), spam: "4", line_data: LineData { line: 11, column: 14, file_name: "test_code.pmh" } }
+Token { kind: Op, spam: "-", line_data: LineData { line: 11, column: 16, file_name: "test_code.pmh" } }
+Token { kind: Int(2, 64), spam: "2", line_data: LineData { line: 11, column: 18, file_name: "test_code.pmh" } }
+Token { kind: Op, spam: "*", line_data: LineData { line: 11, column: 20, file_name: "test_code.pmh" } }
+Token { kind: Int(1, 64), spam: "1", line_data: LineData { line: 11, column: 22, file_name: "test_code.pmh" } }
+Token { kind: Op, spam: "+", line_data: LineData { line: 11, column: 24, file_name: "test_code.pmh" } }
+Token { kind: Int(8, 64), spam: "8", line_data: LineData { line: 11, column: 26, file_name: "test_code.pmh" } }
+Token { kind: Indent(0), spam: "\n\r", line_data: LineData { line: 11, column: 28, file_name: "test_code.pmh" } }
+Token { kind: Indent(0), spam: "\n", line_data: LineData { line: 12, column: 1, file_name: "test_code.pmh" } }
+Token { kind: Fun, spam: "fun", line_data: LineData { line: 13, column: 0, file_name: "test_code.pmh" } }
+Token { kind: Ident, spam: "operator_stress_test", line_data: LineData { line: 13, column: 4, file_name: "test_code.pmh" } }
+Token { kind: RArrow, spam: "->", line_data: LineData { line: 13, column: 25, file_name: "test_code.pmh" } }
+Token { kind: Ident, spam: "i64", line_data: LineData { line: 13, column: 28, file_name: "test_code.pmh" } }
+Token { kind: Colon, spam: ":", line_data: LineData { line: 13, column: 31, file_name: "test_code.pmh" } }
+Token { kind: Indent(1), spam: "\n  ", line_data: LineData { line: 13, column: 33, file_name: "test_code.pmh" } }
+Token { kind: Return, spam: "return", line_data: LineData { line: 14, column: 2, file_name: "test_code.pmh" } }
+Token { kind: Int(10, 64), spam: "10", line_data: LineData { line: 14, column: 9, file_name: "test_code.pmh" } }
+Token { kind: Op, spam: "+", line_data: LineData { line: 14, column: 12, file_name: "test_code.pmh" } }
+Token { kind: Int(2, 64), spam: "2", line_data: LineData { line: 14, column: 14, file_name: "test_code.pmh" } }
+Token { kind: Op, spam: "*", line_data: LineData { line: 14, column: 16, file_name: "test_code.pmh" } }
+Token { kind: Int(1, 64), spam: "1", line_data: LineData { line: 14, column: 18, file_name: "test_code.pmh" } }
+Token { kind: Op, spam: "-", line_data: LineData { line: 14, column: 20, file_name: "test_code.pmh" } }
+Token { kind: Int(9, 64), spam: "9", line_data: LineData { line: 14, column: 22, file_name: "test_code.pmh" } }
+Token { kind: Op, spam: "|", line_data: LineData { line: 14, column: 24, file_name: "test_code.pmh" } }
+Token { kind: Int(4, 64), spam: "4", line_data: LineData { line: 14, column: 26, file_name: "test_code.pmh" } }
+Token { kind: Op, spam: "&", line_data: LineData { line: 14, column: 28, file_name: "test_code.pmh" } }
+Token { kind: Int(1, 64), spam: "1", line_data: LineData { line: 14, column: 30, file_name: "test_code.pmh" } }
+Token { kind: Op, spam: "^", line_data: LineData { line: 14, column: 32, file_name: "test_code.pmh" } }
+Token { kind: Int(2, 64), spam: "2", line_data: LineData { line: 14, column: 34, file_name: "test_code.pmh" } }
+Token { kind: Op, spam: ">>", line_data: LineData { line: 14, column: 36, file_name: "test_code.pmh" } }
+Token { kind: Int(1, 64), spam: "1", line_data: LineData { line: 14, column: 39, file_name: "test_code.pmh" } }
+Token { kind: Op, spam: "<<", line_data: LineData { line: 14, column: 41, file_name: "test_code.pmh" } }
+Token { kind: Int(7, 64), spam: "7", line_data: LineData { line: 14, column: 44, file_name: "test_code.pmh" } }
+Token { kind: Op, spam: "min", line_data: LineData { line: 14, column: 46, file_name: "test_code.pmh" } }
+Token { kind: Int(20, 64), spam: "20", line_data: LineData { line: 14, column: 50, file_name: "test_code.pmh" } }
+Token { kind: Op, spam: "max", line_data: LineData { line: 14, column: 53, file_name: "test_code.pmh" } }
+Token { kind: Int(10, 64), spam: "10", line_data: LineData { line: 14, column: 57, file_name: "test_code.pmh" } }
+Token { kind: Indent(0), spam: "\n\r", line_data: LineData { line: 14, column: 60, file_name: "test_code.pmh" } }
+Token { kind: Indent(0), spam: "\n", line_data: LineData { line: 15, column: 1, file_name: "test_code.pmh" } }
+Token { kind: Fun, spam: "fun", line_data: LineData { line: 16, column: 0, file_name: "test_code.pmh" } }
+Token { kind: Ident, spam: "conditional", line_data: LineData { line: 16, column: 4, file_name: "test_code.pmh" } }
+Token { kind: RArrow, spam: "->", line_data: LineData { line: 16, column: 16, file_name: "test_code.pmh" } }
+Token { kind: Ident, spam: "i64", line_data: LineData { line: 16, column: 19, file_name: "test_code.pmh" } }
+Token { kind: Colon, spam: ":", line_data: LineData { line: 16, column: 22, file_name: "test_code.pmh" } }
+Token { kind: Indent(1), spam: "\n  ", line_data: LineData { line: 16, column: 24, file_name: "test_code.pmh" } }
+Token { kind: If, spam: "if", line_data: LineData { line: 17, column: 2, file_name: "test_code.pmh" } }
+Token { kind: Bool(false), spam: "false", line_data: LineData { line: 17, column: 5, file_name: "test_code.pmh" } }
+Token { kind: Colon, spam: ":", line_data: LineData { line: 17, column: 10, file_name: "test_code.pmh" } }
+Token { kind: Indent(2), spam: "\n    ", line_data: LineData { line: 17, column: 12, file_name: "test_code.pmh" } }
+Token { kind: Return, spam: "return", line_data: LineData { line: 18, column: 4, file_name: "test_code.pmh" } }
+Token { kind: Int(10, 64), spam: "10", line_data: LineData { line: 18, column: 11, file_name: "test_code.pmh" } }
+Token { kind: Indent(1), spam: "\n  ", line_data: LineData { line: 18, column: 14, file_name: "test_code.pmh" } }
+Token { kind: Elif, spam: "elif", line_data: LineData { line: 19, column: 2, file_name: "test_code.pmh" } }
+Token { kind: Bool(true), spam: "true", line_data: LineData { line: 19, column: 7, file_name: "test_code.pmh" } }
+Token { kind: Colon, spam: ":", line_data: LineData { line: 19, column: 11, file_name: "test_code.pmh" } }
+Token { kind: Indent(2), spam: "\n    ", line_data: LineData { line: 19, column: 13, file_name: "test_code.pmh" } }
+Token { kind: Return, spam: "return", line_data: LineData { line: 20, column: 4, file_name: "test_code.pmh" } }
+Token { kind: If, spam: "if", line_data: LineData { line: 20, column: 11, file_name: "test_code.pmh" } }
+Token { kind: Bool(true), spam: "true", line_data: LineData { line: 20, column: 14, file_name: "test_code.pmh" } }
+Token { kind: Colon, spam: ":", line_data: LineData { line: 20, column: 18, file_name: "test_code.pmh" } }
+Token { kind: Int(10, 64), spam: "10", line_data: LineData { line: 20, column: 20, file_name: "test_code.pmh" } }
+Token { kind: Else, spam: "else", line_data: LineData { line: 20, column: 23, file_name: "test_code.pmh" } }
+Token { kind: Colon, spam: ":", line_data: LineData { line: 20, column: 27, file_name: "test_code.pmh" } }
+Token { kind: Int(20, 64), spam: "20", line_data: LineData { line: 20, column: 29, file_name: "test_code.pmh" } }
+Token { kind: Indent(1), spam: "\n  ", line_data: LineData { line: 20, column: 32, file_name: "test_code.pmh" } }
+Token { kind: Else, spam: "else", line_data: LineData { line: 21, column: 2, file_name: "test_code.pmh" } }
+Token { kind: Colon, spam: ":", line_data: LineData { line: 21, column: 6, file_name: "test_code.pmh" } }
+Token { kind: Indent(2), spam: "\n    ", line_data: LineData { line: 21, column: 8, file_name: "test_code.pmh" } }
+Token { kind: Return, spam: "return", line_data: LineData { line: 22, column: 4, file_name: "test_code.pmh" } }
+Token { kind: Int(0, 64), spam: "0", line_data: LineData { line: 22, column: 11, file_name: "test_code.pmh" } }
+Token { kind: Indent(0), spam: "\n\r", line_data: LineData { line: 22, column: 13, file_name: "test_code.pmh" } }
+Token { kind: Indent(0), spam: "\n", line_data: LineData { line: 23, column: 1, file_name: "test_code.pmh" } }
+Token { kind: Attr, spam: "attr", line_data: LineData { line: 24, column: 0, file_name: "test_code.pmh" } }
+Token { kind: Ident, spam: "inline", line_data: LineData { line: 24, column: 5, file_name: "test_code.pmh" } }
+Token { kind: Op, spam: "=", line_data: LineData { line: 24, column: 12, file_name: "test_code.pmh" } }
+Token { kind: Ident, spam: "always", line_data: LineData { line: 24, column: 14, file_name: "test_code.pmh" } }
+Token { kind: Comma, spam: ",", line_data: LineData { line: 24, column: 20, file_name: "test_code.pmh" } }
+Token { kind: Ident, spam: "call_conv", line_data: LineData { line: 24, column: 22, file_name: "test_code.pmh" } }
+Token { kind: Op, spam: "=", line_data: LineData { line: 24, column: 32, file_name: "test_code.pmh" } }
+Token { kind: Ident, spam: "cold", line_data: LineData { line: 24, column: 34, file_name: "test_code.pmh" } }
+Token { kind: Indent(0), spam: "\n", line_data: LineData { line: 24, column: 39, file_name: "test_code.pmh" } }
+Token { kind: Fun, spam: "fun", line_data: LineData { line: 25, column: 0, file_name: "test_code.pmh" } }
+Token { kind: Ident, spam: "inline_fn", line_data: LineData { line: 25, column: 4, file_name: "test_code.pmh" } }
+Token { kind: RArrow, spam: "->", line_data: LineData { line: 25, column: 14, file_name: "test_code.pmh" } }
+Token { kind: Ident, spam: "u32", line_data: LineData { line: 25, column: 17, file_name: "test_code.pmh" } }
+Token { kind: Colon, spam: ":", line_data: LineData { line: 25, column: 20, file_name: "test_code.pmh" } }
+Token { kind: Indent(1), spam: "\n  ", line_data: LineData { line: 25, column: 22, file_name: "test_code.pmh" } }
+Token { kind: Return, spam: "return", line_data: LineData { line: 26, column: 2, file_name: "test_code.pmh" } }
+Token { kind: Int(10, 64), spam: "10", line_data: LineData { line: 26, column: 9, file_name: "test_code.pmh" } }
+Token { kind: Indent(0), spam: "\n\r", line_data: LineData { line: 26, column: 12, file_name: "test_code.pmh" } }
+Token { kind: Indent(0), spam: "\n", line_data: LineData { line: 27, column: 1, file_name: "test_code.pmh" } }
+Token { kind: Fun, spam: "fun", line_data: LineData { line: 28, column: 0, file_name: "test_code.pmh" } }
+Token { kind: Ident, spam: "fib", line_data: LineData { line: 28, column: 4, file_name: "test_code.pmh" } }
+Token { kind: LPar, spam: "(", line_data: LineData { line: 28, column: 7, file_name: "test_code.pmh" } }
+Token { kind: Ident, spam: "v", line_data: LineData { line: 28, column: 8, file_name: "test_code.pmh" } }
+Token { kind: Colon, spam: ":", line_data: LineData { line: 28, column: 9, file_name: "test_code.pmh" } }
+Token { kind: Ident, spam: "i64", line_data: LineData { line: 28, column: 11, file_name: "test_code.pmh" } }
+Token { kind: RPar, spam: ")", line_data: LineData { line: 28, column: 14, file_name: "test_code.pmh" } }
+Token { kind: RArrow, spam: "->", line_data: LineData { line: 28, column: 16, file_name: "test_code.pmh" } }
+Token { kind: Ident, spam: "i64", line_data: LineData { line: 28, column: 19, file_name: "test_code.pmh" } }
+Token { kind: Colon, spam: ":", line_data: LineData { line: 28, column: 22, file_name: "test_code.pmh" } }
+Token { kind: Indent(1), spam: "\n  ", line_data: LineData { line: 28, column: 24, file_name: "test_code.pmh" } }
+Token { kind: Return, spam: "return", line_data: LineData { line: 29, column: 2, file_name: "test_code.pmh" } }
+Token { kind: If, spam: "if", line_data: LineData { line: 29, column: 9, file_name: "test_code.pmh" } }
+Token { kind: Ident, spam: "v", line_data: LineData { line: 29, column: 12, file_name: "test_code.pmh" } }
+Token { kind: Op, spam: "==", line_data: LineData { line: 29, column: 14, file_name: "test_code.pmh" } }
+Token { kind: Int(0, 64), spam: "0", line_data: LineData { line: 29, column: 17, file_name: "test_code.pmh" } }
+Token { kind: Op, spam: "|", line_data: LineData { line: 29, column: 19, file_name: "test_code.pmh" } }
+Token { kind: Ident, spam: "v", line_data: LineData { line: 29, column: 21, file_name: "test_code.pmh" } }
+Token { kind: Op, spam: "==", line_data: LineData { line: 29, column: 23, file_name: "test_code.pmh" } }
+Token { kind: Int(1, 64), spam: "1", line_data: LineData { line: 29, column: 26, file_name: "test_code.pmh" } }
+Token { kind: Colon, spam: ":", line_data: LineData { line: 29, column: 27, file_name: "test_code.pmh" } }
+Token { kind: Indent(2), spam: "\n    ", line_data: LineData { line: 29, column: 29, file_name: "test_code.pmh" } }
+Token { kind: Int(1, 64), spam: "1", line_data: LineData { line: 30, column: 4, file_name: "test_code.pmh" } }
+Token { kind: Indent(1), spam: "\n  ", line_data: LineData { line: 30, column: 6, file_name: "test_code.pmh" } }
+Token { kind: Else, spam: "else", line_data: LineData { line: 31, column: 2, file_name: "test_code.pmh" } }
+Token { kind: Colon, spam: ":", line_data: LineData { line: 31, column: 6, file_name: "test_code.pmh" } }
+Token { kind: Indent(2), spam: "\n    ", line_data: LineData { line: 31, column: 8, file_name: "test_code.pmh" } }
+Token { kind: Ident, spam: "fib", line_data: LineData { line: 32, column: 4, file_name: "test_code.pmh" } }
+Token { kind: LPar, spam: "(", line_data: LineData { line: 32, column: 7, file_name: "test_code.pmh" } }
+Token { kind: Ident, spam: "v", line_data: LineData { line: 32, column: 8, file_name: "test_code.pmh" } }
+Token { kind: Op, spam: "-", line_data: LineData { line: 32, column: 10, file_name: "test_code.pmh" } }
+Token { kind: Int(1, 64), spam: "1", line_data: LineData { line: 32, column: 12, file_name: "test_code.pmh" } }
+Token { kind: RPar, spam: ")", line_data: LineData { line: 32, column: 13, file_name: "test_code.pmh" } }
+Token { kind: Op, spam: "+", line_data: LineData { line: 32, column: 15, file_name: "test_code.pmh" } }
+Token { kind: Ident, spam: "fib", line_data: LineData { line: 32, column: 17, file_name: "test_code.pmh" } }
+Token { kind: LPar, spam: "(", line_data: LineData { line: 32, column: 20, file_name: "test_code.pmh" } }
+Token { kind: Ident, spam: "v", line_data: LineData { line: 32, column: 21, file_name: "test_code.pmh" } }
+Token { kind: Op, spam: "-", line_data: LineData { line: 32, column: 23, file_name: "test_code.pmh" } }
+Token { kind: Int(2, 64), spam: "2", line_data: LineData { line: 32, column: 25, file_name: "test_code.pmh" } }
+Token { kind: RPar, spam: ")", line_data: LineData { line: 32, column: 26, file_name: "test_code.pmh" } }
+Token { kind: Indent(0), spam: "\n\r", line_data: LineData { line: 32, column: 28, file_name: "test_code.pmh" } }
+Token { kind: Indent(0), spam: "\n", line_data: LineData { line: 33, column: 1, file_name: "test_code.pmh" } }
+Token { kind: Fun, spam: "fun", line_data: LineData { line: 34, column: 0, file_name: "test_code.pmh" } }
+Token { kind: Ident, spam: "fib_loop", line_data: LineData { line: 34, column: 4, file_name: "test_code.pmh" } }
+Token { kind: LPar, spam: "(", line_data: LineData { line: 34, column: 12, file_name: "test_code.pmh" } }
+Token { kind: Ident, spam: "v", line_data: LineData { line: 34, column: 13, file_name: "test_code.pmh" } }
+Token { kind: Colon, spam: ":", line_data: LineData { line: 34, column: 14, file_name: "test_code.pmh" } }
+Token { kind: Ident, spam: "i64", line_data: LineData { line: 34, column: 16, file_name: "test_code.pmh" } }
+Token { kind: RPar, spam: ")", line_data: LineData { line: 34, column: 19, file_name: "test_code.pmh" } }
+Token { kind: RArrow, spam: "->", line_data: LineData { line: 34, column: 21, file_name: "test_code.pmh" } }
+Token { kind: Ident, spam: "i64", line_data: LineData { line: 34, column: 24, file_name: "test_code.pmh" } }
+Token { kind: Colon, spam: ":", line_data: LineData { line: 34, column: 27, file_name: "test_code.pmh" } }
+Token { kind: Indent(1), spam: "\n  ", line_data: LineData { line: 34, column: 29, file_name: "test_code.pmh" } }
+Token { kind: Var, spam: "var", line_data: LineData { line: 35, column: 2, file_name: "test_code.pmh" } }
+Token { kind: Ident, spam: "a", line_data: LineData { line: 35, column: 6, file_name: "test_code.pmh" } }
+Token { kind: Comma, spam: ",", line_data: LineData { line: 35, column: 7, file_name: "test_code.pmh" } }
+Token { kind: Ident, spam: "b", line_data: LineData { line: 35, column: 9, file_name: "test_code.pmh" } }
+Token { kind: Comma, spam: ",", line_data: LineData { line: 35, column: 10, file_name: "test_code.pmh" } }
+Token { kind: Ident, spam: "c", line_data: LineData { line: 35, column: 12, file_name: "test_code.pmh" } }
+Token { kind: Op, spam: "=", line_data: LineData { line: 35, column: 14, file_name: "test_code.pmh" } }
+Token { kind: Int(1, 64), spam: "1", line_data: LineData { line: 35, column: 16, file_name: "test_code.pmh" } }
+Token { kind: Indent(1), spam: "\n  ", line_data: LineData { line: 35, column: 18, file_name: "test_code.pmh" } }
+Token { kind: Loop, spam: "loop", line_data: LineData { line: 36, column: 2, file_name: "test_code.pmh" } }
+Token { kind: Label, spam: "'a", line_data: LineData { line: 36, column: 6, file_name: "test_code.pmh" } }
+Token { kind: Colon, spam: ":", line_data: LineData { line: 36, column: 8, file_name: "test_code.pmh" } }
+Token { kind: Indent(2), spam: "\n    ", line_data: LineData { line: 36, column: 10, file_name: "test_code.pmh" } }
+Token { kind: Ident, spam: "c", line_data: LineData { line: 37, column: 4, file_name: "test_code.pmh" } }
+Token { kind: Op, spam: "=", line_data: LineData { line: 37, column: 6, file_name: "test_code.pmh" } }
+Token { kind: Ident, spam: "a", line_data: LineData { line: 37, column: 8, file_name: "test_code.pmh" } }
+Token { kind: Op, spam: "+", line_data: LineData { line: 37, column: 10, file_name: "test_code.pmh" } }
+Token { kind: Ident, spam: "b", line_data: LineData { line: 37, column: 12, file_name: "test_code.pmh" } }
+Token { kind: Indent(2), spam: "\n    ", line_data: LineData { line: 37, column: 14, file_name: "test_code.pmh" } }
+Token { kind: Ident, spam: "a", line_data: LineData { line: 38, column: 4, file_name: "test_code.pmh" } }
+Token { kind: Op, spam: "=", line_data: LineData { line: 38, column: 6, file_name: "test_code.pmh" } }
+Token { kind: Ident, spam: "b", line_data: LineData { line: 38, column: 8, file_name: "test_code.pmh" } }
+Token { kind: Indent(2), spam: "\n    ", line_data: LineData { line: 38, column: 10, file_name: "test_code.pmh" } }
+Token { kind: Ident, spam: "b", line_data: LineData { line: 39, column: 4, file_name: "test_code.pmh" } }
+Token { kind: Op, spam: "=", line_data: LineData { line: 39, column: 6, file_name: "test_code.pmh" } }
+Token { kind: Ident, spam: "c", line_data: LineData { line: 39, column: 8, file_name: "test_code.pmh" } }
+Token { kind: Indent(2), spam: "\n    ", line_data: LineData { line: 39, column: 10, file_name: "test_code.pmh" } }
+Token { kind: Ident, spam: "v", line_data: LineData { line: 40, column: 4, file_name: "test_code.pmh" } }
+Token { kind: Op, spam: "=", line_data: LineData { line: 40, column: 6, file_name: "test_code.pmh" } }
+Token { kind: Ident, spam: "v", line_data: LineData { line: 40, column: 8, file_name: "test_code.pmh" } }
+Token { kind: Op, spam: "-", line_data: LineData { line: 40, column: 10, file_name: "test_code.pmh" } }
+Token { kind: Int(1, 64), spam: "1", line_data: LineData { line: 40, column: 12, file_name: "test_code.pmh" } }
+Token { kind: Indent(2), spam: "\n    ", line_data: LineData { line: 40, column: 14, file_name: "test_code.pmh" } }
+Token { kind: If, spam: "if", line_data: LineData { line: 41, column: 4, file_name: "test_code.pmh" } }
+Token { kind: Ident, spam: "v", line_data: LineData { line: 41, column: 7, file_name: "test_code.pmh" } }
+Token { kind: Op, spam: "==", line_data: LineData { line: 41, column: 9, file_name: "test_code.pmh" } }
+Token { kind: Int(0, 64), spam: "0", line_data: LineData { line: 41, column: 12, file_name: "test_code.pmh" } }
+Token { kind: Colon, spam: ":", line_data: LineData { line: 41, column: 13, file_name: "test_code.pmh" } }
+Token { kind: Indent(3), spam: "\n      ", line_data: LineData { line: 41, column: 15, file_name: "test_code.pmh" } }
+Token { kind: Break, spam: "break", line_data: LineData { line: 42, column: 6, file_name: "test_code.pmh" } }
+Token { kind: Label, spam: "'a", line_data: LineData { line: 42, column: 11, file_name: "test_code.pmh" } }
+Token { kind: Indent(1), spam: "\n  ", line_data: LineData { line: 42, column: 14, file_name: "test_code.pmh" } }
+Token { kind: Return, spam: "return", line_data: LineData { line: 43, column: 2, file_name: "test_code.pmh" } }
+Token { kind: Ident, spam: "c", line_data: LineData { line: 43, column: 9, file_name: "test_code.pmh" } }
+Token { kind: Indent(0), spam: "\n\r", line_data: LineData { line: 43, column: 11, file_name: "test_code.pmh" } }
+Token { kind: Indent(0), spam: "\n", line_data: LineData { line: 44, column: 1, file_name: "test_code.pmh" } }
+Token { kind: Fun, spam: "fun", line_data: LineData { line: 45, column: 0, file_name: "test_code.pmh" } }
+Token { kind: Ident, spam: "unary_operators", line_data: LineData { line: 45, column: 4, file_name: "test_code.pmh" } }
+Token { kind: LPar, spam: "(", line_data: LineData { line: 45, column: 19, file_name: "test_code.pmh" } }
+Token { kind: Ident, spam: "a", line_data: LineData { line: 45, column: 20, file_name: "test_code.pmh" } }
+Token { kind: Colon, spam: ":", line_data: LineData { line: 45, column: 21, file_name: "test_code.pmh" } }
+Token { kind: Ident, spam: "i64", line_data: LineData { line: 45, column: 23, file_name: "test_code.pmh" } }
+Token { kind: RPar, spam: ")", line_data: LineData { line: 45, column: 26, file_name: "test_code.pmh" } }
+Token { kind: RArrow, spam: "->", line_data: LineData { line: 45, column: 28, file_name: "test_code.pmh" } }
+Token { kind: Ident, spam: "i64", line_data: LineData { line: 45, column: 31, file_name: "test_code.pmh" } }
+Token { kind: Colon, spam: ":", line_data: LineData { line: 45, column: 34, file_name: "test_code.pmh" } }
+Token { kind: Indent(1), spam: "\n  ", line_data: LineData { line: 45, column: 36, file_name: "test_code.pmh" } }
+Token { kind: Return, spam: "return", line_data: LineData { line: 46, column: 2, file_name: "test_code.pmh" } }
+Token { kind: Op, spam: "-", line_data: LineData { line: 46, column: 9, file_name: "test_code.pmh" } }
+Token { kind: Ident, spam: "a", line_data: LineData { line: 46, column: 10, file_name: "test_code.pmh" } }
+Token { kind: Op, spam: "+", line_data: LineData { line: 46, column: 12, file_name: "test_code.pmh" } }
+Token { kind: Op, spam: "~", line_data: LineData { line: 46, column: 14, file_name: "test_code.pmh" } }
+Token { kind: Ident, spam: "a", line_data: LineData { line: 46, column: 15, file_name: "test_code.pmh" } }
+Token { kind: Op, spam: "+", line_data: LineData { line: 46, column: 17, file_name: "test_code.pmh" } }
+Token { kind: Op, spam: "!", line_data: LineData { line: 46, column: 19, file_name: "test_code.pmh" } }
+Token { kind: Ident, spam: "a", line_data: LineData { line: 46, column: 20, file_name: "test_code.pmh" } }
+Token { kind: Op, spam: "+", line_data: LineData { line: 46, column: 22, file_name: "test_code.pmh" } }
+Token { kind: Op, spam: "++", line_data: LineData { line: 46, column: 24, file_name: "test_code.pmh" } }
+Token { kind: Ident, spam: "a", line_data: LineData { line: 46, column: 26, file_name: "test_code.pmh" } }
+Token { kind: Op, spam: "+", line_data: LineData { line: 46, column: 28, file_name: "test_code.pmh" } }
+Token { kind: Op, spam: "--", line_data: LineData { line: 46, column: 30, file_name: "test_code.pmh" } }
+Token { kind: Ident, spam: "a", line_data: LineData { line: 46, column: 32, file_name: "test_code.pmh" } }
+Token { kind: Indent(0), spam: "\n\r", line_data: LineData { line: 46, column: 34, file_name: "test_code.pmh" } }
+Token { kind: Indent(0), spam: "\n", line_data: LineData { line: 47, column: 1, file_name: "test_code.pmh" } }
+Token { kind: Struct, spam: "struct", line_data: LineData { line: 48, column: 0, file_name: "test_code.pmh" } }
+Token { kind: Ident, spam: "Foo", line_data: LineData { line: 48, column: 7, file_name: "test_code.pmh" } }
+Token { kind: Colon, spam: ":", line_data: LineData { line: 48, column: 10, file_name: "test_code.pmh" } }
+Token { kind: Indent(1), spam: "\n  ", line_data: LineData { line: 48, column: 12, file_name: "test_code.pmh" } }
+Token { kind: Ident, spam: "a", line_data: LineData { line: 49, column: 2, file_name: "test_code.pmh" } }
+Token { kind: Comma, spam: ",", line_data: LineData { line: 49, column: 3, file_name: "test_code.pmh" } }
+Token { kind: Ident, spam: "b", line_data: LineData { line: 49, column: 5, file_name: "test_code.pmh" } }
+Token { kind: Comma, spam: ",", line_data: LineData { line: 49, column: 6, file_name: "test_code.pmh" } }
+Token { kind: Ident, spam: "c", line_data: LineData { line: 49, column: 8, file_name: "test_code.pmh" } }
+Token { kind: Colon, spam: ":", line_data: LineData { line: 49, column: 9, file_name: "test_code.pmh" } }
+Token { kind: Ident, spam: "i64", line_data: LineData { line: 49, column: 11, file_name: "test_code.pmh" } }
+Token { kind: Indent(0), spam: "\n\r", line_data: LineData { line: 49, column: 15, file_name: "test_code.pmh" } }
+Token { kind: Indent(0), spam: "\n", line_data: LineData { line: 50, column: 1, file_name: "test_code.pmh" } }
+Token { kind: Struct, spam: "struct", line_data: LineData { line: 51, column: 0, file_name: "test_code.pmh" } }
+Token { kind: Ident, spam: "Goo", line_data: LineData { line: 51, column: 7, file_name: "test_code.pmh" } }
+Token { kind: Colon, spam: ":", line_data: LineData { line: 51, column: 10, file_name: "test_code.pmh" } }
+Token { kind: Indent(1), spam: "\n  ", line_data: LineData { line: 51, column: 12, file_name: "test_code.pmh" } }
+Token { kind: Embed, spam: "embed", line_data: LineData { line: 52, column: 2, file_name: "test_code.pmh" } }
+Token { kind: Ident, spam: "foo", line_data: LineData { line: 52, column: 8, file_name: "test_code.pmh" } }
+Token { kind: Colon, spam: ":", line_data: LineData { line: 52, column: 11, file_name: "test_code.pmh" } }
+Token { kind: Ident, spam: "Foo", line_data: LineData { line: 52, column: 13, file_name: "test_code.pmh" } }
+Token { kind: Indent(1), spam: "\n  ", line_data: LineData { line: 52, column: 17, file_name: "test_code.pmh" } }
+Token { kind: Attr, spam: "attr", line_data: LineData { line: 53, column: 2, file_name: "test_code.pmh" } }
+Token { kind: Ident, spam: "something", line_data: LineData { line: 53, column: 7, file_name: "test_code.pmh" } }
+Token { kind: Indent(1), spam: "\n  ", line_data: LineData { line: 53, column: 17, file_name: "test_code.pmh" } }
+Token { kind: Ident, spam: "gva", line_data: LineData { line: 54, column: 2, file_name: "test_code.pmh" } }
+Token { kind: Colon, spam: ":", line_data: LineData { line: 54, column: 5, file_name: "test_code.pmh" } }
+Token { kind: Ident, spam: "i64", line_data: LineData { line: 54, column: 7, file_name: "test_code.pmh" } }
+Token { kind: Indent(0), spam: "\n\r", line_data: LineData { line: 54, column: 11, file_name: "test_code.pmh" } }
+Token { kind: Indent(0), spam: "\n", line_data: LineData { line: 55, column: 1, file_name: "test_code.pmh" } }
+Token { kind: Fun, spam: "fun", line_data: LineData { line: 56, column: 0, file_name: "test_code.pmh" } }
+Token { kind: Ident, spam: "strings", line_data: LineData { line: 56, column: 4, file_name: "test_code.pmh" } }
+Token { kind: RArrow, spam: "->", line_data: LineData { line: 56, column: 12, file_name: "test_code.pmh" } }
+Token { kind: Ident, spam: "i64", line_data: LineData { line: 56, column: 15, file_name: "test_code.pmh" } }
+Token { kind: Colon, spam: ":", line_data: LineData { line: 56, column: 18, file_name: "test_code.pmh" } }
+Token { kind: Indent(1), spam: "\n  ", line_data: LineData { line: 56, column: 20, file_name: "test_code.pmh" } }
+Token { kind: Var, spam: "var", line_data: LineData { line: 57, column: 2, file_name: "test_code.pmh" } }
+Token { kind: Ident, spam: "hello", line_data: LineData { line: 57, column: 6, file_name: "test_code.pmh" } }
+Token { kind: Op, spam: "=", line_data: LineData { line: 57, column: 12, file_name: "test_code.pmh" } }
+Token { kind: String([104, 101, 108, 108, 111]), spam: "\"hello\"", line_data: LineData { line: 57, column: 14, file_name: "test_code.pmh" } }
+Token { kind: Indent(1), spam: "\n  ", line_data: LineData { line: 57, column: 22, file_name: "test_code.pmh" } }
+Token { kind: Return, spam: "return", line_data: LineData { line: 58, column: 2, file_name: "test_code.pmh" } }
+Token { kind: Int(0, 64), spam: "0", line_data: LineData { line: 58, column: 9, file_name: "test_code.pmh" } }
+Token { kind: Indent(0), spam: "\n\r", line_data: LineData { line: 58, column: 11, file_name: "test_code.pmh" } }
+Token { kind: Indent(0), spam: "\n", line_data: LineData { line: 59, column: 1, file_name: "test_code.pmh" } }
+Token { kind: Fun, spam: "fun", line_data: LineData { line: 60, column: 0, file_name: "test_code.pmh" } }
+Token { kind: Ident, spam: "mutable_ref", line_data: LineData { line: 60, column: 4, file_name: "test_code.pmh" } }
+Token { kind: LPar, spam: "(", line_data: LineData { line: 60, column: 15, file_name: "test_code.pmh" } }
+Token { kind: Ident, spam: "a", line_data: LineData { line: 60, column: 16, file_name: "test_code.pmh" } }
+Token { kind: Colon, spam: ":", line_data: LineData { line: 60, column: 17, file_name: "test_code.pmh" } }
+Token { kind: Op, spam: "&", line_data: LineData { line: 60, column: 19, file_name: "test_code.pmh" } }
+Token { kind: Var, spam: "var", line_data: LineData { line: 60, column: 20, file_name: "test_code.pmh" } }
+Token { kind: Ident, spam: "Foo", line_data: LineData { line: 60, column: 24, file_name: "test_code.pmh" } }
+Token { kind: RPar, spam: ")", line_data: LineData { line: 60, column: 27, file_name: "test_code.pmh" } }
+Token { kind: Colon, spam: ":", line_data: LineData { line: 60, column: 28, file_name: "test_code.pmh" } }
+Token { kind: Indent(1), spam: "\n  ", line_data: LineData { line: 60, column: 30, file_name: "test_code.pmh" } }
+Token { kind: Ident, spam: "a", line_data: LineData { line: 61, column: 2, file_name: "test_code.pmh" } }
+Token { kind: Dot, spam: ".", line_data: LineData { line: 61, column: 3, file_name: "test_code.pmh" } }
+Token { kind: Ident, spam: "a", line_data: LineData { line: 61, column: 4, file_name: "test_code.pmh" } }
+Token { kind: Op, spam: "=", line_data: LineData { line: 61, column: 6, file_name: "test_code.pmh" } }
+Token { kind: Int(10, 64), spam: "10", line_data: LineData { line: 61, column: 8, file_name: "test_code.pmh" } }
+Token { kind: Indent(1), spam: "\n  ", line_data: LineData { line: 61, column: 11, file_name: "test_code.pmh" } }
+Token { kind: Ident, spam: "a", line_data: LineData { line: 62, column: 2, file_name: "test_code.pmh" } }
+Token { kind: Dot, spam: ".", line_data: LineData { line: 62, column: 3, file_name: "test_code.pmh" } }
+Token { kind: Ident, spam: "b", line_data: LineData { line: 62, column: 4, file_name: "test_code.pmh" } }
+Token { kind: Op, spam: "=", line_data: LineData { line: 62, column: 6, file_name: "test_code.pmh" } }
+Token { kind: Int(20, 64), spam: "20", line_data: LineData { line: 62, column: 8, file_name: "test_code.pmh" } }
+Token { kind: Indent(1), spam: "\n  ", line_data: LineData { line: 62, column: 11, file_name: "test_code.pmh" } }
+Token { kind: Ident, spam: "a", line_data: LineData { line: 63, column: 2, file_name: "test_code.pmh" } }
+Token { kind: Dot, spam: ".", line_data: LineData { line: 63, column: 3, file_name: "test_code.pmh" } }
+Token { kind: Ident, spam: "c", line_data: LineData { line: 63, column: 4, file_name: "test_code.pmh" } }
+Token { kind: Op, spam: "=", line_data: LineData { line: 63, column: 6, file_name: "test_code.pmh" } }
+Token { kind: Int(30, 64), spam: "30", line_data: LineData { line: 63, column: 8, file_name: "test_code.pmh" } }
+Token { kind: Indent(0), spam: "\n\r", line_data: LineData { line: 63, column: 11, file_name: "test_code.pmh" } }
+Token { kind: Indent(0), spam: "\n\r", line_data: LineData { line: 64, column: 1, file_name: "test_code.pmh" } }
 Group 'fun' "fun":
  Function 'fun' "fun flo: pass":
   FunctionHeader 'fun' "fun flo":
@@ -370,7 +370,7 @@ Group 'fun' "fun":
    Identifier identifier "main"
    Identifier identifier "i64"
   Group ':' ":":
-   ReturnStatement 'return' "return":
+   ReturnStatement 'return' "return 10 + 4 - 2 * 1 + 8":
     BinaryOperation integer "10 + 4 - 2 * 1 + 8":
      Identifier operator "-"
      BinaryOperation integer "10 + 4":
@@ -389,7 +389,7 @@ Group 'fun' "fun":
    Identifier identifier "operator_stress_test"
    Identifier identifier "i64"
   Group ':' ":":
-   ReturnStatement 'return' "return":
+   ReturnStatement 'return' "return 10 + 2 * 1 - 9 | 4 & 1 ^ 2 >> 1 << 7 min 20 max 10":
     BinaryOperation integer "10 + 2 * 1 - 9 | 4 & 1 ^ 2 >> 1 << 7 min 20 max 10":
      Identifier operator "+"
      Literal integer "10"
@@ -426,24 +426,24 @@ Group 'fun' "fun":
    Identifier identifier "conditional"
    Identifier identifier "i64"
   Group ':' ":":
-   IfExpression 'if' "if":
+   IfExpression 'if' "if false:\r\n    return 10\r\n  elif true:\r\n    return if true: 10 else: 20\r\n  else:\r\n    return 0":
     Literal boolean "false"
     Group ':' ":":
-     ReturnStatement 'return' "return":
+     ReturnStatement 'return' "return 10":
       Literal integer "10"
     Group 'elif' "elif":
-     IfExpression 'elif' "elif":
+     IfExpression 'elif' "elif true:\r\n    return if true: 10 else: 20\r\n  else:\r\n    return 0":
       Literal boolean "true"
       Group ':' ":":
-       ReturnStatement 'return' "return":
-        IfExpression 'if' "if":
+       ReturnStatement 'return' "return if true: 10 else: 20":
+        IfExpression 'if' "if true: 10 else: 20":
          Literal boolean "true"
          Group ':' ":":
           Literal integer "10"
          Group ':' ":":
           Literal integer "20"
       Group ':' ":":
-       ReturnStatement 'return' "return":
+       ReturnStatement 'return' "return 0":
         Literal integer "0"
  Attribute 'attr' "attr inline = always, call_conv = cold":
   AttributeAssign identifier "inline = always":
@@ -455,7 +455,7 @@ Group 'fun' "fun":
    Identifier identifier "inline_fn"
    Identifier identifier "u32"
   Group ':' ":":
-   ReturnStatement 'return' "return":
+   ReturnStatement 'return' "return 10":
     Literal integer "10"
  Function 'fun' "fun fib(v: i64) -> i64:\r\n  return if v == 0 | v == 1:\r\n    1\r\n  else:\r\n    fib(v - 1) + fib(v - 2)":
   FunctionHeader 'fun' "fun fib(v: i64) -> i64":
@@ -465,8 +465,8 @@ Group 'fun' "fun":
     Identifier identifier "i64"
    Identifier identifier "i64"
   Group ':' ":":
-   ReturnStatement 'return' "return":
-    IfExpression 'if' "if":
+   ReturnStatement 'return' "return if v == 0 | v == 1:\r\n    1\r\n  else:\r\n    fib(v - 1) + fib(v - 2)":
+    IfExpression 'if' "if v == 0 | v == 1:\r\n    1\r\n  else:\r\n    fib(v - 1) + fib(v - 2)":
      BinaryOperation identifier "v == 0 | v == 1":
       Identifier operator "|"
       BinaryOperation identifier "v == 0":
@@ -503,7 +503,7 @@ Group 'fun' "fun":
    Identifier identifier "i64"
   Group ':' ":":
    VarStatement(true, false) 'var' "var a, b, c = 1":
-    VarAssign identifier "a":
+    VarAssign identifier "a, b, c = 1":
      Group identifier "a":
       Identifier identifier "a"
       Identifier identifier "b"
@@ -513,42 +513,54 @@ Group 'fun' "fun":
       Literal integer "1"
       Identifier identifier "a"
       Identifier identifier "a"
-   Loop 'loop' "loop":
+   Loop 'loop' "loop'a:\r\n    c = a + b\r\n    a = b\r\n    b = c\r\n    v = v - 1\r\n    if v == 0:\r\n      break'a":
     Identifier 'label' "'a"
     Group ':' ":":
      BinaryOperation identifier "c = a + b":
       Identifier operator "="
       Identifier identifier "c"
-      BinaryOperation identifier "a + b":
-       Identifier operator "+"
-       Identifier identifier "a"
-       Identifier identifier "b"
+      BinaryOperation identifier "c = a + b":
+       Identifier operator ""
+       Identifier identifier "c"
+       BinaryOperation identifier "a + b":
+        Identifier operator "+"
+        Identifier identifier "a"
+        Identifier identifier "b"
      BinaryOperation identifier "a = b":
       Identifier operator "="
       Identifier identifier "a"
-      Identifier identifier "b"
+      BinaryOperation identifier "a = b":
+       Identifier operator ""
+       Identifier identifier "a"
+       Identifier identifier "b"
      BinaryOperation identifier "b = c":
       Identifier operator "="
       Identifier identifier "b"
-      Identifier identifier "c"
+      BinaryOperation identifier "b = c":
+       Identifier operator ""
+       Identifier identifier "b"
+       Identifier identifier "c"
      BinaryOperation identifier "v = v - 1":
       Identifier operator "="
       Identifier identifier "v"
-      BinaryOperation identifier "v - 1":
-       Identifier operator "-"
+      BinaryOperation identifier "v = v - 1":
+       Identifier operator ""
        Identifier identifier "v"
-       Literal integer "1"
-     IfExpression 'if' "if":
+       BinaryOperation identifier "v - 1":
+        Identifier operator "-"
+        Identifier identifier "v"
+        Literal integer "1"
+     IfExpression 'if' "if v == 0:\r\n      break'a":
       BinaryOperation identifier "v == 0":
        Identifier operator "=="
        Identifier identifier "v"
        Literal integer "0"
       Group ':' ":":
-       Break 'break' "break":
+       Break 'break' "break'a":
         Identifier 'label' "'a"
         None end of file ""
       None end of file ""
-   ReturnStatement 'return' "return":
+   ReturnStatement 'return' "return c":
     Identifier identifier "c"
  Function 'fun' "fun unary_operators(a: i64) -> i64:\r\n  return -a + ~a + !a + ++a + --a":
   FunctionHeader 'fun' "fun unary_operators(a: i64) -> i64":
@@ -558,7 +570,7 @@ Group 'fun' "fun":
     Identifier identifier "i64"
    Identifier identifier "i64"
   Group ':' ":":
-   ReturnStatement 'return' "return":
+   ReturnStatement 'return' "return -a + ~a + !a + ++a + --a":
     BinaryOperation operator "-a + ~a + !a + ++a + --":
      Identifier operator "+"
      BinaryOperation operator "-a + ~a + !a + ++":
@@ -607,13 +619,13 @@ Group 'fun' "fun":
    Identifier identifier "i64"
   Group ':' ":":
    VarStatement(true, false) 'var' "var hello = \"hello\"":
-    VarAssign identifier "hello":
+    VarAssign identifier "hello = \"hello\"":
      Group identifier "hello":
       Identifier identifier "hello"
      None end of file ""
      Group operator "=":
       Literal string "\"hello\""
-   ReturnStatement 'return' "return":
+   ReturnStatement 'return' "return 0":
     Literal integer "0"
  Function 'fun' "fun mutable_ref(a: &var Foo):\r\n  a.a = 10\r\n  a.b = 20\r\n  a.c = 30":
   FunctionHeader 'fun' "fun mutable_ref(a: &var Foo)":
@@ -627,22 +639,93 @@ Group 'fun' "fun":
       Identifier identifier "Foo"
    None end of file ""
   Group ':' ":":
-   BinaryOperation '.' ".a = 10":
+   BinaryOperation identifier "a.a = 10":
     Identifier operator "="
-    DotExpr '.' ".a":
+    DotExpr identifier "a.a":
      Identifier identifier "a"
      Identifier identifier "a"
-    Literal integer "10"
-   BinaryOperation '.' ".b = 20":
+    BinaryOperation identifier "a.a = 10":
+     Identifier operator ""
+     DotExpr identifier "a.a":
+      Identifier identifier "a"
+      Identifier identifier "a"
+     Literal integer "10"
+   BinaryOperation identifier "a.b = 20":
     Identifier operator "="
-    DotExpr '.' ".b":
+    DotExpr identifier "a.b":
      Identifier identifier "a"
      Identifier identifier "b"
-    Literal integer "20"
-   BinaryOperation '.' ".c = 30":
+    BinaryOperation identifier "a.b = 20":
+     Identifier operator ""
+     DotExpr identifier "a.b":
+      Identifier identifier "a"
+      Identifier identifier "b"
+     Literal integer "20"
+   BinaryOperation identifier "a.c = 30":
     Identifier operator "="
-    DotExpr '.' ".c":
+    DotExpr identifier "a.c":
      Identifier identifier "a"
      Identifier identifier "c"
-    Literal integer "30"
+    BinaryOperation identifier "a.c = 30":
+     Identifier operator ""
+     DotExpr identifier "a.c":
+      Identifier identifier "a"
+      Identifier identifier "c"
+     Literal integer "30"
+
+function u0:0() -> i64 fast {
+block0:
+    v0 = iconst.i64 0
+    return v0
+}
+
+function u0:0() -> i64 fast {
+block0:
+    v0 = iconst.i64 1
+    v1 = iconst.i64 1
+    v2 = isub v0, v1
+    return v2
+}
+
+function u0:0() -> i64 fast {
+block0:
+    v0 = iconst.i64 1
+    v1 = iconst.i64 1
+    v2 = iadd v0, v1
+    return v2
+}
+
+function u0:0() -> i64 fast {
+block0:
+    v0 = iconst.i64 1
+    v1 = iconst.i64 1
+    v2 = icmp eq v0, v1
+    brnz v2, block1
+    jump block2
+
+block1:
+    v3 = iconst.i64 0
+    jump block3(v3)
+
+block2:
+    v5 = iconst.i64 1
+    jump block3(v5)
+
+block3(v4: i64):
+    return v4
+}
+
+function u0:0() -> i32 fast {
+    sig0 = (i32) -> i32 fast
+    sig1 = (i32) -> i32 fast
+    fn0 = colocated u0:1 sig0
+    fn1 = colocated u0:0 sig1
+
+block0:
+    v0 = iconst.i32 10
+    v1 = call fn0(v0)
+    v2 = call fn1(v0)
+    v3 = isub v1, v2
+    return v3
+}
 
