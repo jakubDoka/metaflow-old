@@ -1,7 +1,6 @@
-pub mod cell;
+
 pub mod gen;
 
-use cell::*;
 
 use cranelift_codegen::{
     binemit::{NullStackMapSink, NullTrapSink},
@@ -19,10 +18,7 @@ use cranelift_module::{DataContext, DataId, FuncId, Linkage, Module};
 use cranelift_object::ObjectModule;
 use std::{ops::Deref, str::FromStr};
 
-use crate::{
-    ast::{AEKind, AKind, Ast, AstError, AstParser},
-    lexer::{Lexer, Spam, TKind, Token},
-};
+use crate::{ast::{AEKind, AKind, Ast, AstError, AstParser}, lexer::{Lexer, Spam, TKind, Token}, util::cell::*};
 
 type CraneContext = cranelift_codegen::Context;
 type Result<T> = std::result::Result<T, IrGenError>;

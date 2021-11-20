@@ -7,6 +7,7 @@ pub mod cli;
 pub mod ir_gen;
 pub mod lexer;
 pub mod testing;
+pub mod util;
 
 fn main() {
     #[cfg(feature = "testing")]
@@ -30,7 +31,7 @@ fn run() {
     };
 
     #[cfg(debug_assertions)]
-    assert!(ir_gen::cell::report_cell_state() == 0);
+    assert!(util::cell::report_cell_state() == 0);
 }
 
 #[cfg(feature = "testing")]
