@@ -4,10 +4,13 @@ extern crate cranelift_frontend;
 
 pub mod ast;
 pub mod cli;
+pub mod ir;
 pub mod ir_gen;
 pub mod lexer;
 pub mod testing;
 pub mod util;
+
+pub const FILE_EXTENSION: &str = ".pmt";
 
 fn main() {
     #[cfg(feature = "testing")]
@@ -36,8 +39,11 @@ fn run() {
 
 #[cfg(feature = "testing")]
 fn test() {
+    use ir::module_tree;
+
     cli::test();
     lexer::test();
     ast::test();
+    module_tree::test();
     ir_gen::gen::test();
 }

@@ -1,3 +1,8 @@
+use extern "foo/moo"
+use extern pub "foo/moo/goo"
+use pub "foo/moo"
+use "foo/goo/noo"
+
 fun flo: pass
 
 fun foo(): pass
@@ -5,6 +10,7 @@ fun foo(): pass
 fun goo(a: i8, b: i8): pass
 
 fun loo:
+  noo::loo{i8}()
   pass
 
 fun main -> i64:

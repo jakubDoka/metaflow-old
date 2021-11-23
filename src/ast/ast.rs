@@ -73,13 +73,17 @@ impl Deref for Ast {
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum AKind {
-    Function,
+    UseStatement(bool, bool),
+
+    ExplicitPackage,
+
+    Function(Visibility),
     FunctionHeader,
     FunctionArgument(bool),
     Call,
     Index,
 
-    StructDeclaration,
+    StructDeclaration(Visibility),
     StructField(bool),
 
     Attribute,
@@ -103,6 +107,7 @@ pub enum AKind {
     Group,
 
     Identifier,
+    Instantiation,
     Literal,
 
     None,
@@ -112,4 +117,11 @@ impl Default for AKind {
     fn default() -> Self {
         AKind::None
     }
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub enum Visibility {
+    Public,
+    Private,
+    FilePrivate,
 }

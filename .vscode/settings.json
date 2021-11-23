@@ -10,6 +10,7 @@
         "condcodes",
         "conv",
         "cranelift",
+        "Displayer",
         "domtree",
         "fabs",
         "fadd",

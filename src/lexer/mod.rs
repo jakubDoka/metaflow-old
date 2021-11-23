@@ -2,19 +2,28 @@ pub mod spam;
 
 pub use spam::*;
 
-use std::{fmt::Debug, ops::{Deref, Range}, rc::Rc, str::Chars};
+use std::{
+    fmt::Debug,
+    ops::{Deref, Range},
+    rc::Rc,
+    str::Chars,
+};
+
+use crate::util::sdbm::ID;
 
 pub struct Lexer {
     cursor: Cursor,
     file_name: &'static str,
+    id: ID,
 }
 
 impl Lexer {
-    pub fn new(file_name: String, file: String) -> Lexer {
+    pub fn new(id: ID, file_name: String, file: String) -> Lexer {
         let file_name = Box::leak(file_name.into_boxed_str());
         Lexer {
             cursor: Cursor::new(file),
             file_name,
+            id,
         }
     }
 
@@ -31,6 +40,10 @@ impl Lexer {
         let end = self.cursor.progress();
         let value = self.cursor.sub(start..end);
         let kind = match value.deref() {
+            "priv" => TKind::Priv,
+            "pub" => TKind::Pub,
+            "use" => TKind::Use,
+            "extern" => TKind::Extern,
             "fun" => TKind::Fun,
             "attr" => TKind::Attr,
             "pass" => TKind::Pass,
@@ -65,6 +78,7 @@ impl Lexer {
         let value = self.cursor.sub(start..end);
         let kind = match value.deref() {
             ":" => TKind::Colon,
+            "::" => TKind::DoubleColon,
             "->" => TKind::RArrow,
             _ => TKind::Op,
         };
@@ -309,6 +323,7 @@ impl Lexer {
         LineData::new(
             self.cursor.line,
             self.cursor.column(),
+            self.id,
             Spam::whole(&self.file_name),
         )
     }
@@ -379,6 +394,7 @@ pub trait IsOperator {
 //#[cfg(feature = "testing")]
 pub fn test() {
     let lexer = Lexer::new(
+        ID::new(),
         "test_code.pmh".to_string(),
         crate::testing::TEST_CODE.to_string(),
     );
@@ -492,8 +508,12 @@ impl PartialEq<TKind> for Token {
     }
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, PartialOrd)]
 pub enum TKind {
+    Pub,
+    Priv,
+    Use,
+    Extern,
     Fun,
     Attr,
     Pass,
@@ -522,6 +542,7 @@ pub enum TKind {
     LBra,
     RBra,
     Colon,
+    DoubleColon,
     Comma,
     RArrow,
     Hash,
@@ -547,6 +568,10 @@ pub enum TKind {
 impl std::fmt::Display for TKind {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.write_str(match *self {
+            TKind::Priv => "'priv'",
+            TKind::Pub => "'pub'",
+            TKind::Use => "'use'",
+            TKind::Extern => "'extern'",
             TKind::Fun => "'fun'",
             TKind::Attr => "'attr'",
             TKind::Pass => "'pass'",
@@ -573,6 +598,7 @@ impl std::fmt::Display for TKind {
             TKind::LBra => "'['",
             TKind::RBra => "']'",
             TKind::Colon => "':'",
+            TKind::DoubleColon => "'::'",
             TKind::Comma => "','",
             TKind::RArrow => "'->'",
             TKind::Dot => "'.'",
@@ -603,14 +629,16 @@ impl Default for TKind {
 pub struct LineData {
     pub line: usize,
     pub column: usize,
+    pub id: ID,
     pub file_name: Spam,
 }
 
 impl LineData {
-    pub fn new(line: usize, column: usize, file_name: Spam) -> Self {
+    pub fn new(line: usize, column: usize, id: ID, file_name: Spam) -> Self {
         Self {
             line,
             column,
+            id,
             file_name,
         }
     }

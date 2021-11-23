@@ -1,6 +1,4 @@
-
 pub mod gen;
-
 
 use cranelift_codegen::{
     binemit::{NullStackMapSink, NullTrapSink},
@@ -18,7 +16,11 @@ use cranelift_module::{DataContext, DataId, FuncId, Linkage, Module};
 use cranelift_object::ObjectModule;
 use std::{ops::Deref, str::FromStr};
 
-use crate::{ast::{AEKind, AKind, Ast, AstError, AstParser}, lexer::{Lexer, Spam, TKind, Token}, util::cell::*};
+use crate::{
+    ast::{AEKind, AKind, Ast, AstError, AstParser},
+    lexer::{Lexer, Spam, TKind, Token},
+    util::{cell::*, sdbm::ID},
+};
 
 type CraneContext = cranelift_codegen::Context;
 type Result<T> = std::result::Result<T, IrGenError>;
@@ -203,7 +205,7 @@ impl Generator {
 
         for item in ast.iter_mut() {
             match &item.kind {
-                AKind::StructDeclaration => {
+                AKind::StructDeclaration(_) => {
                     self.struct_declaration(std::mem::take(item))?;
                     self.pushed_attributes.clear();
                 }
@@ -215,7 +217,7 @@ impl Generator {
 
         for mut item in ast.drain(..) {
             match item.kind {
-                AKind::Function => {
+                AKind::Function(_) => {
                     self.function(item)?;
                     self.pushed_attributes.clear();
                 }
@@ -252,11 +254,7 @@ impl Generator {
 
     fn resolve_types(&mut self) -> Result<()> {
         let mut current_module = self.current_module.clone();
-        for datatype in current_module
-            .types
-            .iter_mut()
-            .filter(|d| !d.is_resolved())
-        {
+        for datatype in current_module.types.iter_mut().filter(|d| !d.is_resolved()) {
             let ast = if let DKind::Unresolved(ast) =
                 std::mem::replace(&mut datatype.kind, DKind::Unresolved(Ast::none()))
             {
@@ -266,7 +264,7 @@ impl Generator {
             };
 
             let kind = match ast.kind {
-                AKind::StructDeclaration => self.generate_struct(ast)?,
+                AKind::StructDeclaration(_) => self.generate_struct(ast)?,
                 _ => todo!("unmatched datatype type {:?}", ast),
             };
 
@@ -1486,7 +1484,7 @@ impl Generator {
     fn load_ast(&mut self, file_name: String) -> Result<Ast> {
         let bytes =
             std::fs::read_to_string(&file_name).map_err(|e| IGEKind::CannotOpenFile(e).into())?;
-        AstParser::new(Lexer::new(file_name, bytes))
+        AstParser::new(Lexer::new(ID::new(), file_name, bytes))
             .parse()
             .map_err(Into::into)
     }
@@ -1697,10 +1695,7 @@ impl Mod {
     }
 
     pub fn add_datatype(&mut self, datatype: Cell<Datatype>) -> Result<()> {
-        match self
-            .types
-            .binary_search_by(|d| datatype.name.cmp(&d.name))
-        {
+        match self.types.binary_search_by(|d| datatype.name.cmp(&d.name)) {
             Ok(i) => Err(IGEKind::DuplicateType(datatype.clone(), self.types[i].clone()).into()),
             Err(i) => {
                 self.types.insert(i, datatype);
@@ -2142,10 +2137,7 @@ impl Context {
     }
 
     pub fn add_module(&mut self, module: Cell<Mod>) -> Result<()> {
-        match self
-            .modules
-            .binary_search_by(|d| module.name.cmp(&d.name))
-        {
+        match self.modules.binary_search_by(|d| module.name.cmp(&d.name)) {
             Ok(i) => Err(IGEKind::DuplicateModule(module.clone(), self.modules[i].clone()).into()),
             Err(i) => {
                 self.modules.insert(i, module);

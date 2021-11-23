@@ -1,0 +1,2 @@
+use export "folder/a"
+use "folder/b"

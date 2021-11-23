@@ -1,7 +1,7 @@
 pub mod ast;
 pub mod error;
 
-use crate::lexer::*;
+use crate::{lexer::*, util::sdbm::ID};
 pub use ast::*;
 pub use error::*;
 
@@ -34,15 +34,51 @@ impl AstParser {
                 TKind::Attr => ast.push(self.attr()?),
                 TKind::Struct => ast.push(self.struct_declaration()?),
                 TKind::Indent(0) => self.advance(),
-                _ => self.unexpected_str("expected 'fun' or 'attr' or 'struct'")?,
+                TKind::Use => ast.push(self.use_statement()?),
+                _ => self.unexpected_str("expected 'fun' or 'attr' or 'struct' or 'use'")?,
             }
         }
         Ok(ast)
     }
 
-    fn struct_declaration(&mut self) -> Result<Ast> {
-        let mut ast = self.ast(AKind::StructDeclaration);
+    fn use_statement(&mut self) -> Result<Ast> {
+        let mut ast = self.ast(AKind::None);
         self.advance();
+
+        let external = self.current_token == TKind::Extern;
+        if external {
+            self.advance();
+        }
+
+        let export = self.current_token == TKind::Pub;
+        if export {
+            self.advance();
+        }
+
+        ast.kind = AKind::UseStatement(external, export);
+
+        if self.current_token == TKind::Ident {
+            ast.push(self.ident()?); // alias
+        } else {
+            ast.push(Ast::none());
+        }
+
+        if !matches!(self.current_token.kind, TKind::String(_)) {
+            self.unexpected_str("expected string literal")?;
+        }
+
+        ast.push(self.ast(AKind::Literal));
+        self.advance();
+
+        Ok(ast)
+    }
+
+    fn struct_declaration(&mut self) -> Result<Ast> {
+        let mut ast = self.ast(AKind::None);
+        self.advance();
+
+        ast.kind = AKind::StructDeclaration(self.visibility());
+
         ast.push(self.ident_expression()?);
 
         ast.push(self.block(Self::struct_field)?);
@@ -125,8 +161,10 @@ impl AstParser {
     }
 
     fn fun(&mut self) -> Result<Ast> {
-        let mut ast = self.ast(AKind::Function);
-        ast.push(self.fun_header()?);
+        let mut ast = self.ast(AKind::None);
+        let (header, visibility) = self.fun_header()?;
+        ast.push(header);
+        ast.kind = AKind::Function(visibility);
         ast.push(if self.current_token == TKind::Colon {
             self.stmt_block()?
         } else {
@@ -138,9 +176,12 @@ impl AstParser {
         Ok(ast)
     }
 
-    fn fun_header(&mut self) -> Result<Ast> {
+    fn fun_header(&mut self) -> Result<(Ast, Visibility)> {
         let mut ast = self.ast(AKind::FunctionHeader);
         self.advance();
+
+        let visibility = self.visibility();
+
         ast.push(match self.current_token.kind {
             TKind::Ident | TKind::Op => self.ast(AKind::Identifier),
             _ => Ast::none(),
@@ -166,7 +207,7 @@ impl AstParser {
 
         ast.token.to_group(&self.current_token, true);
 
-        Ok(ast)
+        Ok((ast, visibility))
     }
 
     fn fun_argument(&mut self) -> Result<Ast> {
@@ -323,7 +364,10 @@ impl AstParser {
             token.to_group(&next.token, false);
 
             // this handles the '{op}=' sugar
-            result = if pre == ASSIGN_PRECEDENCE && op.spam.len() != 1 && op.spam.as_bytes().last().unwrap() == &b'=' {
+            result = if pre == ASSIGN_PRECEDENCE
+                && op.spam.len() != 1
+                && op.spam.as_bytes().last().unwrap() == &b'='
+            {
                 let operator = Ast::new(
                     AKind::Identifier,
                     Token::new(
@@ -418,7 +462,7 @@ impl AstParser {
                         ast = new_ast;
                     }
                     TKind::LPar => {
-                        let mut new_ast = self.ast(AKind::Call);
+                        let mut new_ast = Ast::new(AKind::Call, ast.token.clone());
                         if ast.kind == AKind::DotExpr {
                             ast.drain(..).rev().for_each(|e| new_ast.push(e));
                         } else {
@@ -436,7 +480,7 @@ impl AstParser {
                         ast = new_ast;
                     }
                     TKind::LBra => {
-                        let mut new_ast = self.ast(AKind::Index);
+                        let mut new_ast = Ast::new(AKind::Index, ast.token.clone());
                         new_ast.push(ast);
                         self.advance();
                         self.ignore_newlines();
@@ -515,25 +559,29 @@ impl AstParser {
         let mut ast = self.ast(AKind::Identifier);
         self.advance();
 
-        match self.current_token.kind {
-            TKind::LCurly => {
-                let mut temp_ast = self.ast(AKind::Attribute);
-                temp_ast.push(ast);
-                ast = temp_ast;
-                self.list(
-                    &mut ast,
-                    TKind::LCurly,
-                    TKind::Comma,
-                    TKind::RCurly,
-                    Self::expression,
-                )?;
-
-                ast.token.to_group(&self.current_token, true);
-            }
-            _ => (),
+        if self.current_token == TKind::DoubleColon {
+            let mut temp_ast = Ast::new(AKind::ExplicitPackage, ast.token.clone());
+            temp_ast.push(ast);
+            self.advance();
+            temp_ast.push(self.ident()?);
+            ast = temp_ast;
+            ast.token.to_group(&self.current_token, true);
         }
 
-        
+        if self.current_token == TKind::LCurly {
+            let mut temp_ast = Ast::new(AKind::Instantiation, ast.token.clone());
+            temp_ast.push(ast);
+            ast = temp_ast;
+            self.list(
+                &mut ast,
+                TKind::LCurly,
+                TKind::Comma,
+                TKind::RCurly,
+                Self::expression,
+            )?;
+
+            ast.token.to_group(&self.current_token, true);
+        }
 
         Ok(ast)
     }
@@ -579,6 +627,20 @@ impl AstParser {
         ast.token.to_group(&self.current_token, true);
 
         Ok(ast)
+    }
+
+    fn visibility(&mut self) -> Visibility {
+        match self.current_token.kind {
+            TKind::Pub => {
+                self.advance();
+                Visibility::Public
+            }
+            TKind::Priv => {
+                self.advance();
+                Visibility::FilePrivate
+            }
+            _ => Visibility::Private,
+        }
     }
 
     fn walk_block<F: FnMut(&mut Self) -> Result<()>>(&mut self, mut parser: F) -> Result<()> {
@@ -763,6 +825,7 @@ pub fn precedence(op: &str) -> i64 {
 
 pub fn test() {
     let lexer = Lexer::new(
+        ID::new(),
         "test_code.pmh".to_string(),
         crate::testing::TEST_CODE.to_string(),
     );

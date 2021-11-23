@@ -3,6 +3,8 @@ use std::{
     ops::{Deref, Range},
 };
 
+use crate::util::sdbm::SdbmHash;
+
 #[derive(Clone, PartialEq, Default)]
 pub struct Spam {
     pub string: &'static str,
@@ -61,5 +63,12 @@ impl Deref for Spam {
 
     fn deref(&self) -> &Self::Target {
         &self.string[self.range.clone()]
+    }
+}
+
+impl SdbmHash for Spam {
+    #[inline]
+    fn bytes(&self) -> &[u8] {
+        self.deref().as_bytes()
     }
 }
