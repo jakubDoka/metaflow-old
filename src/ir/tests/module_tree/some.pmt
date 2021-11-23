@@ -1,2 +1,12 @@
-use export "folder/a"
+use pub "folder/a"
 use "folder/b"
+
+struct F{T}:
+  t: T
+  f: a::G{T}
+
+struct O
+
+struct Q:
+  f: F{O}
+  e: F{O}

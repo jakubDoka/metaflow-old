@@ -39,11 +39,9 @@ fn run() {
 
 #[cfg(feature = "testing")]
 fn test() {
-    use ir::module_tree;
-
     cli::test();
     lexer::test();
     ast::test();
-    module_tree::test();
+    ir::test();
     ir_gen::gen::test();
 }

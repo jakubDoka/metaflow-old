@@ -3,18 +3,14 @@ pub mod types;
 
 use std::ops::Deref;
 
-use crate::{
-    ast::{AKind, Ast, Visibility},
-    lexer::Spam,
-    util::{cell::Cell, sdbm::ID},
-};
+use crate::{ast::{AKind, Ast, Visibility}, lexer::{Spam, Token}, util::{cell::Cell, sdbm::ID}};
 
 #[derive(Clone, Default, Debug)]
 pub struct Program {
     pub mods: Vec<Cell<Mod>>,
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq)]
 pub struct Mod {
     pub name: ID,
     pub id: ID,
@@ -25,6 +21,8 @@ pub struct Mod {
     pub types: Vec<(ID, Cell<Datatype>)>,
 
     pub ast: Ast,
+
+    pub is_external: bool,
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -32,7 +30,9 @@ pub struct Datatype {
     pub visibility: Visibility,
     pub kind: DKind,
     pub name: ID,
+    pub size: u32,
     pub ast: Ast,
+    pub token_hint: Token,
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -67,6 +67,7 @@ pub struct Field {
 
 pub fn test() {
     module_tree::test();
+    types::test();
 
     let mut vec = vec![1, 2, 3, 4, 5];
 

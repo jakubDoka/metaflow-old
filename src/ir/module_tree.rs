@@ -78,6 +78,7 @@ impl ModTreeBuilder {
             exports: Vec::new(),
             types: Vec::new(),
             ast,
+            is_external: false,
         });
 
         self.import_stack.push(module.clone());
@@ -145,6 +146,5 @@ pub enum MTEKind {
 
 pub fn test() {
     let builder = ModTreeBuilder::default();
-    let program = builder.build("src/ir/tests/module_tree/root").unwrap();
-    println!("{:#?}", program);
+    let _program = builder.build("src/ir/tests/module_tree/root").unwrap();
 }

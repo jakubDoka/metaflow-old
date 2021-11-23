@@ -1,3 +1,6 @@
+use cranelift_codegen::isa::TargetIsa;
+use cranelift_codegen::settings;
+
 use crate::{lexer::Token, util::sdbm::SdbmHashState};
 
 use super::module_tree::ModTreeBuilder;
@@ -7,13 +10,33 @@ use super::*;
 type Result<T> = std::result::Result<T, TypeError>;
 
 pub struct TypeResolver<'a> {
+    immediate: bool,
+    isa: &'a dyn TargetIsa,
     program: &'a mut Program,
     context: &'a mut TypeResolverContext,
+    depth: usize,
 }
 
 impl<'a> TypeResolver<'a> {
-    pub fn new(program: &'a mut Program, context: &'a mut TypeResolverContext) -> Self {
-        Self { program, context }
+    #[cfg(debug_assertions)]
+    pub const MAX_DEPTH: usize = 50;
+    #[cfg(not(debug_assertions))]
+    pub const MAX_DEPTH: usize = 500;
+
+    pub fn new(program: &'a mut Program, context: &'a mut TypeResolverContext, isa: &'a dyn TargetIsa) -> Self {
+        context.clear();
+        Self { program, context, isa, immediate: false, depth: 0 }
+    }
+
+    pub fn resolve_immediate(mut self, module: Cell<Mod>, ast: &Ast) -> Result<Cell<Datatype>> {
+        self.immediate = true;
+        let (_, datatype) = self.find_or_instantiate(module, ast)?;
+
+        for i in 0..self.context.new_types.len() {
+            self.materialize_datatype(self.context.new_types[i].clone())?;
+        }
+
+        Ok(datatype)
     }
 
     pub fn resolve(mut self) -> Result<()> {
@@ -24,6 +47,65 @@ impl<'a> TypeResolver<'a> {
         for i in 0..self.program.mods.len() {
             self.connect(self.program.mods[i].clone())?;
         }
+
+        for i in 0..self.program.mods.len() {
+            self.materialize(self.program.mods[i].clone())?;
+        }
+
+        Ok(())
+    }
+
+    fn materialize(&mut self, module: Cell<Mod>) -> Result<()> {
+        for (_, datatype) in module.types.iter() {
+            self.materialize_datatype(datatype.clone())?;
+        }
+
+        Ok(())
+    }
+
+    fn materialize_datatype(&mut self, mut datatype: Cell<Datatype>) -> Result<()> {
+        if let Some(idx) = self.context.instance_buffer.iter().position(|dt| dt.name == datatype.name) {
+            let cycle: Vec<Token> = self.context.instance_buffer[idx..]
+                .iter()
+                .map(|dt| dt.token_hint.clone())
+                .chain(std::iter::once(datatype.token_hint.clone()))
+                .collect();
+            return Err(TypeError::new(TEKind::InfiniteSize(cycle), &Token::default()));
+        }
+
+        if datatype.size != u32::MAX {
+            return Ok(());
+        }
+
+        self.context.instance_buffer.push(datatype.clone());
+
+        let size = match &mut datatype.kind {
+            DKind::Pointer(_) => self.isa.pointer_bytes() as u32,
+            DKind::Structure(structure) => {
+                let mut size = 0;
+                match structure.kind {
+                    SKind::Struct => {
+                        for field in &mut structure.fields {
+                            self.materialize_datatype(field.datatype.clone())?;
+                            field.offset = size;
+                            size += field.datatype.size;
+                        } 
+                    }
+                    SKind::Union => {
+                        for field in &mut structure.fields {
+                            self.materialize_datatype(field.datatype.clone())?;
+                            size = std::cmp::max(size, field.datatype.size);
+                        }
+                    }
+                }
+                size
+            },
+            _ => unreachable!(),
+        };
+
+        datatype.size = size;
+
+        self.context.instance_buffer.pop().expect("expected previously pushed datatype");
 
         Ok(())
     }
@@ -75,7 +157,12 @@ impl<'a> TypeResolver<'a> {
         module: Cell<Mod>,
         ast: &Ast,
     ) -> Result<(Cell<Mod>, Cell<Datatype>)> {
-        Ok(match ast.kind {
+        self.depth += 1;
+        println!("{}", self.depth);
+        if self.depth > Self::MAX_DEPTH {
+            return Err(TypeError::new(TEKind::InstantiationDepthExceeded, &ast.token));
+        }
+        let (host_module, datatype) = match ast.kind {
             AKind::Identifier => self.find_by_token(module.clone(), &ast.token)?,
             AKind::ExplicitPackage => {
                 let package_name = ID::new().add(ast[0].token.spam.deref());
@@ -83,14 +170,17 @@ impl<'a> TypeResolver<'a> {
                     .dependency
                     .iter()
                     .rev()
-                    .find(|(nickname, _)| *nickname == package_name)
+                    .find(|(nickname, _)| {
+                        println!("{:?} {:?}", nickname, package_name);
+                        *nickname == package_name 
+                    })
                     .map(|(_, dep)| dep)
                     .ok_or_else(|| TypeError::new(TEKind::UnknownPackage, &ast[0].token))?;
                 self.find_by_token(dep.clone(), &ast[1].token)?
             }
             AKind::Instantiation => {
                 let start = self.context.instance_buffer.len();
-                let (id, base_type, mut host_module) = self.create_instance_id(module, &ast)?;
+                let (id, base_type, mut host_module) = self.create_instance_id(module.clone(), &ast)?;
 
                 if let Some(datatype) = host_module
                     .types
@@ -98,11 +188,16 @@ impl<'a> TypeResolver<'a> {
                     .find(|(name, _)| *name == id)
                     .map(|(_, t)| t.clone())
                 {
+                    self.context.instance_buffer.truncate(start);
                     return Ok((host_module, datatype.clone()));
                 }
 
                 let actual = self.context.instance_buffer.len() - start;
-                let supposed = base_type.ast[0].len() - 1;
+                let supposed = if base_type.ast[0].kind == AKind::Instantiation {
+                    base_type.ast[0].len() - 1
+                } else {
+                    0
+                };
 
                 if actual != supposed {
                     return Err(TypeError::new(
@@ -114,11 +209,12 @@ impl<'a> TypeResolver<'a> {
                 let old_len = host_module.types.len();
                 for (name, param) in base_type.ast[0][1..]
                     .iter()
-                    .zip(self.context.instance_buffer.iter())
+                    .zip(self.context.instance_buffer[start..].iter())
                 {
+                    let id = ID::new().add(name.token.spam.deref()).combine(host_module.id);
                     host_module
                         .types
-                        .push((ID::new().add(name.token.spam.deref()), param.clone()));
+                        .push((id, param.clone()));
                 }
 
                 let datatype = match base_type.ast.kind.clone() {
@@ -129,19 +225,38 @@ impl<'a> TypeResolver<'a> {
                             visibility,
                             name: id,
                             kind: DKind::Structure(structure),
+                            token_hint: base_type.token_hint.clone(),
                             ast: base_type.ast.clone(),
+                            size: u32::MAX,
                         })
                     }
                     _ => unreachable!(),
                 };
 
+                if self.immediate {
+                    self.context.new_types.push(datatype.clone());
+                }
+
+                self.context.instance_buffer.truncate(start);
                 host_module.types.truncate(old_len);
                 host_module.types.push((id, datatype.clone()));
 
                 (host_module, datatype)
             }
             _ => unreachable!(),
-        })
+        };
+
+        if datatype.visibility == Visibility::Private && host_module.is_external {
+            return Err(TypeError::new(TEKind::AccessingExternalPrivateType, &ast.token));
+        }
+
+        if datatype.visibility == Visibility::FilePrivate && module != host_module {
+            return Err(TypeError::new(TEKind::AccessingFilePrivateType, &ast.token));
+        }
+
+        self.depth -= 1;
+
+        Ok((host_module, datatype))
     }
 
     fn create_instance_id(
@@ -179,7 +294,7 @@ impl<'a> TypeResolver<'a> {
             .types
             .iter()
             .rev()
-            .find(|(datatype_name, _)| *datatype_name == name)
+            .find(|(datatype_name, _)| *datatype_name == name.combine(module.id))
             .map(|(_, datatype)| (module.clone(), datatype.clone()))
             .or_else(|| {
                 if nested {
@@ -194,7 +309,7 @@ impl<'a> TypeResolver<'a> {
                                 dep.types
                                     .iter()
                                     .rev()
-                                    .find(|(datatype_name, _)| *datatype_name == name)
+                                    .find(|(datatype_name, _)| *datatype_name == name.combine(dep.id))
                                     .map(|(_, datatype)| datatype.clone()),
                             )
                         })
@@ -220,7 +335,7 @@ impl<'a> TypeResolver<'a> {
             match a.kind.clone() {
                 AKind::StructDeclaration(visibility) => {
                     let ident = &a[0];
-                    let (ident, kind) = if a.kind == AKind::Identifier {
+                    let (ident, kind) = if ident.kind == AKind::Identifier {
                         (ident, DKind::Unresolved)
                     } else {
                         (&ident[0], DKind::Generic)
@@ -235,8 +350,10 @@ impl<'a> TypeResolver<'a> {
 
                     let datatype = Datatype {
                         visibility,
+                        size: u32::MAX * !matches!(kind, DKind::Generic) as u32,
                         kind,
                         name: ID::new().add(ident.token.spam.deref()).combine(module_id),
+                        token_hint: a[0].token.clone(),
                         ast: std::mem::take(a),
                     };
 
@@ -254,12 +371,14 @@ impl<'a> TypeResolver<'a> {
 
 pub struct TypeResolverContext {
     instance_buffer: Vec<Cell<Datatype>>,
+    new_types: Vec<Cell<Datatype>>,
 }
 
 impl TypeResolverContext {
     pub fn new() -> Self {
         Self {
             instance_buffer: Vec::new(),
+            new_types: Vec::new(),
         }
     }
 
@@ -288,14 +407,21 @@ pub enum TEKind {
     UnexpectedAst(Ast),
     UnknownType,
     UnknownPackage,
+    InstantiationDepthExceeded,
     WrongInstantiationArgAmount(usize, usize),
+    AccessingExternalPrivateType,
+    AccessingFilePrivateType,
+    InfiniteSize(Vec<Token>),
 }
 
 pub fn test() {
     let builder = ModTreeBuilder::default();
     let mut program = builder.build("src/ir/tests/module_tree/root").unwrap();
     let mut ctx = TypeResolverContext::new();
-    TypeResolver::new(&mut program, &mut ctx).resolve().unwrap();
 
-    println!("{:?}", program);
+    
+    let flags = settings::Flags::new(settings::builder());
+    let isa = cranelift_native::builder().unwrap().finish(flags);
+
+    TypeResolver::new(&mut program, &mut ctx, isa.as_ref()).resolve().unwrap();
 }

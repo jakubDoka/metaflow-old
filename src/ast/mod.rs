@@ -81,7 +81,11 @@ impl AstParser {
 
         ast.push(self.ident_expression()?);
 
-        ast.push(self.block(Self::struct_field)?);
+        if self.current_token == TKind::Colon {
+            ast.push(self.block(Self::struct_field)?);
+        } else {
+            ast.push(Ast::none());
+        }
 
         Ok(ast)
     }
