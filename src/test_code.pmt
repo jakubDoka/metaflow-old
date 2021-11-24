@@ -1,6 +1,6 @@
 use extern "foo/moo"
-use extern pub "foo/moo/goo"
-use pub "foo/moo"
+use extern "foo/moo/goo"
+use "foo/moo"
 use "foo/goo/noo"
 
 fun flo: pass

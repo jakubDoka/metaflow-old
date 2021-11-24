@@ -1,4 +1,4 @@
-use pub "folder/a"
+use "folder/a"
 use "folder/b"
 
 struct F[T]:

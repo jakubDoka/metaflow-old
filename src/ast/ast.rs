@@ -73,7 +73,7 @@ impl Deref for Ast {
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum AKind {
-    UseStatement(bool, bool),
+    UseStatement(bool),
 
     ExplicitPackage,
 

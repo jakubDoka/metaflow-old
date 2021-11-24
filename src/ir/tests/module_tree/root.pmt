@@ -1,1 +1,9 @@
 use "some"
+use "folder/a"
+
+attr push(god, devil, human)
+
+struct GUA:
+  moo: G[O]
+
+attr pop

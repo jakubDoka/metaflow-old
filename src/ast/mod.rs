@@ -52,12 +52,7 @@ impl AstParser {
             self.advance();
         }
 
-        let export = self.current_token == TKind::Pub;
-        if export {
-            self.advance();
-        }
-
-        ast.kind = AKind::UseStatement(external, export);
+        ast.kind = AKind::UseStatement(external);
 
         if self.current_token == TKind::Ident {
             ast.push(self.ident()?); // alias

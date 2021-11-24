@@ -7,6 +7,7 @@ use crate::{
 };
 
 use super::*;
+use super::attributes::Attributes;
 
 type Result<T> = std::result::Result<T, ModTreeError>;
 
@@ -17,6 +18,7 @@ pub struct ModTreeBuilder {
     buffer: String,
     program: Program,
     module_id_counter: u64,
+    attributes: Attributes,
 }
 
 impl ModTreeBuilder {
@@ -61,7 +63,7 @@ impl ModTreeBuilder {
 
         self.import_stack.push(id);
 
-        if let Some(module) = self.program.modules.get_ref(id) {
+        if let Some(module) = self.program.modules.id_to_direct(id) {
             return Ok(module);
         }
 
@@ -99,7 +101,7 @@ impl ModTreeBuilder {
 
         let mut ast = std::mem::take(&mut self.program.modules[module_id].ast);
         util::try_retain(&mut ast, |a| {
-            if let AKind::UseStatement(external, export) = a.kind {
+            if let AKind::UseStatement(external) = a.kind {
                 if external {
                     todo!("external package use not implemented");
                 }
@@ -114,16 +116,18 @@ impl ModTreeBuilder {
                 m.dependant.push(module_id);
                 let module = &mut self.program.modules[module_id];
                 module.dependency.push((nickname, m_id));
-                if export {
-                    module.exports.push(m_id);
-                }
                 Ok(false)
             } else {
                 Ok(true)
             }
         })?;
 
-        self.program.modules[module_id].ast = ast;
+        let attributes = self.attributes.resolve(&mut ast);
+
+        let module = &mut self.program.modules[module_id];
+        module.ast = ast;
+        module.attributes = attributes;
+
 
         self.import_stack
             .pop()

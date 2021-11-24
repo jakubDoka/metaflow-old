@@ -1,6 +1,6 @@
 use std::cmp::Ordering;
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Default)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Default, Hash)]
 pub struct ID(u64);
 
 impl ID {
@@ -11,7 +11,7 @@ impl ID {
 
     #[inline]
     pub fn combine(self, id: Self) -> Self {
-        ID(self.0.wrapping_add(id.0))
+        ID(self.0.wrapping_add(id.0 << 14))
     }
 }
 
@@ -70,5 +70,12 @@ impl SdbmHash for () {
     #[inline]
     fn bytes(&self) -> &[u8] {
         &[]
+    }
+}
+
+impl SdbmHash for usize {
+    #[inline]
+    fn bytes(&self) -> &[u8] {
+        unsafe { std::slice::from_raw_parts(self as *const usize as *const u8, std::mem::size_of::<usize>()) }
     }
 }

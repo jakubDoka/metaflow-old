@@ -43,6 +43,13 @@ impl<'a> TypeResolver<'a> {
         Ok(datatype)
     }*/
 
+    pub fn resolve_immediate(&mut self, module: Mod, ast: &Ast) -> Result<Datatype> {
+        let (_, datatype) = self.find_or_instantiate(module, ast)?;
+        self.materialize_datatype(datatype)?;
+
+        Ok(datatype)
+    }
+
     pub fn resolve(mut self) -> Result<()> {
         self.collect()?;
         self.connect()?;
@@ -51,7 +58,10 @@ impl<'a> TypeResolver<'a> {
     }
 
     fn materialize(&mut self) -> Result<()> {
-        for datatype in self.program.types.direct_ids() {
+        for datatype in unsafe { self.program.types.direct_ids() } {
+            if !self.program.types.is_direct_valid(datatype) {
+                continue;
+            }
             self.materialize_datatype(datatype)?;
         }
 
@@ -122,7 +132,10 @@ impl<'a> TypeResolver<'a> {
     }
 
     fn connect(&mut self) -> Result<()> {
-        for datatype in self.program.types.direct_ids() {
+        for datatype in unsafe { self.program.types.direct_ids() } {
+            if !self.program.types.is_direct_valid(datatype) {
+                continue;
+            }
             let dt = &self.program.types[datatype];
             if dt.kind != DKind::Unresolved {
                 continue;
@@ -301,33 +314,31 @@ impl<'a> TypeResolver<'a> {
     }
 
     fn find_by_token(&mut self, module: Mod, token: &Token) -> Result<(Mod, Datatype)> {
-        self.find_by_name(module, ID::new().add(token.spam.deref()), false)
+        self.find_by_name(module, ID::new().add(token.spam.deref()))
             .ok_or_else(|| TypeError::new(TEKind::UnknownType, token))
     }
 
-    fn find_by_name(&self, module: Mod, name: ID, nested: bool) -> Option<(Mod, Datatype)> {
-        self
-            .program
-            .types
-            .id_to_direct(name.combine(self.program.modules.direct_to_id(module)))
-            .map(|datatype| (module, datatype))
-            .or_else(|| {
-                if nested {
-                    None
-                } else {
-                    self.program.modules[module]
-                        .dependency
-                        .iter()
-                        .rev()
-                        .map(|&(_, dep)| self.find_by_name(dep, name, true))
-                        .find(|x| x.is_some())
-                        .map(|x| x.unwrap())
-                }
-            })
+    fn find_by_name(&self, module: Mod, name: ID) -> Option<(Mod, Datatype)> {
+        let id = self.program.modules.direct_to_id(module);
+        if let Some(datatype) = self.program.types.id_to_direct(name.combine(id)) {
+            return Some((module, datatype));
+        }
+
+        for &(_, dep) in self.program.modules[module].dependency.iter().rev() {
+            let id = self.program.modules.direct_to_id(dep);
+            if let Some(datatype) = self.program.types.id_to_direct(name.combine(id)) {
+                return Some((dep, datatype));
+            }
+        }
+
+        None
     }
 
     fn collect(&mut self) -> Result<()> {
-        for module in self.program.modules.direct_ids() {
+        for module in unsafe { self.program.modules.direct_ids() } {
+            if !self.program.modules.is_direct_valid(module) {
+                continue;
+            }
             let mut ast = std::mem::take(&mut self.program.modules[module].ast);
             let module_name = self.program.modules.direct_to_id(module);
             for a in ast.iter_mut() {

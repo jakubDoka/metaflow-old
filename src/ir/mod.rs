@@ -1,6 +1,8 @@
 pub mod functions;
 pub mod module_tree;
 pub mod types;
+pub mod attributes;
+pub mod globals;
 
 use cranelift_codegen::{isa::TargetIsa, settings};
 
@@ -8,16 +10,18 @@ use crate::{
     ast::{Ast, Visibility},
     lexer::{Spam, Token},
     util::{
-        cell::Cell,
         sdbm::ID,
         sym_table::{SymID, SymTable},
     },
 };
 
+use self::attributes::Attributes;
+
 pub struct Program {
     pub isa: Box<dyn TargetIsa>,
     pub types: SymTable<Datatype, DatatypeEntity>,
     pub functions: SymTable<Function, FunctionEntity>,
+    pub generic_functions: SymTable<Function, Vec<FunctionEntity>>,
     pub modules: SymTable<Mod, ModEntity>,
 }
 
@@ -30,6 +34,7 @@ impl Default for Program {
             types: SymTable::new(),
             functions: SymTable::new(),
             modules: SymTable::new(),
+            generic_functions: SymTable::new(),
         }
     }
 }
@@ -43,9 +48,9 @@ pub struct ModEntity {
     pub absolute_path: String,
     pub dependency: Vec<(ID, Mod)>,
     pub dependant: Vec<Mod>,
-    pub exports: Vec<Mod>,
 
     pub ast: Ast,
+    pub attributes: Attributes,
 
     pub is_external: bool,
 }
@@ -54,8 +59,47 @@ crate::sym_id!(Function);
 
 #[derive(Debug, Default, Clone)]
 pub struct FunctionEntity {
+    pub visibility: Visibility,
     pub name: ID,
+    pub module: Mod,
     pub hint_token: Token,
+    pub kind: FKind,
+    pub ast: Ast,
+}
+
+#[derive(Debug, Clone)]
+pub enum FKind {
+    Unresolved,
+    Generic,
+    Normal(NormalFunction),
+}
+
+#[derive(Debug, Clone)]
+pub struct NormalFunction {
+    pub params: Vec<Val>,
+    pub ret: Option<Datatype>,
+}
+
+crate::sym_id!(GlobalVal);
+
+#[derive(Debug, Clone)]
+pub struct GlobalValEntity {
+    pub val: Val,
+    pub ast: Ast,
+}
+
+#[derive(Debug, Clone)]
+pub struct Val {
+    pub name: ID,
+    pub datatype: Datatype,
+    pub mutable: bool,
+    pub on_stack: bool,
+}
+
+impl Default for FKind {
+    fn default() -> Self {
+        FKind::Unresolved
+    }
 }
 
 crate::sym_id!(Datatype);
