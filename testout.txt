@@ -6,13 +6,11 @@ Token { kind: String([102, 111, 111, 47, 109, 111, 111]), spam: "\"foo/moo\"", l
 Token { kind: Indent(0), spam: "\n", line_data: LineData { line: 1, column: 21, id: ID(0), file_name: "test_code.pmh" } }
 Token { kind: Use, spam: "use", line_data: LineData { line: 2, column: 0, id: ID(0), file_name: "test_code.pmh" } }
 Token { kind: Extern, spam: "extern", line_data: LineData { line: 2, column: 4, id: ID(0), file_name: "test_code.pmh" } }
-Token { kind: Pub, spam: "pub", line_data: LineData { line: 2, column: 11, id: ID(0), file_name: "test_code.pmh" } }
-Token { kind: String([102, 111, 111, 47, 109, 111, 111, 47, 103, 111, 111]), spam: "\"foo/moo/goo\"", line_data: LineData { line: 2, column: 15, id: ID(0), file_name: "test_code.pmh" } }
-Token { kind: Indent(0), spam: "\n", line_data: LineData { line: 2, column: 29, id: ID(0), file_name: "test_code.pmh" } }
+Token { kind: String([102, 111, 111, 47, 109, 111, 111, 47, 103, 111, 111]), spam: "\"foo/moo/goo\"", line_data: LineData { line: 2, column: 11, id: ID(0), file_name: "test_code.pmh" } }
+Token { kind: Indent(0), spam: "\n", line_data: LineData { line: 2, column: 25, id: ID(0), file_name: "test_code.pmh" } }
 Token { kind: Use, spam: "use", line_data: LineData { line: 3, column: 0, id: ID(0), file_name: "test_code.pmh" } }
-Token { kind: Pub, spam: "pub", line_data: LineData { line: 3, column: 4, id: ID(0), file_name: "test_code.pmh" } }
-Token { kind: String([102, 111, 111, 47, 109, 111, 111]), spam: "\"foo/moo\"", line_data: LineData { line: 3, column: 8, id: ID(0), file_name: "test_code.pmh" } }
-Token { kind: Indent(0), spam: "\n", line_data: LineData { line: 3, column: 18, id: ID(0), file_name: "test_code.pmh" } }
+Token { kind: String([102, 111, 111, 47, 109, 111, 111]), spam: "\"foo/moo\"", line_data: LineData { line: 3, column: 4, id: ID(0), file_name: "test_code.pmh" } }
+Token { kind: Indent(0), spam: "\n", line_data: LineData { line: 3, column: 14, id: ID(0), file_name: "test_code.pmh" } }
 Token { kind: Use, spam: "use", line_data: LineData { line: 4, column: 0, id: ID(0), file_name: "test_code.pmh" } }
 Token { kind: String([102, 111, 111, 47, 103, 111, 111, 47, 110, 111, 111]), spam: "\"foo/goo/noo\"", line_data: LineData { line: 4, column: 4, id: ID(0), file_name: "test_code.pmh" } }
 Token { kind: Indent(0), spam: "\n\r", line_data: LineData { line: 4, column: 18, id: ID(0), file_name: "test_code.pmh" } }
@@ -366,16 +364,16 @@ Token { kind: Int(30, 64), spam: "30", line_data: LineData { line: 69, column: 8
 Token { kind: Indent(0), spam: "\n\r", line_data: LineData { line: 69, column: 11, id: ID(0), file_name: "test_code.pmh" } }
 Token { kind: Indent(0), spam: "\n\r", line_data: LineData { line: 70, column: 1, id: ID(0), file_name: "test_code.pmh" } }
 Group 'use' "use":
- UseStatement(true, false) 'use' "use":
+ UseStatement(true) 'use' "use":
   None end of file ""
   Literal string "\"foo/moo\""
- UseStatement(true, true) 'use' "use":
+ UseStatement(true) 'use' "use":
   None end of file ""
   Literal string "\"foo/moo/goo\""
- UseStatement(false, true) 'use' "use":
+ UseStatement(false) 'use' "use":
   None end of file ""
   Literal string "\"foo/moo\""
- UseStatement(false, false) 'use' "use":
+ UseStatement(false) 'use' "use":
   None end of file ""
   Literal string "\"foo/goo/noo\""
  Function(Private) 'fun' "fun flo: pass":
@@ -690,28 +688,6 @@ Group 'use' "use":
      Identifier identifier "a"
      Identifier identifier "c"
     Literal integer "30"
-
-StructDeclaration(Private) 'struct' "struct":
- Identifier identifier "O"
- None end of file ""
-
-StructDeclaration(Private) 'struct' "struct":
- Identifier identifier "Q"
- Group ':' ":":
-  StructField(false) identifier "f: F[O]":
-   Identifier identifier "f"
-   Instantiation identifier "F[O]":
-    Identifier identifier "F"
-    Identifier identifier "O"
-  StructField(false) identifier "e: F[O]\r\n":
-   Identifier identifier "e"
-   Instantiation identifier "F[O]\r\n":
-    Identifier identifier "F"
-    Identifier identifier "O"
-
-StructDeclaration(Private) 'struct' "struct":
- Identifier identifier "E"
- None end of file ""
 
 function u0:0() -> i64 fast {
 block0:
