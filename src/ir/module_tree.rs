@@ -3,16 +3,16 @@ use std::{ops::Deref, path::Path};
 use crate::{
     ast::{AKind, AstError, AstParser},
     lexer::{Lexer, Token},
-    util::sdbm::SdbmHashState,
+    util::{self, sdbm::SdbmHashState},
 };
 
 use super::*;
 
 type Result<T> = std::result::Result<T, ModTreeError>;
 
-#[derive(Clone, Default)]
+#[derive(Default)]
 pub struct ModTreeBuilder {
-    import_stack: Vec<Cell<Mod>>,
+    import_stack: Vec<ID>,
     base: String,
     buffer: String,
     program: Program,
@@ -27,13 +27,42 @@ impl ModTreeBuilder {
         Ok(self.program)
     }
 
-    pub fn load_module(&mut self, path: &str, token: &Token) -> Result<Cell<Mod>> {
+    pub fn load_module(&mut self, path: &str, token: &Token) -> Result<Mod> {
         self.load_path(path);
 
         let id = ID::new().add(&self.buffer);
 
-        if let Some(module) = self.program.mods.iter().find(|m| m.id == id) {
-            return Ok(module.clone());
+        if let Some(idx) = self.import_stack.iter().position(|&m| m == id) {
+            let absolute_path = Path::new(self.buffer.as_str())
+                .canonicalize()
+                .map_err(|err| ModTreeError::new(MTEKind::Io(err), token))?
+                .to_str()
+                .ok_or_else(|| ModTreeError::new(MTEKind::NonUTF8Path, token))?
+                .to_string();
+
+            let message = self.import_stack[idx..]
+                .iter()
+                .map(|m| {
+                    self.program
+                        .modules
+                        .get_id(*m)
+                        .unwrap()
+                        .absolute_path
+                        .as_str()
+                })
+                .chain(std::iter::once(absolute_path.as_str()))
+                .fold(String::new(), |mut acc, path| {
+                    acc.push_str(path);
+                    acc.push_str("\n");
+                    acc
+                });
+            return Err(ModTreeError::new(MTEKind::CyclicDependency(message), token));
+        }
+
+        self.import_stack.push(id);
+
+        if let Some(module) = self.program.modules.get_ref(id) {
+            return Ok(module);
         }
 
         let file = std::fs::read_to_string(self.buffer.as_str())
@@ -57,59 +86,50 @@ impl ModTreeBuilder {
 
         let name = ID::new().add(name);
 
-        if let Some(idx) = self.import_stack.iter().position(|m| m.name == name) {
-            let message = self.import_stack[idx..]
-                .iter()
-                .map(|m| &m.absolute_path)
-                .chain(std::iter::once(&absolute_path))
-                .fold(String::new(), |mut acc, path| {
-                    acc.push_str(path);
-                    acc.push_str("\n");
-                    acc
-                });
-            return Err(ModTreeError::new(MTEKind::CyclicDependency(message), token));
-        }
-
-        let mut module = Cell::new(Mod {
+        let module = ModEntity {
             name,
             id,
             absolute_path,
-            dependency: Vec::new(),
-            exports: Vec::new(),
-            types: Vec::new(),
             ast,
-            is_external: false,
-        });
 
-        self.import_stack.push(module.clone());
+            ..Default::default()
+        };
 
-        crate::retain!(module.ast, |a| {
+        let (_, module_id) = self.program.modules.insert(name, module);
+
+        let mut ast = std::mem::take(&mut self.program.modules[module_id].ast);
+        util::try_retain(&mut ast, |a| {
             if let AKind::UseStatement(external, export) = a.kind {
                 if external {
                     todo!("external package use not implemented");
                 }
                 let path = a[1].token.spam.deref();
-                let m = self.load_module(&path[1..path.len() - 1], &a[1].token)?; // strip "
+                let m_id = self.load_module(&path[1..path.len() - 1], &a[1].token)?; // strip "
+                let m = &mut self.program.modules[m_id];
                 let nickname = if a[0].kind != AKind::None {
                     ID::new().add(a[0].token.spam.deref())
                 } else {
                     m.name
                 };
-                module.dependency.push((nickname, m.clone()));
+                m.dependant.push(module_id);
+                let module = &mut self.program.modules[module_id];
+                module.dependency.push((nickname, m_id));
                 if export {
-                    module.exports.push(m.clone());
+                    module.exports.push(m_id);
                 }
-                false
+                Ok(false)
             } else {
-                true
+                Ok(true)
             }
-        });
+        })?;
 
-        self.import_stack.pop().unwrap(); // unwrap may catch a bug
+        self.program.modules[module_id].ast = ast;
 
-        self.program.mods.push(module.clone());
+        self.import_stack
+            .pop()
+            .expect("expected previously pushed element");
 
-        Ok(module)
+        Ok(module_id)
     }
 
     fn load_path(&mut self, path: &str) {

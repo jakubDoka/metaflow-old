@@ -1,4 +1,6 @@
-#[derive(Clone, Copy, Debug, PartialEq, Default)]
+use std::cmp::Ordering;
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Default)]
 pub struct ID(u64);
 
 impl ID {
@@ -21,6 +23,18 @@ impl SdbmHashState for ID {
     #[inline]
     fn add<T: SdbmHash>(self, data: T) -> Self {
         ID(data.sdbm_hash(self.0))
+    }
+}
+
+impl PartialOrd for ID {
+    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
+        self.0.partial_cmp(&other.0)
+    }
+}
+
+impl Ord for ID {
+    fn cmp(&self, other: &Self) -> Ordering {
+        self.0.cmp(&other.0)
     }
 }
 

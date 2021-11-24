@@ -10,7 +10,7 @@ fun foo(): pass
 fun goo(a: i8, b: i8): pass
 
 fun loo:
-  noo::loo{i8}()
+  noo::loo::[i8]()
   pass
 
 fun main -> i64:

@@ -1,37 +1,73 @@
+pub mod functions;
 pub mod module_tree;
 pub mod types;
 
-use std::ops::Deref;
+use cranelift_codegen::{isa::TargetIsa, settings};
 
-use crate::{ast::{AKind, Ast, Visibility}, lexer::{Spam, Token}, util::{cell::Cell, sdbm::ID}};
+use crate::{
+    ast::{Ast, Visibility},
+    lexer::{Spam, Token},
+    util::{
+        cell::Cell,
+        sdbm::ID,
+        sym_table::{SymID, SymTable},
+    },
+};
 
-#[derive(Clone, Default, Debug)]
 pub struct Program {
-    pub mods: Vec<Cell<Mod>>,
+    pub isa: Box<dyn TargetIsa>,
+    pub types: SymTable<Datatype, DatatypeEntity>,
+    pub functions: SymTable<Function, FunctionEntity>,
+    pub modules: SymTable<Mod, ModEntity>,
 }
 
-#[derive(Clone, Debug, PartialEq)]
-pub struct Mod {
+impl Default for Program {
+    fn default() -> Self {
+        let flags = settings::Flags::new(settings::builder());
+        let isa = cranelift_native::builder().unwrap().finish(flags);
+        Program {
+            isa,
+            types: SymTable::new(),
+            functions: SymTable::new(),
+            modules: SymTable::new(),
+        }
+    }
+}
+
+crate::sym_id!(Mod);
+
+#[derive(Clone, Debug, Default)]
+pub struct ModEntity {
     pub name: ID,
     pub id: ID,
     pub absolute_path: String,
-    pub dependency: Vec<(ID, Cell<Mod>)>,
-    pub exports: Vec<Cell<Mod>>,
-
-    pub types: Vec<(ID, Cell<Datatype>)>,
+    pub dependency: Vec<(ID, Mod)>,
+    pub dependant: Vec<Mod>,
+    pub exports: Vec<Mod>,
 
     pub ast: Ast,
 
     pub is_external: bool,
 }
 
-#[derive(Clone, Debug, PartialEq)]
-pub struct Datatype {
+crate::sym_id!(Function);
+
+#[derive(Debug, Default, Clone)]
+pub struct FunctionEntity {
+    pub name: ID,
+    pub hint_token: Token,
+}
+
+crate::sym_id!(Datatype);
+
+#[derive(Clone, Debug, PartialEq, Default)]
+pub struct DatatypeEntity {
     pub visibility: Visibility,
     pub kind: DKind,
     pub name: ID,
     pub size: u32,
     pub ast: Ast,
+    pub module: Mod,
     pub token_hint: Token,
 }
 
@@ -40,8 +76,14 @@ pub enum DKind {
     Unresolved,
     Builtin,
     Generic,
-    Pointer(Cell<Datatype>),
+    Pointer(Datatype),
     Structure(Structure),
+}
+
+impl Default for DKind {
+    fn default() -> Self {
+        DKind::Unresolved
+    }
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -62,38 +104,10 @@ pub struct Field {
     pub embedded: bool,
     pub offset: u32,
     pub name: Spam,
-    pub datatype: Cell<Datatype>,
+    pub datatype: Datatype,
 }
 
 pub fn test() {
     module_tree::test();
     types::test();
-
-    let mut vec = vec![1, 2, 3, 4, 5];
-
-    crate::retain!(vec, |x| *x % 2 == 0);
-
-    assert_eq!(vec, vec![2, 4]);
-}
-
-#[macro_export]
-macro_rules! retain {
-    ($vec:expr, |$i:ident, $e:ident| $body:expr) => {
-        let mut j = 0;
-        #[allow(unused_variables)]
-        for $i in 0..$vec.len() {
-            let $e = &mut $vec[$i];
-            #[allow(unused_braces)]
-            if $body {
-                $vec[j] = std::mem::take(&mut $vec[$i]);
-                j += 1;
-            }
-        }
-
-        $vec.truncate(j);
-    };
-
-    ($vec:expr, |$e:ident| $body:expr) => {
-        crate::retain!($vec, |i, $e| $body)
-    };
 }

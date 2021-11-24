@@ -119,9 +119,15 @@ impl Default for AKind {
     }
 }
 
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Copy, Debug, PartialEq)]
 pub enum Visibility {
     Public,
     Private,
     FilePrivate,
+}
+
+impl Default for Visibility {
+    fn default() -> Self {
+        Visibility::Public
+    }
 }

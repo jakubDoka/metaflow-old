@@ -13,6 +13,7 @@ pub struct AstParser {
     lexer: Lexer,
     peeked: Option<Token>,
     current_token: Token,
+    is_type_expression: bool,
     level: usize,
 }
 
@@ -23,6 +24,7 @@ impl AstParser {
             lexer,
             peeked: None,
             level: 0,
+            is_type_expression: false,
         }
     }
 
@@ -79,7 +81,7 @@ impl AstParser {
 
         ast.kind = AKind::StructDeclaration(self.visibility());
 
-        ast.push(self.ident_expression()?);
+        ast.push(self.type_expression()?);
 
         if self.current_token == TKind::Colon {
             ast.push(self.block(Self::struct_field)?);
@@ -112,7 +114,7 @@ impl AstParser {
             Self::ident,
         )?;
 
-        ast.push(self.expression()?);
+        ast.push(self.type_expression()?);
 
         ast.token.to_group(&self.current_token, true);
 
@@ -204,7 +206,7 @@ impl AstParser {
 
         ast.push(if self.current_token == TKind::RArrow {
             self.advance();
-            self.expression()?
+            self.type_expression()?
         } else {
             Ast::none()
         });
@@ -228,7 +230,7 @@ impl AstParser {
             s.advance();
             Ok(ident)
         })?;
-        ast.push(self.expression()?);
+        ast.push(self.type_expression()?);
 
         ast.token.to_group(&self.current_token, true);
 
@@ -276,7 +278,7 @@ impl AstParser {
 
         let datatype = if self.current_token == TKind::Colon {
             self.advance();
-            self.simple_expression()?
+            self.type_expression()?
         } else {
             Ast::none()
         };
@@ -336,6 +338,16 @@ impl AstParser {
         ast.token.to_group(&self.current_token, true);
 
         Ok(ast)
+    }
+
+    fn type_expression(&mut self) -> Result<Ast> {
+        self.is_type_expression = true;
+
+        let result = self.simple_expression();
+
+        self.is_type_expression = false;
+
+        result
     }
 
     fn expression(&mut self) -> Result<Ast> {
@@ -563,7 +575,7 @@ impl AstParser {
         let mut ast = self.ast(AKind::Identifier);
         self.advance();
 
-        if self.current_token == TKind::DoubleColon {
+        if self.current_token == TKind::DoubleColon && self.peek() == TKind::Ident {
             let mut temp_ast = Ast::new(AKind::ExplicitPackage, ast.token.clone());
             temp_ast.push(ast);
             self.advance();
@@ -572,15 +584,25 @@ impl AstParser {
             ast.token.to_group(&self.current_token, true);
         }
 
-        if self.current_token == TKind::LCurly {
+        let is_instantiation = self.is_type_expression && self.current_token == TKind::LBra
+            || self.current_token == TKind::DoubleColon;
+
+        if is_instantiation {
+            if self.current_token == TKind::DoubleColon {
+                self.advance();
+            }
+            self.expect_str(
+                TKind::LBra,
+                "expected '[' as a start of generic instantiation",
+            )?;
             let mut temp_ast = Ast::new(AKind::Instantiation, ast.token.clone());
             temp_ast.push(ast);
             ast = temp_ast;
             self.list(
                 &mut ast,
-                TKind::LCurly,
+                TKind::LBra,
                 TKind::Comma,
-                TKind::RCurly,
+                TKind::RBra,
                 Self::expression,
             )?;
 
