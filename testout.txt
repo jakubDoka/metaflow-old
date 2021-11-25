@@ -376,29 +376,29 @@ Group 'use' "use":
  UseStatement(false) 'use' "use":
   None end of file ""
   Literal string "\"foo/goo/noo\""
- Function(Private) 'fun' "fun flo: pass":
-  FunctionHeader 'fun' "fun flo":
+ Fun(Private) 'fun' "fun flo: pass":
+  FunHeader 'fun' "fun flo":
    Identifier identifier "flo"
    None end of file ""
   Group ':' ":"
- Function(Private) 'fun' "fun foo(): pass":
-  FunctionHeader 'fun' "fun foo()":
+ Fun(Private) 'fun' "fun foo(): pass":
+  FunHeader 'fun' "fun foo()":
    Identifier identifier "foo"
    None end of file ""
   Group ':' ":"
- Function(Private) 'fun' "fun goo(a: i8, b: i8): pass":
-  FunctionHeader 'fun' "fun goo(a: i8, b: i8)":
+ Fun(Private) 'fun' "fun goo(a: i8, b: i8): pass":
+  FunHeader 'fun' "fun goo(a: i8, b: i8)":
    Identifier identifier "goo"
-   FunctionArgument(false) identifier "a: i8":
+   FunArgument(false) identifier "a: i8":
     Identifier identifier "a"
     Identifier identifier "i8"
-   FunctionArgument(false) identifier "b: i8":
+   FunArgument(false) identifier "b: i8":
     Identifier identifier "b"
     Identifier identifier "i8"
    None end of file ""
   Group ':' ":"
- Function(Private) 'fun' "fun loo:\r\n  noo::loo::[i8]()\r\n  pass":
-  FunctionHeader 'fun' "fun loo":
+ Fun(Private) 'fun' "fun loo:\r\n  noo::loo::[i8]()\r\n  pass":
+  FunHeader 'fun' "fun loo":
    Identifier identifier "loo"
    None end of file ""
   Group ':' ":":
@@ -408,8 +408,8 @@ Group 'use' "use":
       Identifier identifier "noo"
       Identifier identifier "loo"
      Identifier identifier "i8"
- Function(Private) 'fun' "fun main -> i64:\r\n  return 10 + 4 - 2 * 1 + 8":
-  FunctionHeader 'fun' "fun main -> i64":
+ Fun(Private) 'fun' "fun main -> i64:\r\n  return 10 + 4 - 2 * 1 + 8":
+  FunHeader 'fun' "fun main -> i64":
    Identifier identifier "main"
    Identifier identifier "i64"
   Group ':' ":":
@@ -427,8 +427,8 @@ Group 'use' "use":
        Literal integer "2"
        Literal integer "1"
       Literal integer "8"
- Function(Private) 'fun' "fun operator_stress_test -> i64:\r\n  return 10 + 2 * 1 - 9 | 4 & 1 ^ 2 >> 1 << 7 min 20 max 10":
-  FunctionHeader 'fun' "fun operator_stress_test -> i64":
+ Fun(Private) 'fun' "fun operator_stress_test -> i64:\r\n  return 10 + 2 * 1 - 9 | 4 & 1 ^ 2 >> 1 << 7 min 20 max 10":
+  FunHeader 'fun' "fun operator_stress_test -> i64":
    Identifier identifier "operator_stress_test"
    Identifier identifier "i64"
   Group ':' ":":
@@ -464,8 +464,8 @@ Group 'use' "use":
           Literal integer "7"
          Literal integer "20"
         Literal integer "10"
- Function(Private) 'fun' "fun conditional -> i64:\r\n  if false:\r\n    return 10\r\n  elif true:\r\n    return if true: 10 else: 20\r\n  else:\r\n    return 0":
-  FunctionHeader 'fun' "fun conditional -> i64":
+ Fun(Private) 'fun' "fun conditional -> i64:\r\n  if false:\r\n    return 10\r\n  elif true:\r\n    return if true: 10 else: 20\r\n  else:\r\n    return 0":
+  FunHeader 'fun' "fun conditional -> i64":
    Identifier identifier "conditional"
    Identifier identifier "i64"
   Group ':' ":":
@@ -490,20 +490,22 @@ Group 'use' "use":
         Literal integer "0"
  Attribute 'attr' "attr inline = always, call_conv = cold":
   AttributeAssign identifier "inline = always":
+   Identifier identifier "inline"
    Identifier identifier "always"
   AttributeAssign identifier "call_conv = cold":
+   Identifier identifier "call_conv"
    Identifier identifier "cold"
- Function(Private) 'fun' "fun inline_fn -> u32:\r\n  return 10":
-  FunctionHeader 'fun' "fun inline_fn -> u32":
+ Fun(Private) 'fun' "fun inline_fn -> u32:\r\n  return 10":
+  FunHeader 'fun' "fun inline_fn -> u32":
    Identifier identifier "inline_fn"
    Identifier identifier "u32"
   Group ':' ":":
    ReturnStatement 'return' "return 10":
     Literal integer "10"
- Function(Private) 'fun' "fun fib(v: i64) -> i64:\r\n  return if v == 0 | v == 1:\r\n    1\r\n  else:\r\n    fib(v - 1) + fib(v - 2)":
-  FunctionHeader 'fun' "fun fib(v: i64) -> i64":
+ Fun(Private) 'fun' "fun fib(v: i64) -> i64:\r\n  return if v == 0 | v == 1:\r\n    1\r\n  else:\r\n    fib(v - 1) + fib(v - 2)":
+  FunHeader 'fun' "fun fib(v: i64) -> i64":
    Identifier identifier "fib"
-   FunctionArgument(false) identifier "v: i64":
+   FunArgument(false) identifier "v: i64":
     Identifier identifier "v"
     Identifier identifier "i64"
    Identifier identifier "i64"
@@ -537,15 +539,15 @@ Group 'use' "use":
          Identifier operator "-"
          Identifier identifier "v"
          Literal integer "2"
- Function(Private) 'fun' "fun fib_loop(v: i64) -> i64:\r\n  var a, b, c = 1\r\n  loop'a:\r\n    c = a + b\r\n    a = b\r\n    b = c\r\n    v = v - 1\r\n    if v == 0:\r\n      break'a\r\n  return c":
-  FunctionHeader 'fun' "fun fib_loop(v: i64) -> i64":
+ Fun(Private) 'fun' "fun fib_loop(v: i64) -> i64:\r\n  var a, b, c = 1\r\n  loop'a:\r\n    c = a + b\r\n    a = b\r\n    b = c\r\n    v = v - 1\r\n    if v == 0:\r\n      break'a\r\n  return c":
+  FunHeader 'fun' "fun fib_loop(v: i64) -> i64":
    Identifier identifier "fib_loop"
-   FunctionArgument(false) identifier "v: i64":
+   FunArgument(false) identifier "v: i64":
     Identifier identifier "v"
     Identifier identifier "i64"
    Identifier identifier "i64"
   Group ':' ":":
-   VarStatement(true, false) 'var' "var a, b, c = 1":
+   VarStatement(true) 'var' "var a, b, c = 1":
     VarAssign identifier "a, b, c = 1":
      Group identifier "a":
       Identifier identifier "a"
@@ -593,10 +595,10 @@ Group 'use' "use":
       None end of file ""
    ReturnStatement 'return' "return c":
     Identifier identifier "c"
- Function(Private) 'fun' "fun unary_operators(a: i64) -> i64:\r\n  return -a + ~a + !a + ++a + --a":
-  FunctionHeader 'fun' "fun unary_operators(a: i64) -> i64":
+ Fun(Private) 'fun' "fun unary_operators(a: i64) -> i64:\r\n  return -a + ~a + !a + ++a + --a":
+  FunHeader 'fun' "fun unary_operators(a: i64) -> i64":
    Identifier identifier "unary_operators"
-   FunctionArgument(false) identifier "a: i64":
+   FunArgument(false) identifier "a: i64":
     Identifier identifier "a"
     Identifier identifier "i64"
    Identifier identifier "i64"
@@ -640,16 +642,17 @@ Group 'use' "use":
     Identifier identifier "foo"
     Identifier identifier "Foo"
    Attribute 'attr' "attr something":
-    AttributeElement identifier "something"
+    AttributeElement identifier "something":
+     Identifier identifier "something"
    StructField(false) identifier "gva: i64":
     Identifier identifier "gva"
     Identifier identifier "i64"
- Function(Private) 'fun' "fun strings -> i64:\r\n  var hello = \"hello\"\r\n  return 0":
-  FunctionHeader 'fun' "fun strings -> i64":
+ Fun(Private) 'fun' "fun strings -> i64:\r\n  var hello = \"hello\"\r\n  return 0":
+  FunHeader 'fun' "fun strings -> i64":
    Identifier identifier "strings"
    Identifier identifier "i64"
   Group ':' ":":
-   VarStatement(true, false) 'var' "var hello = \"hello\"":
+   VarStatement(true) 'var' "var hello = \"hello\"":
     VarAssign identifier "hello = \"hello\"":
      Group identifier "hello":
       Identifier identifier "hello"
@@ -658,10 +661,10 @@ Group 'use' "use":
       Literal string "\"hello\""
    ReturnStatement 'return' "return 0":
     Literal integer "0"
- Function(Private) 'fun' "fun mutable_ref(a: &var Foo):\r\n  a.a = 10\r\n  a.b = 20\r\n  a.c = 30":
-  FunctionHeader 'fun' "fun mutable_ref(a: &var Foo)":
+ Fun(Private) 'fun' "fun mutable_ref(a: &var Foo):\r\n  a.a = 10\r\n  a.b = 20\r\n  a.c = 30":
+  FunHeader 'fun' "fun mutable_ref(a: &var Foo)":
    Identifier identifier "mutable_ref"
-   FunctionArgument(false) identifier "a: &var Foo":
+   FunArgument(false) identifier "a: &var Foo":
     Identifier identifier "a"
     UnaryOperation operator "&":
      Identifier operator "&"
@@ -975,11 +978,21 @@ block2:
     return v10
 }
 
+Attribute 'attr' "attr linkage(import), call_conv(windows_fastcall)":
+ AttributeElement identifier "linkage(import)":
+  Identifier identifier "linkage"
+  AttributeElement identifier "import":
+   Identifier identifier "import"
+ AttributeElement identifier "call_conv(windows_fastcall)":
+  Identifier identifier "call_conv"
+  AttributeElement identifier "windows_fastcall":
+   Identifier identifier "windows_fastcall"
+
 function u0:0() -> i64 fast {
     ss0 = explicit_slot 16
     gv0 = symbol colocated u1:0
-    sig0 = (i32) fast
-    fn0 = colocated u0:0 sig0
+    sig0 = (i32) windows_fastcall
+    fn0 = u0:0 sig0
 
 block0:
     v0 = global_value.i64 gv0
@@ -1015,19 +1028,6 @@ block4:
 block2:
     v15 = iconst.i64 0
     return v15
-}
-
-function u0:0() -> i64 fast {
-    ss0 = explicit_slot 8
-
-block0:
-    v0 = iconst.i64 2
-    v1 = stack_addr.i64 ss0
-    store v0, v1
-    v2 = iconst.i64 0
-    v3 = icmp eq v1, v2
-    v4 = bint.i64 v3
-    return v4
 }
 
 function u0:0() -> i64 fast {
