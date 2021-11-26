@@ -3,7 +3,15 @@ use "folder/a"
 
 attr push(god, devil, human)
 
+attr absolute, madness, because, why, not
 struct GUA:
   moo: G[O]
 
 attr pop
+
+fun main -> i64:
+  var val
+
+  val += 10
+
+  return val

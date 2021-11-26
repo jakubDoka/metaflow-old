@@ -32,7 +32,7 @@ impl Arguments {
                     arg.pop();
                     let value = args
                         .next()
-                        .ok_or_else(|| ArgumentError::MissingValue(arg.clone()))?;
+                        .ok_or_else(|| ArgumentError::MissingValueue(arg.clone()))?;
                     result.field_flags.push((arg, value));
                 } else {
                     result.flags.push(arg);
@@ -90,7 +90,7 @@ impl Deref for Arguments {
 
 #[derive(Debug)]
 pub enum ArgumentError {
-    MissingValue(String),
+    MissingValueue(String),
     MissingFilename,
 }
 

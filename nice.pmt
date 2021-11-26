@@ -1,8 +1,16 @@
+
+attr linkage(import), call_conv(windows_fastcall)
+fun putchar(i: i32)
+
 fun main -> i64:
-  var i = 0
+  var 
+    a = "Hello, World!"
+    b = 0
+  let addr = a.data
   loop:
-    ++i
-    if i > 1_000_000_000:
+    putchar(*((a.data as i64 + b) as &u8) as i32)
+    b = b + 1
+    if b >= a.len as i64:
       break
   return 0
         

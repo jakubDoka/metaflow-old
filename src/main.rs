@@ -37,6 +37,22 @@ fn run() {
     assert!(util::cell::report_cell_state() == 0);
 }
 
+#[repr(C)]
+struct AlignmentTest {
+    a: u8,
+    b: u8,
+    c: u8,
+    d: u16,
+}
+
+//#[repr(C)]
+enum Foo {
+    A,
+    B,
+    C,
+    D,
+}
+
 #[cfg(feature = "testing")]
 fn test() {
     cli::test();

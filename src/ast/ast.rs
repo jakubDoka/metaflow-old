@@ -77,20 +77,20 @@ pub enum AKind {
 
     ExplicitPackage,
 
-    Function(Visibility),
-    FunctionHeader,
-    FunctionArgument(bool),
+    Fun(Vis),
+    FunHeader,
+    FunArgument(bool),
     Call,
     Index,
 
-    StructDeclaration(Visibility),
+    StructDeclaration(Vis),
     StructField(bool),
 
     Attribute,
     AttributeElement,
     AttributeAssign,
 
-    VarStatement(bool, bool), // is_mut, is_on_stack
+    VarStatement(bool),
     VarAssign,
 
     ReturnStatement,
@@ -120,14 +120,14 @@ impl Default for AKind {
 }
 
 #[derive(Clone, Copy, Debug, PartialEq)]
-pub enum Visibility {
+pub enum Vis {
     Public,
     Private,
     FilePrivate,
 }
 
-impl Default for Visibility {
+impl Default for Vis {
     fn default() -> Self {
-        Visibility::Public
+        Vis::Public
     }
 }

@@ -135,7 +135,7 @@ impl AstParser {
 
     fn attr_element(&mut self) -> Result<Ast> {
         let mut ast = self.ast(AKind::AttributeElement);
-        self.advance();
+        ast.push(self.ident()?);
 
         match self.current_token.kind {
             TKind::LPar => self.list(
@@ -165,7 +165,7 @@ impl AstParser {
         let mut ast = self.ast(AKind::None);
         let (header, visibility) = self.fun_header()?;
         ast.push(header);
-        ast.kind = AKind::Function(visibility);
+        ast.kind = AKind::Fun(visibility);
         ast.push(if self.current_token == TKind::Colon {
             self.stmt_block()?
         } else {
@@ -177,8 +177,8 @@ impl AstParser {
         Ok(ast)
     }
 
-    fn fun_header(&mut self) -> Result<(Ast, Visibility)> {
-        let mut ast = self.ast(AKind::FunctionHeader);
+    fn fun_header(&mut self) -> Result<(Ast, Vis)> {
+        let mut ast = self.ast(AKind::FunHeader);
         self.advance();
 
         let visibility = self.visibility();
@@ -218,7 +218,7 @@ impl AstParser {
         } else {
             false
         };
-        let mut ast = self.ast(AKind::FunctionArgument(mutable));
+        let mut ast = self.ast(AKind::FunArgument(mutable));
         self.list(&mut ast, TKind::None, TKind::Comma, TKind::Colon, |s| {
             s.expect_str(TKind::Ident, "expected identifier")?;
             let ident = s.ast(AKind::Identifier);
@@ -239,16 +239,15 @@ impl AstParser {
     fn statement(&mut self) -> Result<Ast> {
         match self.current_token.kind {
             TKind::Return => self.return_statement(),
-            TKind::Var | TKind::Let | TKind::Svar => self.var_statement(),
+            TKind::Var | TKind::Let => self.var_statement(),
+            TKind::Break => return self.break_statement(),
+            TKind::Continue => return self.continue_statement(),
             _ => self.expression(),
         }
     }
 
     fn var_statement(&mut self) -> Result<Ast> {
-        let mut ast = self.ast(AKind::VarStatement(
-            matches!(self.current_token.kind, TKind::Var | TKind::Svar),
-            self.current_token.kind == TKind::Svar,
-        ));
+        let mut ast = self.ast(AKind::VarStatement(self.current_token.kind == TKind::Var));
         self.advance();
         self.walk_block(|s| {
             ast.push(s.var_statement_line()?);
@@ -301,10 +300,6 @@ impl AstParser {
         } else {
             Ast::none()
         };
-
-        if datatype.kind == AKind::None && values.kind == AKind::None {
-            self.unexpected_str("expected ':' or '='")?;
-        }
 
         ast.children = vec![ident_group, datatype, values];
 
@@ -443,8 +438,6 @@ impl AstParser {
             }
             TKind::If => return self.if_expression(),
             TKind::Loop => return self.loop_expression(),
-            TKind::Break => return self.break_expression(),
-            TKind::Continue => return self.continue_expression(),
             TKind::Op | TKind::Var => {
                 let mut ast = self.ast(AKind::UnaryOperation);
                 ast.push(self.ast(AKind::Identifier));
@@ -515,7 +508,7 @@ impl AstParser {
         Ok(ast)
     }
 
-    fn continue_expression(&mut self) -> Result<Ast> {
+    fn continue_statement(&mut self) -> Result<Ast> {
         let mut ast = self.ast(AKind::Break);
         self.advance();
 
@@ -526,7 +519,7 @@ impl AstParser {
         Ok(ast)
     }
 
-    fn break_expression(&mut self) -> Result<Ast> {
+    fn break_statement(&mut self) -> Result<Ast> {
         let mut ast = self.ast(AKind::Break);
         self.advance();
 
@@ -650,17 +643,17 @@ impl AstParser {
         Ok(ast)
     }
 
-    fn visibility(&mut self) -> Visibility {
+    fn visibility(&mut self) -> Vis {
         match self.current_token.kind {
             TKind::Pub => {
                 self.advance();
-                Visibility::Public
+                Vis::Public
             }
             TKind::Priv => {
                 self.advance();
-                Visibility::FilePrivate
+                Vis::FilePrivate
             }
-            _ => Visibility::Private,
+            _ => Vis::Private,
         }
     }
 

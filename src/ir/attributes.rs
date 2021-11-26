@@ -1,17 +1,23 @@
 use std::ops::Deref;
 
-use crate::{ast::{AKind, Ast}, util::{sdbm::{ID, SdbmHashState}, sym_table::{SymTable, SymID}}};
+use crate::{
+    ast::{AKind, Ast},
+    util::{
+        sdbm::{SdbmHashState, ID},
+        sym_table::{SymID, SymTable},
+    },
+};
 
 crate::sym_id!(Attribute);
 
 #[derive(Debug, Clone, Default)]
 pub struct Attributes {
-    pub map: SymTable<Attribute, Ast>, 
+    pub map: SymTable<Attribute, Ast>,
     pub stack: Vec<Attribute>,
 }
 
 impl Attributes {
-    pub fn resolve(&mut self, ast: &mut Ast) -> Attributes {        
+    pub fn resolve(&mut self, ast: &mut Ast) -> Attributes {
         let mut marker = 0;
         let mut i = 0;
         while i < ast.len() {
@@ -23,27 +29,21 @@ impl Attributes {
                     self.map.redirect(id, stacked);
                 }
                 if marker < i {
-                    ast
-                        .drain(marker..i)
-                        .for_each(|mut attr| attr
-                            .drain(..)
-                            .for_each(|ast| {
-                                let id = ID::new()
-                                    .add(ast[0].token.spam.deref())
-                                    .add(i);
-                                let (_, id) = self.map.insert(id, ast);
-                                match self.map[id][0].token.spam.deref() {
-                                    "push" => {        
-                                        self.stack.push(id);
-                                    }
-                                    "pop" => {
-                                        self.stack.pop();
-                                    }
-                                    _ => (),
+                    ast.drain(marker..i).for_each(|mut attr| {
+                        attr.drain(..).for_each(|ast| {
+                            let id = ID::new().add(ast[0].token.spam.deref()).add(i);
+                            let (_, id) = self.map.insert(id, ast);
+                            match self.map[id][0].token.spam.deref() {
+                                "push" => {
+                                    self.stack.push(id);
                                 }
-                                
-                            })
-                        );
+                                "pop" => {
+                                    self.stack.pop();
+                                }
+                                _ => (),
+                            }
+                        })
+                    });
                 }
                 marker = i + 1;
             }
@@ -61,10 +61,8 @@ impl Attributes {
     }
 
     pub fn get_attr(&self, idx: usize, name: &str) -> Option<&Ast> {
-        let id = ID::new()
-            .add(name)
-            .add(idx);
-        
+        let id = ID::new().add(name).add(idx);
+
         self.map.get_id(id)
     }
 }

@@ -6,13 +6,13 @@ use crate::{
     util::{self, sdbm::SdbmHashState},
 };
 
-use super::*;
 use super::attributes::Attributes;
+use super::*;
 
-type Result<T> = std::result::Result<T, ModTreeError>;
+type Result<T> = std::result::Result<T, ModuleTreeError>;
 
 #[derive(Default)]
-pub struct ModTreeBuilder {
+pub struct ModuleTreeBuilder {
     import_stack: Vec<ID>,
     base: String,
     buffer: String,
@@ -21,15 +21,17 @@ pub struct ModTreeBuilder {
     attributes: Attributes,
 }
 
-impl ModTreeBuilder {
+impl ModuleTreeBuilder {
     pub fn build(mut self, root: &str) -> Result<Program> {
+        self.program.build_builtin();
+
         self.base = root[..root.rfind('/').map(|i| i + 1).unwrap_or(root.len())].to_string();
         self.load_module(&root[root.rfind('/').unwrap_or(0)..], &Token::default())?;
 
         Ok(self.program)
     }
 
-    pub fn load_module(&mut self, path: &str, token: &Token) -> Result<Mod> {
+    fn load_module(&mut self, path: &str, token: &Token) -> Result<Module> {
         self.load_path(path);
 
         let id = ID::new().add(&self.buffer);
@@ -37,9 +39,9 @@ impl ModTreeBuilder {
         if let Some(idx) = self.import_stack.iter().position(|&m| m == id) {
             let absolute_path = Path::new(self.buffer.as_str())
                 .canonicalize()
-                .map_err(|err| ModTreeError::new(MTEKind::Io(err), token))?
+                .map_err(|err| ModuleTreeError::new(MTEKind::Io(err), token))?
                 .to_str()
-                .ok_or_else(|| ModTreeError::new(MTEKind::NonUTF8Path, token))?
+                .ok_or_else(|| ModuleTreeError::new(MTEKind::NonUTF8Path, token))?
                 .to_string();
 
             let message = self.import_stack[idx..]
@@ -58,7 +60,10 @@ impl ModTreeBuilder {
                     acc.push_str("\n");
                     acc
                 });
-            return Err(ModTreeError::new(MTEKind::CyclicDependency(message), token));
+            return Err(ModuleTreeError::new(
+                MTEKind::CyclicDependency(message),
+                token,
+            ));
         }
 
         self.import_stack.push(id);
@@ -68,38 +73,40 @@ impl ModTreeBuilder {
         }
 
         let file = std::fs::read_to_string(self.buffer.as_str())
-            .map_err(|err| ModTreeError::new(MTEKind::Io(err), token))?;
+            .map_err(|err| ModuleTreeError::new(MTEKind::Io(err), token))?;
         let absolute_path = Path::new(self.buffer.as_str())
             .canonicalize()
-            .map_err(|err| ModTreeError::new(MTEKind::Io(err), token))?
+            .map_err(|err| ModuleTreeError::new(MTEKind::Io(err), token))?
             .to_str()
-            .ok_or_else(|| ModTreeError::new(MTEKind::NonUTF8Path, token))?
+            .ok_or_else(|| ModuleTreeError::new(MTEKind::NonUTF8Path, token))?
             .to_string();
 
         let ast = AstParser::new(Lexer::new(id, path.to_string(), file))
             .parse()
-            .map_err(|err| ModTreeError::new(MTEKind::Ast(err), &Token::default()))?;
+            .map_err(|err| ModuleTreeError::new(MTEKind::Ast(err), &Token::default()))?;
 
         let name = Path::new(path)
             .file_stem()
-            .ok_or_else(|| ModTreeError::new(MTEKind::NoFileStem, token))?
+            .ok_or_else(|| ModuleTreeError::new(MTEKind::NoFileStem, token))?
             .to_str()
-            .ok_or_else(|| ModTreeError::new(MTEKind::NonUTF8Path, token))?;
+            .ok_or_else(|| ModuleTreeError::new(MTEKind::NonUTF8Path, token))?;
 
         let name = ID::new().add(name);
 
-        let module = ModEntity {
+        let module = ModuleEnt {
             name,
             id,
             absolute_path,
             ast,
 
+            dependency: vec![(ID::new().add("builtin"), self.program.builtin)],
+
             ..Default::default()
         };
 
-        let (_, module_id) = self.program.modules.insert(name, module);
+        let (_, module_id) = self.program.modules.insert(id, module);
 
-        let mut ast = std::mem::take(&mut self.program.modules[module_id].ast);
+        let mut ast = std::mem::take(&mut self.program[module_id].ast);
         util::try_retain(&mut ast, |a| {
             if let AKind::UseStatement(external) = a.kind {
                 if external {
@@ -107,14 +114,14 @@ impl ModTreeBuilder {
                 }
                 let path = a[1].token.spam.deref();
                 let m_id = self.load_module(&path[1..path.len() - 1], &a[1].token)?; // strip "
-                let m = &mut self.program.modules[m_id];
+                let m = &mut self.program[m_id];
                 let nickname = if a[0].kind != AKind::None {
                     ID::new().add(a[0].token.spam.deref())
                 } else {
                     m.name
                 };
                 m.dependant.push(module_id);
-                let module = &mut self.program.modules[module_id];
+                let module = &mut self.program[module_id];
                 module.dependency.push((nickname, m_id));
                 Ok(false)
             } else {
@@ -124,10 +131,9 @@ impl ModTreeBuilder {
 
         let attributes = self.attributes.resolve(&mut ast);
 
-        let module = &mut self.program.modules[module_id];
+        let module = &mut self.program[module_id];
         module.ast = ast;
         module.attributes = attributes;
-
 
         self.import_stack
             .pop()
@@ -145,12 +151,12 @@ impl ModTreeBuilder {
 }
 
 #[derive(Debug)]
-pub struct ModTreeError {
+pub struct ModuleTreeError {
     pub kind: MTEKind,
     pub token: Token,
 }
 
-impl ModTreeError {
+impl ModuleTreeError {
     pub fn new(kind: MTEKind, token: &Token) -> Self {
         Self {
             kind,
@@ -169,6 +175,6 @@ pub enum MTEKind {
 }
 
 pub fn test() {
-    let builder = ModTreeBuilder::default();
+    let builder = ModuleTreeBuilder::default();
     let _program = builder.build("src/ir/tests/module_tree/root").unwrap();
 }

@@ -305,15 +305,6 @@ fun main -> i64:
     );
     test_sippet(
         r#"
-fun main -> i64:
-  svar 
-    b = 2
-  return (&b as i64 == 0) as i64
-        "#,
-        0,
-    );
-    test_sippet(
-        r#"
 struct Point:
   x, y: i64
 

@@ -76,6 +76,11 @@ impl SdbmHash for () {
 impl SdbmHash for usize {
     #[inline]
     fn bytes(&self) -> &[u8] {
-        unsafe { std::slice::from_raw_parts(self as *const usize as *const u8, std::mem::size_of::<usize>()) }
+        unsafe {
+            std::slice::from_raw_parts(
+                self as *const usize as *const u8,
+                std::mem::size_of::<usize>(),
+            )
+        }
     }
 }

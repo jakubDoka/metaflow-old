@@ -217,7 +217,7 @@ impl Generator {
 
         for mut item in ast.drain(..) {
             match item.kind {
-                AKind::Function(_) => {
+                AKind::Fun(_) => {
                     self.function(item)?;
                     self.pushed_attributes.clear();
                 }
@@ -238,6 +238,7 @@ impl Generator {
                         );
                     }
                     _ => {
+                        println!("{}", item);
                         item.drain(..)
                             .for_each(|item| self.pushed_attributes.push(item));
                     }
@@ -646,10 +647,7 @@ impl Generator {
             };
 
             for (i, name) in identifiers.iter().map(|i| i.token.spam.clone()).enumerate() {
-                let (is_mutable, is_on_stack) = match ast.kind {
-                    AKind::VarStatement(m, s) => (m, s),
-                    _ => unreachable!(),
-                };
+                let is_mutable = ast.kind == AKind::VarStatement(true);
 
                 let value = if values.kind != AKind::None {
                     let mut value = self.expression(&values[i], builder)?;
@@ -662,10 +660,6 @@ impl Generator {
                     if is_mutable {
                         if value.datatype.is_on_stack() {
                             value.set_mutability(true);
-                        } else if is_on_stack {
-                            let val = Val::new_stack(true, &value.datatype, builder);
-                            val.write(&value, &values[i].token, builder, self.isa())?;
-                            value = val;
                         } else {
                             let variable = Variable::new(self.variable_counter);
                             self.variable_counter += 1;
@@ -1169,7 +1163,7 @@ impl Generator {
             &target_datatype,
         ));
 
-        let ret = if target_datatype.is_float() {
+        let return_type = if target_datatype.is_float() {
             if source_datatype.is_float() {
                 if extend {
                     builder.ins().fpromote(target_ir, red_value)
@@ -1250,7 +1244,7 @@ impl Generator {
             return cannot_convert;
         };
 
-        Ok(Val::immutable(ret, target_datatype.clone()))
+        Ok(Val::immutable(return_type, target_datatype.clone()))
     }
 
     fn assign(&mut self, ast: &Ast, builder: &mut FunctionBuilder) -> Result<Val> {
@@ -1342,8 +1336,8 @@ impl Generator {
         };
 
         let linkage = if let Some(attr) = self.find_attribute("linkage") {
-            self.assert_atr_len(attr, 1)?;
-            match attr[0].token.spam.deref() {
+            self.assert_atr_len(attr, 2)?;
+            match attr[1].token.spam.deref() {
                 "local" => Linkage::Local,
                 "hidden" => Linkage::Hidden,
                 "import" => Linkage::Import,
@@ -1356,8 +1350,8 @@ impl Generator {
         };
 
         let call_conv = if let Some(attr) = self.find_attribute("call_conv") {
-            self.assert_atr_len(attr, 1)?;
-            CallConv::from_str(attr[0].token.spam.deref())
+            self.assert_atr_len(attr, 2)?;
+            CallConv::from_str(attr[1].token.spam.deref())
                 .map_err(|_| IrGenError::new(IGEKind::InvalidCallConv, attr.token.clone()))?
         } else {
             CallConv::Fast
@@ -1366,8 +1360,8 @@ impl Generator {
         signature.call_conv = call_conv;
 
         let inline_level = if let Some(attr) = self.find_attribute("inline") {
-            self.assert_atr_len(attr, 1)?;
-            InlineLevel::from_str(attr[0].token.spam.deref())
+            self.assert_atr_len(attr, 2)?;
+            InlineLevel::from_str(attr[1].token.spam.deref())
                 .map_err(|_| IrGenError::new(IGEKind::InvalidInlineLevel, attr.token.clone()))?
         } else {
             InlineLevel::Never
@@ -1497,12 +1491,12 @@ impl Generator {
         self.global_attributes
             .iter()
             .rev()
-            .find(|a| a.token.spam.deref() == name)
+            .find(|a| a[0].token.spam.deref() == name)
             .or(self
                 .pushed_attributes
                 .iter()
                 .rev()
-                .find(|a| a.token.spam.deref() == name))
+                .find(|a| a[0].token.spam.deref() == name))
     }
 
     fn assert_atr_len(&self, attr: &Ast, expected: usize) -> Result<()> {
