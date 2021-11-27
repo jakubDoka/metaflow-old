@@ -3,15 +3,12 @@ use super::*;
 #[derive(Debug)]
 pub struct AstError {
     pub kind: AEKind,
-    pub token: Option<Token>,
+    pub token: Token,
 }
 
 impl AstError {
     pub fn new(kind: AEKind, token: Token) -> AstError {
-        AstError {
-            kind,
-            token: Some(token),
-        }
+        AstError { kind, token: token }
     }
 }
 
@@ -25,7 +22,7 @@ impl Into<AstError> for AEKind {
     fn into(self) -> AstError {
         AstError {
             kind: self,
-            token: None,
+            token: Token::default(),
         }
     }
 }

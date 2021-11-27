@@ -33,17 +33,6 @@ impl<'a> TypeResolver<'a> {
         }
     }
 
-    /*pub fn resolve_immediate(mut self, module: Module, ast: &Ast) -> Result<Type> {
-        self.immediate = true;
-        let (_, datatype) = self.find_or_instantiate(module, ast)?;
-
-        for i in 0..types.len() {
-            self.materialize_datatype(types[i].clone())?;
-        }
-
-        Ok(datatype)
-    }*/
-
     pub fn resolve_immediate(&mut self, module: Module, ast: &Ast) -> Result<Type> {
         let (_, datatype) = self.find_or_instantiate(module, ast)?;
         self.materialize_datatype(datatype)?;
@@ -230,9 +219,11 @@ impl<'a> TypeResolver<'a> {
 
                 //println!("{:?}", self.context.instance_buffer);
 
+                let params = self.context.instance_buffer.clone();
+
                 for (name, param) in ast[0][1..]
                     .iter()
-                    .zip(self.context.instance_buffer.drain(start..))
+                    .zip(self.context.instance_buffer.drain(start..).skip(1))
                 {
                     let id = ID::new()
                         .add(name.token.spam.deref())
@@ -257,6 +248,7 @@ impl<'a> TypeResolver<'a> {
                             size: u32::MAX,
                             module: host_module,
                             attribute_id: self.program[base_type].attribute_id,
+                            params,
                             align: 0,
                         }
                     }
@@ -304,6 +296,7 @@ impl<'a> TypeResolver<'a> {
 
     fn create_instance_id(&mut self, module: Module, ast: &Ast) -> Result<(ID, Type, Module)> {
         let (host_module, base_type) = self.find_or_instantiate(module, &ast[0])?;
+        self.context.instance_buffer.push(base_type);
         let mut id = self.program[base_type].name;
         for param in ast[1..].iter() {
             let (_, param_type) = self.find_or_instantiate(module, param)?;
@@ -314,7 +307,7 @@ impl<'a> TypeResolver<'a> {
         Ok((id, base_type, host_module))
     }
 
-    fn find_by_token(&mut self, module: Module, token: &Token) -> Result<(Module, Type)> {
+    pub fn find_by_token(&mut self, module: Module, token: &Token) -> Result<(Module, Type)> {
         self.find_by_name(module, ID::new().add(token.spam.deref()))
             .ok_or_else(|| TypeError::new(TEKind::UnknownType, token))
     }
@@ -358,13 +351,14 @@ impl<'a> TypeResolver<'a> {
                         let datatype = TypeEnt {
                             visibility,
                             size: u32::MAX * !matches!(kind, TKind::Generic) as u32,
-                            align: 0,
                             kind,
                             name,
                             token_hint: token_hint.clone(),
                             ast: std::mem::take(a),
                             module,
                             attribute_id: i,
+
+                            ..Default::default()
                         };
 
                         if let (Some(datatype), _) = self.program.types.insert(name, datatype) {

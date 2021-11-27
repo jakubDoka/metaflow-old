@@ -113,14 +113,14 @@ pub fn generate_obj_file(args: &Arguments) -> Result<Vec<u8>> {
 #[derive(Debug)]
 pub struct GenError {
     kine: GEKind,
-    token: Option<Token>,
+    token: Token,
 }
 
 impl Into<GenError> for IrGenError {
-    fn into(mut self) -> GenError {
+    fn into(self) -> GenError {
         GenError {
-            kine: GEKind::IrGenError(self.take_kind()),
-            token: self.token().clone(),
+            kine: GEKind::IrGenError(self.kind),
+            token: self.token,
         }
     }
 }
@@ -129,7 +129,7 @@ impl Into<GenError> for std::io::Error {
     fn into(self) -> GenError {
         GenError {
             kine: GEKind::IoError(self),
-            token: None,
+            token: Token::default(),
         }
     }
 }
@@ -147,7 +147,7 @@ impl Into<GenError> for GEKind {
     fn into(self) -> GenError {
         GenError {
             kine: self,
-            token: None,
+            token: Token::default(),
         }
     }
 }

@@ -183,11 +183,12 @@ impl AstParser {
 
         let visibility = self.visibility();
 
+        self.is_type_expression = true;
         ast.push(match self.current_token.kind {
-            TKind::Ident | TKind::Op => self.ast(AKind::Identifier),
+            TKind::Ident | TKind::Op => self.ident_expression()?,
             _ => Ast::none(),
         });
-        self.advance();
+        self.is_type_expression = false;
 
         if self.current_token == TKind::LPar {
             self.list(
@@ -455,7 +456,7 @@ impl AstParser {
             self.advance();
         }
 
-        if !nested {
+        if !nested && !self.is_type_expression {
             loop {
                 match self.current_token.kind {
                     TKind::Dot => {

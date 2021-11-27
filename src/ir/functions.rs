@@ -12,7 +12,7 @@ use crate::util::{
 
 use super::module_tree::ModuleTreeBuilder;
 use super::types::{TEKind, TypeError, TypeResolver, TypeResolverContext};
-use super::{FunSignature, IKind, InstEnt, Program};
+use super::{FunSignature, GenericElement, GenericSignature, IKind, InstEnt, Program, TKind};
 
 type Result<T = ()> = std::result::Result<T, FunError>;
 
@@ -82,7 +82,7 @@ impl<'a> FunResolver<'a> {
         let entry_point = self.context.new_chunk();
         self.context.make_chunk_current(entry_point);
 
-        signature.params.iter().for_each(|param| {
+        signature.args.iter().for_each(|param| {
             let var = self.context.function_body.values.add(param.clone());
             self.context.variables.push(var);
         });
@@ -175,7 +175,14 @@ impl<'a> FunResolver<'a> {
             let datatype = if var_line[1].kind == AKind::None {
                 self.auto()
             } else {
-                self.resolve_datatype(&var_line[1])?
+                match self.resolve_type(&var_line[1]) {
+                    Ok(datatype) => datatype,
+                    Err(FunError {
+                        kind: FEKind::TypeError(TEKind::WrongInstantiationArgAmount(0, _)),
+                        ..
+                    }) => self.auto(),
+                    Err(err) => return Err(err),
+                }
             };
 
             if var_line[2].kind == AKind::None {
@@ -276,7 +283,7 @@ impl<'a> FunResolver<'a> {
     fn translate_expression_unwrap(&mut self, ast: &Ast) -> Result<Value> {
         let value = self.translate_expression(ast)?;
         if value.is_null() {
-            Err(FunError::new(FEKind::ExpectedValueue, &ast.token))
+            Err(FunError::new(FEKind::ExpectedValue, &ast.token))
         } else {
             Ok(value)
         }
@@ -347,8 +354,11 @@ impl<'a> FunResolver<'a> {
         let left_datatype = self.context[left].datatype;
         let right_datatype = self.context[right].datatype;
 
-        let unresolved =
-            self.is_auto(left_datatype) as usize + self.is_auto(right_datatype) as usize;
+        let left_auto = self.is_auto(left_datatype);
+        let right_auto = self.is_auto(right_datatype);
+
+        let unresolved = left_auto as usize + right_auto as usize - (left == right) as usize;
+
         if unresolved > 0 {
             let value = self.new_auto_value();
 
@@ -359,21 +369,17 @@ impl<'a> FunResolver<'a> {
                 unresolved,
             ));
 
-            if self.is_auto(left_datatype) {
+            if left_auto {
                 self.add_type_dependency(left, inst);
             }
 
-            if self.is_auto(right_datatype) {
+            if right_auto {
                 self.add_type_dependency(right, inst);
             }
 
             Ok(value)
         } else {
-            let specific_id = base_id
-                .combine(self.program.types.direct_to_id(left_datatype))
-                .combine(self.program.types.direct_to_id(right_datatype));
-
-            let function = self.find_or_instantiate(base_id, specific_id, &ast.token)?;
+            let function = self.find_or_instantiate(base_id, &[left, right], &ast.token)?;
 
             let ret_type = self.program[function].signature().return_type;
 
@@ -395,59 +401,62 @@ impl<'a> FunResolver<'a> {
     }
 
     fn infer(&mut self, value: Value, datatype: Type) -> Result<()> {
-        let val = &mut self.context[value];
-        val.datatype = datatype;
-        let dependency_id = val.type_dependency;
-        let mut dependencies = std::mem::take(&mut self.context[dependency_id]);
-        for dep in dependencies.drain(..) {
-            let inst = &mut self.context[dep];
-            inst.unresolved -= 1;
-            if inst.unresolved != 0 {
-                continue;
+        let mut frontier = std::mem::take(&mut self.context.graph_frontier);
+        frontier.clear();
+        frontier.push((value, datatype));
+
+        while let Some((value, datatype)) = frontier.pop() {
+            let val = &mut self.context[value];
+            val.datatype = datatype;
+            let dependency_id = val.type_dependency;
+            let mut dependencies = std::mem::take(&mut self.context[dependency_id]);
+
+            for dep in dependencies.drain(..) {
+                let inst = &mut self.context[dep];
+                inst.unresolved -= 1;
+                if inst.unresolved != 0 {
+                    continue;
+                }
+
+                match &mut inst.kind {
+                    IKind::VarDecl(_) => {
+                        let value = inst.value;
+                        frontier.push((value, datatype));
+                    }
+                    IKind::UnresolvedCall(base_id, args) => {
+                        let args = std::mem::take(args);
+                        let token = inst.token_hint.clone();
+                        let base_id = *base_id;
+
+                        let fun = self.find_or_instantiate(base_id, args.as_slice(), &token)?;
+
+                        let inst = &mut self.context[dep];
+                        inst.kind = IKind::Call(fun, args);
+                        let value = inst.value;
+                        let datatype = self.program[fun].signature().return_type;
+
+                        frontier.push((value, datatype));
+                    }
+                    IKind::ZeroValue => {
+                        let value = inst.value;
+                        self.context[value].datatype = datatype;
+                    }
+                    IKind::Assign(val) => {
+                        let mut val = *val;
+                        if value == val {
+                            val = inst.value;
+                        }
+
+                        frontier.push((val, datatype));
+                    }
+                    _ => todo!("{:?}", inst),
+                }
             }
 
-            match &mut inst.kind {
-                IKind::VarDecl(_) => {
-                    let value = inst.value;
-                    self.infer(value, datatype)?;
-                }
-                IKind::UnresolvedCall(base_id, args) => {
-                    let args = std::mem::take(args);
-                    let mut id = *base_id;
-                    for arg in &args {
-                        id = id
-                            .combine(self.program.types.direct_to_id(self.context[*arg].datatype));
-                    }
-
-                    let (_, fun) = self.find_by_name(id).ok_or_else(|| {
-                        FunError::new(FEKind::NotFound, &self.context[dep].token_hint)
-                    })?;
-
-                    let inst = &mut self.context[dep];
-                    inst.kind = IKind::Call(fun, args);
-                    let value = inst.value;
-                    let datatype = self.program[fun].signature().return_type;
-
-                    self.infer(value, datatype)?;
-                }
-                IKind::ZeroValue => {
-                    let value = inst.value;
-                    self.context[value].datatype = datatype;
-                }
-                IKind::Assign(val) => {
-                    let val = *val;
-                    if value == val {
-                        let other_id = inst.value;
-                        self.infer(other_id, datatype)?;
-                    } else {
-                        self.infer(val, datatype)?;
-                    }
-                }
-                _ => todo!("{:?}", inst),
-            }
+            self.context[dependency_id] = dependencies;
         }
 
-        self.context[dependency_id] = dependencies;
+        self.context.graph_frontier = frontier;
 
         Ok(())
     }
@@ -503,16 +512,84 @@ impl<'a> FunResolver<'a> {
         Ok(value)
     }
 
-    fn find_or_instantiate(&mut self, base: ID, specific_id: ID, token: &Token) -> Result<Fun> {
+    fn find_or_instantiate(&mut self, base: ID, values: &[Value], token: &Token) -> Result<Fun> {
+        let specific_id = values.iter().fold(base, |base, &val| {
+            base.combine(self.program.types.direct_to_id(self.context[val].datatype))
+        });
+
         if let Some((_, fun)) = self.find_by_name(specific_id) {
             return Ok(fun);
         }
 
-        if let Some(_fun) = self.find_generic_by_name(base) {
-            todo!();
+        if let Some((module, functions)) = self.find_generic_by_name(base) {
+            let len = self.program.generic_functions[functions].len();
+            for fun in 0..len {
+                if let Some(fun) = self.instantiate(module, functions, fun, values)? {
+                    return Ok(fun);
+                }
+            }
         }
 
         Err(FunError::new(FEKind::NotFound, token))
+    }
+
+    fn instantiate(
+        &mut self,
+        module: Module,
+        functions: Fun,
+        index: usize,
+        values: &[Value],
+    ) -> Result<Option<Fun>> {
+        let mut generic = std::mem::take(&mut self.context.generic);
+
+        let fun = &self.program.generic_functions[functions][index];
+
+        let signature = match &fun.kind {
+            FKind::Generic(signature) => signature,
+            _ => unreachable!("{:?}", fun.kind),
+        };
+
+        if signature.arg_count != values.len() {
+            return Ok(None);
+        }
+
+        generic.inferred.resize(signature.params.len(), Type::NULL);
+
+        let mut i = 0;
+        while i < signature.return_index {
+            let (count, length) = if let GenericElement::NextArgument(count, length) =
+                signature.elements[i].clone()
+            {
+                (count, length)
+            } else {
+                unreachable!("{:?}", signature.elements[i]);
+            };
+
+            for j in 0..count {
+                let datatype = self.context[values[i + j]].datatype;
+                generic.arg_buffer.clear();
+                self.load_arg_from_datatype(datatype, &mut generic);
+                let pattern = &signature.elements[i + 1..i + length];
+
+                for (real, pattern) in generic.arg_buffer.iter().zip(pattern) {
+                    if real != pattern {
+                        match pattern {
+                            GenericElement::Parameter(param) => match real {
+                                GenericElement::Element(_, id) => {
+                                    generic.inferred[*param] = *id;
+                                }
+                                _ => return Ok(None),
+                            },
+                            _ => return Ok(None),
+                        }
+                    }
+                }
+            }
+
+            i += length + 1;
+        }
+
+        todo!();
     }
 
     fn find_by_name(&mut self, name: ID) -> Option<(Module, Fun)> {
@@ -582,15 +659,15 @@ impl<'a> FunResolver<'a> {
                         match header[0].kind {
                             AKind::Identifier => {
                                 let mut name = ID::new().add(header.token.spam.deref());
-                                let mut params = Vec::new();
+                                let mut args = Vec::new();
                                 for param_line in &a[1..a.len() - 1] {
                                     let datatype = param_line.last().unwrap();
-                                    let datatype = self.resolve_datatype_low(module, datatype)?;
+                                    let datatype = self.resolve_type_low(module, datatype)?;
                                     name = name.combine(self.program.types.direct_to_id(datatype));
                                     for param in param_line[0..param_line.len() - 1].iter() {
                                         let name = ID::new().add(param.token.spam.deref());
                                         let mutable = param_line.kind == AKind::FunArgument(true);
-                                        params.push(ValueEnt {
+                                        args.push(ValueEnt {
                                             name,
                                             datatype,
                                             mutable,
@@ -604,13 +681,10 @@ impl<'a> FunResolver<'a> {
                                 let return_type = if return_type.kind == AKind::None {
                                     Type::NULL
                                 } else {
-                                    self.resolve_datatype_low(module, return_type)?
+                                    self.resolve_type_low(module, return_type)?
                                 };
 
-                                let function_signature = FunSignature {
-                                    params,
-                                    return_type,
-                                };
+                                let function_signature = FunSignature { args, return_type };
 
                                 let token_hint = header.token.clone();
 
@@ -637,16 +711,20 @@ impl<'a> FunResolver<'a> {
                             }
                             AKind::Instantiation => {
                                 let name = ID::new()
-                                    .add(header[0].token.spam.deref())
+                                    .add(header[0][0].token.spam.deref())
                                     .combine(self.program.modules.direct_to_id(module));
+
+                                let ast = std::mem::take(a);
+
+                                let signature = self.translate_generic_signature(&ast[0])?;
 
                                 let function = FunEnt {
                                     visibility,
                                     name,
                                     module,
-                                    hint_token: header.token.clone(),
-                                    kind: FKind::Generic,
-                                    ast: std::mem::take(a),
+                                    hint_token: ast[0].token.clone(),
+                                    kind: FKind::Generic(signature),
+                                    ast,
                                     attribute_id: i,
 
                                     ..Default::default()
@@ -669,13 +747,134 @@ impl<'a> FunResolver<'a> {
         Ok(())
     }
 
-    fn resolve_datatype(&mut self, ast: &Ast) -> Result<Type> {
-        self.resolve_datatype_low(self.context.current_module, ast)
+    fn translate_generic_signature(&mut self, ast: &Ast) -> Result<GenericSignature> {
+        self.context.generic.param_buffer.clear();
+        for ident in &ast[0][1..] {
+            self.context
+                .generic
+                .param_buffer
+                .push(ID::new().add(ident.token.spam.deref()))
+        }
+
+        let mut arg_count = 0;
+        self.context.generic.arg_buffer.clear();
+        for args in &ast[1..ast.len() - 1] {
+            let amount = args.len() - 1;
+            let idx = self.context.generic.arg_buffer.len();
+            self.context
+                .generic
+                .arg_buffer
+                .push(GenericElement::NextArgument(amount, 0));
+            self.load_arg(&args[args.len() - 1])?;
+            let additional = self.context.generic.arg_buffer.len() - idx - 1;
+            self.context.generic.arg_buffer[idx] = GenericElement::NextArgument(amount, additional);
+            arg_count += amount;
+        }
+
+        let return_index = self.context.generic.arg_buffer.len();
+
+        let has_return = ast[ast.len() - 1].kind != AKind::None;
+
+        self.context
+            .generic
+            .arg_buffer
+            .push(GenericElement::NextReturn(has_return));
+
+        if has_return {
+            self.load_arg(&ast[ast.len() - 1])?;
+        }
+
+        Ok(GenericSignature {
+            params: self.context.generic.param_buffer.clone(),
+            elements: self.context.generic.arg_buffer.clone(),
+            return_index,
+            arg_count,
+        })
     }
 
-    fn resolve_datatype_low(&mut self, module: Module, ast: &Ast) -> Result<Type> {
+    fn load_arg_from_datatype(&self, datatype: Type, generic: &mut GenericFunContext) {
+        let dt = &self.program[datatype];
+        let id = self.program.types.direct_to_id(datatype);
+
+        if dt.params.is_empty() {
+            generic
+                .arg_buffer
+                .push(GenericElement::Element(id, datatype));
+            return;
+        }
+
+        generic.arg_buffer.push(GenericElement::Element(
+            self.program.types.direct_to_id(dt.params[0]),
+            datatype,
+        ));
+
+        for &param in &dt.params[1..] {
+            self.load_arg_from_datatype(param, generic)
+        }
+    }
+
+    fn load_arg(&mut self, ast: &Ast) -> Result {
+        match &ast.kind {
+            AKind::Identifier => {
+                let id = ID::new().add(ast.token.spam.deref());
+                if let Some(index) = self
+                    .context
+                    .generic
+                    .param_buffer
+                    .iter()
+                    .position(|&p| p == id)
+                {
+                    self.context
+                        .generic
+                        .arg_buffer
+                        .push(GenericElement::Parameter(index));
+                } else {
+                    let datatype = self.find_type(&ast.token)?;
+                    let datatype = self.program.types.direct_to_id(datatype);
+                    self.context
+                        .generic
+                        .arg_buffer
+                        .push(GenericElement::Element(datatype, Type::NULL));
+                }
+            }
+            AKind::Instantiation => {
+                self.load_arg(&ast[0])?;
+                self.context
+                    .generic
+                    .arg_buffer
+                    .push(GenericElement::ScopeStart);
+                for a in ast[1..].iter() {
+                    self.load_arg(a)?;
+                }
+                self.context
+                    .generic
+                    .arg_buffer
+                    .push(GenericElement::ScopeEnd);
+            }
+            _ => todo!("{}", ast),
+        }
+
+        Ok(())
+    }
+
+    fn resolve_type(&mut self, ast: &Ast) -> Result<Type> {
+        self.resolve_type_low(self.context.current_module, ast)
+    }
+
+    fn resolve_type_low(&mut self, module: Module, ast: &Ast) -> Result<Type> {
         TypeResolver::new(self.program, &mut self.context.type_resolver_context)
             .resolve_immediate(module, ast)
+            .map_err(Into::into)
+    }
+
+    fn find_type(&mut self, token: &Token) -> Result<Type> {
+        self.find_type_low(self.context.current_module, token)
+    }
+
+    fn find_type_low(&mut self, module: Module, token: &Token) -> Result<Type> {
+        TypeResolver::new(self.program, &mut self.context.type_resolver_context)
+            .find_by_token(module, token)
+            .map(|(_, t)| t)
             .map_err(Into::into)
     }
 
@@ -686,12 +885,14 @@ impl<'a> FunResolver<'a> {
 
     #[inline]
     fn is_auto(&self, datatype: Type) -> bool {
-        self.program.builtin_repo.auto == datatype
+        self.program.builtin_repo.auto == datatype || self.program[datatype].kind == TKind::Generic
     }
 }
 
 #[derive(Debug)]
 pub struct FunResolverContext {
+    pub generic: GenericFunContext,
+    pub graph_frontier: Vec<(Value, Type)>,
     pub type_resolver_context: TypeResolverContext,
     pub function_context_pool: Vec<FunContext>,
     pub current_context: usize,
@@ -720,6 +921,8 @@ impl FunResolverContext {
 impl Default for FunResolverContext {
     fn default() -> Self {
         FunResolverContext {
+            generic: Default::default(),
+            graph_frontier: vec![],
             type_resolver_context: Default::default(),
             function_context_pool: vec![Default::default()],
             current_context: 0,
@@ -739,6 +942,13 @@ impl DerefMut for FunResolverContext {
     fn deref_mut(&mut self) -> &mut Self::Target {
         &mut self.function_context_pool[self.current_context]
     }
+}
+
+#[derive(Default, Debug)]
+pub struct GenericFunContext {
+    pub arg_buffer: Vec<GenericElement>,
+    pub param_buffer: Vec<ID>,
+    pub inferred: Vec<Type>,
 }
 
 #[derive(Debug, Default)]
@@ -874,7 +1084,7 @@ impl FunError {
 pub enum FEKind {
     TypeError(TEKind),
     Duplicate(Token),
-    ExpectedValueue,
+    ExpectedValue,
     TypeMismatch(Type, Type),
     NotFound,
     UnexpectedReturnValue,

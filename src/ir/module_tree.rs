@@ -1,7 +1,7 @@
 use std::{ops::Deref, path::Path};
 
 use crate::{
-    ast::{AKind, AstError, AstParser},
+    ast::{AEKind, AKind, AstError, AstParser},
     lexer::{Lexer, Token},
     util::{self, sdbm::SdbmHashState},
 };
@@ -83,7 +83,7 @@ impl ModuleTreeBuilder {
 
         let ast = AstParser::new(Lexer::new(id, path.to_string(), file))
             .parse()
-            .map_err(|err| ModuleTreeError::new(MTEKind::Ast(err), &Token::default()))?;
+            .map_err(Into::into)?;
 
         let name = Path::new(path)
             .file_stem()
@@ -165,10 +165,19 @@ impl ModuleTreeError {
     }
 }
 
+impl Into<ModuleTreeError> for AstError {
+    fn into(self) -> ModuleTreeError {
+        ModuleTreeError {
+            kind: MTEKind::Ast(self.kind),
+            token: self.token,
+        }
+    }
+}
+
 #[derive(Debug)]
 pub enum MTEKind {
     Io(std::io::Error),
-    Ast(AstError),
+    Ast(AEKind),
     NonUTF8Path,
     NoFileStem,
     CyclicDependency(String),

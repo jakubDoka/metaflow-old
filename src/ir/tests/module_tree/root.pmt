@@ -9,9 +9,12 @@ struct GUA:
 
 attr pop
 
+fun ++[T](a: T, b: T) -> T: a + b
+
 fun main -> i64:
   var val
+  var val2 = val
 
-  val += 10
+  val ++= 10
 
   return val

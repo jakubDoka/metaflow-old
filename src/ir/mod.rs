@@ -105,7 +105,7 @@ impl Program {
                             .combine(module_id),
                         module,
                         kind: FKind::Builtin(FunSignature {
-                            params: vec![ValueEnt::temp(datatype), ValueEnt::temp(datatype)],
+                            args: vec![ValueEnt::temp(datatype), ValueEnt::temp(datatype)],
                             return_type: datatype,
                         }),
 
@@ -136,15 +136,13 @@ macro_rules! define_repo {
                 $(
                     let id = ID::new().add(stringify!($name)).combine(builtin_id);
                     let type_ent = TypeEnt {
-                        visibility: Vis::Public,
                         kind: TKind::Builtin($repr),
                         name: id,
                         size: $size,
                         align: $size.min(8),
-                        attribute_id: 0,
-                        ast: Ast::none(),
                         module: program.builtin,
-                        token_hint: Token::default(),
+
+                        ..Default::default()
                     };
                     let (_, id) = program.types.insert(id, type_ent);
                     repo.$name = id;
@@ -326,13 +324,40 @@ pub struct ChunkEnt {
 pub enum FKind {
     Unresolved,
     Builtin(FunSignature),
-    Generic,
+    Generic(GenericSignature),
     Normal(FunSignature),
+}
+
+#[derive(Debug, Clone)]
+pub struct GenericSignature {
+    pub params: Vec<ID>,
+    pub elements: Vec<GenericElement>,
+    pub return_index: usize,
+    pub arg_count: usize,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum GenericElement {
+    ScopeStart,
+    ScopeEnd,
+    Element(ID, Type),
+    Parameter(usize),
+    NextArgument(usize, usize),
+    NextReturn(bool),
+}
+
+impl GenericElement {
+    pub fn compare(&self, other: &Self) -> bool {
+        match (self, other) {
+            (GenericElement::Element(id1, _), GenericElement::Element(id2, _)) => id1 == id2,
+            _ => self == other,
+        }
+    }
 }
 
 #[derive(Debug, Default, Clone)]
 pub struct FunSignature {
-    pub params: Vec<ValueEnt>,
+    pub args: Vec<ValueEnt>,
     pub return_type: Type,
 }
 
@@ -352,6 +377,7 @@ pub struct ValueEnt {
     pub datatype: Type,
     pub type_dependency: TypeDep,
     pub value: Option<CrValue>,
+    pub auto: bool,
     pub mutable: bool,
     pub on_stack: bool,
 }
@@ -378,13 +404,14 @@ crate::sym_id!(Type);
 #[derive(Clone, Debug, PartialEq, Default)]
 pub struct TypeEnt {
     pub visibility: Vis,
+    pub params: Vec<Type>,
     pub kind: TKind,
-    pub name: ID,
     pub size: u32,
     pub align: u32,
     pub attribute_id: usize,
     pub ast: Ast,
     pub module: Module,
+    pub name: ID,
     pub token_hint: Token,
 }
 

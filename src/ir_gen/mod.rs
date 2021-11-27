@@ -2178,27 +2178,12 @@ impl Field {
 #[derive(Debug)]
 pub struct IrGenError {
     kind: IGEKind,
-    token: Option<Token>,
+    token: Token,
 }
 
 impl IrGenError {
     pub fn new(kind: IGEKind, token: Token) -> Self {
-        Self {
-            kind,
-            token: Some(token),
-        }
-    }
-
-    pub fn kind(&self) -> &IGEKind {
-        &self.kind
-    }
-
-    pub fn take_kind(&mut self) -> IGEKind {
-        std::mem::replace(&mut self.kind, IGEKind::None)
-    }
-
-    pub fn token(&self) -> &Option<Token> {
-        &self.token
+        Self { kind, token }
     }
 
     pub fn cannot_convert(token: &Token, from: &Cell<Datatype>, to: &Cell<Datatype>) -> Self {
@@ -2254,7 +2239,7 @@ impl Into<IrGenError> for IGEKind {
     fn into(self) -> IrGenError {
         IrGenError {
             kind: self,
-            token: None,
+            token: Token::default(),
         }
     }
 }
