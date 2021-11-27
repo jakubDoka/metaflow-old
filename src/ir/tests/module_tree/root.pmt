@@ -9,7 +9,7 @@ struct GUA:
 
 attr pop
 
-fun ++[T](a: T, b: T) -> T: a + b
+fun ++[T](a, b: T) -> T: a + b
 
 fun main -> i64:
   var val

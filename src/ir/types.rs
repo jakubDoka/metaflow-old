@@ -197,7 +197,7 @@ impl<'a> TypeResolver<'a> {
                     return Ok((host_module, datatype));
                 }
 
-                let actual = self.context.instance_buffer.len() - start;
+                let actual = self.context.instance_buffer.len() - start - 1;
                 let bt = &mut self.program[base_type];
                 let ast = std::mem::take(&mut bt.ast);
                 let token_hint = bt.token_hint.clone();
@@ -381,10 +381,10 @@ impl<'a> TypeResolver<'a> {
 
 #[derive(Debug, Default)]
 pub struct TypeResolverContext {
-    instance_buffer: Vec<Type>,
-    instance_id_buffer: Vec<ID>,
-    shadowed_types: Vec<Type>,
-    connect_buffer: Vec<Type>,
+    pub instance_buffer: Vec<Type>,
+    pub instance_id_buffer: Vec<ID>,
+    pub shadowed_types: Vec<Type>,
+    pub connect_buffer: Vec<Type>,
 }
 
 impl TypeResolverContext {

@@ -187,6 +187,39 @@ impl<I: SymID, T: Default> Default for SymTable<I, T> {
     }
 }
 
+#[derive(Debug, Default)]
+pub struct LockedSymVec<I: SymID, T> {
+    inner: SymVec<I, T>,
+}
+
+impl<I: SymID, T> LockedSymVec<I, T> {
+    pub fn new(inner: SymVec<I, T>) -> Self {
+        Self {
+            inner
+        }
+    }
+
+    // SAFETY: ensure that LockedSymVec does not get dropped 
+    // while reference still lives
+    pub unsafe fn get<'a>(&self, id: I) -> &'a T {
+        std::mem::transmute::<_, &T>(&self.inner[id])
+    }
+}
+
+impl<I: SymID, T> Index<I> for LockedSymVec<I, T> {
+    type Output = T;
+
+    fn index(&self, id: I) -> &Self::Output {
+        &self.inner[id]
+    }
+}
+
+impl<I: SymID, T> IndexMut<I> for LockedSymVec<I, T> {
+    fn index_mut(&mut self, id: I) -> &mut Self::Output {
+        &mut self.inner[id]
+    }
+}
+
 #[derive(Debug)]
 pub struct SymVec<I: SymID, T> {
     data: Vec<T>,

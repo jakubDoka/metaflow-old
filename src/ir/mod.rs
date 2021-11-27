@@ -118,6 +118,8 @@ impl Program {
     }
 }
 
+crate::sym_id!(AstRef);
+
 macro_rules! define_repo {
     ($($name:ident, $repr:ident, $size:expr),+,) => {
         #[derive(Default, Clone, Debug)]
@@ -244,7 +246,7 @@ pub struct FunEnt {
     pub hint_token: Token,
     pub kind: FKind,
     pub body: FunBody,
-    pub ast: Ast,
+    pub ast: AstRef,
     pub attribute_id: usize,
 }
 

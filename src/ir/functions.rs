@@ -1,10 +1,12 @@
 use std::ops::{Deref, DerefMut, Index, IndexMut};
 
-use crate::ast::{AKind, Ast};
+use crate::ast::{AKind, Ast, Vis};
 use crate::ir::{
-    Chunk, FKind, Fun, FunBody, FunEnt, Inst, LTKind, Module, Type, TypeDep, Value, ValueEnt,
+    Chunk, FKind, Fun, FunBody, FunEnt, Inst, LTKind, Module, ModuleEnt, Type, TypeDep, Value,
+    ValueEnt,
 };
 use crate::lexer::Token;
+use crate::util::sym_table::LockedSymVec;
 use crate::util::{
     sdbm::{SdbmHashState, ID},
     sym_table::{SymID, SymVec},
@@ -12,7 +14,7 @@ use crate::util::{
 
 use super::module_tree::ModuleTreeBuilder;
 use super::types::{TEKind, TypeError, TypeResolver, TypeResolverContext};
-use super::{FunSignature, GenericElement, GenericSignature, IKind, InstEnt, Program, TKind};
+use super::{FunSignature, GenericElement, GenericSignature, IKind, InstEnt, Program, TKind, AstRef};
 
 type Result<T = ()> = std::result::Result<T, FunError>;
 
@@ -56,15 +58,19 @@ impl<'a> FunResolver<'a> {
             _ => unreachable!(),
         };
 
-        let ast = std::mem::take(&mut fun.ast);
-
         let module = fun.module;
+        {
+            // SAFETY: as long as context lives ast is valid, scope ensures
+            // it does not escape 
+            let ast = unsafe {
+                self.context.function_ast.get(self.program[function].ast)
+            };
+            self.translate_function_low(module, ast, &signature)?;
+        }
 
-        self.translate_function_low(module, &ast, &signature)?;
 
         let fun = &mut self.program.functions[function];
         fun.kind = FKind::Normal(signature);
-        fun.ast = ast;
         fun.body = self.context.function_body.clone();
         self.context.function_body.clear();
 
@@ -556,6 +562,7 @@ impl<'a> FunResolver<'a> {
         generic.inferred.resize(signature.params.len(), Type::NULL);
 
         let mut i = 0;
+        let mut n = 0;
         while i < signature.return_index {
             let (count, length) = if let GenericElement::NextArgument(count, length) =
                 signature.elements[i].clone()
@@ -566,12 +573,13 @@ impl<'a> FunResolver<'a> {
             };
 
             for j in 0..count {
-                let datatype = self.context[values[i + j]].datatype;
+                let datatype = self.context[values[n + j]].datatype;
                 generic.arg_buffer.clear();
                 self.load_arg_from_datatype(datatype, &mut generic);
-                let pattern = &signature.elements[i + 1..i + length];
+                let pattern = &signature.elements[i + 1..i + length + 1];
 
                 for (real, pattern) in generic.arg_buffer.iter().zip(pattern) {
+                    println!("{:?} {:?}", real, pattern);
                     if real != pattern {
                         match pattern {
                             GenericElement::Parameter(param) => match real {
@@ -587,9 +595,89 @@ impl<'a> FunResolver<'a> {
             }
 
             i += length + 1;
+            n += 1;
         }
 
-        todo!();
+        generic.param_buffer.clear();
+        generic.param_buffer.extend(&signature.params);
+
+        let module_id = self.program[module].id;
+
+        let old_len = self.context.type_resolver_context.shadowed_types.len();
+        let old_id_len = self.context.type_resolver_context.instance_id_buffer.len();
+
+        for (&name, &datatype) in generic.param_buffer.iter().zip(generic.inferred.iter()) {
+            let id = name.combine(module_id);
+            if let Some(shadowed) = self.program.types.redirect(id, datatype) {
+                self.context
+                    .type_resolver_context
+                    .shadowed_types
+                    .push(shadowed);
+            } else {
+                self.context
+                    .type_resolver_context
+                    .instance_id_buffer
+                    .push(id);
+            }
+        }
+
+        self.context.generic = generic;
+
+        let old_dependency_len = if module != self.context.current_module {
+            let current = self.context.current_module;
+            // SAFETY: the current module and targeted are not the same at this point
+            let (target_module, source_module) = unsafe {
+                (
+                    std::mem::transmute::<_, &mut ModuleEnt>(&mut self.program[module]),
+                    &self.program[current],
+                )
+            };
+            let len = target_module.dependency.len();
+            target_module
+                .dependency
+                .extend(source_module.dependency.iter());
+            len
+        } else {
+            0
+        };
+
+        let fun = &self.program.generic_functions[functions][index];
+        let (ast_ref, name, vis, attr_id) = (fun.ast, fun.name, fun.visibility, fun.attribute_id);
+        let fun = {
+            // SAFETY: the function_ast has same live-time as self ans scope ensures 
+            // the reference does not escape
+            let ast = unsafe { 
+                self.context.function_ast.get(ast_ref)
+            };
+            self.context.dive();
+            let fun = self.collect_normal_function(module, ast_ref, ast, name, vis, attr_id)?;
+            self.context.bail();
+            fun
+        };
+        self.program[module].dependency.truncate(old_dependency_len);
+
+        for i in old_id_len..self.context.type_resolver_context.instance_id_buffer.len() {
+            self.program.types.remove_redirect(
+                self.context.type_resolver_context.instance_id_buffer[i],
+                None,
+            );
+        }
+        self.context
+            .type_resolver_context
+            .instance_id_buffer
+            .truncate(old_id_len);
+
+        for i in old_len..self.context.type_resolver_context.shadowed_types.len() {
+            let direct_id = self.context.type_resolver_context.shadowed_types[i];
+            let id = self.program.types.direct_to_id(direct_id);
+            self.program.types.remove_redirect(id, Some(direct_id));
+        }
+        self.context
+            .type_resolver_context
+            .shadowed_types
+            .truncate(old_len);
+
+        Ok(Some(fun))
     }
 
     fn find_by_name(&mut self, name: ID) -> Option<(Module, Fun)> {
@@ -646,6 +734,8 @@ impl<'a> FunResolver<'a> {
     }
 
     fn collect(&mut self) -> Result {
+        let mut collected_ast = SymVec::new();
+
         for module in unsafe { self.program.modules.direct_ids() } {
             if !self.program.modules.is_direct_valid(module) {
                 continue;
@@ -655,85 +745,16 @@ impl<'a> FunResolver<'a> {
             for (i, a) in ast.iter_mut().enumerate() {
                 match a.kind.clone() {
                     AKind::Fun(visibility) => {
+                        let a_ref = collected_ast.add(std::mem::take(a));
+                        let a = &collected_ast[a_ref];
                         let header = &a[0];
                         match header[0].kind {
                             AKind::Identifier => {
-                                let mut name = ID::new().add(header.token.spam.deref());
-                                let mut args = Vec::new();
-                                for param_line in &a[1..a.len() - 1] {
-                                    let datatype = param_line.last().unwrap();
-                                    let datatype = self.resolve_type_low(module, datatype)?;
-                                    name = name.combine(self.program.types.direct_to_id(datatype));
-                                    for param in param_line[0..param_line.len() - 1].iter() {
-                                        let name = ID::new().add(param.token.spam.deref());
-                                        let mutable = param_line.kind == AKind::FunArgument(true);
-                                        args.push(ValueEnt {
-                                            name,
-                                            datatype,
-                                            mutable,
-
-                                            ..Default::default()
-                                        });
-                                    }
-                                }
-                                name = name.combine(self.program.modules.direct_to_id(module));
-                                let return_type = header.last().unwrap();
-                                let return_type = if return_type.kind == AKind::None {
-                                    Type::NULL
-                                } else {
-                                    self.resolve_type_low(module, return_type)?
-                                };
-
-                                let function_signature = FunSignature { args, return_type };
-
-                                let token_hint = header.token.clone();
-
-                                let function = FunEnt {
-                                    visibility,
-                                    name,
-                                    module,
-                                    hint_token: token_hint.clone(),
-                                    kind: FKind::Normal(function_signature),
-                                    ast: std::mem::take(a),
-                                    attribute_id: i,
-
-                                    ..Default::default()
-                                };
-
-                                if let (Some(function), _) =
-                                    self.program.functions.insert(name, function)
-                                {
-                                    return Err(FunError::new(
-                                        FEKind::Duplicate(function.hint_token),
-                                        &token_hint,
-                                    ));
-                                }
+                                let name = ID::new().add(header[0].token.spam.deref());
+                                self.collect_normal_function(module, a_ref, a, name, visibility, i)?;
                             }
                             AKind::Instantiation => {
-                                let name = ID::new()
-                                    .add(header[0][0].token.spam.deref())
-                                    .combine(self.program.modules.direct_to_id(module));
-
-                                let ast = std::mem::take(a);
-
-                                let signature = self.translate_generic_signature(&ast[0])?;
-
-                                let function = FunEnt {
-                                    visibility,
-                                    name,
-                                    module,
-                                    hint_token: ast[0].token.clone(),
-                                    kind: FKind::Generic(signature),
-                                    ast,
-                                    attribute_id: i,
-
-                                    ..Default::default()
-                                };
-
-                                self.program
-                                    .generic_functions
-                                    .get_mut_or_default(name)
-                                    .push(function);
+                                self.collect_generic_function(module, a_ref, a, visibility, i)?;
                             }
                             _ => unreachable!("{}", a),
                         }
@@ -744,7 +765,108 @@ impl<'a> FunResolver<'a> {
             self.program.modules[module].ast = ast;
         }
 
+        self.context.function_ast = LockedSymVec::new(collected_ast);
+
         Ok(())
+    }
+
+    fn collect_generic_function(
+        &mut self,
+        module: Module,
+        a_ref: AstRef,
+        a: &Ast,
+        visibility: Vis,
+        attribute_id: usize,
+    ) -> Result<Fun> {
+        let name = ID::new()
+            .add(a[0][0][0].token.spam.deref())
+            .combine(self.program.modules.direct_to_id(module));
+
+        let signature = self.translate_generic_signature(&a[0])?;
+
+        let function = FunEnt {
+            visibility,
+            name,
+            module,
+            hint_token: a[0].token.clone(),
+            kind: FKind::Generic(signature),
+            ast: a_ref,
+            attribute_id,
+
+            ..Default::default()
+        };
+
+        self.program
+            .generic_functions
+            .get_mut_or_default(name)
+            .push(function);
+                
+        Ok(self.program.generic_functions.id_to_direct(name).unwrap())
+    }
+
+    fn collect_normal_function(
+        &mut self,
+        module: Module,
+        a_ref: AstRef,
+        a: &Ast,
+        mut name: ID,
+        visibility: Vis,
+        attribute_id: usize,
+    ) -> Result<Fun> {
+        let mut args = Vec::new();
+        let header = &a[0];
+        for param_line in &header[1..header.len() - 1] {
+            let datatype = param_line.last().unwrap();
+            let datatype = self.resolve_type_low(module, datatype)?;
+            name = name.combine(self.program.types.direct_to_id(datatype));
+            for param in param_line[0..param_line.len() - 1].iter() {
+                let name = ID::new().add(param.token.spam.deref());
+                let mutable = param_line.kind == AKind::FunArgument(true);
+                args.push(ValueEnt {
+                    name,
+                    datatype,
+                    mutable,
+
+                    ..Default::default()
+                });
+            }
+        }
+        
+        name = name.combine(self.program.modules.direct_to_id(module));
+        let return_type = header.last().unwrap();
+        let return_type = if return_type.kind == AKind::None {
+            Type::NULL
+        } else {
+            self.resolve_type_low(module, return_type)?
+        };
+
+        let function_signature = FunSignature { args, return_type };
+
+        let token_hint = header.token.clone();
+
+        let function = FunEnt {
+            visibility,
+            name,
+            module,
+            hint_token: token_hint.clone(),
+            kind: FKind::Normal(function_signature),
+            attribute_id,
+            ast: a_ref,
+
+            ..Default::default()
+        };
+
+        let id = match self.program.functions.insert(name, function) {
+            (Some(function), _) => {
+                return Err(FunError::new(
+                    FEKind::Duplicate(function.hint_token),
+                    &token_hint,
+                ));
+            }
+            (_, id) => id,
+        };
+
+        Ok(id)
     }
 
     fn translate_generic_signature(&mut self, ast: &Ast) -> Result<GenericSignature> {
@@ -892,6 +1014,7 @@ impl<'a> FunResolver<'a> {
 #[derive(Debug)]
 pub struct FunResolverContext {
     pub generic: GenericFunContext,
+    pub function_ast: LockedSymVec<AstRef, Ast>,
     pub graph_frontier: Vec<(Value, Type)>,
     pub type_resolver_context: TypeResolverContext,
     pub function_context_pool: Vec<FunContext>,
@@ -921,6 +1044,7 @@ impl FunResolverContext {
 impl Default for FunResolverContext {
     fn default() -> Self {
         FunResolverContext {
+            function_ast: LockedSymVec::default(),
             generic: Default::default(),
             graph_frontier: vec![],
             type_resolver_context: Default::default(),
