@@ -238,7 +238,6 @@ impl Generator {
                         );
                     }
                     _ => {
-                        println!("{}", item);
                         item.drain(..)
                             .for_each(|item| self.pushed_attributes.push(item));
                     }

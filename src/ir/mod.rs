@@ -144,6 +144,8 @@ macro_rules! define_repo {
                         align: $size.min(8),
                         module: program.builtin,
 
+                        token_hint: Token::builtin(stringify!($name)),
+
                         ..Default::default()
                     };
                     let (_, id) = program.types.insert(id, type_ent);
@@ -243,7 +245,7 @@ pub struct FunEnt {
     pub visibility: Vis,
     pub name: ID,
     pub module: Module,
-    pub hint_token: Token,
+    pub token_hint: Token,
     pub kind: FKind,
     pub body: FunBody,
     pub ast: AstRef,

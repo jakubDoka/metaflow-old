@@ -194,12 +194,10 @@ pub struct LockedSymVec<I: SymID, T> {
 
 impl<I: SymID, T> LockedSymVec<I, T> {
     pub fn new(inner: SymVec<I, T>) -> Self {
-        Self {
-            inner
-        }
+        Self { inner }
     }
 
-    // SAFETY: ensure that LockedSymVec does not get dropped 
+    // SAFETY: ensure that LockedSymVec does not get dropped
     // while reference still lives
     pub unsafe fn get<'a>(&self, id: I) -> &'a T {
         std::mem::transmute::<_, &T>(&self.inner[id])
@@ -310,6 +308,16 @@ macro_rules! sym_id {
         impl Default for $id {
             fn default() -> Self {
                 Self::NULL
+            }
+        }
+
+        impl std::fmt::Display for $id {
+            fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+                if self.is_null() {
+                    write!(f, "NULL")
+                } else {
+                    write!(f, "{}{}", stringify!($id), self.0)
+                }
             }
         }
     };

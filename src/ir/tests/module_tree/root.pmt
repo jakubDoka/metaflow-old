@@ -12,8 +12,10 @@ attr pop
 fun ++[T](a, b: T) -> T: a + b
 
 fun main -> i64:
-  var val
-  var val2 = val
+  var 
+    val
+    val2 = val
+    unknown
 
   val ++= 10
 

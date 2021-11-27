@@ -14,7 +14,9 @@ use crate::util::{
 
 use super::module_tree::ModuleTreeBuilder;
 use super::types::{TEKind, TypeError, TypeResolver, TypeResolverContext};
-use super::{FunSignature, GenericElement, GenericSignature, IKind, InstEnt, Program, TKind, AstRef};
+use super::{
+    AstRef, FunSignature, GenericElement, GenericSignature, IKind, InstEnt, Program, TKind,
+};
 
 type Result<T = ()> = std::result::Result<T, FunError>;
 
@@ -61,13 +63,10 @@ impl<'a> FunResolver<'a> {
         let module = fun.module;
         {
             // SAFETY: as long as context lives ast is valid, scope ensures
-            // it does not escape 
-            let ast = unsafe {
-                self.context.function_ast.get(self.program[function].ast)
-            };
+            // it does not escape
+            let ast = unsafe { self.context.function_ast.get(self.program[function].ast) };
             self.translate_function_low(module, ast, &signature)?;
         }
-
 
         let fun = &mut self.program.functions[function];
         fun.kind = FKind::Normal(signature);
@@ -249,7 +248,7 @@ impl<'a> FunResolver<'a> {
                         }
                     }
 
-                    let unresolved = actual_datatype.is_null() as usize;
+                    let unresolved = self.is_auto(actual_datatype) as usize;
 
                     let dep = if unresolved == 0 {
                         TypeDep::NULL
@@ -416,8 +415,7 @@ impl<'a> FunResolver<'a> {
             val.datatype = datatype;
             let dependency_id = val.type_dependency;
             let mut dependencies = std::mem::take(&mut self.context[dependency_id]);
-
-            for dep in dependencies.drain(..) {
+            for dep in dependencies.drain(..).skip(1)/* first is null marker */ {
                 let inst = &mut self.context[dep];
                 inst.unresolved -= 1;
                 if inst.unresolved != 0 {
@@ -579,7 +577,6 @@ impl<'a> FunResolver<'a> {
                 let pattern = &signature.elements[i + 1..i + length + 1];
 
                 for (real, pattern) in generic.arg_buffer.iter().zip(pattern) {
-                    println!("{:?} {:?}", real, pattern);
                     if real != pattern {
                         match pattern {
                             GenericElement::Parameter(param) => match real {
@@ -644,13 +641,12 @@ impl<'a> FunResolver<'a> {
         let fun = &self.program.generic_functions[functions][index];
         let (ast_ref, name, vis, attr_id) = (fun.ast, fun.name, fun.visibility, fun.attribute_id);
         let fun = {
-            // SAFETY: the function_ast has same live-time as self ans scope ensures 
+            // SAFETY: the function_ast has same live-time as self ans scope ensures
             // the reference does not escape
-            let ast = unsafe { 
-                self.context.function_ast.get(ast_ref)
-            };
+            let ast = unsafe { self.context.function_ast.get(ast_ref) };
             self.context.dive();
             let fun = self.collect_normal_function(module, ast_ref, ast, name, vis, attr_id)?;
+            self.translate_function(fun)?;
             self.context.bail();
             fun
         };
@@ -751,7 +747,9 @@ impl<'a> FunResolver<'a> {
                         match header[0].kind {
                             AKind::Identifier => {
                                 let name = ID::new().add(header[0].token.spam.deref());
-                                self.collect_normal_function(module, a_ref, a, name, visibility, i)?;
+                                self.collect_normal_function(
+                                    module, a_ref, a, name, visibility, i,
+                                )?;
                             }
                             AKind::Instantiation => {
                                 self.collect_generic_function(module, a_ref, a, visibility, i)?;
@@ -788,7 +786,7 @@ impl<'a> FunResolver<'a> {
             visibility,
             name,
             module,
-            hint_token: a[0].token.clone(),
+            token_hint: a[0].token.clone(),
             kind: FKind::Generic(signature),
             ast: a_ref,
             attribute_id,
@@ -800,7 +798,7 @@ impl<'a> FunResolver<'a> {
             .generic_functions
             .get_mut_or_default(name)
             .push(function);
-                
+
         Ok(self.program.generic_functions.id_to_direct(name).unwrap())
     }
 
@@ -831,7 +829,7 @@ impl<'a> FunResolver<'a> {
                 });
             }
         }
-        
+
         name = name.combine(self.program.modules.direct_to_id(module));
         let return_type = header.last().unwrap();
         let return_type = if return_type.kind == AKind::None {
@@ -848,7 +846,7 @@ impl<'a> FunResolver<'a> {
             visibility,
             name,
             module,
-            hint_token: token_hint.clone(),
+            token_hint: token_hint.clone(),
             kind: FKind::Normal(function_signature),
             attribute_id,
             ast: a_ref,
@@ -859,7 +857,7 @@ impl<'a> FunResolver<'a> {
         let id = match self.program.functions.insert(name, function) {
             (Some(function), _) => {
                 return Err(FunError::new(
-                    FEKind::Duplicate(function.hint_token),
+                    FEKind::Duplicate(function.token_hint),
                     &token_hint,
                 ));
             }
@@ -1098,7 +1096,7 @@ impl FunContext {
         self.variables
             .iter()
             .rev()
-            .find(|&&val| self.function_body.values[val].name == name)
+            .find(|&&val| !val.is_null() && self.function_body.values[val].name == name)
             .cloned()
     }
 
@@ -1141,7 +1139,8 @@ impl FunContext {
     }
 
     pub fn new_type_dependency(&mut self) -> TypeDep {
-        let value = self.type_graph_pool.pop().unwrap_or_default();
+        let mut value = self.type_graph_pool.pop().unwrap_or_default();
+        value.push(Inst::NULL);
         let value = self.type_graph.add(value);
         value
     }
@@ -1236,4 +1235,29 @@ pub fn test() {
     let mut ctx = FunResolverContext::default();
 
     FunResolver::new(&mut program, &mut ctx).resolve().unwrap();
+
+    for fun in unsafe { program.functions.direct_ids() } {
+        if !program.functions.is_direct_valid(fun)
+            || !matches!(program.functions[fun].kind, FKind::Normal(_))
+        {
+            continue;
+        }
+
+        let fun = &program.functions[fun];
+
+        println!("{}", fun.token_hint.spam.deref());
+
+        for (_, inst) in fun.body.instructions.iter() {
+            println!(
+                "  {}: {} = {:?} |{}",
+                inst.value,
+                program[fun.body.values[inst.value].datatype]
+                    .token_hint
+                    .spam
+                    .deref(),
+                inst.kind,
+                inst.token_hint.spam.deref()
+            );
+        }
+    }
 }
