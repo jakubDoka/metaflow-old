@@ -740,7 +740,6 @@ fun main -> i64
     Jump(Block(7), [Value(16)]) |foo += 1
 
   Block7[Value(17)]:
-
   Block8[]:
     Value(20): i64 = Literal(Int(10, 64)) |10
     Value(20): i64 = Assign(Value(6)) |foo = 10
@@ -821,15 +820,18 @@ fun main -> i64
 
   Block25[]:
     Jump(Block(23), []) |break
+
 fun ++[T](a, b: T) -> T
 
   Block0[Value(0), Value(1)]:
     Value(2): i64 = Call(Fun(3), [Value(0), Value(1)]) |a + b
     Return(Some(Value(2))) |a + b
+
 fun goo[T](x: T) -> T
 
   Block0[Value(0)]:
     Return(Some(Value(0))) |x
+
 function u0:0() -> i64 fast {
 block0:
     v0 = iconst.i64 0
