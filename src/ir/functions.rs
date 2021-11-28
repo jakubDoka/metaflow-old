@@ -2,7 +2,7 @@ use std::ops::{Deref, DerefMut, Index, IndexMut};
 
 use crate::ast::{AKind, Ast, Vis};
 use crate::ir::{
-    Chunk, FKind, Fun, FunBody, FunEnt, Inst, LTKind, Module, ModuleEnt, Type, TypeDep, Value,
+    Block, FKind, Fun, FunBody, FunEnt, Inst, LTKind, Module, ModuleEnt, Type, TypeDep, Value,
     ValueEnt,
 };
 use crate::lexer::Token;
@@ -15,7 +15,8 @@ use crate::util::{
 use super::module_tree::ModuleTreeBuilder;
 use super::types::{TEKind, TypeError, TypeResolver, TypeResolverContext};
 use super::{
-    AstRef, FunSignature, GenericElement, GenericSignature, IKind, InstEnt, Program, TKind,
+    AstRef, BlockEnt, FunSignature, GenericElement, GenericSignature, IKind, InstEnt, Program,
+    TKind,
 };
 
 type Result<T = ()> = std::result::Result<T, FunError>;
@@ -80,18 +81,19 @@ impl<'a> FunResolver<'a> {
         self.context.current_instruction = None;
         self.context.current_module = Some(module);
         self.context.return_type = signature.return_type;
-        let entry_point = self.context.new_chunk();
-        self.context.make_chunk_current(entry_point);
+        let entry_point = self.context.new_block();
+        self.context.make_block_current(entry_point);
 
         signature.args.iter().for_each(|param| {
             let var = self.context.function_body.values.add(param.clone());
+            self.context[entry_point].args.push(var);
             self.context.variables.push(Some(var));
         });
 
         let value = self.block(&ast[1])?;
 
         if let (Some(value), Some(_), Some(return_type)) =
-            (value, self.context.current_chunk, signature.return_type)
+            (value, self.context.current_block, signature.return_type)
         {
             let value_type = self.context[value].datatype;
             if self.is_auto(value_type) {
@@ -102,9 +104,8 @@ impl<'a> FunResolver<'a> {
                 None,
                 &ast[1].last().unwrap().token,
             ));
-            self.context.close_chunk();
         } else if let (Some(return_type), Some(_)) =
-            (signature.return_type, self.context.current_chunk)
+            (signature.return_type, self.context.current_block)
         {
             let temp = self.new_value(return_type);
             self.context.add_instruction(InstEnt::new(
@@ -117,14 +118,12 @@ impl<'a> FunResolver<'a> {
                 None,
                 &ast[1].last().unwrap().token,
             ));
-            self.context.close_chunk();
-        } else if self.context.current_chunk.is_some() {
+        } else if self.context.current_block.is_some() {
             self.context.add_instruction(InstEnt::new(
                 IKind::Return(None),
                 None,
                 &ast[1].last().unwrap().token,
             ));
-            self.context.close_chunk();
         }
 
         for (id, dep) in self.context.type_graph.iter() {
@@ -158,7 +157,6 @@ impl<'a> FunResolver<'a> {
         match statement.kind {
             AKind::VarStatement(_) => self.var_statement(statement)?,
             AKind::ReturnStatement => self.return_statement(statement)?,
-            AKind::IfExpression => todo!(),
             AKind::Loop => todo!(),
             AKind::Break => todo!(),
             AKind::Continue => todo!(),
@@ -190,10 +188,9 @@ impl<'a> FunResolver<'a> {
             let value = self.expression(&ast[0])?;
             let actual_type = self.context[value].datatype;
             if self.is_auto(actual_type) {
-                println!("{}", value);
                 self.infer(value, datatype)?;
             } else {
-                self.assert_type(actual_type, datatype, &ast[0])?;
+                self.assert_type(actual_type, datatype, &ast[0].token)?;
             }
 
             Some(value)
@@ -201,7 +198,6 @@ impl<'a> FunResolver<'a> {
 
         self.context
             .add_instruction(InstEnt::new(IKind::Return(value), None, &ast.token));
-        self.context.close_chunk();
 
         Ok(())
     }
@@ -278,16 +274,16 @@ impl<'a> FunResolver<'a> {
                         if self.is_auto(actual_datatype) {
                             self.infer(value, datatype)?;
                         } else {
-                            self.assert_type(actual_datatype, datatype, raw_value)?;
+                            self.assert_type(actual_datatype, datatype, &raw_value.token)?;
                         }
                     }
 
                     let unresolved = self.is_auto(actual_datatype);
 
                     let dep = if unresolved {
-                        None
-                    } else {
                         Some(self.context.new_type_dependency())
+                    } else {
+                        None
                     };
 
                     let var = ValueEnt {
@@ -330,8 +326,145 @@ impl<'a> FunResolver<'a> {
             AKind::Literal => self.literal(ast),
             AKind::Identifier => self.identifier(ast),
             AKind::Call => self.call(ast),
+            AKind::IfExpression => self.if_expression(ast),
             _ => todo!("unmatched expression ast {}", ast),
         }
+    }
+
+    fn if_expression(&mut self, ast: &Ast) -> Result<Option<Value>> {
+        let cond_expr = &ast[0];
+        let cond_val = self.expression(cond_expr)?;
+        let cond_type = self.context[cond_val].datatype;
+
+        let then_block = self.context.new_block();
+        self.context.add_instruction(InstEnt::new(
+            IKind::JumpIfTrue(cond_val, then_block, Vec::new()),
+            None,
+            &cond_expr.token,
+        ));
+
+        if self.is_auto(cond_type) {
+            self.infer(cond_val, self.program.builtin_repo.bool)?;
+        } else {
+            self.assert_type(cond_type, self.program.builtin_repo.bool, &cond_expr.token)?;
+        }
+
+        let mut merge_block = None;
+
+        let else_branch = &ast[2];
+        let some_block = self.context.new_block();
+        let else_block = if else_branch.kind == AKind::None {
+            self.context.add_instruction(InstEnt::new(
+                IKind::Jump(some_block, Vec::new()),
+                None,
+                &else_branch.token,
+            ));
+            merge_block = Some(some_block);
+            None
+        } else {
+            self.context.add_instruction(InstEnt::new(
+                IKind::Jump(some_block, Vec::new()),
+                None,
+                &else_branch.token,
+            ));
+            Some(some_block)
+        };
+
+        /*if let Some((_, loop_block, ..)) = self.loop_headers.last() {
+            if loop_block.to_owned() != builder.current_block().unwrap() {
+                builder.seal_current_block();
+            }
+        } else {
+            builder.seal_current_block();
+        }*/
+
+        self.context.make_block_current(then_block);
+
+        let then_branch = &ast[1];
+
+        let then_result = self.block(then_branch)?;
+
+        let mut result = None;
+        let mut then_filled = false;
+        if let Some(val) = then_result {
+            if merge_block.is_some() {
+                return Err(FunError::new(FEKind::MissingElseBranch, &ast.token));
+            }
+
+            let block = self.context.new_block();
+            self.context.add_instruction(InstEnt::new(
+                IKind::Jump(block, vec![val]),
+                None,
+                &Token::default(),
+            ));
+
+            let datatype = self.context[val].datatype;
+            let value = self.new_value(datatype);
+            self.context[block].args.push(value);
+            result = Some(value);
+            merge_block = Some(block);
+        } else if self.context.current_block.is_some() {
+            let block = merge_block.unwrap_or_else(|| self.context.new_block());
+            self.context.add_instruction(InstEnt::new(
+                IKind::Jump(block, Vec::new()),
+                None,
+                &Token::default(),
+            ));
+            merge_block = Some(block);
+        } else {
+            then_filled = true;
+        }
+
+        if else_branch.kind == AKind::Group {
+            let else_block = else_block.unwrap();
+            self.context.make_block_current(else_block);
+            let else_result = self.block(else_branch)?;
+
+            if let Some(val) = else_result {
+                let value_token = &else_branch.last().unwrap().token;
+                if let Some(result) = result {
+                    let merge_block = merge_block.unwrap();
+                    self.may_infer(val, result, &value_token)?;
+                    self.context.add_instruction(InstEnt::new(
+                        IKind::Jump(merge_block, vec![val]),
+                        None,
+                        value_token,
+                    ));
+                    self.context.make_block_current(merge_block);
+                } else if then_filled {
+                    let block = self.context.new_block();
+
+                    self.context.add_instruction(InstEnt::new(
+                        IKind::Jump(block, vec![val]),
+                        None,
+                        value_token,
+                    ));
+
+                    let datatype = self.context[val].datatype;
+                    let value = self.new_value(datatype);
+                    self.context[block].args.push(value);
+                    result = Some(value);
+                    self.context.make_block_current(block);
+                } else {
+                    return Err(FunError::new(FEKind::UnexpectedValue, &ast.token));
+                }
+            } else {
+                let block = merge_block.unwrap_or_else(|| self.context.new_block());
+                if self.context.current_block.is_some() {
+                    if result.is_some() {
+                        return Err(FunError::new(FEKind::ExpectedValue, &ast.token));
+                    }
+                    self.context.add_instruction(InstEnt::new(
+                        IKind::Jump(block, Vec::new()),
+                        None,
+                        &Token::default(),
+                    ));
+                }
+                self.context.make_block_current(block);
+            }
+        }
+
+        Ok(result)
     }
 
     fn call(&mut self, ast: &Ast) -> Result<Option<Value>> {
@@ -451,6 +584,26 @@ impl<'a> FunResolver<'a> {
         self.call_low(base_id, &ast.token)
     }
 
+    fn may_infer(&mut self, a: Value, b: Value, token: &Token) -> Result<bool> {
+        let a_type = self.context[a].datatype;
+        let b_type = self.context[b].datatype;
+        Ok(if self.is_auto(a_type) {
+            if !self.is_auto(b_type) {
+                self.infer(a, b_type)?;
+                true
+            } else {
+                false
+            }
+        } else {
+            if self.is_auto(b_type) {
+                self.infer(b, a_type)?;
+            } else {
+                self.assert_type(a_type, b_type, token)?;
+            }
+            true
+        })
+    }
+
     fn infer(&mut self, value: Value, datatype: Type) -> Result<()> {
         let mut frontier = std::mem::take(&mut self.context.graph_frontier);
         frontier.clear();
@@ -552,7 +705,7 @@ impl<'a> FunResolver<'a> {
             if self.is_auto(value_datatype) {
                 self.infer(value, target_datatype)?;
             } else {
-                self.assert_type(value_datatype, target_datatype, ast)?;
+                self.assert_type(value_datatype, target_datatype, &ast.token)?;
             }
             false
         };
@@ -755,14 +908,11 @@ impl<'a> FunResolver<'a> {
             })
     }
 
-    fn assert_type(&self, actual: Type, expected: Type, ast: &Ast) -> Result {
+    fn assert_type(&self, actual: Type, expected: Type, token: &Token) -> Result {
         if actual == expected {
             Ok(())
         } else {
-            Err(FunError::new(
-                FEKind::TypeMismatch(actual, expected),
-                &ast.token,
-            ))
+            Err(FunError::new(FEKind::TypeMismatch(actual, expected), token))
         }
     }
 
@@ -1121,7 +1271,7 @@ pub struct GenericFunContext {
 pub struct FunContext {
     pub return_type: Option<Type>,
     pub current_module: Option<Module>,
-    pub current_chunk: Option<Chunk>,
+    pub current_block: Option<Block>,
     pub current_instruction: Option<Inst>,
     pub variables: Vec<Option<Value>>,
     pub type_graph: SymVec<TypeDep, Vec<Inst>>,
@@ -1165,7 +1315,7 @@ impl FunContext {
 
     pub fn clear(&mut self) {
         self.current_module = None;
-        self.current_chunk = None;
+        self.current_block = None;
         self.variables.clear();
         self.function_body.clear();
 
@@ -1176,29 +1326,34 @@ impl FunContext {
 
     pub fn add_instruction(&mut self, instruction: InstEnt) -> Inst {
         debug_assert!(
-            self.current_chunk.is_some(),
-            "no chunk to add instruction to"
+            self.current_block.is_some(),
+            "no block to add instruction to"
         );
+        let closing = instruction.kind.is_closing();
         let inst = self.function_body.instructions.add(instruction);
         self.current_instruction = Some(inst);
+        if closing {
+            self.close_block();
+        }
         inst
     }
 
-    pub fn new_chunk(&mut self) -> Chunk {
-        self.function_body.chunks.add(Default::default())
+    pub fn new_block(&mut self) -> Block {
+        self.function_body.blocks.add(Default::default())
     }
 
-    pub fn make_chunk_current(&mut self, chunk: Chunk) {
-        self.function_body.chunks[chunk].first_instruction = self.current_instruction;
-        self.current_chunk = Some(chunk);
+    pub fn make_block_current(&mut self, block: Block) {
+        self.function_body.blocks[block].first_instruction =
+            self.current_instruction.map(|i| Inst::new(i.raw() + 1));
+        self.current_block = Some(block);
     }
 
-    pub fn close_chunk(&mut self) {
-        if let Some(chunk) = self.current_chunk {
-            self.function_body.chunks[chunk].last_instruction = self.current_instruction;
-            self.current_chunk = None;
+    pub fn close_block(&mut self) {
+        if let Some(block) = self.current_block {
+            self.function_body.blocks[block].last_instruction = self.current_instruction;
+            self.current_block = None;
         } else {
-            panic!("no chunk to close");
+            panic!("no block to close");
         }
     }
 
@@ -1207,6 +1362,20 @@ impl FunContext {
         value.push(Inst::new(0));
         let value = self.type_graph.add(value);
         value
+    }
+}
+
+impl Index<Block> for FunContext {
+    type Output = BlockEnt;
+
+    fn index(&self, val: Block) -> &Self::Output {
+        &self.function_body.blocks[val]
+    }
+}
+
+impl IndexMut<Block> for FunContext {
+    fn index_mut(&mut self, val: Block) -> &mut Self::Output {
+        &mut self.function_body.blocks[val]
     }
 }
 
@@ -1274,9 +1443,11 @@ pub enum FEKind {
     ExpectedValue,
     TypeMismatch(Type, Type),
     NotFound,
+    UnexpectedValue,
     UnexpectedReturnValue,
     UndefinedVariable,
     UnresolvedType(TypeDep),
+    MissingElseBranch,
 }
 
 impl Into<FunError> for TypeError {
@@ -1311,10 +1482,10 @@ pub fn test() {
 
         println!("{}", fun.token_hint.spam.deref());
 
-        for (id, chunk) in fun.body.chunks.iter() {
-            println!("  {}:", id);
-            for inst in (chunk.first_instruction.map(|i| i.raw()).unwrap_or(0)
-                ..=chunk.last_instruction.unwrap().raw())
+        for (id, block) in fun.body.blocks.iter() {
+            println!("  {}{:?}:", id, block.args);
+            for inst in (block.first_instruction.map(|i| i.raw()).unwrap_or(0)
+                ..=block.last_instruction.unwrap().raw())
                 .map(|i| &fun.body.instructions[Inst::new(i)])
             {
                 if let Some(value) = inst.value {

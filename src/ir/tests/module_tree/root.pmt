@@ -22,4 +22,21 @@ fun main -> i64:
 
   var foo = goo(val)
 
+  foo += if foo == 10: 1 else: 1
+
+  if foo == 10:
+    return foo
+  else:
+    foo += 1
+  
+  if foo <= 30:
+    foo = 10
+  else:
+    return foo
+  
+  if foo > 10:
+    foo = 20
+  else:
+    foo = 30 | 6
+
   return val

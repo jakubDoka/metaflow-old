@@ -96,6 +96,12 @@ impl Program {
             for operation in operators.split(' ') {
                 for &datatype in types.iter() {
                     let datatype_id = self.types.direct_to_id(datatype);
+                    let return_type = if matches!(operation, "==" | "!=" | ">" | "<" | ">=" | "<=")
+                    {
+                        self.builtin_repo.bool
+                    } else {
+                        datatype
+                    };
                     let binary_op = FunEnt {
                         visibility: Vis::Public,
                         name: ID::new()
@@ -106,7 +112,7 @@ impl Program {
                         module,
                         kind: FKind::Builtin(FunSignature {
                             args: vec![ValueEnt::temp(datatype), ValueEnt::temp(datatype)],
-                            return_type: Some(datatype),
+                            return_type: Some(return_type),
                         }),
 
                         token_hint: Default::default(),
@@ -275,14 +281,14 @@ impl FunEnt {
 pub struct FunBody {
     pub values: SymVec<Value, ValueEnt>,
     pub instructions: SymVec<Inst, InstEnt>,
-    pub chunks: SymVec<Chunk, ChunkEnt>,
+    pub blocks: SymVec<Block, BlockEnt>,
 }
 
 impl FunBody {
     pub fn clear(&mut self) {
         self.values.clear();
         self.instructions.clear();
-        self.chunks.clear();
+        self.blocks.clear();
     }
 }
 
@@ -317,6 +323,14 @@ pub enum IKind {
     Literal(LTKind),
     Return(Option<Value>),
     Assign(Value),
+    Jump(Block, Vec<Value>),
+    JumpIfTrue(Value, Block, Vec<Value>),
+}
+
+impl IKind {
+    pub fn is_closing(&self) -> bool {
+        matches!(self, IKind::Jump(..) | IKind::Return(..))
+    }
 }
 
 impl Default for IKind {
@@ -325,10 +339,11 @@ impl Default for IKind {
     }
 }
 
-crate::sym_id!(Chunk);
+crate::sym_id!(Block);
 
 #[derive(Debug, Default, Clone)]
-pub struct ChunkEnt {
+pub struct BlockEnt {
+    pub args: Vec<Value>,
     pub first_instruction: Option<Inst>,
     pub last_instruction: Option<Inst>,
 }
