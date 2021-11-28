@@ -692,5 +692,451 @@ Group 'use' "use":
      Identifier identifier "c"
     Literal integer "30"
 
-Element(ID(433671222759467367), Type(3)) Parameter(0)
-Element(ID(433671222759467367), Type(3)) Parameter(0)
+SymVec {
+    data: [
+        [
+            Inst(
+                0,
+            ),
+            Inst(
+                0,
+            ),
+            Inst(
+                0,
+            ),
+            Inst(
+                2,
+            ),
+            Inst(
+                6,
+            ),
+            Inst(
+                7,
+            ),
+            Inst(
+                8,
+            ),
+        ],
+        [
+            Inst(
+                0,
+            ),
+            Inst(
+                3,
+            ),
+            Inst(
+                3,
+            ),
+        ],
+        [
+            Inst(
+                0,
+            ),
+            Inst(
+                7,
+            ),
+        ],
+        [
+            Inst(
+                0,
+            ),
+            Inst(
+                9,
+            ),
+        ],
+    ],
+    p: PhantomData,
+}
+SymVec {
+    data: [
+        ValueEnt {
+            name: ID(
+                0,
+            ),
+            datatype: Type(
+                11,
+            ),
+            type_dependency: None,
+            value: None,
+            mutable: false,
+            on_stack: false,
+        },
+        ValueEnt {
+            name: ID(
+                507787361729,
+            ),
+            datatype: Type(
+                11,
+            ),
+            type_dependency: Some(
+                TypeDep(
+                    0,
+                ),
+            ),
+            value: None,
+            mutable: true,
+            on_stack: false,
+        },
+        ValueEnt {
+            name: ID(
+                33310343142060721,
+            ),
+            datatype: Type(
+                11,
+            ),
+            type_dependency: None,
+            value: None,
+            mutable: true,
+            on_stack: false,
+        },
+        ValueEnt {
+            name: ID(
+                0,
+            ),
+            datatype: Type(
+                11,
+            ),
+            type_dependency: None,
+            value: None,
+            mutable: false,
+            on_stack: false,
+        },
+        ValueEnt {
+            name: ID(
+                11166036824907450410,
+            ),
+            datatype: Type(
+                11,
+            ),
+            type_dependency: Some(
+                TypeDep(
+                    1,
+                ),
+            ),
+            value: None,
+            mutable: true,
+            on_stack: false,
+        },
+        ValueEnt {
+            name: ID(
+                0,
+            ),
+            datatype: Type(
+                3,
+            ),
+            type_dependency: None,
+            value: None,
+            mutable: false,
+            on_stack: false,
+        },
+        ValueEnt {
+            name: ID(
+                0,
+            ),
+            datatype: Type(
+                11,
+            ),
+            type_dependency: Some(
+                TypeDep(
+                    2,
+                ),
+            ),
+            value: None,
+            mutable: false,
+            on_stack: false,
+        },
+        ValueEnt {
+            name: ID(
+                0,
+            ),
+            datatype: Type(
+                11,
+            ),
+            type_dependency: Some(
+                TypeDep(
+                    3,
+                ),
+            ),
+            value: None,
+            mutable: false,
+            on_stack: false,
+        },
+        ValueEnt {
+            name: ID(
+                438936619302,
+            ),
+            datatype: Type(
+                11,
+            ),
+            type_dependency: None,
+            value: None,
+            mutable: true,
+            on_stack: false,
+        },
+    ],
+    p: PhantomData,
+}
+SymVec {
+    data: [
+        InstEnt {
+            kind: ZeroValue,
+            value: Some(
+                Value(
+                    0,
+                ),
+            ),
+            token_hint: Token {
+                kind: None,
+                spam: "",
+                line_data: LineData {
+                    line: 0,
+                    column: 0,
+                    id: ID(
+                        0,
+                    ),
+                    file_name: "",
+                },
+            },
+            unresolved: 1,
+        },
+        InstEnt {
+            kind: VarDecl(
+                Value(
+                    0,
+                ),
+            ),
+            value: Some(
+                Value(
+                    1,
+                ),
+            ),
+            token_hint: Token {
+                kind: Ident,
+                spam: "val",
+                line_data: LineData {
+                    line: 18,
+                    column: 4,
+                    id: ID(
+                        8714239933621611091,
+                    ),
+                    file_name: "/root",
+                },
+            },
+            unresolved: 0,
+        },
+        InstEnt {
+            kind: VarDecl(
+                Value(
+                    1,
+                ),
+            ),
+            value: Some(
+                Value(
+                    2,
+                ),
+            ),
+            token_hint: Token {
+                kind: Ident,
+                spam: "val2 = val",
+                line_data: LineData {
+                    line: 19,
+                    column: 4,
+                    id: ID(
+                        8714239933621611091,
+                    ),
+                    file_name: "/root",
+                },
+            },
+            unresolved: 1,
+        },
+        InstEnt {
+            kind: ZeroValue,
+            value: Some(
+                Value(
+                    3,
+                ),
+            ),
+            token_hint: Token {
+                kind: None,
+                spam: "",
+                line_data: LineData {
+                    line: 0,
+                    column: 0,
+                    id: ID(
+                        0,
+                    ),
+                    file_name: "",
+                },
+            },
+            unresolved: 1,
+        },
+        InstEnt {
+            kind: VarDecl(
+                Value(
+                    3,
+                ),
+            ),
+            value: Some(
+                Value(
+                    4,
+                ),
+            ),
+            token_hint: Token {
+                kind: Ident,
+                spam: "unknown",
+                line_data: LineData {
+                    line: 20,
+                    column: 4,
+                    id: ID(
+                        8714239933621611091,
+                    ),
+                    file_name: "/root",
+                },
+            },
+            unresolved: 0,
+        },
+        InstEnt {
+            kind: Literal(
+                Int(
+                    10,
+                    64,
+                ),
+            ),
+            value: Some(
+                Value(
+                    5,
+                ),
+            ),
+            token_hint: Token {
+                kind: Int(
+                    10,
+                    64,
+                ),
+                spam: "10",
+                line_data: LineData {
+                    line: 22,
+                    column: 10,
+                    id: ID(
+                        8714239933621611091,
+                    ),
+                    file_name: "/root",
+                },
+            },
+            unresolved: 0,
+        },
+        InstEnt {
+            kind: UnresolvedCall(
+                ID(
+                    2820800,
+                ),
+                [
+                    Value(
+                        1,
+                    ),
+                    Value(
+                        5,
+                    ),
+                ],
+            ),
+            value: Some(
+                Value(
+                    6,
+                ),
+            ),
+            token_hint: Token {
+                kind: Ident,
+                spam: "val ++= 10",
+                line_data: LineData {
+                    line: 22,
+                    column: 2,
+                    id: ID(
+                        8714239933621611091,
+                    ),
+                    file_name: "/root",
+                },
+            },
+            unresolved: 1,
+        },
+        InstEnt {
+            kind: Assign(
+                Value(
+                    1,
+                ),
+            ),
+            value: Some(
+                Value(
+                    6,
+                ),
+            ),
+            token_hint: Token {
+                kind: Ident,
+                spam: "val ++= 10",
+                line_data: LineData {
+                    line: 22,
+                    column: 2,
+                    id: ID(
+                        8714239933621611091,
+                    ),
+                    file_name: "/root",
+                },
+            },
+            unresolved: 2,
+        },
+        InstEnt {
+            kind: UnresolvedCall(
+                ID(
+                    443239848103,
+                ),
+                [
+                    Value(
+                        1,
+                    ),
+                ],
+            ),
+            value: Some(
+                Value(
+                    7,
+                ),
+            ),
+            token_hint: Token {
+                kind: Ident,
+                spam: "goo(val)",
+                line_data: LineData {
+                    line: 24,
+                    column: 12,
+                    id: ID(
+                        8714239933621611091,
+                    ),
+                    file_name: "/root",
+                },
+            },
+            unresolved: 1,
+        },
+        InstEnt {
+            kind: VarDecl(
+                Value(
+                    7,
+                ),
+            ),
+            value: Some(
+                Value(
+                    8,
+                ),
+            ),
+            token_hint: Token {
+                kind: Ident,
+                spam: "foo = goo(val)",
+                line_data: LineData {
+                    line: 24,
+                    column: 6,
+                    id: ID(
+                        8714239933621611091,
+                    ),
+                    file_name: "/root",
+                },
+            },
+            unresolved: 1,
+        },
+    ],
+    p: PhantomData,
+}

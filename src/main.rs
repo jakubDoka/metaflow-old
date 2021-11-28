@@ -1,4 +1,5 @@
 #![allow(dead_code)]
+#![feature(option_result_unwrap_unchecked)]
 extern crate cranelift_codegen;
 extern crate cranelift_frontend;
 

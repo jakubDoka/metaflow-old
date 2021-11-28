@@ -46,13 +46,13 @@ impl<'a> FunResolver<'a> {
             if !matches!(self.program.functions[function].kind, FKind::Normal(_)) {
                 continue;
             }
-            self.translate_function(function)?;
+            self.function(function)?;
         }
 
         Ok(())
     }
 
-    fn translate_function(&mut self, function: Fun) -> Result {
+    fn function(&mut self, function: Fun) -> Result {
         let fun = &mut self.program.functions[function];
 
         let signature = match &mut fun.kind {
@@ -65,7 +65,7 @@ impl<'a> FunResolver<'a> {
             // SAFETY: as long as context lives ast is valid, scope ensures
             // it does not escape
             let ast = unsafe { self.context.function_ast.get(self.program[function].ast) };
-            self.translate_function_low(module, ast, &signature)?;
+            self.function_low(module, ast, &signature)?;
         }
 
         let fun = &mut self.program.functions[function];
@@ -76,23 +76,23 @@ impl<'a> FunResolver<'a> {
         Ok(())
     }
 
-    fn translate_function_low(
+    fn function_low(
         &mut self,
         module: Module,
         ast: &Ast,
         signature: &FunSignature,
     ) -> Result {
-        self.context.current_module = module;
+        self.context.current_module = Some(module);
         self.context.return_type = signature.return_type;
         let entry_point = self.context.new_chunk();
         self.context.make_chunk_current(entry_point);
 
         signature.args.iter().for_each(|param| {
             let var = self.context.function_body.values.add(param.clone());
-            self.context.variables.push(var);
+            self.context.variables.push(Some(var));
         });
 
-        self.translate_block(&ast[1])?;
+        self.block(&ast[1])?;
 
         for (id, dep) in self.context.type_graph.iter() {
             if dep.len() > 0 {
@@ -103,77 +103,78 @@ impl<'a> FunResolver<'a> {
         Ok(())
     }
 
-    fn translate_block(&mut self, ast: &Ast) -> Result<Value> {
+    fn block(&mut self, ast: &Ast) -> Result<Option<Value>> {
         if ast.is_empty() {
-            return Ok(Value::NULL);
+            return Ok(None);
         }
 
-        self.start_scope();
+        self.context.push_scope();
 
         for statement in ast[..ast.len() - 1].iter() {
-            self.translate_statement(statement)?;
+            self.statement(statement)?;
         }
 
-        let value = self.translate_statement(ast.last().unwrap());
+        let value = self.statement(ast.last().unwrap());
 
-        self.pop_scope();
+        self.context.pop_scope();
 
         value
     }
 
-    fn translate_statement(&mut self, statement: &Ast) -> Result<Value> {
+    fn statement(&mut self, statement: &Ast) -> Result<Option<Value>> {
         match statement.kind {
-            AKind::VarStatement(_) => self.translate_var_statement(statement)?,
-            AKind::ReturnStatement => self.translate_return_statement(statement)?,
+            AKind::VarStatement(_) => self.var_statement(statement)?,
+            AKind::ReturnStatement => self.return_statement(statement)?,
             AKind::IfExpression => todo!(),
             AKind::Loop => todo!(),
             AKind::Break => todo!(),
             AKind::Continue => todo!(),
-            _ => return self.translate_expression(statement),
+            _ => return self.expression_low(statement),
         }
 
-        Ok(Value::NULL)
+        Ok(None)
     }
 
-    fn translate_return_statement(&mut self, ast: &Ast) -> Result {
+    fn return_statement(&mut self, ast: &Ast) -> Result {
         let datatype = self.context.return_type;
 
         let value = if ast[0].kind == AKind::None {
-            if datatype.is_null() {
-                Value::NULL
-            } else {
+            if let Some(datatype) = datatype {
                 let temp_value = self.new_value(datatype);
 
                 self.context.add_instruction(InstEnt::new(
                     IKind::ZeroValue,
-                    temp_value,
+                    Some(temp_value),
                     &Token::default(),
-                    0,
                 ));
-                temp_value
+                Some(temp_value)
+            } else {
+                None
             }
         } else {
-            if datatype.is_null() {
-                return Err(FunError::new(FEKind::UnexpectedReturnValue, &ast[0].token));
-            }
-            let value = self.translate_expression(&ast[0])?;
+            let datatype = datatype
+                .ok_or_else(|| FunError::new(FEKind::UnexpectedReturnValue, &ast[0].token))?;
+            let value = self.expression(&ast[0])?;
             let actual_type = self.context[value].datatype;
             if self.is_auto(actual_type) {
+                println!("{:#?}", self.context.type_graph);
+                println!("{:#?}", self.context.function_body.values);
+                println!("{:#?}", self.context.function_body.instructions);
                 self.infer(value, datatype)?;
             } else {
                 self.assert_type(actual_type, datatype, &ast[0])?;
             }
 
-            value
+            Some(value)
         };
 
         self.context
-            .add_instruction(InstEnt::new(IKind::Return, value, &ast[0].token, 0));
+            .add_instruction(InstEnt::new(IKind::Return(value), None, &ast[0].token));
 
         Ok(())
     }
 
-    fn translate_var_statement(&mut self, statement: &Ast) -> Result {
+    fn var_statement(&mut self, statement: &Ast) -> Result {
         let mutable = statement.kind == AKind::VarStatement(true);
 
         for var_line in statement.iter() {
@@ -204,17 +205,16 @@ impl<'a> FunResolver<'a> {
 
                     let inst = self.context.add_instruction(InstEnt::new(
                         IKind::ZeroValue,
-                        temp_value,
+                        Some(temp_value),
                         &Token::default(),
-                        unresolved,
                     ));
 
                     let dep = if unresolved == 0 {
-                        TypeDep::NULL
+                        None
                     } else {
                         let dep = self.context.new_type_dependency();
                         self.context[dep].push(inst);
-                        dep
+                        Some(dep)
                     };
 
                     let var = ValueEnt {
@@ -222,22 +222,24 @@ impl<'a> FunResolver<'a> {
                         datatype,
                         mutable,
                         type_dependency: dep,
-                        ..Default::default()
+                        value: None,
+                        on_stack: false,
                     };
 
                     let var = self.context.add_variable(var);
 
+                    self.add_type_dependency(var, inst);
+
                     self.context.add_instruction(InstEnt::new(
                         IKind::VarDecl(temp_value),
-                        var,
+                        Some(var),
                         &var_line.token,
-                        unresolved,
                     ));
                 }
             } else {
                 for (name, raw_value) in var_line[0].iter().zip(var_line[2].iter()) {
                     let name = ID::new().add(name.token.spam.deref());
-                    let value = self.translate_expression_unwrap(raw_value)?;
+                    let value = self.expression(raw_value)?;
                     let actual_datatype = self.context[value].datatype;
 
                     if !self.is_auto(datatype) {
@@ -248,12 +250,12 @@ impl<'a> FunResolver<'a> {
                         }
                     }
 
-                    let unresolved = self.is_auto(actual_datatype) as usize;
+                    let unresolved = self.is_auto(actual_datatype);
 
-                    let dep = if unresolved == 0 {
-                        TypeDep::NULL
+                    let dep = if unresolved {
+                        None
                     } else {
-                        self.context.new_type_dependency()
+                        Some(self.context.new_type_dependency())
                     };
 
                     let var = ValueEnt {
@@ -262,20 +264,20 @@ impl<'a> FunResolver<'a> {
                         mutable,
 
                         type_dependency: dep,
-
-                        ..Default::default()
+                        
+                        value: None,
+                        on_stack: false,
                     };
 
                     let var = self.context.add_variable(var);
 
                     let inst = self.context.add_instruction(InstEnt::new(
                         IKind::VarDecl(value),
-                        var,
+                        Some(var),
                         &var_line.token,
-                        unresolved,
                     ));
 
-                    if unresolved != 0 {
+                    if unresolved {
                         self.add_type_dependency(value, inst);
                     }
                 }
@@ -285,32 +287,84 @@ impl<'a> FunResolver<'a> {
         Ok(())
     }
 
-    fn translate_expression_unwrap(&mut self, ast: &Ast) -> Result<Value> {
-        let value = self.translate_expression(ast)?;
-        if value.is_null() {
-            Err(FunError::new(FEKind::ExpectedValue, &ast.token))
-        } else {
-            Ok(value)
-        }
+    fn expression(&mut self, ast: &Ast) -> Result<Value> {
+        self.expression_low(ast)?
+            .ok_or_else(|| FunError::new(FEKind::ExpectedValue, &ast.token))
     }
 
-    fn translate_expression(&mut self, ast: &Ast) -> Result<Value> {
+    fn expression_low(&mut self, ast: &Ast) -> Result<Option<Value>> {
         match ast.kind {
-            AKind::BinaryOperation => self.translate_binary_operation(ast),
-            AKind::Literal => self.translate_literal(ast),
-            AKind::Identifier => self.translate_identifier(ast),
+            AKind::BinaryOperation => self.binary_operation(ast),
+            AKind::Literal => self.literal(ast),
+            AKind::Identifier => self.identifier(ast),
+            AKind::Call => self.call(ast),
             _ => todo!("unmatched expression ast {}", ast),
         }
     }
 
-    fn translate_identifier(&mut self, ast: &Ast) -> Result<Value> {
+    fn call(&mut self, ast: &Ast) -> Result<Option<Value>> {
+        let base_name = ID::new().add(ast[0].token.spam.deref()); // TODO: check if this is generic instantiation
+        for value in ast[1..].iter() {
+            let value = self.expression(value)?;
+            self.context.call_value_buffer.push(value);
+        }
+
+        self.call_low(base_name, &ast.token)
+    }
+
+    fn call_low(&mut self, base_name: ID, token: &Token) -> Result<Option<Value>> {
+        let inst = self.context.add_instruction(InstEnt::new(
+            IKind::NoOp,
+            None,
+            token,
+        ));
+        
+        let mut unresolved = false;
+        for i in 0..self.context.call_value_buffer.len() {
+            let value = self.context.call_value_buffer[i];
+            if self.is_auto(self.context[value].datatype) {
+                // two arguments can be of same value but that only 
+                // means we subtract twice later on
+                self.add_type_dependency(value, inst);
+                unresolved = true;
+            }
+        }
+
+        let value = if unresolved {
+            self.context[inst].kind = IKind::UnresolvedCall(base_name, self.context.call_value_buffer.clone());
+            let value = self.new_auto_value();
+            self.context[inst].value = Some(value);
+            Some(value)
+        } else {
+            let mut name = base_name;
+            for &value in self.context.call_value_buffer.iter() {
+                name = name.combine(self.program.types.direct_to_id(self.context[value].datatype));
+            }
+            let (_, fun) = self.find_by_name(name).ok_or_else(|| FunError::new(FEKind::NotFound, token))?;
+            self.context[inst].kind = IKind::Call(fun, self.context.call_value_buffer.clone());
+            if let Some(return_type) = self.program[fun].signature().return_type {
+                let value = self.new_value(return_type);
+                self.context[inst].value = Some(value);
+                Some(value)
+            } else {
+                None
+            }
+        };
+
+        self.context.call_value_buffer.clear();
+
+        Ok(value)
+    }
+
+    fn identifier(&mut self, ast: &Ast) -> Result<Option<Value>> {
         let name = ID::new().add(ast.token.spam.deref());
         self.context
             .find_variable(name)
             .ok_or_else(|| FunError::new(FEKind::UndefinedVariable, &ast.token))
+            .map(|var| Some(var))
     }
 
-    fn translate_literal(&mut self, ast: &Ast) -> Result<Value> {
+    fn literal(&mut self, ast: &Ast) -> Result<Option<Value>> {
         let datatype = match ast.token.kind {
             LTKind::Int(_, base) => match base {
                 1 => self.program.builtin_repo.i8,
@@ -338,71 +392,26 @@ impl<'a> FunResolver<'a> {
 
         self.context.add_instruction(InstEnt::new(
             IKind::Literal(ast.token.kind.clone()),
-            value,
+            Some(value),
             &ast.token,
-            0,
         ));
 
-        Ok(value)
+        Ok(Some(value))
     }
 
-    fn translate_binary_operation(&mut self, ast: &Ast) -> Result<Value> {
+    fn binary_operation(&mut self, ast: &Ast) -> Result<Option<Value>> {
         if ast[0].token.spam.deref() == "=" {
-            return Ok(self.translate_assignment(ast)?);
+            return Ok(self.assignment(ast)?);
         }
 
-        let left = self.translate_expression_unwrap(&ast[1])?;
-        let right = self.translate_expression_unwrap(&ast[2])?;
+        let left = self.expression(&ast[1])?;
+        let right = self.expression(&ast[2])?;
 
         let base_id = ID::new().add(ast[0].token.spam.deref());
 
-        let left_datatype = self.context[left].datatype;
-        let right_datatype = self.context[right].datatype;
+        self.context.call_value_buffer.extend(&[left, right]);
 
-        let left_auto = self.is_auto(left_datatype);
-        let right_auto = self.is_auto(right_datatype);
-
-        let unresolved = left_auto as usize + right_auto as usize - (left == right) as usize;
-
-        if unresolved > 0 {
-            let value = self.new_auto_value();
-
-            let inst = self.context.add_instruction(InstEnt::new(
-                IKind::UnresolvedCall(base_id, vec![left, right]),
-                value,
-                &ast.token,
-                unresolved,
-            ));
-
-            if left_auto {
-                self.add_type_dependency(left, inst);
-            }
-
-            if right_auto {
-                self.add_type_dependency(right, inst);
-            }
-
-            Ok(value)
-        } else {
-            let function = self.find_or_instantiate(base_id, &[left, right], &ast.token)?;
-
-            let ret_type = self.program[function].signature().return_type;
-
-            let return_type = if ret_type.is_null() {
-                Value::NULL
-            } else {
-                self.new_value(ret_type)
-            };
-
-            self.context.add_instruction(InstEnt::new(
-                IKind::Call(function, vec![left, right]),
-                return_type,
-                &ast.token,
-                0,
-            ));
-
-            Ok(return_type)
-        }
+        self.call_low(base_id, &ast.token)
     }
 
     fn infer(&mut self, value: Value, datatype: Type) -> Result<()> {
@@ -413,7 +422,7 @@ impl<'a> FunResolver<'a> {
         while let Some((value, datatype)) = frontier.pop() {
             let val = &mut self.context[value];
             val.datatype = datatype;
-            let dependency_id = val.type_dependency;
+            let dependency_id = val.type_dependency.unwrap();
             let mut dependencies = std::mem::take(&mut self.context[dependency_id]);
             for dep in dependencies.drain(..).skip(1)/* first is null marker */ {
                 let inst = &mut self.context[dep];
@@ -424,7 +433,7 @@ impl<'a> FunResolver<'a> {
 
                 match &mut inst.kind {
                     IKind::VarDecl(_) => {
-                        let value = inst.value;
+                        let value = inst.value.unwrap();
                         frontier.push((value, datatype));
                     }
                     IKind::UnresolvedCall(base_id, args) => {
@@ -439,16 +448,20 @@ impl<'a> FunResolver<'a> {
                         let value = inst.value;
                         let datatype = self.program[fun].signature().return_type;
 
-                        frontier.push((value, datatype));
+                        if let (Some(value), Some(datatype)) = (value, datatype) {
+                            frontier.push((value, datatype));
+                        } else if self.context[value.unwrap()].type_dependency.is_some() {
+                            return Err(FunError::new(FEKind::ExpectedValue, &token));
+                        }
                     }
                     IKind::ZeroValue => {
-                        let value = inst.value;
+                        let value = inst.value.unwrap();
                         self.context[value].datatype = datatype;
                     }
                     IKind::Assign(val) => {
                         let mut val = *val;
                         if value == val {
-                            val = inst.value;
+                            val = inst.value.unwrap();
                         }
 
                         frontier.push((val, datatype));
@@ -474,23 +487,23 @@ impl<'a> FunResolver<'a> {
         let value = self.context.function_body.values.add(value);
         if self.is_auto(datatype) {
             let dep = self.context.new_type_dependency();
-            self.context[value].type_dependency = dep;
+            self.context[value].type_dependency = Some(dep);
         }
         value
     }
 
-    fn translate_assignment(&mut self, ast: &Ast) -> Result<Value> {
-        let target = self.translate_expression_unwrap(&ast[1])?;
-        let value = self.translate_expression_unwrap(&ast[2])?;
+    fn assignment(&mut self, ast: &Ast) -> Result<Option<Value>> {
+        let target = self.expression(&ast[1])?;
+        let value = self.expression(&ast[2])?;
         let target_datatype = self.context[target].datatype;
         let value_datatype = self.context[value].datatype;
 
         let unresolved = if self.is_auto(target_datatype) {
             if !self.is_auto(value_datatype) {
                 self.infer(target, value_datatype)?;
-                0
+                false
             } else {
-                2
+                true
             }
         } else {
             if self.is_auto(value_datatype) {
@@ -498,22 +511,21 @@ impl<'a> FunResolver<'a> {
             } else {
                 self.assert_type(value_datatype, target_datatype, ast)?;
             }
-            0
+            false
         };
 
         let inst = self.context.add_instruction(InstEnt::new(
             IKind::Assign(target),
-            value,
+            Some(value),
             &ast.token,
-            unresolved,
         ));
 
-        if unresolved == 2 {
+        if unresolved {
             self.add_type_dependency(value, inst);
             self.add_type_dependency(target, inst);
         }
 
-        Ok(value)
+        Ok(Some(value))
     }
 
     fn find_or_instantiate(&mut self, base: ID, values: &[Value], token: &Token) -> Result<Fun> {
@@ -557,7 +569,7 @@ impl<'a> FunResolver<'a> {
             return Ok(None);
         }
 
-        generic.inferred.resize(signature.params.len(), Type::NULL);
+        generic.inferred.resize(signature.params.len(), None);
 
         let mut i = 0;
         let mut n = 0;
@@ -604,6 +616,10 @@ impl<'a> FunResolver<'a> {
         let old_id_len = self.context.type_resolver_context.instance_id_buffer.len();
 
         for (&name, &datatype) in generic.param_buffer.iter().zip(generic.inferred.iter()) {
+            let datatype = match datatype {
+                Some(id) => id,
+                None => return Ok(None),
+            };
             let id = name.combine(module_id);
             if let Some(shadowed) = self.program.types.redirect(id, datatype) {
                 self.context
@@ -620,8 +636,8 @@ impl<'a> FunResolver<'a> {
 
         self.context.generic = generic;
 
-        let old_dependency_len = if module != self.context.current_module {
-            let current = self.context.current_module;
+        let old_dependency_len = if Some(module) != self.context.current_module {
+            let current = self.context.current_module.unwrap();
             // SAFETY: the current module and targeted are not the same at this point
             let (target_module, source_module) = unsafe {
                 (
@@ -646,7 +662,7 @@ impl<'a> FunResolver<'a> {
             let ast = unsafe { self.context.function_ast.get(ast_ref) };
             self.context.dive();
             let fun = self.collect_normal_function(module, ast_ref, ast, name, vis, attr_id)?;
-            self.translate_function(fun)?;
+            self.function(fun)?;
             self.context.bail();
             fun
         };
@@ -678,7 +694,7 @@ impl<'a> FunResolver<'a> {
 
     fn find_by_name(&mut self, name: ID) -> Option<(Module, Fun)> {
         self.program
-            .walk_accessible_scopes(self.context.current_module, |id, module| {
+            .walk_accessible_scopes(self.context.current_module.unwrap(), |id, module| {
                 self.program
                     .functions
                     .id_to_direct(name.combine(id))
@@ -688,7 +704,7 @@ impl<'a> FunResolver<'a> {
 
     fn find_generic_by_name(&mut self, name: ID) -> Option<(Module, Fun)> {
         self.program
-            .walk_accessible_scopes(self.context.current_module, |id, module| {
+            .walk_accessible_scopes(self.context.current_module.unwrap(), |id, module| {
                 self.program
                     .generic_functions
                     .id_to_direct(name.combine(id))
@@ -708,25 +724,9 @@ impl<'a> FunResolver<'a> {
     }
 
     fn add_type_dependency(&mut self, value: Value, inst: Inst) {
-        let dependency_id = self.context[value].type_dependency;
+        self.context[inst].unresolved += 1;
+        let dependency_id = self.context[value].type_dependency.unwrap();
         self.context[dependency_id].push(inst);
-    }
-
-    fn start_scope(&mut self) {
-        self.context.variables.push(Value::NULL);
-    }
-
-    fn pop_scope(&mut self) {
-        let i = self.context.variables.len()
-            - 1
-            - self
-                .context
-                .variables
-                .iter()
-                .rev()
-                .position(|v| v.is_null())
-                .unwrap();
-        self.context.variables.truncate(i);
     }
 
     fn collect(&mut self) -> Result {
@@ -780,7 +780,7 @@ impl<'a> FunResolver<'a> {
             .add(a[0][0][0].token.spam.deref())
             .combine(self.program.modules.direct_to_id(module));
 
-        let signature = self.translate_generic_signature(&a[0])?;
+        let signature = self.generic_signature(&a[0])?;
 
         let function = FunEnt {
             visibility,
@@ -790,13 +790,12 @@ impl<'a> FunResolver<'a> {
             kind: FKind::Generic(signature),
             ast: a_ref,
             attribute_id,
-
-            ..Default::default()
+            body: Default::default(),
         };
 
         self.program
             .generic_functions
-            .get_mut_or_default(name)
+            .get_mut_or(name, Vec::new())
             .push(function);
 
         Ok(self.program.generic_functions.id_to_direct(name).unwrap())
@@ -824,8 +823,9 @@ impl<'a> FunResolver<'a> {
                     name,
                     datatype,
                     mutable,
-
-                    ..Default::default()
+                    type_dependency: None,
+                    value: None,
+                    on_stack: false,
                 });
             }
         }
@@ -833,9 +833,9 @@ impl<'a> FunResolver<'a> {
         name = name.combine(self.program.modules.direct_to_id(module));
         let return_type = header.last().unwrap();
         let return_type = if return_type.kind == AKind::None {
-            Type::NULL
+            None
         } else {
-            self.resolve_type_low(module, return_type)?
+            Some(self.resolve_type_low(module, return_type)?)
         };
 
         let function_signature = FunSignature { args, return_type };
@@ -850,8 +850,7 @@ impl<'a> FunResolver<'a> {
             kind: FKind::Normal(function_signature),
             attribute_id,
             ast: a_ref,
-
-            ..Default::default()
+            body: Default::default(),
         };
 
         let id = match self.program.functions.insert(name, function) {
@@ -867,7 +866,7 @@ impl<'a> FunResolver<'a> {
         Ok(id)
     }
 
-    fn translate_generic_signature(&mut self, ast: &Ast) -> Result<GenericSignature> {
+    fn generic_signature(&mut self, ast: &Ast) -> Result<GenericSignature> {
         self.context.generic.param_buffer.clear();
         for ident in &ast[0][1..] {
             self.context
@@ -919,13 +918,13 @@ impl<'a> FunResolver<'a> {
         if dt.params.is_empty() {
             generic
                 .arg_buffer
-                .push(GenericElement::Element(id, datatype));
+                .push(GenericElement::Element(id, Some(datatype)));
             return;
         }
 
         generic.arg_buffer.push(GenericElement::Element(
             self.program.types.direct_to_id(dt.params[0]),
-            datatype,
+            Some(datatype),
         ));
 
         for &param in &dt.params[1..] {
@@ -954,7 +953,7 @@ impl<'a> FunResolver<'a> {
                     self.context
                         .generic
                         .arg_buffer
-                        .push(GenericElement::Element(datatype, Type::NULL));
+                        .push(GenericElement::Element(datatype, None));
                 }
             }
             AKind::Instantiation => {
@@ -978,7 +977,7 @@ impl<'a> FunResolver<'a> {
     }
 
     fn resolve_type(&mut self, ast: &Ast) -> Result<Type> {
-        self.resolve_type_low(self.context.current_module, ast)
+        self.resolve_type_low(self.context.current_module.unwrap(), ast)
     }
 
     fn resolve_type_low(&mut self, module: Module, ast: &Ast) -> Result<Type> {
@@ -988,7 +987,7 @@ impl<'a> FunResolver<'a> {
     }
 
     fn find_type(&mut self, token: &Token) -> Result<Type> {
-        self.find_type_low(self.context.current_module, token)
+        self.find_type_low(self.context.current_module.unwrap(), token)
     }
 
     fn find_type_low(&mut self, module: Module, token: &Token) -> Result<Type> {
@@ -1012,6 +1011,7 @@ impl<'a> FunResolver<'a> {
 #[derive(Debug)]
 pub struct FunResolverContext {
     pub generic: GenericFunContext,
+    pub call_value_buffer: Vec<Value>,
     pub function_ast: LockedSymVec<AstRef, Ast>,
     pub graph_frontier: Vec<(Value, Type)>,
     pub type_resolver_context: TypeResolverContext,
@@ -1043,6 +1043,7 @@ impl Default for FunResolverContext {
     fn default() -> Self {
         FunResolverContext {
             function_ast: LockedSymVec::default(),
+            call_value_buffer: Vec::new(),
             generic: Default::default(),
             graph_frontier: vec![],
             type_resolver_context: Default::default(),
@@ -1070,17 +1071,18 @@ impl DerefMut for FunResolverContext {
 pub struct GenericFunContext {
     pub arg_buffer: Vec<GenericElement>,
     pub param_buffer: Vec<ID>,
-    pub inferred: Vec<Type>,
+    pub inferred: Vec<Option<Type>>,
 }
 
 #[derive(Debug, Default)]
 pub struct FunContext {
-    pub return_type: Type,
-    pub current_module: Module,
-    pub current_chunk: Chunk,
-    pub current_instruction: Inst,
-    pub variables: Vec<Value>,
+    pub return_type: Option<Type>,
+    pub current_module: Option<Module>,
+    pub current_chunk: Option<Chunk>,
+    pub current_instruction: Option<Inst>,
+    pub variables: Vec<Option<Value>>,
     pub type_graph: SymVec<TypeDep, Vec<Inst>>,
+    pub unresolved_functions: Vec<Fun>,
     pub type_graph_pool: Vec<Vec<Inst>>,
     pub function_body: FunBody,
 }
@@ -1088,7 +1090,7 @@ pub struct FunContext {
 impl FunContext {
     pub fn add_variable(&mut self, val: ValueEnt) -> Value {
         let val = self.function_body.values.add(val);
-        self.variables.push(val);
+        self.variables.push(Some(val));
         val
     }
 
@@ -1096,13 +1098,29 @@ impl FunContext {
         self.variables
             .iter()
             .rev()
-            .find(|&&val| !val.is_null() && self.function_body.values[val].name == name)
-            .cloned()
+            .filter(|v| v.is_some())
+            .map(|v| v.unwrap())
+            .find(|v| self.function_body.values[*v].name == name)  
+    }
+
+    pub fn push_scope(&mut self) {
+        self.variables.push(None);
+    }
+
+    pub fn pop_scope(&mut self) {
+        let idx = self.variables.len() - 1 - self
+            .variables
+            .iter()
+            .rev()
+            .position(|v| v.is_none())
+            .expect("no scope to pop");
+        
+        self.variables.truncate(idx);
     }
 
     pub fn clear(&mut self) {
-        self.current_module = Module::NULL;
-        self.current_chunk = Chunk::NULL;
+        self.current_module = None;
+        self.current_chunk = None;
         self.variables.clear();
         self.function_body.clear();
 
@@ -1113,7 +1131,7 @@ impl FunContext {
 
     pub fn add_instruction(&mut self, instruction: InstEnt) -> Inst {
         debug_assert!(
-            !self.current_chunk.is_null(),
+            self.current_chunk.is_some(),
             "no chunk to add instruction to"
         );
         self.function_body.instructions.add(instruction)
@@ -1124,23 +1142,22 @@ impl FunContext {
     }
 
     pub fn make_chunk_current(&mut self, chunk: Chunk) {
-        self.function_body.chunks[chunk].first_instruction = if self.current_instruction.is_null() {
-            Inst::new(0)
-        } else {
-            self.current_instruction
-        };
-        self.current_chunk = chunk;
+        self.function_body.chunks[chunk].first_instruction = self.current_instruction;
+        self.current_chunk = Some(chunk);
     }
 
     pub fn close_chunk(&mut self) {
-        debug_assert!(!self.current_chunk.is_null(), "no chunk to close");
-        self.function_body.chunks[self.current_chunk].last_instruction = self.current_instruction;
-        self.current_chunk = Chunk::NULL;
+        if let Some(chunk) = self.current_chunk {
+            self.function_body.chunks[chunk].last_instruction = self.current_instruction;
+            self.current_chunk = None;
+        } else {
+            panic!("no chunk to close");
+        }
     }
 
     pub fn new_type_dependency(&mut self) -> TypeDep {
         let mut value = self.type_graph_pool.pop().unwrap_or_default();
-        value.push(Inst::NULL);
+        value.push(Inst::new(0));
         let value = self.type_graph.add(value);
         value
     }
@@ -1248,16 +1265,25 @@ pub fn test() {
         println!("{}", fun.token_hint.spam.deref());
 
         for (_, inst) in fun.body.instructions.iter() {
-            println!(
-                "  {}: {} = {:?} |{}",
-                inst.value,
-                program[fun.body.values[inst.value].datatype]
-                    .token_hint
-                    .spam
-                    .deref(),
-                inst.kind,
-                inst.token_hint.spam.deref()
-            );
+            if let Some(value) = inst.value {
+                println!(
+                    "  {:?}: {} = {:?} |{}",
+                    value,
+                    program[fun.body.values[value].datatype]
+                        .token_hint
+                        .spam
+                        .deref(),
+                    inst.kind,
+                    inst.token_hint.spam.deref()
+                );
+            } else {
+                println!(
+                    "{:?} |{}",
+                    inst.kind,
+                    inst.token_hint.spam.deref()
+                );
+            }
+           
         }
     }
 }

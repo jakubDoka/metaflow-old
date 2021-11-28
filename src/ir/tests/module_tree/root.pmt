@@ -9,6 +9,8 @@ struct GUA:
 
 attr pop
 
+fun goo[T](x: T) -> T: x
+
 fun ++[T](a, b: T) -> T: a + b
 
 fun main -> i64:
@@ -18,5 +20,7 @@ fun main -> i64:
     unknown
 
   val ++= 10
+
+  var foo = goo(val)
 
   return val

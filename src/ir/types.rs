@@ -357,8 +357,8 @@ impl<'a> TypeResolver<'a> {
                             ast: std::mem::take(a),
                             module,
                             attribute_id: i,
-
-                            ..Default::default()
+                            params: Vec::new(),
+                            align: 0,
                         };
 
                         if let (Some(datatype), _) = self.program.types.insert(name, datatype) {

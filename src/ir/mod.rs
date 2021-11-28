@@ -106,10 +106,13 @@ impl Program {
                         module,
                         kind: FKind::Builtin(FunSignature {
                             args: vec![ValueEnt::temp(datatype), ValueEnt::temp(datatype)],
-                            return_type: datatype,
+                            return_type: Some(datatype),
                         }),
 
-                        ..Default::default()
+                        token_hint: Default::default(),
+                        body: Default::default(),
+                        ast: AstRef::new(usize::MAX),
+                        attribute_id: 0,
                     };
                     self.functions.insert(binary_op.name, binary_op);
                 }
@@ -122,22 +125,21 @@ crate::sym_id!(AstRef);
 
 macro_rules! define_repo {
     ($($name:ident, $repr:ident, $size:expr),+,) => {
-        #[derive(Default, Clone, Debug)]
+        #[derive(Clone, Debug)]
         pub struct BuiltinRepo {
             $(pub $name: Type,)+
         }
 
         impl BuiltinRepo {
             pub fn new(program: &mut Program) -> Self {
-                let mut repo = Self {
-                    $($name: Type::NULL),+
-                };
+                
 
                 let builtin_id = ID::new().add("builtin");
 
                 $(
                     let id = ID::new().add(stringify!($name)).combine(builtin_id);
                     let type_ent = TypeEnt {
+                        visibility: Vis::Public,
                         kind: TKind::Builtin($repr),
                         name: id,
                         size: $size,
@@ -146,13 +148,16 @@ macro_rules! define_repo {
 
                         token_hint: Token::builtin(stringify!($name)),
 
-                        ..Default::default()
+                        params: Vec::new(),
+                        ast: Ast::none(),
+                        attribute_id: 0,
                     };
-                    let (_, id) = program.types.insert(id, type_ent);
-                    repo.$name = id;
+                    let (_, $name) = program.types.insert(id, type_ent);
                 )+
 
-                repo
+                Self {
+                    $($name),+
+                }
             }
         }
 
@@ -210,15 +215,19 @@ impl Default for Program {
     fn default() -> Self {
         let flags = settings::Flags::new(settings::builder());
         let isa = cranelift_native::builder().unwrap().finish(flags);
-        Program {
+        let mut program = Program {
             isa,
-            builtin: Module::NULL,
-            builtin_repo: BuiltinRepo::default(),
+            builtin: Module::new(0),
+            builtin_repo: unsafe { std::mem::zeroed() },
             types: SymTable::new(),
             functions: SymTable::new(),
             modules: SymTable::new(),
             generic_functions: SymTable::new(),
-        }
+        };
+
+        program.build_builtin();
+
+        program
     }
 }
 
@@ -240,7 +249,7 @@ pub struct ModuleEnt {
 
 crate::sym_id!(Fun);
 
-#[derive(Debug, Default, Clone)]
+#[derive(Debug, Clone)]
 pub struct FunEnt {
     pub visibility: Vis,
     pub name: ID,
@@ -282,18 +291,18 @@ crate::sym_id!(Inst);
 #[derive(Debug, Default, Clone)]
 pub struct InstEnt {
     kind: IKind,
-    value: Value,
+    value: Option<Value>,
     token_hint: Token,
     unresolved: usize,
 }
 
 impl InstEnt {
-    pub fn new(kind: IKind, value: Value, token_hint: &Token, unresolved: usize) -> Self {
+    pub fn new(kind: IKind, value: Option<Value>, token_hint: &Token) -> Self {
         Self {
             kind,
             value,
             token_hint: token_hint.clone(),
-            unresolved,
+            unresolved: 0,
         }
     }
 }
@@ -306,7 +315,7 @@ pub enum IKind {
     VarDecl(Value),
     ZeroValue,
     Literal(LTKind),
-    Return,
+    Return(Option<Value>),
     Assign(Value),
 }
 
@@ -320,8 +329,8 @@ crate::sym_id!(Chunk);
 
 #[derive(Debug, Default, Clone)]
 pub struct ChunkEnt {
-    pub first_instruction: Inst,
-    pub last_instruction: Inst,
+    pub first_instruction: Option<Inst>,
+    pub last_instruction: Option<Inst>,
 }
 
 #[derive(Debug, Clone)]
@@ -344,7 +353,7 @@ pub struct GenericSignature {
 pub enum GenericElement {
     ScopeStart,
     ScopeEnd,
-    Element(ID, Type),
+    Element(ID, Option<Type>),
     Parameter(usize),
     NextArgument(usize, usize),
     NextReturn(bool),
@@ -362,7 +371,7 @@ impl GenericElement {
 #[derive(Debug, Default, Clone)]
 pub struct FunSignature {
     pub args: Vec<ValueEnt>,
-    pub return_type: Type,
+    pub return_type: Option<Type>,
 }
 
 crate::sym_id!(GlobalValue);
@@ -375,13 +384,12 @@ pub struct GlobalValueEnt {
 
 crate::sym_id!(Value);
 
-#[derive(Debug, Default, Clone)]
+#[derive(Debug, Clone)]
 pub struct ValueEnt {
     pub name: ID,
     pub datatype: Type,
-    pub type_dependency: TypeDep,
+    pub type_dependency: Option<TypeDep>,
     pub value: Option<CrValue>,
-    pub auto: bool,
     pub mutable: bool,
     pub on_stack: bool,
 }
@@ -390,7 +398,11 @@ impl ValueEnt {
     pub fn temp(datatype: Type) -> Self {
         Self {
             datatype,
-            ..Default::default()
+            name: ID::new(),
+            type_dependency: None,
+            value: None,
+            mutable: false,
+            on_stack: false,
         }
     }
 }
@@ -405,7 +417,7 @@ crate::sym_id!(TypeDep);
 
 crate::sym_id!(Type);
 
-#[derive(Clone, Debug, PartialEq, Default)]
+#[derive(Clone, Debug, PartialEq)]
 pub struct TypeEnt {
     pub visibility: Vis,
     pub params: Vec<Type>,

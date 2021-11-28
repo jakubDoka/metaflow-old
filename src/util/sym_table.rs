@@ -7,13 +7,13 @@ use std::{
 use super::sdbm::ID;
 
 #[derive(Clone, Debug)]
-pub struct SymTable<I: SymID, T: Default> {
+pub struct SymTable<I: SymID, T> {
     table: HashMap<ID, I>,
-    data: Vec<(ID, T)>,
+    data: Vec<(ID, Option<T>)>,
     free: Vec<usize>,
 }
 
-impl<I: SymID, T: Default> SymTable<I, T> {
+impl<I: SymID, T> SymTable<I, T> {
     pub fn new() -> Self {
         Self {
             table: HashMap::new(),
@@ -37,7 +37,7 @@ impl<I: SymID, T: Default> SymTable<I, T> {
                     self.data.len()
                 });
                 self.table.insert(id, i);
-                self.data.push((id, data));
+                self.data.push((id, Some(data)));
                 (None, i)
             }};
         }
@@ -47,7 +47,7 @@ impl<I: SymID, T: Default> SymTable<I, T> {
                 if self.data[i.raw()].0 != id {
                     insert!()
                 } else {
-                    (Some(std::mem::replace(&mut self.data[i.raw()].1, data)), *i)
+                    (std::mem::replace(&mut self.data[i.raw()].1, Some(data)), *i)
                 }
             }
             None => {
@@ -58,7 +58,10 @@ impl<I: SymID, T: Default> SymTable<I, T> {
 
     #[inline]
     pub fn get_id(&self, id: ID) -> Option<&T> {
-        self.table.get(&id).map(|i| &self.data[i.raw()].1)
+        self.table
+            .get(&id)
+            .map(|i| self.data[i.raw()].1.as_ref())
+            .flatten()
     }
 
     #[inline]
@@ -66,7 +69,8 @@ impl<I: SymID, T: Default> SymTable<I, T> {
         self.table
             .get(&id)
             .cloned()
-            .map(move |i| &mut self.data[i.raw()].1)
+            .map(move |i| self.data[i.raw()].1.as_mut())
+            .flatten()
     }
 
     pub fn direct_to_id(&self, direct: I) -> ID {
@@ -80,16 +84,16 @@ impl<I: SymID, T: Default> SymTable<I, T> {
     pub fn remove(&mut self, id: ID) -> Option<T> {
         self.table.remove(&id).map(|i| {
             self.free.push(i.raw());
-            std::mem::take(&mut self.data[i.raw()].1)
+            unsafe { std::mem::take(&mut self.data[i.raw()].1).unwrap_unchecked() }
         })
     }
 
     pub fn iter(&self) -> impl Iterator<Item = &T> {
-        self.data.iter().map(|x| &x.1)
+        self.data.iter().filter(|x| x.1.is_some()).map(|x| x.1.as_ref().unwrap())
     }
 
     pub fn iter_mut(&mut self) -> impl Iterator<Item = &mut T> {
-        self.data.iter_mut().map(|x| &mut x.1)
+        self.data.iter_mut().filter(|x| x.1.is_some()).map(|x| x.1.as_mut().unwrap())
     }
 
     pub unsafe fn as_mut<'a>(&self) -> &'a mut Self {
@@ -135,35 +139,32 @@ impl<I: SymID, T: Default> SymTable<I, T> {
         self.table.keys()
     }
 
-    pub fn get_mut_or_default(&mut self, id: ID) -> &mut T {
+    pub fn get_mut_or(&mut self, id: ID, data: T) -> &mut T {
         let i = self
             .table
             .get(&id)
             .cloned()
-            .unwrap_or_else(|| self.insert(id, T::default()).1);
-        &mut self.data[i.raw()].1
+            .unwrap_or_else(|| self.insert(id, data).1);
+        // SAFETY: if from table always points to valid index
+        unsafe { self.data[i.raw()].1.as_mut().unwrap_unchecked() }
     }
 }
 
-impl<I: SymID, T: Default> Index<I> for SymTable<I, T> {
+impl<I: SymID, T> Index<I> for SymTable<I, T> {
     type Output = T;
 
     fn index(&self, id: I) -> &Self::Output {
-        debug_assert!(!id.is_null());
-        debug_assert!(self.data[id.raw()].0 != ID::new());
-        &self.data[id.raw()].1
+        self.data[id.raw()].1.as_ref().unwrap()
     }
 }
 
-impl<I: SymID, T: Default> IndexMut<I> for SymTable<I, T> {
+impl<I: SymID, T> IndexMut<I> for SymTable<I, T> {
     fn index_mut(&mut self, id: I) -> &mut Self::Output {
-        debug_assert!(!id.is_null());
-        debug_assert!(self.data[id.raw()].0 != ID::new());
-        &mut self.data[id.raw()].1
+        self.data[id.raw()].1.as_mut().unwrap()
     }
 }
 
-impl<I: SymID, T: Default> Index<ID> for SymTable<I, T> {
+impl<I: SymID, T> Index<ID> for SymTable<I, T> {
     type Output = T;
 
     fn index(&self, id: ID) -> &Self::Output {
@@ -171,13 +172,13 @@ impl<I: SymID, T: Default> Index<ID> for SymTable<I, T> {
     }
 }
 
-impl<I: SymID, T: Default> IndexMut<ID> for SymTable<I, T> {
+impl<I: SymID, T> IndexMut<ID> for SymTable<I, T> {
     fn index_mut(&mut self, id: ID) -> &mut Self::Output {
         self.get_mut_id(id).unwrap()
     }
 }
 
-impl<I: SymID, T: Default> Default for SymTable<I, T> {
+impl<I: SymID, T> Default for SymTable<I, T> {
     fn default() -> Self {
         Self {
             table: Default::default(),
@@ -187,7 +188,7 @@ impl<I: SymID, T: Default> Default for SymTable<I, T> {
     }
 }
 
-#[derive(Debug, Default)]
+#[derive(Debug)]
 pub struct LockedSymVec<I: SymID, T> {
     inner: SymVec<I, T>,
 }
@@ -201,6 +202,14 @@ impl<I: SymID, T> LockedSymVec<I, T> {
     // while reference still lives
     pub unsafe fn get<'a>(&self, id: I) -> &'a T {
         std::mem::transmute::<_, &T>(&self.inner[id])
+    }
+}
+
+impl<I: SymID, T> Default for LockedSymVec<I, T> {
+    fn default() -> Self {
+        Self {
+            inner: Default::default(),
+        }
     }
 }
 
@@ -269,14 +278,12 @@ impl<I: SymID, T> Index<I> for SymVec<I, T> {
     type Output = T;
 
     fn index(&self, id: I) -> &Self::Output {
-        debug_assert!(!id.is_null());
         &self.data[id.raw()]
     }
 }
 
 impl<I: SymID, T> IndexMut<I> for SymVec<I, T> {
     fn index_mut(&mut self, id: I) -> &mut Self::Output {
-        debug_assert!(!id.is_null());
         &mut self.data[id.raw()]
     }
 }
@@ -287,10 +294,6 @@ macro_rules! sym_id {
         #[derive(Clone, Copy, PartialEq, Eq, Debug)]
         pub struct $id(usize);
 
-        impl $id {
-            pub const NULL: Self = Self(usize::MAX);
-        }
-
         impl SymID for $id {
             fn new(idx: usize) -> Self {
                 Self(idx)
@@ -299,25 +302,11 @@ macro_rules! sym_id {
             fn raw(&self) -> usize {
                 self.0
             }
-
-            fn is_null(&self) -> bool {
-                self.0 == usize::MAX
-            }
-        }
-
-        impl Default for $id {
-            fn default() -> Self {
-                Self::NULL
-            }
         }
 
         impl std::fmt::Display for $id {
             fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
-                if self.is_null() {
-                    write!(f, "NULL")
-                } else {
-                    write!(f, "{}{}", stringify!($id), self.0)
-                }
+                write!(f, "{}{}", stringify!($id), self.0)
             }
         }
     };
@@ -326,5 +315,4 @@ macro_rules! sym_id {
 pub trait SymID: Copy + Clone {
     fn new(value: usize) -> Self;
     fn raw(&self) -> usize;
-    fn is_null(&self) -> bool;
 }
