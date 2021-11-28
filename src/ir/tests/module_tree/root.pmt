@@ -17,7 +17,6 @@ fun main -> i64:
   var 
     val
     val2 = val
-    unknown
 
   val ++= 10
 

@@ -89,11 +89,17 @@ impl<I: SymID, T> SymTable<I, T> {
     }
 
     pub fn iter(&self) -> impl Iterator<Item = &T> {
-        self.data.iter().filter(|x| x.1.is_some()).map(|x| x.1.as_ref().unwrap())
+        self.data
+            .iter()
+            .filter(|x| x.1.is_some())
+            .map(|x| x.1.as_ref().unwrap())
     }
 
     pub fn iter_mut(&mut self) -> impl Iterator<Item = &mut T> {
-        self.data.iter_mut().filter(|x| x.1.is_some()).map(|x| x.1.as_mut().unwrap())
+        self.data
+            .iter_mut()
+            .filter(|x| x.1.is_some())
+            .map(|x| x.1.as_mut().unwrap())
     }
 
     pub unsafe fn as_mut<'a>(&self) -> &'a mut Self {

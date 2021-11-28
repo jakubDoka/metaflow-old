@@ -76,12 +76,8 @@ impl<'a> FunResolver<'a> {
         Ok(())
     }
 
-    fn function_low(
-        &mut self,
-        module: Module,
-        ast: &Ast,
-        signature: &FunSignature,
-    ) -> Result {
+    fn function_low(&mut self, module: Module, ast: &Ast, signature: &FunSignature) -> Result {
+        self.context.current_instruction = None;
         self.context.current_module = Some(module);
         self.context.return_type = signature.return_type;
         let entry_point = self.context.new_chunk();
@@ -92,7 +88,44 @@ impl<'a> FunResolver<'a> {
             self.context.variables.push(Some(var));
         });
 
-        self.block(&ast[1])?;
+        let value = self.block(&ast[1])?;
+
+        if let (Some(value), Some(_), Some(return_type)) =
+            (value, self.context.current_chunk, signature.return_type)
+        {
+            let value_type = self.context[value].datatype;
+            if self.is_auto(value_type) {
+                self.infer(value, return_type)?;
+            }
+            self.context.add_instruction(InstEnt::new(
+                IKind::Return(Some(value)),
+                None,
+                &ast[1].last().unwrap().token,
+            ));
+            self.context.close_chunk();
+        } else if let (Some(return_type), Some(_)) =
+            (signature.return_type, self.context.current_chunk)
+        {
+            let temp = self.new_value(return_type);
+            self.context.add_instruction(InstEnt::new(
+                IKind::ZeroValue,
+                Some(temp),
+                &ast[1].last().unwrap().token,
+            ));
+            self.context.add_instruction(InstEnt::new(
+                IKind::Return(Some(temp)),
+                None,
+                &ast[1].last().unwrap().token,
+            ));
+            self.context.close_chunk();
+        } else if self.context.current_chunk.is_some() {
+            self.context.add_instruction(InstEnt::new(
+                IKind::Return(None),
+                None,
+                &ast[1].last().unwrap().token,
+            ));
+            self.context.close_chunk();
+        }
 
         for (id, dep) in self.context.type_graph.iter() {
             if dep.len() > 0 {
@@ -157,9 +190,7 @@ impl<'a> FunResolver<'a> {
             let value = self.expression(&ast[0])?;
             let actual_type = self.context[value].datatype;
             if self.is_auto(actual_type) {
-                println!("{:#?}", self.context.type_graph);
-                println!("{:#?}", self.context.function_body.values);
-                println!("{:#?}", self.context.function_body.instructions);
+                println!("{}", value);
                 self.infer(value, datatype)?;
             } else {
                 self.assert_type(actual_type, datatype, &ast[0])?;
@@ -169,7 +200,8 @@ impl<'a> FunResolver<'a> {
         };
 
         self.context
-            .add_instruction(InstEnt::new(IKind::Return(value), None, &ast[0].token));
+            .add_instruction(InstEnt::new(IKind::Return(value), None, &ast.token));
+        self.context.close_chunk();
 
         Ok(())
     }
@@ -201,7 +233,7 @@ impl<'a> FunResolver<'a> {
                         .values
                         .add(ValueEnt::temp(datatype));
 
-                    let unresolved = self.is_auto(datatype) as usize;
+                    let unresolved = self.is_auto(datatype);
 
                     let inst = self.context.add_instruction(InstEnt::new(
                         IKind::ZeroValue,
@@ -209,12 +241,10 @@ impl<'a> FunResolver<'a> {
                         &Token::default(),
                     ));
 
-                    let dep = if unresolved == 0 {
-                        None
+                    let dep = if unresolved {
+                        Some(self.context.new_type_dependency())
                     } else {
-                        let dep = self.context.new_type_dependency();
-                        self.context[dep].push(inst);
-                        Some(dep)
+                        None
                     };
 
                     let var = ValueEnt {
@@ -228,7 +258,9 @@ impl<'a> FunResolver<'a> {
 
                     let var = self.context.add_variable(var);
 
-                    self.add_type_dependency(var, inst);
+                    if unresolved {
+                        self.add_type_dependency(var, inst);
+                    }
 
                     self.context.add_instruction(InstEnt::new(
                         IKind::VarDecl(temp_value),
@@ -264,7 +296,7 @@ impl<'a> FunResolver<'a> {
                         mutable,
 
                         type_dependency: dep,
-                        
+
                         value: None,
                         on_stack: false,
                     };
@@ -313,17 +345,15 @@ impl<'a> FunResolver<'a> {
     }
 
     fn call_low(&mut self, base_name: ID, token: &Token) -> Result<Option<Value>> {
-        let inst = self.context.add_instruction(InstEnt::new(
-            IKind::NoOp,
-            None,
-            token,
-        ));
-        
+        let inst = self
+            .context
+            .add_instruction(InstEnt::new(IKind::NoOp, None, token));
+
         let mut unresolved = false;
         for i in 0..self.context.call_value_buffer.len() {
             let value = self.context.call_value_buffer[i];
             if self.is_auto(self.context[value].datatype) {
-                // two arguments can be of same value but that only 
+                // two arguments can be of same value but that only
                 // means we subtract twice later on
                 self.add_type_dependency(value, inst);
                 unresolved = true;
@@ -331,16 +361,23 @@ impl<'a> FunResolver<'a> {
         }
 
         let value = if unresolved {
-            self.context[inst].kind = IKind::UnresolvedCall(base_name, self.context.call_value_buffer.clone());
+            self.context[inst].kind =
+                IKind::UnresolvedCall(base_name, self.context.call_value_buffer.clone());
             let value = self.new_auto_value();
             self.context[inst].value = Some(value);
             Some(value)
         } else {
             let mut name = base_name;
             for &value in self.context.call_value_buffer.iter() {
-                name = name.combine(self.program.types.direct_to_id(self.context[value].datatype));
+                name = name.combine(
+                    self.program
+                        .types
+                        .direct_to_id(self.context[value].datatype),
+                );
             }
-            let (_, fun) = self.find_by_name(name).ok_or_else(|| FunError::new(FEKind::NotFound, token))?;
+            let (_, fun) = self
+                .find_by_name(name)
+                .ok_or_else(|| FunError::new(FEKind::NotFound, token))?;
             self.context[inst].kind = IKind::Call(fun, self.context.call_value_buffer.clone());
             if let Some(return_type) = self.program[fun].signature().return_type {
                 let value = self.new_value(return_type);
@@ -422,9 +459,15 @@ impl<'a> FunResolver<'a> {
         while let Some((value, datatype)) = frontier.pop() {
             let val = &mut self.context[value];
             val.datatype = datatype;
-            let dependency_id = val.type_dependency.unwrap();
+            let dependency_id = if let Some(dep) = val.type_dependency {
+                dep
+            } else {
+                continue;
+            };
             let mut dependencies = std::mem::take(&mut self.context[dependency_id]);
-            for dep in dependencies.drain(..).skip(1)/* first is null marker */ {
+            for dep in dependencies.drain(..).skip(1)
+            /* first is null marker */
+            {
                 let inst = &mut self.context[dep];
                 inst.unresolved -= 1;
                 if inst.unresolved != 0 {
@@ -1100,7 +1143,7 @@ impl FunContext {
             .rev()
             .filter(|v| v.is_some())
             .map(|v| v.unwrap())
-            .find(|v| self.function_body.values[*v].name == name)  
+            .find(|v| self.function_body.values[*v].name == name)
     }
 
     pub fn push_scope(&mut self) {
@@ -1108,13 +1151,15 @@ impl FunContext {
     }
 
     pub fn pop_scope(&mut self) {
-        let idx = self.variables.len() - 1 - self
-            .variables
-            .iter()
-            .rev()
-            .position(|v| v.is_none())
-            .expect("no scope to pop");
-        
+        let idx = self.variables.len()
+            - 1
+            - self
+                .variables
+                .iter()
+                .rev()
+                .position(|v| v.is_none())
+                .expect("no scope to pop");
+
         self.variables.truncate(idx);
     }
 
@@ -1134,7 +1179,9 @@ impl FunContext {
             self.current_chunk.is_some(),
             "no chunk to add instruction to"
         );
-        self.function_body.instructions.add(instruction)
+        let inst = self.function_body.instructions.add(instruction);
+        self.current_instruction = Some(inst);
+        inst
     }
 
     pub fn new_chunk(&mut self) -> Chunk {
@@ -1264,26 +1311,27 @@ pub fn test() {
 
         println!("{}", fun.token_hint.spam.deref());
 
-        for (_, inst) in fun.body.instructions.iter() {
-            if let Some(value) = inst.value {
-                println!(
-                    "  {:?}: {} = {:?} |{}",
-                    value,
-                    program[fun.body.values[value].datatype]
-                        .token_hint
-                        .spam
-                        .deref(),
-                    inst.kind,
-                    inst.token_hint.spam.deref()
-                );
-            } else {
-                println!(
-                    "{:?} |{}",
-                    inst.kind,
-                    inst.token_hint.spam.deref()
-                );
+        for (id, chunk) in fun.body.chunks.iter() {
+            println!("  {}:", id);
+            for inst in (chunk.first_instruction.map(|i| i.raw()).unwrap_or(0)
+                ..=chunk.last_instruction.unwrap().raw())
+                .map(|i| &fun.body.instructions[Inst::new(i)])
+            {
+                if let Some(value) = inst.value {
+                    println!(
+                        "    {:?}: {} = {:?} |{}",
+                        value,
+                        program[fun.body.values[value].datatype]
+                            .token_hint
+                            .spam
+                            .deref(),
+                        inst.kind,
+                        inst.token_hint.spam.deref()
+                    );
+                } else {
+                    println!("    {:?} |{}", inst.kind, inst.token_hint.spam.deref());
+                }
             }
-           
         }
     }
 }

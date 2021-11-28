@@ -132,7 +132,7 @@ macro_rules! define_repo {
 
         impl BuiltinRepo {
             pub fn new(program: &mut Program) -> Self {
-                
+
 
                 let builtin_id = ID::new().add("builtin");
 
