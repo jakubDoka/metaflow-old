@@ -702,10 +702,14 @@ fun main -> i64
   Value(4): i64 = Assign(Value(1)) |val ++= 10
   Value(5): i64 = Call(Fun(145), [Value(1)]) |goo(val)
   Value(6): i64 = VarDecl(Value(5)) |foo = goo(val)
-Return(Some(Value(1))) |return val
+  Return(Some(Value(1))) |return val
+  Value(7): i64 = ZeroValue |return val
+  Return(Some(Value(7))) |return val
 fun ++[T](a, b: T) -> T
   Value(2): i64 = Call(Fun(3), [Value(0), Value(1)]) |a + b
+  Return(Some(Value(2))) |a + b
 fun goo[T](x: T) -> T
+  Return(Some(Value(0))) |x
 function u0:0() -> i64 fast {
 block0:
     v0 = iconst.i64 0
