@@ -1,3 +1,9 @@
+Dummy1
+[(Dummy(1), 0)]
+0
+Dummy(1)
+[]
+[(Dummy(1), 0)]
 Ok(Arguments { filename: "file", flags: ["flag", "flag"], field_flags: [("flag", "value")], args: ["arg", "arg"] })
 Ok(Arguments { filename: "file", flags: [], field_flags: [], args: ["string value"] })
 Token { kind: Use, spam: "use", line_data: LineData { line: 1, column: 0, id: ID(0), file_name: "test_code.pmh" } }
@@ -691,4 +697,156 @@ Group 'use' "use":
      Ident ident "a"
      Ident ident "c"
     Lit integer "30"
+
+fun init() -> Fun
+
+  Inst1[]
+    Value(0): Fun = ZeroValue |
+    Value(1): Fun = VarDecl(Value(0)) |fn
+    Value(4): i32 = Load(Value(1), 4) |fn.b
+    Value(2): i32 = Load(Value(1), 0) |fn.a
+    Value(3): i64 = Lit(Int(1, 64)) |1
+    Value(3): i64 = Assign(Value(2)) |fn.a = 1
+    Value(5): i64 = Lit(Int(2, 64)) |2
+    Value(5): i64 = Assign(Value(4)) |fn.b = 2
+    Return(Some(Value(1))) |fn
+
+fun main -> i64
+
+  Inst1[]
+    Value(0): i64 = ZeroValue |
+    Value(1): i64 = VarDecl(Value(0)) |val
+    Value(2): i64 = VarDecl(Value(1)) |val2 = val
+    Value(3): i64 = Lit(Int(10, 64)) |10
+    Value(4): i64 = Call(Fun(145), [Value(1), Value(3)]) |val ++= 10
+    Value(4): i64 = Assign(Value(1)) |val ++= 10
+    Value(5): i64 = Call(Fun(146), [Value(1)]) |goo(val)
+    Value(6): i64 = VarDecl(Value(5)) |foo = goo(val)
+    Value(7): i64 = Lit(Int(10, 64)) |10
+    Value(8): bool = Call(Fun(35), [Value(6), Value(7)]) |foo == 10
+    JumpIfTrue(Value(8), Inst(12), []) |foo == 10
+    Jump(Inst(15), []) |:
+
+  Inst12[]
+    Value(9): i64 = Lit(Int(1, 64)) |1
+    Jump(Inst(14), [Value(9)]) |
+
+  Inst15[]
+    Value(11): i64 = Lit(Int(1, 64)) |1
+    Jump(Inst(14), [Value(11)]) |1
+
+  Inst14[Value(10)]
+    Value(12): i64 = Call(Fun(3), [Value(6), Value(10)]) |foo += if foo == 10: 1 else: 1
+    Value(12): i64 = Assign(Value(6)) |foo += if foo == 10: 1 else: 1
+    Value(13): i64 = Lit(Int(10, 64)) |10
+    Value(14): bool = Call(Fun(35), [Value(6), Value(13)]) |foo == 10
+    JumpIfTrue(Value(14), Inst(28), []) |foo == 10
+    Jump(Inst(31), []) |:
+
+  Inst28[]
+    Return(Some(Value(6))) |return foo
+
+  Inst31[]
+    Value(15): i64 = Lit(Int(1, 64)) |1
+    Value(16): i64 = Call(Fun(3), [Value(6), Value(15)]) |foo += 1
+    Value(16): i64 = Assign(Value(6)) |foo += 1
+    Jump(Inst(30), [Value(16)]) |foo += 1
+
+  Inst30[Value(17)]
+    Value(18): i64 = Lit(Int(30, 64)) |30
+    Value(19): bool = Call(Fun(59), [Value(6), Value(18)]) |foo <= 30
+    JumpIfTrue(Value(19), Inst(43), []) |foo <= 30
+    Jump(Inst(46), []) |:
+
+  Inst43[]
+    Value(20): i64 = Lit(Int(10, 64)) |10
+    Value(20): i64 = Assign(Value(6)) |foo = 10
+    Jump(Inst(45), [Value(20)]) |
+
+  Inst46[]
+    Return(Some(Value(6))) |return foo
+
+  Inst45[Value(21)]
+    Value(22): i64 = Lit(Int(10, 64)) |10
+    Value(23): bool = Call(Fun(67), [Value(6), Value(22)]) |foo > 10
+    JumpIfTrue(Value(23), Inst(57), []) |foo > 10
+    Jump(Inst(60), []) |:
+
+  Inst57[]
+    Value(24): i64 = Lit(Int(20, 64)) |20
+    Value(24): i64 = Assign(Value(6)) |foo = 20
+    Jump(Inst(59), [Value(24)]) |
+
+  Inst60[]
+    Value(26): i64 = Lit(Int(30, 64)) |30
+    Value(27): i64 = Lit(Int(6, 64)) |6
+    Value(28): i64 = Call(Fun(91), [Value(26), Value(27)]) |30 | 6
+    Value(28): i64 = Assign(Value(6)) |foo = 30 | 6
+    Jump(Inst(59), [Value(28)]) |foo = 30 | 6
+
+  Inst59[Value(25)]
+    Value(29): i64 = Lit(Int(0, 64)) |0
+    Value(30): i64 = VarDecl(Value(29)) |i = 0
+    Jump(Inst(75), []) |
+
+  Inst75[]
+    Value(31): i64 = Lit(Int(10, 64)) |10
+    Value(32): bool = Call(Fun(51), [Value(30), Value(31)]) |i >= 10
+    JumpIfTrue(Value(32), Inst(81), []) |i >= 10
+    Jump(Inst(83), []) |
+
+  Inst81[]
+    Jump(Inst(76), []) |break
+
+  Inst83[]
+    Value(33): i64 = Lit(Int(1, 64)) |1
+    Value(34): i64 = Call(Fun(3), [Value(30), Value(33)]) |i += 1
+    Value(34): i64 = Assign(Value(30)) |i += 1
+    Jump(Inst(75), []) |
+
+  Inst76[]
+    Value(35): i64 = Lit(Int(0, 64)) |0
+    Value(36): i64 = VarDecl(Value(35)) |i = 0
+    Jump(Inst(95), []) |
+
+  Inst95[]
+    Value(37): i64 = Lit(Int(1, 64)) |1
+    Value(38): i64 = Call(Fun(3), [Value(36), Value(37)]) |i += 1
+    Value(38): i64 = Assign(Value(36)) |i += 1
+    Value(39): i64 = Lit(Int(10, 64)) |10
+    Value(40): bool = Call(Fun(75), [Value(36), Value(39)]) |i < 10
+    JumpIfTrue(Value(40), Inst(104), []) |i < 10
+    Jump(Inst(106), []) |
+
+  Inst104[]
+    Jump(Inst(95), []) |continue
+
+  Inst106[]
+    Jump(Inst(96), []) |break
+
+  Inst96[]
+    Jump(Inst(113), []) |
+
+  Inst113[]
+    Jump(Inst(117), []) |
+
+  Inst117[]
+    Jump(Inst(118), []) |break
+
+  Inst118[]
+    Jump(Inst(114), []) |break
+
+  Inst114[]
+    Return(Some(Value(1))) |return val
+
+fun ++[T](a, b: T) -> T
+
+  Inst1[Value(0), Value(1)]
+    Value(2): i64 = Call(Fun(3), [Value(0), Value(1)]) |a + b
+    Return(Some(Value(2))) |a + b
+
+fun goo[T](x: T) -> T
+
+  Inst1[Value(0)]
+    Return(Some(Value(0))) |x
 
