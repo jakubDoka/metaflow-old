@@ -366,828 +366,329 @@ Token { kind: Indent(0), spam: "\n\r", line_data: LineData { line: 70, column: 1
 Group 'use' "use":
  UseStatement(true) 'use' "use":
   None end of file ""
-  Literal string "\"foo/moo\""
+  Lit string "\"foo/moo\""
  UseStatement(true) 'use' "use":
   None end of file ""
-  Literal string "\"foo/moo/goo\""
+  Lit string "\"foo/moo/goo\""
  UseStatement(false) 'use' "use":
   None end of file ""
-  Literal string "\"foo/moo\""
+  Lit string "\"foo/moo\""
  UseStatement(false) 'use' "use":
   None end of file ""
-  Literal string "\"foo/goo/noo\""
+  Lit string "\"foo/goo/noo\""
  Fun(Private) 'fun' "fun flo: pass":
   FunHeader 'fun' "fun flo":
-   Identifier identifier "flo"
+   Ident ident "flo"
    None end of file ""
   Group ':' ":"
  Fun(Private) 'fun' "fun foo(): pass":
   FunHeader 'fun' "fun foo()":
-   Identifier identifier "foo"
+   Ident ident "foo"
    None end of file ""
   Group ':' ":"
  Fun(Private) 'fun' "fun goo(a: i8, b: i8): pass":
   FunHeader 'fun' "fun goo(a: i8, b: i8)":
-   Identifier identifier "goo"
-   FunArgument(false) identifier "a: i8":
-    Identifier identifier "a"
-    Identifier identifier "i8"
-   FunArgument(false) identifier "b: i8":
-    Identifier identifier "b"
-    Identifier identifier "i8"
+   Ident ident "goo"
+   FunArgument(false) ident "a: i8":
+    Ident ident "a"
+    Ident ident "i8"
+   FunArgument(false) ident "b: i8":
+    Ident ident "b"
+    Ident ident "i8"
    None end of file ""
   Group ':' ":"
  Fun(Private) 'fun' "fun loo:\r\n  noo::loo::[i8]()\r\n  pass":
   FunHeader 'fun' "fun loo":
-   Identifier identifier "loo"
+   Ident ident "loo"
    None end of file ""
   Group ':' ":":
-   Call identifier "noo::loo::[i8]()":
-    Instantiation identifier "noo::loo::[i8]":
-     ExplicitPackage identifier "noo::loo":
-      Identifier identifier "noo"
-      Identifier identifier "loo"
-     Identifier identifier "i8"
+   Call ident "noo::loo::[i8]()":
+    Instantiation ident "noo::loo::[i8]":
+     ExplicitPackage ident "noo::loo":
+      Ident ident "noo"
+      Ident ident "loo"
+     Ident ident "i8"
  Fun(Private) 'fun' "fun main -> i64:\r\n  return 10 + 4 - 2 * 1 + 8":
   FunHeader 'fun' "fun main -> i64":
-   Identifier identifier "main"
-   Identifier identifier "i64"
+   Ident ident "main"
+   Ident ident "i64"
   Group ':' ":":
    ReturnStatement 'return' "return 10 + 4 - 2 * 1 + 8":
-    BinaryOperation integer "10 + 4 - 2 * 1 + 8":
-     Identifier operator "-"
-     BinaryOperation integer "10 + 4":
-      Identifier operator "+"
-      Literal integer "10"
-      Literal integer "4"
-     BinaryOperation integer "2 * 1 + 8":
-      Identifier operator "+"
-      BinaryOperation integer "2 * 1":
-       Identifier operator "*"
-       Literal integer "2"
-       Literal integer "1"
-      Literal integer "8"
+    BinaryOp integer "10 + 4 - 2 * 1 + 8":
+     Ident operator "-"
+     BinaryOp integer "10 + 4":
+      Ident operator "+"
+      Lit integer "10"
+      Lit integer "4"
+     BinaryOp integer "2 * 1 + 8":
+      Ident operator "+"
+      BinaryOp integer "2 * 1":
+       Ident operator "*"
+       Lit integer "2"
+       Lit integer "1"
+      Lit integer "8"
  Fun(Private) 'fun' "fun operator_stress_test -> i64:\r\n  return 10 + 2 * 1 - 9 | 4 & 1 ^ 2 >> 1 << 7 min 20 max 10":
   FunHeader 'fun' "fun operator_stress_test -> i64":
-   Identifier identifier "operator_stress_test"
-   Identifier identifier "i64"
+   Ident ident "operator_stress_test"
+   Ident ident "i64"
   Group ':' ":":
    ReturnStatement 'return' "return 10 + 2 * 1 - 9 | 4 & 1 ^ 2 >> 1 << 7 min 20 max 10":
-    BinaryOperation integer "10 + 2 * 1 - 9 | 4 & 1 ^ 2 >> 1 << 7 min 20 max 10":
-     Identifier operator "+"
-     Literal integer "10"
-     BinaryOperation integer "2 * 1 - 9 | 4 & 1 ^ 2 >> 1 << 7 min 20 max 10":
-      Identifier operator "|"
-      BinaryOperation integer "2 * 1 - 9":
-       Identifier operator "-"
-       BinaryOperation integer "2 * 1":
-        Identifier operator "*"
-        Literal integer "2"
-        Literal integer "1"
-       Literal integer "9"
-      BinaryOperation integer "4 & 1 ^ 2 >> 1 << 7 min 20 max 10":
-       Identifier operator "^"
-       BinaryOperation integer "4 & 1":
-        Identifier operator "&"
-        Literal integer "4"
-        Literal integer "1"
-       BinaryOperation integer "2 >> 1 << 7 min 20 max 10":
-        Identifier operator "max"
-        BinaryOperation integer "2 >> 1 << 7 min 20":
-         Identifier operator "min"
-         BinaryOperation integer "2 >> 1 << 7":
-          Identifier operator "<<"
-          BinaryOperation integer "2 >> 1":
-           Identifier operator ">>"
-           Literal integer "2"
-           Literal integer "1"
-          Literal integer "7"
-         Literal integer "20"
-        Literal integer "10"
+    BinaryOp integer "10 + 2 * 1 - 9 | 4 & 1 ^ 2 >> 1 << 7 min 20 max 10":
+     Ident operator "+"
+     Lit integer "10"
+     BinaryOp integer "2 * 1 - 9 | 4 & 1 ^ 2 >> 1 << 7 min 20 max 10":
+      Ident operator "|"
+      BinaryOp integer "2 * 1 - 9":
+       Ident operator "-"
+       BinaryOp integer "2 * 1":
+        Ident operator "*"
+        Lit integer "2"
+        Lit integer "1"
+       Lit integer "9"
+      BinaryOp integer "4 & 1 ^ 2 >> 1 << 7 min 20 max 10":
+       Ident operator "^"
+       BinaryOp integer "4 & 1":
+        Ident operator "&"
+        Lit integer "4"
+        Lit integer "1"
+       BinaryOp integer "2 >> 1 << 7 min 20 max 10":
+        Ident operator "max"
+        BinaryOp integer "2 >> 1 << 7 min 20":
+         Ident operator "min"
+         BinaryOp integer "2 >> 1 << 7":
+          Ident operator "<<"
+          BinaryOp integer "2 >> 1":
+           Ident operator ">>"
+           Lit integer "2"
+           Lit integer "1"
+          Lit integer "7"
+         Lit integer "20"
+        Lit integer "10"
  Fun(Private) 'fun' "fun conditional -> i64:\r\n  if false:\r\n    return 10\r\n  elif true:\r\n    return if true: 10 else: 20\r\n  else:\r\n    return 0":
   FunHeader 'fun' "fun conditional -> i64":
-   Identifier identifier "conditional"
-   Identifier identifier "i64"
+   Ident ident "conditional"
+   Ident ident "i64"
   Group ':' ":":
-   IfExpression 'if' "if false:\r\n    return 10\r\n  elif true:\r\n    return if true: 10 else: 20\r\n  else:\r\n    return 0":
-    Literal boolean "false"
+   IfExpr 'if' "if false:\r\n    return 10\r\n  elif true:\r\n    return if true: 10 else: 20\r\n  else:\r\n    return 0":
+    Lit boolean "false"
     Group ':' ":":
      ReturnStatement 'return' "return 10":
-      Literal integer "10"
+      Lit integer "10"
     Group 'elif' "elif":
-     IfExpression 'elif' "elif true:\r\n    return if true: 10 else: 20\r\n  else:\r\n    return 0":
-      Literal boolean "true"
+     IfExpr 'elif' "elif true:\r\n    return if true: 10 else: 20\r\n  else:\r\n    return 0":
+      Lit boolean "true"
       Group ':' ":":
        ReturnStatement 'return' "return if true: 10 else: 20":
-        IfExpression 'if' "if true: 10 else: 20":
-         Literal boolean "true"
+        IfExpr 'if' "if true: 10 else: 20":
+         Lit boolean "true"
          Group ':' ":":
-          Literal integer "10"
+          Lit integer "10"
          Group ':' ":":
-          Literal integer "20"
+          Lit integer "20"
       Group ':' ":":
        ReturnStatement 'return' "return 0":
-        Literal integer "0"
+        Lit integer "0"
  Attribute 'attr' "attr inline = always, call_conv = cold":
-  AttributeAssign identifier "inline = always":
-   Identifier identifier "inline"
-   Identifier identifier "always"
-  AttributeAssign identifier "call_conv = cold":
-   Identifier identifier "call_conv"
-   Identifier identifier "cold"
+  AttributeAssign ident "inline = always":
+   Ident ident "inline"
+   Ident ident "always"
+  AttributeAssign ident "call_conv = cold":
+   Ident ident "call_conv"
+   Ident ident "cold"
  Fun(Private) 'fun' "fun inline_fn -> u32:\r\n  return 10":
   FunHeader 'fun' "fun inline_fn -> u32":
-   Identifier identifier "inline_fn"
-   Identifier identifier "u32"
+   Ident ident "inline_fn"
+   Ident ident "u32"
   Group ':' ":":
    ReturnStatement 'return' "return 10":
-    Literal integer "10"
+    Lit integer "10"
  Fun(Private) 'fun' "fun fib(v: i64) -> i64:\r\n  return if v == 0 | v == 1:\r\n    1\r\n  else:\r\n    fib(v - 1) + fib(v - 2)":
   FunHeader 'fun' "fun fib(v: i64) -> i64":
-   Identifier identifier "fib"
-   FunArgument(false) identifier "v: i64":
-    Identifier identifier "v"
-    Identifier identifier "i64"
-   Identifier identifier "i64"
+   Ident ident "fib"
+   FunArgument(false) ident "v: i64":
+    Ident ident "v"
+    Ident ident "i64"
+   Ident ident "i64"
   Group ':' ":":
    ReturnStatement 'return' "return if v == 0 | v == 1:\r\n    1\r\n  else:\r\n    fib(v - 1) + fib(v - 2)":
-    IfExpression 'if' "if v == 0 | v == 1:\r\n    1\r\n  else:\r\n    fib(v - 1) + fib(v - 2)":
-     BinaryOperation identifier "v == 0 | v == 1":
-      Identifier operator "|"
-      BinaryOperation identifier "v == 0":
-       Identifier operator "=="
-       Identifier identifier "v"
-       Literal integer "0"
-      BinaryOperation identifier "v == 1":
-       Identifier operator "=="
-       Identifier identifier "v"
-       Literal integer "1"
+    IfExpr 'if' "if v == 0 | v == 1:\r\n    1\r\n  else:\r\n    fib(v - 1) + fib(v - 2)":
+     BinaryOp ident "v == 0 | v == 1":
+      Ident operator "|"
+      BinaryOp ident "v == 0":
+       Ident operator "=="
+       Ident ident "v"
+       Lit integer "0"
+      BinaryOp ident "v == 1":
+       Ident operator "=="
+       Ident ident "v"
+       Lit integer "1"
      Group ':' ":":
-      Literal integer "1"
+      Lit integer "1"
      Group ':' ":":
-      BinaryOperation identifier "fib(v - 1) + fib(v - 2)":
-       Identifier operator "+"
-       Call identifier "fib(v - 1)":
-        Identifier identifier "fib"
-        BinaryOperation identifier "v - 1":
-         Identifier operator "-"
-         Identifier identifier "v"
-         Literal integer "1"
-       Call identifier "fib(v - 2)":
-        Identifier identifier "fib"
-        BinaryOperation identifier "v - 2":
-         Identifier operator "-"
-         Identifier identifier "v"
-         Literal integer "2"
+      BinaryOp ident "fib(v - 1) + fib(v - 2)":
+       Ident operator "+"
+       Call ident "fib(v - 1)":
+        Ident ident "fib"
+        BinaryOp ident "v - 1":
+         Ident operator "-"
+         Ident ident "v"
+         Lit integer "1"
+       Call ident "fib(v - 2)":
+        Ident ident "fib"
+        BinaryOp ident "v - 2":
+         Ident operator "-"
+         Ident ident "v"
+         Lit integer "2"
  Fun(Private) 'fun' "fun fib_loop(v: i64) -> i64:\r\n  var a, b, c = 1\r\n  loop'a:\r\n    c = a + b\r\n    a = b\r\n    b = c\r\n    v = v - 1\r\n    if v == 0:\r\n      break'a\r\n  return c":
   FunHeader 'fun' "fun fib_loop(v: i64) -> i64":
-   Identifier identifier "fib_loop"
-   FunArgument(false) identifier "v: i64":
-    Identifier identifier "v"
-    Identifier identifier "i64"
-   Identifier identifier "i64"
+   Ident ident "fib_loop"
+   FunArgument(false) ident "v: i64":
+    Ident ident "v"
+    Ident ident "i64"
+   Ident ident "i64"
   Group ':' ":":
    VarStatement(true) 'var' "var a, b, c = 1":
-    VarAssign identifier "a, b, c = 1":
-     Group identifier "a":
-      Identifier identifier "a"
-      Identifier identifier "b"
-      Identifier identifier "c"
+    VarAssign ident "a, b, c = 1":
+     Group ident "a":
+      Ident ident "a"
+      Ident ident "b"
+      Ident ident "c"
      None end of file ""
      Group operator "=":
-      Literal integer "1"
-      Identifier identifier "a"
-      Identifier identifier "a"
+      Lit integer "1"
+      Ident ident "a"
+      Ident ident "a"
    Loop 'loop' "loop'a:\r\n    c = a + b\r\n    a = b\r\n    b = c\r\n    v = v - 1\r\n    if v == 0:\r\n      break'a":
-    Identifier 'label' "'a"
+    Ident 'label' "'a"
     Group ':' ":":
-     BinaryOperation identifier "c = a + b":
-      Identifier operator "="
-      Identifier identifier "c"
-      BinaryOperation identifier "a + b":
-       Identifier operator "+"
-       Identifier identifier "a"
-       Identifier identifier "b"
-     BinaryOperation identifier "a = b":
-      Identifier operator "="
-      Identifier identifier "a"
-      Identifier identifier "b"
-     BinaryOperation identifier "b = c":
-      Identifier operator "="
-      Identifier identifier "b"
-      Identifier identifier "c"
-     BinaryOperation identifier "v = v - 1":
-      Identifier operator "="
-      Identifier identifier "v"
-      BinaryOperation identifier "v - 1":
-       Identifier operator "-"
-       Identifier identifier "v"
-       Literal integer "1"
-     IfExpression 'if' "if v == 0:\r\n      break'a":
-      BinaryOperation identifier "v == 0":
-       Identifier operator "=="
-       Identifier identifier "v"
-       Literal integer "0"
+     BinaryOp ident "c = a + b":
+      Ident operator "="
+      Ident ident "c"
+      BinaryOp ident "a + b":
+       Ident operator "+"
+       Ident ident "a"
+       Ident ident "b"
+     BinaryOp ident "a = b":
+      Ident operator "="
+      Ident ident "a"
+      Ident ident "b"
+     BinaryOp ident "b = c":
+      Ident operator "="
+      Ident ident "b"
+      Ident ident "c"
+     BinaryOp ident "v = v - 1":
+      Ident operator "="
+      Ident ident "v"
+      BinaryOp ident "v - 1":
+       Ident operator "-"
+       Ident ident "v"
+       Lit integer "1"
+     IfExpr 'if' "if v == 0:\r\n      break'a":
+      BinaryOp ident "v == 0":
+       Ident operator "=="
+       Ident ident "v"
+       Lit integer "0"
       Group ':' ":":
        Break 'break' "break'a":
-        Identifier 'label' "'a"
+        Ident 'label' "'a"
         None end of file ""
       None end of file ""
    ReturnStatement 'return' "return c":
-    Identifier identifier "c"
+    Ident ident "c"
  Fun(Private) 'fun' "fun unary_operators(a: i64) -> i64:\r\n  return -a + ~a + !a + ++a + --a":
   FunHeader 'fun' "fun unary_operators(a: i64) -> i64":
-   Identifier identifier "unary_operators"
-   FunArgument(false) identifier "a: i64":
-    Identifier identifier "a"
-    Identifier identifier "i64"
-   Identifier identifier "i64"
+   Ident ident "unary_operators"
+   FunArgument(false) ident "a: i64":
+    Ident ident "a"
+    Ident ident "i64"
+   Ident ident "i64"
   Group ':' ":":
    ReturnStatement 'return' "return -a + ~a + !a + ++a + --a":
-    BinaryOperation operator "-a + ~a + !a + ++a + --":
-     Identifier operator "+"
-     BinaryOperation operator "-a + ~a + !a + ++":
-      Identifier operator "+"
-      BinaryOperation operator "-a + ~a + !":
-       Identifier operator "+"
-       BinaryOperation operator "-a + ~":
-        Identifier operator "+"
-        UnaryOperation operator "-":
-         Identifier operator "-"
-         Identifier identifier "a"
-        UnaryOperation operator "~":
-         Identifier operator "~"
-         Identifier identifier "a"
-       UnaryOperation operator "!":
-        Identifier operator "!"
-        Identifier identifier "a"
-      UnaryOperation operator "++":
-       Identifier operator "++"
-       Identifier identifier "a"
-     UnaryOperation operator "--":
-      Identifier operator "--"
-      Identifier identifier "a"
+    BinaryOp operator "-a + ~a + !a + ++a + --":
+     Ident operator "+"
+     BinaryOp operator "-a + ~a + !a + ++":
+      Ident operator "+"
+      BinaryOp operator "-a + ~a + !":
+       Ident operator "+"
+       BinaryOp operator "-a + ~":
+        Ident operator "+"
+        UnaryOp operator "-":
+         Ident operator "-"
+         Ident ident "a"
+        UnaryOp operator "~":
+         Ident operator "~"
+         Ident ident "a"
+       UnaryOp operator "!":
+        Ident operator "!"
+        Ident ident "a"
+      UnaryOp operator "++":
+       Ident operator "++"
+       Ident ident "a"
+     UnaryOp operator "--":
+      Ident operator "--"
+      Ident ident "a"
  StructDeclaration(Private) 'struct' "struct":
-  Identifier identifier "Foo"
+  Ident ident "Foo"
   Group ':' ":":
-   StructField(false) identifier "a, b, c: i64":
-    Identifier identifier "a"
-    Identifier identifier "b"
-    Identifier identifier "c"
-    Identifier identifier "i64"
+   StructField(false) ident "a, b, c: i64":
+    Ident ident "a"
+    Ident ident "b"
+    Ident ident "c"
+    Ident ident "i64"
  StructDeclaration(Private) 'struct' "struct":
-  Identifier identifier "Goo"
+  Ident ident "Goo"
   Group ':' ":":
-   StructField(true) identifier "foo: Foo":
-    Identifier identifier "foo"
-    Identifier identifier "Foo"
+   StructField(true) ident "foo: Foo":
+    Ident ident "foo"
+    Ident ident "Foo"
    Attribute 'attr' "attr something":
-    AttributeElement identifier "something":
-     Identifier identifier "something"
-   StructField(false) identifier "gva: i64":
-    Identifier identifier "gva"
-    Identifier identifier "i64"
+    AttributeElement ident "something":
+     Ident ident "something"
+   StructField(false) ident "gva: i64":
+    Ident ident "gva"
+    Ident ident "i64"
  Fun(Private) 'fun' "fun strings -> i64:\r\n  var hello = \"hello\"\r\n  return 0":
   FunHeader 'fun' "fun strings -> i64":
-   Identifier identifier "strings"
-   Identifier identifier "i64"
+   Ident ident "strings"
+   Ident ident "i64"
   Group ':' ":":
    VarStatement(true) 'var' "var hello = \"hello\"":
-    VarAssign identifier "hello = \"hello\"":
-     Group identifier "hello":
-      Identifier identifier "hello"
+    VarAssign ident "hello = \"hello\"":
+     Group ident "hello":
+      Ident ident "hello"
      None end of file ""
      Group operator "=":
-      Literal string "\"hello\""
+      Lit string "\"hello\""
    ReturnStatement 'return' "return 0":
-    Literal integer "0"
+    Lit integer "0"
  Fun(Private) 'fun' "fun mutable_ref(a: &var Foo):\r\n  a.a = 10\r\n  a.b = 20\r\n  a.c = 30":
   FunHeader 'fun' "fun mutable_ref(a: &var Foo)":
-   Identifier identifier "mutable_ref"
-   FunArgument(false) identifier "a: &var Foo":
-    Identifier identifier "a"
-    UnaryOperation operator "&":
-     Identifier operator "&"
-     UnaryOperation 'var' "var":
-      Identifier 'var' "var"
-      Identifier identifier "Foo"
+   Ident ident "mutable_ref"
+   FunArgument(false) ident "a: &var Foo":
+    Ident ident "a"
+    UnaryOp operator "&":
+     Ident operator "&"
+     UnaryOp 'var' "var":
+      Ident 'var' "var"
+      Ident ident "Foo"
    None end of file ""
   Group ':' ":":
-   BinaryOperation identifier "a.a = 10":
-    Identifier operator "="
-    DotExpr identifier "a.a":
-     Identifier identifier "a"
-     Identifier identifier "a"
-    Literal integer "10"
-   BinaryOperation identifier "a.b = 20":
-    Identifier operator "="
-    DotExpr identifier "a.b":
-     Identifier identifier "a"
-     Identifier identifier "b"
-    Literal integer "20"
-   BinaryOperation identifier "a.c = 30":
-    Identifier operator "="
-    DotExpr identifier "a.c":
-     Identifier identifier "a"
-     Identifier identifier "c"
-    Literal integer "30"
-
-fun main -> i64
-
-  Block0[]:
-    Value(0): i64 = ZeroValue |
-    Value(1): i64 = VarDecl(Value(0)) |val
-    Value(2): i64 = VarDecl(Value(1)) |val2 = val
-    Value(3): i64 = Literal(Int(10, 64)) |10
-    Value(4): i64 = Call(Fun(144), [Value(1), Value(3)]) |val ++= 10
-    Value(4): i64 = Assign(Value(1)) |val ++= 10
-    Value(5): i64 = Call(Fun(145), [Value(1)]) |goo(val)
-    Value(6): i64 = VarDecl(Value(5)) |foo = goo(val)
-    Value(7): i64 = Literal(Int(10, 64)) |10
-    Value(8): bool = Call(Fun(35), [Value(6), Value(7)]) |foo == 10
-    JumpIfTrue(Value(8), Block(1), []) |foo == 10
-    Jump(Block(3), []) |:
-
-  Block1[]:
-    Value(9): i64 = Literal(Int(1, 64)) |1
-    Jump(Block(2), [Value(9)]) |
-
-  Block2[Value(10)]:
-    Value(12): i64 = Call(Fun(3), [Value(6), Value(10)]) |foo += if foo == 10: 1 else: 1
-    Value(12): i64 = Assign(Value(6)) |foo += if foo == 10: 1 else: 1
-    Value(13): i64 = Literal(Int(10, 64)) |10
-    Value(14): bool = Call(Fun(35), [Value(6), Value(13)]) |foo == 10
-    JumpIfTrue(Value(14), Block(4), []) |foo == 10
-    Jump(Block(6), []) |:
-
-  Block3[]:
-    Value(11): i64 = Literal(Int(1, 64)) |1
-    Jump(Block(2), [Value(11)]) |1
-
-  Block4[]:
-    Return(Some(Value(6))) |return foo
-
-  Block5[]:
-    Value(18): i64 = Literal(Int(30, 64)) |30
-    Value(19): bool = Call(Fun(59), [Value(6), Value(18)]) |foo <= 30
-    JumpIfTrue(Value(19), Block(8), []) |foo <= 30
-    Jump(Block(10), []) |:
-
-  Block6[]:
-    Value(15): i64 = Literal(Int(1, 64)) |1
-    Value(16): i64 = Call(Fun(3), [Value(6), Value(15)]) |foo += 1
-    Value(16): i64 = Assign(Value(6)) |foo += 1
-    Jump(Block(7), [Value(16)]) |foo += 1
-
-  Block7[Value(17)]:
-  Block8[]:
-    Value(20): i64 = Literal(Int(10, 64)) |10
-    Value(20): i64 = Assign(Value(6)) |foo = 10
-    Jump(Block(9), [Value(20)]) |
-
-  Block9[Value(21)]:
-    Value(22): i64 = Literal(Int(10, 64)) |10
-    Value(23): bool = Call(Fun(67), [Value(6), Value(22)]) |foo > 10
-    JumpIfTrue(Value(23), Block(11), []) |foo > 10
-    Jump(Block(13), []) |:
-
-  Block10[]:
-    Return(Some(Value(6))) |return foo
-
-  Block11[]:
-    Value(24): i64 = Literal(Int(20, 64)) |20
-    Value(24): i64 = Assign(Value(6)) |foo = 20
-    Jump(Block(12), [Value(24)]) |
-
-  Block12[Value(25)]:
-    Value(29): i64 = Literal(Int(0, 64)) |0
-    Value(30): i64 = VarDecl(Value(29)) |i = 0
-    Jump(Block(14), []) |
-
-  Block13[]:
-    Value(26): i64 = Literal(Int(30, 64)) |30
-    Value(27): i64 = Literal(Int(6, 64)) |6
-    Value(28): i64 = Call(Fun(91), [Value(26), Value(27)]) |30 | 6
-    Value(28): i64 = Assign(Value(6)) |foo = 30 | 6
-    Jump(Block(12), [Value(28)]) |foo = 30 | 6
-
-  Block14[]:
-    Value(31): i64 = Literal(Int(10, 64)) |10
-    Value(32): bool = Call(Fun(51), [Value(30), Value(31)]) |i >= 10
-    JumpIfTrue(Value(32), Block(16), []) |i >= 10
-    Jump(Block(17), []) |
-
-  Block15[]:
-    Value(35): i64 = Literal(Int(0, 64)) |0
-    Value(36): i64 = VarDecl(Value(35)) |i = 0
-    Jump(Block(18), []) |
-
-  Block16[]:
-    Jump(Block(15), []) |break
-
-  Block17[]:
-    Value(33): i64 = Literal(Int(1, 64)) |1
-    Value(34): i64 = Call(Fun(3), [Value(30), Value(33)]) |i += 1
-    Value(34): i64 = Assign(Value(30)) |i += 1
-    Jump(Block(14), []) |
-
-  Block18[]:
-    Value(37): i64 = Literal(Int(1, 64)) |1
-    Value(38): i64 = Call(Fun(3), [Value(36), Value(37)]) |i += 1
-    Value(38): i64 = Assign(Value(36)) |i += 1
-    Value(39): i64 = Literal(Int(10, 64)) |10
-    Value(40): bool = Call(Fun(75), [Value(36), Value(39)]) |i < 10
-    JumpIfTrue(Value(40), Block(20), []) |i < 10
-    Jump(Block(21), []) |
-
-  Block19[]:
-    Jump(Block(22), []) |
-
-  Block20[]:
-    Jump(Block(18), []) |continue
-
-  Block21[]:
-    Jump(Block(19), []) |break
-
-  Block22[]:
-    Jump(Block(24), []) |
-
-  Block23[]:
-    Return(Some(Value(1))) |return val
-
-  Block24[]:
-    Jump(Block(25), []) |break
-
-  Block25[]:
-    Jump(Block(23), []) |break
-
-fun ++[T](a, b: T) -> T
-
-  Block0[Value(0), Value(1)]:
-    Value(2): i64 = Call(Fun(3), [Value(0), Value(1)]) |a + b
-    Return(Some(Value(2))) |a + b
-
-fun goo[T](x: T) -> T
-
-  Block0[Value(0)]:
-    Return(Some(Value(0))) |x
-
-function u0:0() -> i64 fast {
-block0:
-    v0 = iconst.i64 0
-    return v0
-}
-
-function u0:0() -> i64 fast {
-block0:
-    v0 = iconst.i64 1
-    v1 = iconst.i64 1
-    v2 = isub v0, v1
-    return v2
-}
-
-function u0:0() -> i64 fast {
-block0:
-    v0 = iconst.i64 1
-    v1 = iconst.i64 1
-    v2 = iadd v0, v1
-    return v2
-}
-
-function u0:0() -> i64 fast {
-block0:
-    v0 = iconst.i64 1
-    v1 = iconst.i64 1
-    v2 = icmp eq v0, v1
-    brnz v2, block1
-    jump block2
-
-block1:
-    v3 = iconst.i64 0
-    jump block3(v3)
-
-block2:
-    v5 = iconst.i64 1
-    jump block3(v5)
-
-block3(v4: i64):
-    return v4
-}
-
-function u0:0() -> i32 fast {
-    sig0 = (i32) -> i32 fast
-    sig1 = (i32) -> i32 fast
-    fn0 = colocated u0:1 sig0
-    fn1 = colocated u0:0 sig1
-
-block0:
-    v0 = iconst.i32 10
-    v1 = call fn0(v0)
-    v2 = call fn1(v0)
-    v3 = isub v1, v2
-    return v3
-}
-
-function u0:0(i32) -> i32 fast {
-block0(v0: i32):
-    v1 = iconst.i32 1
-    jump block1(v1, v1, v0)
-
-block1(v2: i32, v3: i32, v6: i32):
-    v10 -> v3
-    v4 = iadd v2, v3
-    v11 -> v4
-    v13 -> v4
-    v5 = iconst.i32 1
-    v7 = isub v6, v5
-    v12 -> v7
-    v8 = iconst.i32 1
-    v9 = icmp eq v7, v8
-    brnz v9, block3
-    jump block4
-
-block3:
-    jump block2
-
-block4:
-    jump block1(v10, v11, v12)
-
-block2:
-    return v13
-}
-
-function u0:0(i32) -> i32 fast {
-    sig0 = (i32) -> i32 fast
-    fn0 = colocated u0:0 sig0
-
-block0(v0: i32):
-    v1 = iconst.i32 2
-    v2 = icmp slt v0, v1
-    brnz v2, block1
-    jump block2
-
-block1:
-    v3 = iconst.i32 1
-    jump block3(v3)
-
-block2:
-    v5 = iconst.i32 1
-    v6 = isub.i32 v0, v5
-    v7 = call fn0(v6)
-    v8 = iconst.i32 2
-    v9 = isub.i32 v0, v8
-    v10 = call fn0(v9)
-    v11 = iadd v7, v10
-    jump block3(v11)
-
-block3(v4: i32):
-    return v4
-}
-
-function u0:0() -> i64 fast {
-    ss0 = explicit_slot 16
-    ss1 = explicit_slot 24
-    ss2 = explicit_slot 32
-
-block0:
-    v0 = stack_addr.i64 ss0
-    v1 = iconst.i64 0
-    store v1, v0
-    store v1, v0+8
-    v2 = stack_addr.i64 ss1
-    v3 = iconst.i64 0
-    store v3, v2
-    store v3, v2+8
-    store v3, v2+16
-    v4 = stack_addr.i64 ss2
-    v5 = iconst.i64 0
-    store v5, v4
-    store v5, v4+8
-    store v5, v4+16
-    store v5, v4+24
-    v6 = iconst.i64 1
-    store v6, v0
-    v7 = load.i64 v0
-    store v7, v2
-    v8 = load.i64 v0+8
-    store v8, v2+8
-    v9 = iconst.i64 2
-    store v9, v2+8
-    v10 = load.i64 v2
-    store v10, v4
-    v11 = load.i64 v2+8
-    store v11, v4+8
-    v12 = load.i64 v4
-    v13 = load.i64 v4+8
-    v14 = isub v12, v13
-    v15 = iconst.i64 1
-    v16 = iadd v14, v15
-    return v16
-}
-
-function u0:0(i64 sret, i64, i64, i64) -> i64 sret fast {
-block0(v0: i64, v1: i64, v2: i64, v3: i64):
-    store v2, v1
-    store v3, v1+8
-    v4 = load.i64 v1
-    store v4, v0
-    v5 = load.i64 v1+8
-    store v5, v0+8
-    return v0
-}
-
-function u0:0() -> i64 fast {
-    ss0 = explicit_slot 16
-    ss1 = explicit_slot 16
-    ss2 = explicit_slot 16
-    ss3 = explicit_slot 16
-    ss4 = explicit_slot 16
-    sig0 = (i64 sret, i64, i64, i64) -> i64 sret fast
-    sig1 = (i64 sret, i64, i64) -> i64 sret fast
-    fn0 = colocated u0:0 sig0
-    fn1 = colocated u0:1 sig1
-
-block0:
-    v0 = stack_addr.i64 ss0
-    v1 = iconst.i64 0
-    store v1, v0
-    store v1, v0+8
-    v2 = stack_addr.i64 ss1
-    v3 = iconst.i64 0
-    store v3, v2
-    store v3, v2+8
-    v4 = stack_addr.i64 ss2
-    v5 = iconst.i64 1
-    v6 = iconst.i64 2
-    v7 = call fn0(v4, v0, v5, v6)
-    v8 = load.i64 v4
-    store v8, v0
-    v9 = load.i64 v4+8
-    store v9, v0+8
-    v10 = stack_addr.i64 ss3
-    v11 = iconst.i64 3
-    v12 = iconst.i64 4
-    v13 = call fn0(v10, v2, v11, v12)
-    v14 = load.i64 v10
-    store v14, v2
-    v15 = load.i64 v10+8
-    store v15, v2+8
-    v16 = stack_addr.i64 ss4
-    v17 = call fn1(v16, v0, v2)
-    v18 = load.i64 v16
-    store v18, v0
-    v19 = load.i64 v16+8
-    store v19, v0+8
-    v20 = load.i64 v0
-    v21 = load.i64 v0+8
-    v22 = iadd v20, v21
-    v23 = iconst.i64 10
-    v24 = isub v22, v23
-    return v24
-}
-
-function u0:0(i64 sret, i64, i64) -> i64 sret fast {
-block0(v0: i64, v1: i64, v2: i64):
-    v3 = load.i64 v1
-    v4 = load.i64 v2
-    v5 = iadd v3, v4
-    store v5, v1
-    v6 = load.i64 v1+8
-    v7 = load.i64 v2+8
-    v8 = iadd v6, v7
-    store v8, v1+8
-    v9 = load.i64 v1
-    store v9, v0
-    v10 = load.i64 v1+8
-    store v10, v0+8
-    return v0
-}
-
-function u0:0() -> i64 fast {
-block0:
-    v0 = iconst.i64 0
-    v1 = iadd_imm v0, 1
-    v2 = iadd_imm v1, -1
-    v3 = bconst.b1 true
-    v4 = bconst.b1 false
-    v5 = bconst.b1 true
-    v6 = select v3, v4, v5
-    v7 = bint.i64 v6
-    v8 = iconst.i64 1
-    v9 = bnot v8
-    v10 = iadd v7, v9
-    v11 = iconst.i64 2
-    v12 = iadd v10, v11
-    v13 = iconst.i64 1
-    v14 = ineg v13
-    v15 = icmp_imm sgt v14, 0
-    v16 = ineg v14
-    v17 = select v15, v14, v16
-    v18 = iadd v12, v17
-    v19 = iconst.i64 1
-    v20 = isub v18, v19
-    v21 = iadd v20, v2
-    return v21
-}
-
-function u0:0() -> i64 fast {
-block0:
-    v0 = f64const 0x1.0000000000000p0
-    jump block1(v0)
-
-block1(v2: f64):
-    v1 = f64const 0x1.0000000000000p0
-    v3 = fadd v2, v1
-    v6 -> v3
-    v7 -> v3
-    v4 = f64const 0x1.9000000000000p6
-    v5 = fcmp gt v3, v4
-    brnz v5, block3
-    jump block4
-
-block3:
-    jump block2
-
-block4:
-    jump block1(v6)
-
-block2:
-    v8 = fcvt_to_sint.i64 v7
-    v9 = iconst.i64 101
-    v10 = isub v8, v9
-    return v10
-}
-
-function u0:0() -> i64 fast {
-    ss0 = explicit_slot 16
-    gv0 = symbol colocated u1:0
-    sig0 = (i32) windows_fastcall
-    fn0 = u0:0 sig0
-
-block0:
-    v0 = global_value.i64 gv0
-    v1 = stack_addr.i64 ss0
-    v2 = iconst.i32 13
-    store v2, v1
-    store v2, v1+4
-    store v0, v1+8
-    v3 = iconst.i64 0
-    jump block1(v3)
-
-block1(v5: i64):
-    v4 = load.i64 v1+8
-    v6 = iadd v4, v5
-    v7 = load.i8 v6
-    v8 = uextend.i32 v7
-    call fn0(v8)
-    v9 = iconst.i64 1
-    v10 = iadd v5, v9
-    v14 -> v10
-    v11 = load.i32 v1+4
-    v12 = uextend.i64 v11
-    v13 = icmp sge v10, v12
-    brnz v13, block3
-    jump block4
-
-block3:
-    jump block2
-
-block4:
-    jump block1(v14)
-
-block2:
-    v15 = iconst.i64 0
-    return v15
-}
-
-function u0:0() -> i64 fast {
-    ss0 = explicit_slot 16
-    ss1 = explicit_slot 16
-    sig0 = (i64 sret, i64, i64, i64) -> i64 sret fast
-    fn0 = colocated u0:0 sig0
-
-block0:
-    v0 = stack_addr.i64 ss0
-    v1 = iconst.i64 0
-    store v1, v0
-    store v1, v0+8
-    v2 = stack_addr.i64 ss1
-    v3 = iconst.i64 2
-    v4 = iconst.i64 2
-    v5 = call fn0(v2, v0, v3, v4)
-    v6 = load.i64 v0
-    v7 = load.i64 v0+8
-    v8 = isub v6, v7
-    return v8
-}
-
-function u0:0(i64 sret, i64, i64, i64) -> i64 sret fast {
-block0(v0: i64, v1: i64, v2: i64, v3: i64):
-    store v2, v1
-    store v3, v1+8
-    v4 = iconst.i64 0
-    store v4, v0
-    store v4, v0+8
-    return v0
-}
+   BinaryOp ident "a.a = 10":
+    Ident operator "="
+    DotExpr ident "a.a":
+     Ident ident "a"
+     Ident ident "a"
+    Lit integer "10"
+   BinaryOp ident "a.b = 20":
+    Ident operator "="
+    DotExpr ident "a.b":
+     Ident ident "a"
+     Ident ident "b"
+    Lit integer "20"
+   BinaryOp ident "a.c = 30":
+    Ident operator "="
+    DotExpr ident "a.c":
+     Ident ident "a"
+     Ident ident "c"
+    Lit integer "30"
 
