@@ -95,9 +95,9 @@ pub enum AKind {
 
     ReturnStatement,
 
-    BinaryOperation,
-    UnaryOperation,
-    IfExpression,
+    BinaryOp,
+    UnaryOp,
+    IfExpr,
     DotExpr,
 
     Loop,
@@ -106,9 +106,9 @@ pub enum AKind {
 
     Group,
 
-    Identifier,
+    Ident,
     Instantiation,
-    Literal,
+    Lit,
 
     None,
 }

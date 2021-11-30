@@ -61,16 +61,16 @@ impl Generator {
             current_signature: None,
             context: Context::new(),
             data_context: DataContext::new(),
-            variables: Vec::new(),
-            loop_headers: Vec::new(),
+            variables: vec![],
+            loop_headers: vec![],
             variable_counter: 0,
             string_counter: 0,
-            global_attributes: Vec::new(),
-            pushed_attributes: Vec::new(),
-            imported_functions: Vec::new(),
-            call_buffer: Vec::new(),
+            global_attributes: vec![],
+            pushed_attributes: vec![],
+            imported_functions: vec![],
+            call_buffer: vec![],
             object_module,
-            seen_structures: Vec::new(),
+            seen_structures: vec![],
 
             datatype_pool: Pool::new(),
 
@@ -95,7 +95,7 @@ impl Generator {
     }
 
     fn generate_struct(&mut self, ast: Ast) -> Result<DKind> {
-        let mut fields = Vec::new();
+        let mut fields = vec![];
         for raw_fields in ast[1].iter() {
             match raw_fields.kind {
                 AKind::StructField(embedded) => {
@@ -243,7 +243,7 @@ impl Generator {
                     }
                 },
                 AKind::None => (),
-                _ => todo!("unmatched top level expression {:?}", item),
+                _ => todo!("unmatched top level expr {:?}", item),
             }
         }
 
@@ -412,11 +412,11 @@ impl Generator {
             AKind::VarStatement(..) => self.var_statement(ast, builder)?,
             AKind::Break => self.break_statement(ast, builder)?,
 
-            AKind::IfExpression => return self.if_expression(ast, builder),
-            AKind::Call => return self.call_expression(ast, builder),
-            AKind::Loop => return self.loop_expression(ast, builder),
+            AKind::IfExpr => return self.if_expr(ast, builder),
+            AKind::Call => return self.call_expr(ast, builder),
+            AKind::Loop => return self.loop_expr(ast, builder),
             _ => {
-                return Ok(Some(self.expression(ast, builder)?));
+                return Ok(Some(self.expr(ast, builder)?));
             }
         }
 
@@ -431,7 +431,7 @@ impl Generator {
                 if ast[1].kind == AKind::None {
                     return Err(IrGenError::new(IGEKind::ExpectedValue, ast.token.clone()));
                 }
-                let value = self.expression(&ast[1], builder)?;
+                let value = self.expr(&ast[1], builder)?;
                 if value.datatype.is_on_stack() {
                     val.write(&value, &ast.token, builder, self.isa())?;
                     builder.ins().jump(loop_exit_block.clone(), &[]);
@@ -450,7 +450,7 @@ impl Generator {
                 builder.ins().jump(loop_exit_block.clone(), &[]);
                 Some(None)
             } else {
-                let value = self.expression(&ast[1], builder)?;
+                let value = self.expr(&ast[1], builder)?;
                 let val = Val::new_stack(false, &value.datatype, builder);
                 if value.datatype.is_on_stack() {
                     val.write(&value, &ast.token, builder, self.isa())?;
@@ -485,7 +485,7 @@ impl Generator {
     fn return_statement(&mut self, ast: &Ast, builder: &mut FunctionBuilder) -> Result<()> {
         let ret_expr = &ast[0];
 
-        let ret_value = self.expression(ret_expr, builder)?;
+        let ret_value = self.expr(ret_expr, builder)?;
 
         if let Ok(ret_stack) = self.find_variable(&Token::eof()) {
             ret_stack
@@ -501,27 +501,27 @@ impl Generator {
         Ok(())
     }
 
-    fn expression(&mut self, ast: &Ast, builder: &mut FunctionBuilder) -> Result<Val> {
+    fn expr(&mut self, ast: &Ast, builder: &mut FunctionBuilder) -> Result<Val> {
         match ast.kind {
-            AKind::Literal => return self.literal(ast, builder),
-            AKind::Identifier => {
+            AKind::Lit => return self.lit(ast, builder),
+            AKind::Ident => {
                 let var = self.find_variable(&ast.token)?;
                 return Ok(var.value.clone());
             }
             AKind::DotExpr => return self.dot_expr(ast, builder),
-            AKind::BinaryOperation => self.binary_operation(ast, builder)?,
-            AKind::UnaryOperation => self.unary_operation(ast, builder)?,
-            AKind::IfExpression => self.if_expression(ast, builder)?,
-            AKind::Call => self.call_expression(&ast, builder)?,
-            AKind::Loop => self.loop_expression(ast, builder)?,
-            _ => todo!("unmatched expression {}", ast),
+            AKind::BinaryOp => self.binary_op(ast, builder)?,
+            AKind::UnaryOp => self.unary_op(ast, builder)?,
+            AKind::IfExpr => self.if_expr(ast, builder)?,
+            AKind::Call => self.call_expr(&ast, builder)?,
+            AKind::Loop => self.loop_expr(ast, builder)?,
+            _ => todo!("unmatched expr {}", ast),
         }
         .ok_or_else(|| IrGenError::new(IGEKind::ExpectedValue, ast.token.clone()))
     }
 
-    fn unary_operation(&mut self, ast: &Ast, builder: &mut FunctionBuilder) -> ExprResult {
+    fn unary_op(&mut self, ast: &Ast, builder: &mut FunctionBuilder) -> ExprResult {
         let op = ast[0].token.spam.deref();
-        let value = self.expression(&ast[1], builder)?;
+        let value = self.expr(&ast[1], builder)?;
         let datatype = &value.datatype;
         if op == "&" {
             let ptr_datatype = self.pointer_of(value.is_mutable(), &datatype);
@@ -603,7 +603,7 @@ impl Generator {
         todo!("dispatch custom unary op ({})", op)
     }
 
-    fn loop_expression(&mut self, ast: &Ast, builder: &mut FunctionBuilder) -> ExprResult {
+    fn loop_expr(&mut self, ast: &Ast, builder: &mut FunctionBuilder) -> ExprResult {
         let loop_block = builder.create_block();
         let loop_exit_block = builder.create_block();
 
@@ -637,7 +637,7 @@ impl Generator {
 
     fn var_statement(&mut self, ast: &Ast, builder: &mut FunctionBuilder) -> Result<()> {
         for var in ast.iter() {
-            let (identifiers, datatype, values) = (&var[0], &var[1], &var[2]);
+            let (idents, datatype, values) = (&var[0], &var[1], &var[2]);
 
             let mut datatype = if let AKind::None = datatype.kind {
                 None
@@ -645,11 +645,11 @@ impl Generator {
                 Some(self.find_datatype(datatype)?)
             };
 
-            for (i, name) in identifiers.iter().map(|i| i.token.spam.clone()).enumerate() {
+            for (i, name) in idents.iter().map(|i| i.token.spam.clone()).enumerate() {
                 let is_mutable = ast.kind == AKind::VarStatement(true);
 
                 let value = if values.kind != AKind::None {
-                    let mut value = self.expression(&values[i], builder)?;
+                    let mut value = self.expr(&values[i], builder)?;
                     if let Some(datatype) = datatype.as_ref() {
                         assert_type(&values[i].token, &value.datatype, datatype)?;
                     } else {
@@ -703,7 +703,7 @@ impl Generator {
         Ok(())
     }
 
-    fn call_expression(&mut self, ast: &Ast, builder: &mut FunctionBuilder) -> ExprResult {
+    fn call_expr(&mut self, ast: &Ast, builder: &mut FunctionBuilder) -> ExprResult {
         if let Some(result) = self.builtin_call(ast, builder)? {
             return Ok(result);
         }
@@ -743,7 +743,7 @@ impl Generator {
         };
 
         for (i, e) in ast[1..].iter().enumerate() {
-            let value = self.expression(e, builder)?;
+            let value = self.expr(e, builder)?;
             assert_type(&e.token, &value.datatype, &fun.params[i].value.datatype)?;
             self.call_buffer.push(value.read(builder, self.isa()));
         }
@@ -785,7 +785,7 @@ impl Generator {
         }
     }
 
-    fn literal(&mut self, ast: &Ast, builder: &mut FunctionBuilder) -> Result<Val> {
+    fn lit(&mut self, ast: &Ast, builder: &mut FunctionBuilder) -> Result<Val> {
         match ast.token.kind.clone() {
             TKind::Int(value, bits) => {
                 let datatype = match bits {
@@ -853,13 +853,13 @@ impl Generator {
                 builder.ins().store(MemFlags::new(), val, addr, 8);
                 Ok(new_stack)
             }
-            _ => todo!("unmatched literal token {:?}", ast.token),
+            _ => todo!("unmatched lit token {:?}", ast.token),
         }
     }
 
-    fn if_expression(&mut self, ast: &Ast, builder: &mut FunctionBuilder) -> ExprResult {
+    fn if_expr(&mut self, ast: &Ast, builder: &mut FunctionBuilder) -> ExprResult {
         let cond_expr = &ast[0];
-        let cond_val = self.expression(cond_expr, builder)?;
+        let cond_val = self.expr(cond_expr, builder)?;
 
         assert_type(
             &cond_expr.token,
@@ -1000,7 +1000,7 @@ impl Generator {
         Ok(result)
     }
 
-    fn binary_operation(&mut self, ast: &Ast, builder: &mut FunctionBuilder) -> ExprResult {
+    fn binary_op(&mut self, ast: &Ast, builder: &mut FunctionBuilder) -> ExprResult {
         let op = ast[0].token.spam.deref();
 
         match op {
@@ -1009,8 +1009,8 @@ impl Generator {
             _ => (),
         }
 
-        let left = self.expression(&ast[1], builder)?;
-        let right = self.expression(&ast[2], builder)?;
+        let left = self.expr(&ast[1], builder)?;
+        let right = self.expr(&ast[2], builder)?;
 
         let left_val = left.read(builder, self.isa());
         let right_val = right.read(builder, self.isa());
@@ -1119,7 +1119,7 @@ impl Generator {
                         let val = builder.ins().fcmp(op, left_val, right_val);
                         return Ok(Some(Val::immutable(val, self.builtin_repo.bool.clone())));
                     }
-                    _ => todo!("unsupported float operation {}", op),
+                    _ => todo!("unsupported float op {}", op),
                 }
             } else if left_ir.is_bool() {
                 match op {
@@ -1127,7 +1127,7 @@ impl Generator {
                     "|" => builder.ins().bor(left_val, right_val),
                     "||" => todo!("unsupported ||"),
                     "&&" => todo!("unsupported &&"),
-                    _ => todo!("unsupported bool operation {}", op),
+                    _ => todo!("unsupported bool op {}", op),
                 }
             } else {
                 unreachable!();
@@ -1135,7 +1135,7 @@ impl Generator {
             Ok(Some(Val::immutable(value, right.datatype.clone())))
         } else {
             todo!(
-                "non-matching type of binary operation {} {} {}",
+                "non-matching type of binary op {} {} {}",
                 left.datatype.name,
                 op,
                 right.datatype.name
@@ -1145,7 +1145,7 @@ impl Generator {
 
     fn convert(&mut self, ast: &Ast, builder: &mut FunctionBuilder) -> Result<Val> {
         let target_datatype = self.find_datatype(&ast[2])?;
-        let value = self.expression(&ast[1], builder)?;
+        let value = self.expr(&ast[1], builder)?;
         let source_datatype = &value.datatype;
         if &target_datatype == source_datatype {
             // TODO: emit warming
@@ -1247,10 +1247,10 @@ impl Generator {
     }
 
     fn assign(&mut self, ast: &Ast, builder: &mut FunctionBuilder) -> Result<Val> {
-        let val = self.expression(&ast[2], builder)?;
+        let val = self.expr(&ast[2], builder)?;
 
         let var = match ast[1].kind {
-            AKind::Identifier => self.find_variable(&ast[1].token)?.value.clone(),
+            AKind::Ident => self.find_variable(&ast[1].token)?.value.clone(),
             AKind::DotExpr => self.dot_expr(&ast[1], builder)?,
             _ => todo!("unsupported assignment target"),
         };
@@ -1261,7 +1261,7 @@ impl Generator {
     }
 
     fn dot_expr(&mut self, ast: &Ast, builder: &mut FunctionBuilder) -> Result<Val> {
-        let mut header = self.expression(&ast[0], builder)?;
+        let mut header = self.expr(&ast[0], builder)?;
 
         if header.datatype.is_pointer() {
             header = header.deref(builder, self.isa());
@@ -1290,7 +1290,7 @@ impl Generator {
     fn create_signature(&mut self, mut ast: Ast) -> Result<Cell<Fun>> {
         let header = &ast[0];
         let mut signature = Signature::new(CallConv::Fast);
-        let mut fun_params = Vec::new();
+        let mut fun_params = vec![];
 
         let return_type = header.last().unwrap();
         let return_type = if return_type.kind != AKind::None {
@@ -1435,9 +1435,9 @@ impl Generator {
     }
 
     fn find_datatype(&mut self, ast: &Ast) -> Result<Cell<Datatype>> {
-        let is_pointer = ast.kind == AKind::UnaryOperation && ast.token.spam.deref() == "&";
+        let is_pointer = ast.kind == AKind::UnaryOp && ast.token.spam.deref() == "&";
         let (token, is_mutable) = if is_pointer {
-            if ast[1].kind == AKind::UnaryOperation && ast[1].token.kind == TKind::Var {
+            if ast[1].kind == AKind::UnaryOp && ast[1].token.kind == TKind::Var {
                 (&ast[1][1].token, true)
             } else {
                 (&ast[1].token, false)
@@ -2124,9 +2124,7 @@ pub struct Context {
 
 impl Context {
     pub fn new() -> Self {
-        Self {
-            modules: Vec::new(),
-        }
+        Self { modules: vec![] }
     }
 
     pub fn add_module(&mut self, module: Cell<Mod>) -> Result<()> {

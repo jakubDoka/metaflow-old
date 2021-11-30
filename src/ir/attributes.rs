@@ -4,7 +4,7 @@ use crate::{
     ast::{AKind, Ast},
     util::{
         sdbm::{SdbmHashState, ID},
-        sym_table::{SymID, SymTable},
+        storage::{SymID, Table},
     },
 };
 
@@ -12,7 +12,7 @@ crate::sym_id!(Attribute);
 
 #[derive(Debug, Clone, Default)]
 pub struct Attributes {
-    pub map: SymTable<Attribute, Ast>,
+    pub map: Table<Attribute, Ast>,
     pub stack: Vec<Attribute>,
 }
 

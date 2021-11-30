@@ -5,9 +5,9 @@ use std::{
 
 use crate::util::sdbm::SdbmHash;
 
-#[derive(Clone, PartialEq, Default)]
+#[derive(Clone, PartialEq)]
 pub struct Spam {
-    pub string: &'static str,
+    pub string: *const str,
     pub range: Range<usize>,
 }
 
@@ -25,20 +25,20 @@ impl Spam {
     #[inline]
     pub fn sub(&self, range: Range<usize>) -> Self {
         let new_range = self.range.start + range.start..self.range.start + range.end;
-        Self::new(self.string, new_range)
+        Self::new(self.string(), new_range)
     }
 
     pub fn join(&self, other: &Self, trim: bool) -> Self {
         if self.string != other.string {
-            if other.string.is_empty() {
-                return Self::new(self.string, self.range.start..self.string.len());
+            if other.string().is_empty() {
+                return Self::new(self.string(), self.range.start..self.string().len());
             }
             panic!("Spam::join: Spams must be from the same String");
         }
 
         let end = if trim {
             let mut init = other.range.start;
-            while (self.string.as_bytes()[init - 1] as char).is_whitespace() {
+            while (self.string().as_bytes()[init - 1] as char).is_whitespace() {
                 init -= 1;
             }
             init
@@ -48,7 +48,18 @@ impl Spam {
 
         let new_range = self.range.start.min(other.range.start)..end;
 
-        Self::new(self.string, new_range)
+        Self::new(self.string(), new_range)
+    }
+
+    #[inline]
+    pub fn string(&self) -> &'static str {
+        unsafe { &*self.string }
+    }
+}
+
+impl Default for Spam {
+    fn default() -> Self {
+        Self::whole("")
     }
 }
 
@@ -62,7 +73,7 @@ impl Deref for Spam {
     type Target = str;
 
     fn deref(&self) -> &Self::Target {
-        &self.string[self.range.clone()]
+        &self.string()[self.range.clone()]
     }
 }
 

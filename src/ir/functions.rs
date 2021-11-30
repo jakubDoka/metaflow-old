@@ -1,25 +1,25 @@
+use core::panic;
 use std::ops::{Deref, DerefMut, Index, IndexMut};
 
 use crate::ast::{AKind, Ast, Vis};
 use crate::ir::{
-    Block, FKind, Fun, FunBody, FunEnt, Inst, LTKind, Module, ModuleEnt, Type, TypeDep, Value,
-    ValueEnt,
+    FKind, Fun, FunBody, FunEnt, Inst, LTKind, Module, ModuleEnt, Type, TypeDep, Value, ValueEnt,
 };
 use crate::lexer::Token;
-use crate::util::sym_table::LockedSymVec;
+use crate::util::storage::LockedList;
 use crate::util::{
     sdbm::{SdbmHashState, ID},
-    sym_table::{SymID, SymVec},
+    storage::{List, SymID},
 };
 
 use super::module_tree::ModuleTreeBuilder;
 use super::types::{TEKind, TypeError, TypeResolver, TypeResolverContext};
 use super::{
-    AstRef, BlockEnt, FunSignature, GenericElement, GenericSignature, IKind, InstEnt, Program,
-    TKind,
+    AstRef, FunSignature, GenericElement, GenericSignature, IKind, InstEnt, Loop, Program, TKind,
 };
 
 type Result<T = ()> = std::result::Result<T, FunError>;
+type ExprResult = Result<Option<Value>>;
 
 pub struct FunResolver<'a> {
     program: &'a mut Program,
@@ -72,13 +72,13 @@ impl<'a> FunResolver<'a> {
         let fun = &mut self.program.functions[function];
         fun.kind = FKind::Normal(signature);
         fun.body = self.context.function_body.clone();
-        self.context.function_body.clear();
+        self.context.deref_mut().clear();
 
         Ok(())
     }
 
     fn function_low(&mut self, module: Module, ast: &Ast, signature: &FunSignature) -> Result {
-        self.context.current_instruction = None;
+        debug_assert!(self.context.current_block.is_none());
         self.context.current_module = Some(module);
         self.context.return_type = signature.return_type;
         let entry_point = self.context.new_block();
@@ -86,7 +86,7 @@ impl<'a> FunResolver<'a> {
 
         signature.args.iter().for_each(|param| {
             let var = self.context.function_body.values.add(param.clone());
-            self.context[entry_point].args.push(var);
+            self.context[entry_point].kind.block_mut().args.push(var);
             self.context.variables.push(Some(var));
         });
 
@@ -99,7 +99,7 @@ impl<'a> FunResolver<'a> {
             if self.is_auto(value_type) {
                 self.infer(value, return_type)?;
             }
-            self.context.add_instruction(InstEnt::new(
+            self.context.add_inst(InstEnt::new(
                 IKind::Return(Some(value)),
                 None,
                 &ast[1].last().unwrap().token,
@@ -108,22 +108,29 @@ impl<'a> FunResolver<'a> {
             (signature.return_type, self.context.current_block)
         {
             let temp = self.new_value(return_type);
-            self.context.add_instruction(InstEnt::new(
+            self.context.add_inst(InstEnt::new(
                 IKind::ZeroValue,
                 Some(temp),
                 &ast[1].last().unwrap().token,
             ));
-            self.context.add_instruction(InstEnt::new(
+            self.context.add_inst(InstEnt::new(
                 IKind::Return(Some(temp)),
                 None,
                 &ast[1].last().unwrap().token,
             ));
         } else if self.context.current_block.is_some() {
-            self.context.add_instruction(InstEnt::new(
+            self.context.add_inst(InstEnt::new(
                 IKind::Return(None),
                 None,
                 &ast[1].last().unwrap().token,
             ));
+        }
+
+        for value_id in self.context.function_body.values.ids() {
+            let datatype = self.context[value_id].datatype;
+            let on_stack =
+                self.program.types[datatype].size > self.program.isa.pointer_bytes() as u32;
+            self.context[value_id].on_stack = self.context[value_id].on_stack || on_stack;
         }
 
         for (id, dep) in self.context.type_graph.iter() {
@@ -135,7 +142,7 @@ impl<'a> FunResolver<'a> {
         Ok(())
     }
 
-    fn block(&mut self, ast: &Ast) -> Result<Option<Value>> {
+    fn block(&mut self, ast: &Ast) -> ExprResult {
         if ast.is_empty() {
             return Ok(None);
         }
@@ -143,27 +150,96 @@ impl<'a> FunResolver<'a> {
         self.context.push_scope();
 
         for statement in ast[..ast.len() - 1].iter() {
+            if self.context.current_block.is_none() {
+                break;
+            }
             self.statement(statement)?;
         }
 
-        let value = self.statement(ast.last().unwrap());
+        let value = if self.context.current_block.is_some() {
+            self.statement(ast.last().unwrap())?
+        } else {
+            None
+        };
 
         self.context.pop_scope();
 
-        value
+        Ok(value)
     }
 
-    fn statement(&mut self, statement: &Ast) -> Result<Option<Value>> {
+    fn statement(&mut self, statement: &Ast) -> ExprResult {
         match statement.kind {
             AKind::VarStatement(_) => self.var_statement(statement)?,
             AKind::ReturnStatement => self.return_statement(statement)?,
-            AKind::Loop => todo!(),
-            AKind::Break => todo!(),
-            AKind::Continue => todo!(),
-            _ => return self.expression_low(statement),
+            AKind::Break => self.break_statement(statement)?,
+            AKind::Continue => self.continue_statement(statement)?,
+            _ => return self.expr_low(statement),
         }
 
         Ok(None)
+    }
+
+    fn continue_statement(&mut self, ast: &Ast) -> Result {
+        let loop_header = self.find_loop(&ast[0].token).map_err(|outside| {
+            if outside {
+                FunError::new(FEKind::ContinueOutsideLoop, &ast.token)
+            } else {
+                FunError::new(FEKind::WrongLabel, &ast.token)
+            }
+        })?;
+
+        self.context.add_inst(InstEnt::new(
+            IKind::Jump(loop_header.start_block, vec![]),
+            None,
+            &ast.token,
+        ));
+
+        Ok(())
+    }
+
+    fn break_statement(&mut self, ast: &Ast) -> Result {
+        let loop_header = self.find_loop(&ast[0].token).map_err(|outside| {
+            if outside {
+                FunError::new(FEKind::BreakOutsideLoop, &ast.token)
+            } else {
+                FunError::new(FEKind::WrongLabel, &ast.token)
+            }
+        })?;
+
+        if ast[1].kind != AKind::None {
+            let return_value = self.expr(&ast[1])?;
+            let current_value = self.context[loop_header.end_block]
+                .kind
+                .block()
+                .args
+                .first()
+                .cloned();
+            if let Some(current_value) = current_value {
+                self.may_infer(return_value, current_value, &ast[1].token)?;
+            } else {
+                let datatype = self.context[return_value].datatype;
+                let value = self.new_value(datatype);
+                self.context[loop_header.end_block]
+                    .kind
+                    .block_mut()
+                    .args
+                    .push(value);
+            }
+
+            self.context.add_inst(InstEnt::new(
+                IKind::Jump(loop_header.end_block, vec![return_value]),
+                None,
+                &ast.token,
+            ));
+        } else {
+            self.context.add_inst(InstEnt::new(
+                IKind::Jump(loop_header.end_block, vec![]),
+                None,
+                &ast.token,
+            ));
+        }
+
+        Ok(())
     }
 
     fn return_statement(&mut self, ast: &Ast) -> Result {
@@ -173,7 +249,7 @@ impl<'a> FunResolver<'a> {
             if let Some(datatype) = datatype {
                 let temp_value = self.new_value(datatype);
 
-                self.context.add_instruction(InstEnt::new(
+                self.context.add_inst(InstEnt::new(
                     IKind::ZeroValue,
                     Some(temp_value),
                     &Token::default(),
@@ -185,7 +261,7 @@ impl<'a> FunResolver<'a> {
         } else {
             let datatype = datatype
                 .ok_or_else(|| FunError::new(FEKind::UnexpectedReturnValue, &ast[0].token))?;
-            let value = self.expression(&ast[0])?;
+            let value = self.expr(&ast[0])?;
             let actual_type = self.context[value].datatype;
             if self.is_auto(actual_type) {
                 self.infer(value, datatype)?;
@@ -197,7 +273,7 @@ impl<'a> FunResolver<'a> {
         };
 
         self.context
-            .add_instruction(InstEnt::new(IKind::Return(value), None, &ast.token));
+            .add_inst(InstEnt::new(IKind::Return(value), None, &ast.token));
 
         Ok(())
     }
@@ -231,7 +307,7 @@ impl<'a> FunResolver<'a> {
 
                     let unresolved = self.is_auto(datatype);
 
-                    let inst = self.context.add_instruction(InstEnt::new(
+                    let inst = self.context.add_inst(InstEnt::new(
                         IKind::ZeroValue,
                         Some(temp_value),
                         &Token::default(),
@@ -248,6 +324,7 @@ impl<'a> FunResolver<'a> {
                         datatype,
                         mutable,
                         type_dependency: dep,
+                        inst: None,
                         value: None,
                         on_stack: false,
                     };
@@ -258,7 +335,7 @@ impl<'a> FunResolver<'a> {
                         self.add_type_dependency(var, inst);
                     }
 
-                    self.context.add_instruction(InstEnt::new(
+                    self.context.add_inst(InstEnt::new(
                         IKind::VarDecl(temp_value),
                         Some(var),
                         &var_line.token,
@@ -267,7 +344,7 @@ impl<'a> FunResolver<'a> {
             } else {
                 for (name, raw_value) in var_line[0].iter().zip(var_line[2].iter()) {
                     let name = ID::new().add(name.token.spam.deref());
-                    let value = self.expression(raw_value)?;
+                    let value = self.expr(raw_value)?;
                     let actual_datatype = self.context[value].datatype;
 
                     if !self.is_auto(datatype) {
@@ -290,16 +367,15 @@ impl<'a> FunResolver<'a> {
                         name,
                         datatype: actual_datatype,
                         mutable,
-
                         type_dependency: dep,
-
+                        inst: None,
                         value: None,
                         on_stack: false,
                     };
 
                     let var = self.context.add_variable(var);
 
-                    let inst = self.context.add_instruction(InstEnt::new(
+                    let inst = self.context.add_inst(InstEnt::new(
                         IKind::VarDecl(value),
                         Some(var),
                         &var_line.token,
@@ -315,30 +391,137 @@ impl<'a> FunResolver<'a> {
         Ok(())
     }
 
-    fn expression(&mut self, ast: &Ast) -> Result<Value> {
-        self.expression_low(ast)?
+    fn expr(&mut self, ast: &Ast) -> Result<Value> {
+        self.expr_low(ast)?
             .ok_or_else(|| FunError::new(FEKind::ExpectedValue, &ast.token))
     }
 
-    fn expression_low(&mut self, ast: &Ast) -> Result<Option<Value>> {
+    fn expr_low(&mut self, ast: &Ast) -> ExprResult {
         match ast.kind {
-            AKind::BinaryOperation => self.binary_operation(ast),
-            AKind::Literal => self.literal(ast),
-            AKind::Identifier => self.identifier(ast),
+            AKind::BinaryOp => self.binary_op(ast),
+            AKind::Lit => self.lit(ast),
+            AKind::Ident => self.ident(ast),
             AKind::Call => self.call(ast),
-            AKind::IfExpression => self.if_expression(ast),
-            _ => todo!("unmatched expression ast {}", ast),
+            AKind::IfExpr => self.if_expr(ast),
+            AKind::Loop => self.loop_expr(ast),
+            AKind::DotExpr => self.dot_expr(ast),
+            _ => todo!("unmatched expr ast {}", ast),
         }
     }
 
-    fn if_expression(&mut self, ast: &Ast) -> Result<Option<Value>> {
+    fn dot_expr(&mut self, ast: &Ast) -> ExprResult {
+        let header = self.expr(&ast[0])?;
+        let field = ID::new().add(ast[1].token.spam.deref());
+        let datatype = self.context[header].datatype;
+        if self.is_auto(datatype) {
+            let value = self.new_auto_value();
+            let inst = self.context.add_inst(InstEnt::new(
+                IKind::UnresolvedDot(header, field),
+                Some(value),
+                &ast.token,
+            ));
+            self.add_type_dependency(header, inst);
+            Ok(Some(value))
+        } else {
+            // bool is a placeholder
+            let value = self.new_value(self.program.builtin_repo.bool);
+            let datatype = self.field_access(header, field, value, &ast.token)?;
+            self.context[value].datatype = datatype;
+            Ok(Some(value))
+        }
+    }
+
+    fn find_field(&mut self, datatype: Type, field_name: ID, path: &mut Vec<usize>) -> bool {
+        let mut frontier = std::mem::take(&mut self.context.type_frontier);
+        frontier.clear();
+
+        frontier.push((usize::MAX, 0, datatype));
+
+        let mut i = 0;
+        while i < frontier.len() {
+            match &self.program[frontier[i].2].kind {
+                TKind::Structure(structure) => {
+                    for (j, field) in structure.fields.iter().enumerate() {
+                        if field.name == field_name {
+                            path.push(j);
+                            let mut k = i;
+                            loop {
+                                let (index, ptr, _) = frontier[k];
+                                if index == usize::MAX {
+                                    break;
+                                }
+                                path.push(ptr);
+                                k = index;
+                            }
+                            return true;
+                        }
+                        if field.embedded {
+                            frontier.push((i, j, field.datatype));
+                        }
+                    }
+                }
+                _ => (),
+            }
+            i += 1;
+        }
+
+        self.context.type_frontier = frontier;
+
+        false
+    }
+
+    fn loop_expr(&mut self, ast: &Ast) -> ExprResult {
+        let name = ID::new().add(ast[0].token.spam.deref());
+
+        let start_block = self.context.new_block();
+        let end_block = self.context.new_block();
+
+        let header = Loop {
+            name,
+            start_block,
+            end_block,
+        };
+
+        self.context.add_inst(InstEnt::new(
+            IKind::Jump(start_block, vec![]),
+            None,
+            &Token::default(),
+        ));
+
+        self.context.loops.push(header);
+        self.context.make_block_current(start_block);
+        self.block(&ast[1])?;
+        self.context
+            .loops
+            .pop()
+            .expect("expected previously pushed header");
+
+        if self.context.current_block.is_some() {
+            self.context.add_inst(InstEnt::new(
+                IKind::Jump(start_block, vec![]),
+                None,
+                &Token::default(),
+            ));
+        }
+        self.context.make_block_current(end_block);
+
+        let value = if self.context[end_block].kind.block().args.is_empty() {
+            None
+        } else {
+            Some(self.context[end_block].kind.block().args[0])
+        };
+
+        Ok(value)
+    }
+
+    fn if_expr(&mut self, ast: &Ast) -> ExprResult {
         let cond_expr = &ast[0];
-        let cond_val = self.expression(cond_expr)?;
+        let cond_val = self.expr(cond_expr)?;
         let cond_type = self.context[cond_val].datatype;
 
         let then_block = self.context.new_block();
-        self.context.add_instruction(InstEnt::new(
-            IKind::JumpIfTrue(cond_val, then_block, Vec::new()),
+        self.context.add_inst(InstEnt::new(
+            IKind::JumpIfTrue(cond_val, then_block, vec![]),
             None,
             &cond_expr.token,
         ));
@@ -349,21 +532,20 @@ impl<'a> FunResolver<'a> {
             self.assert_type(cond_type, self.program.builtin_repo.bool, &cond_expr.token)?;
         }
 
-        let mut merge_block = None;
+        let merge_block = self.context.new_block();
 
         let else_branch = &ast[2];
-        let some_block = self.context.new_block();
         let else_block = if else_branch.kind == AKind::None {
-            self.context.add_instruction(InstEnt::new(
-                IKind::Jump(some_block, Vec::new()),
+            self.context.add_inst(InstEnt::new(
+                IKind::Jump(merge_block, vec![]),
                 None,
                 &else_branch.token,
             ));
-            merge_block = Some(some_block);
             None
         } else {
-            self.context.add_instruction(InstEnt::new(
-                IKind::Jump(some_block, Vec::new()),
+            let some_block = self.context.new_block();
+            self.context.add_inst(InstEnt::new(
+                IKind::Jump(some_block, vec![]),
                 None,
                 &else_branch.token,
             ));
@@ -387,30 +569,26 @@ impl<'a> FunResolver<'a> {
         let mut result = None;
         let mut then_filled = false;
         if let Some(val) = then_result {
-            if merge_block.is_some() {
+            if else_block.is_none() {
                 return Err(FunError::new(FEKind::MissingElseBranch, &ast.token));
             }
 
-            let block = self.context.new_block();
-            self.context.add_instruction(InstEnt::new(
-                IKind::Jump(block, vec![val]),
+            self.context.add_inst(InstEnt::new(
+                IKind::Jump(merge_block, vec![val]),
                 None,
                 &Token::default(),
             ));
 
             let datatype = self.context[val].datatype;
             let value = self.new_value(datatype);
-            self.context[block].args.push(value);
+            self.context[merge_block].kind.block_mut().args.push(value);
             result = Some(value);
-            merge_block = Some(block);
         } else if self.context.current_block.is_some() {
-            let block = merge_block.unwrap_or_else(|| self.context.new_block());
-            self.context.add_instruction(InstEnt::new(
-                IKind::Jump(block, Vec::new()),
+            self.context.add_inst(InstEnt::new(
+                IKind::Jump(merge_block, vec![]),
                 None,
                 &Token::default(),
             ));
-            merge_block = Some(block);
         } else {
             then_filled = true;
         }
@@ -423,64 +601,70 @@ impl<'a> FunResolver<'a> {
             if let Some(val) = else_result {
                 let value_token = &else_branch.last().unwrap().token;
                 if let Some(result) = result {
-                    let merge_block = merge_block.unwrap();
                     self.may_infer(val, result, &value_token)?;
-                    self.context.add_instruction(InstEnt::new(
+                    self.context.add_inst(InstEnt::new(
                         IKind::Jump(merge_block, vec![val]),
                         None,
                         value_token,
                     ));
-                    self.context.make_block_current(merge_block);
                 } else if then_filled {
-                    let block = self.context.new_block();
-
-                    self.context.add_instruction(InstEnt::new(
-                        IKind::Jump(block, vec![val]),
+                    self.context.add_inst(InstEnt::new(
+                        IKind::Jump(merge_block, vec![val]),
                         None,
                         value_token,
                     ));
 
                     let datatype = self.context[val].datatype;
                     let value = self.new_value(datatype);
-                    self.context[block].args.push(value);
+                    self.context[merge_block].kind.block_mut().args.push(value);
                     result = Some(value);
-                    self.context.make_block_current(block);
                 } else {
                     return Err(FunError::new(FEKind::UnexpectedValue, &ast.token));
                 }
             } else {
-                let block = merge_block.unwrap_or_else(|| self.context.new_block());
                 if self.context.current_block.is_some() {
                     if result.is_some() {
                         return Err(FunError::new(FEKind::ExpectedValue, &ast.token));
                     }
-                    self.context.add_instruction(InstEnt::new(
-                        IKind::Jump(block, Vec::new()),
+                    self.context.add_inst(InstEnt::new(
+                        IKind::Jump(merge_block, vec![]),
                         None,
                         &Token::default(),
                     ));
                 }
-                self.context.make_block_current(block);
             }
         }
+
+        self.context.make_block_current(merge_block);
 
         Ok(result)
     }
 
-    fn call(&mut self, ast: &Ast) -> Result<Option<Value>> {
-        let base_name = ID::new().add(ast[0].token.spam.deref()); // TODO: check if this is generic instantiation
+    fn call(&mut self, ast: &Ast) -> ExprResult {
+        let base_name = match ast[0].kind {
+            AKind::Ident => ID::new().add(ast[0].token.spam.deref()),
+            AKind::Instantiation => {
+                self.context.generic.inferred.resize(ast[0].len() - 1, None);
+                for (i, arg) in ast[0][1..].iter().enumerate() {
+                    let id = self.resolve_type(arg)?;
+                    self.context.generic.inferred[i] = Some(id);
+                }
+                ID::new().add(ast[0][0].token.spam.deref())
+            }
+            _ => unreachable!(),
+        };
         for value in ast[1..].iter() {
-            let value = self.expression(value)?;
+            let value = self.expr(value)?;
             self.context.call_value_buffer.push(value);
         }
 
         self.call_low(base_name, &ast.token)
     }
 
-    fn call_low(&mut self, base_name: ID, token: &Token) -> Result<Option<Value>> {
+    fn call_low(&mut self, base_name: ID, token: &Token) -> ExprResult {
         let inst = self
             .context
-            .add_instruction(InstEnt::new(IKind::NoOp, None, token));
+            .add_inst(InstEnt::new(IKind::NoOp, None, token));
 
         let mut unresolved = false;
         for i in 0..self.context.call_value_buffer.len() {
@@ -497,6 +681,7 @@ impl<'a> FunResolver<'a> {
             self.context[inst].kind =
                 IKind::UnresolvedCall(base_name, self.context.call_value_buffer.clone());
             let value = self.new_auto_value();
+            self.context[value].inst = Some(inst);
             self.context[inst].value = Some(value);
             Some(value)
         } else {
@@ -514,6 +699,7 @@ impl<'a> FunResolver<'a> {
             self.context[inst].kind = IKind::Call(fun, self.context.call_value_buffer.clone());
             if let Some(return_type) = self.program[fun].signature().return_type {
                 let value = self.new_value(return_type);
+                self.context[value].inst = Some(inst);
                 self.context[inst].value = Some(value);
                 Some(value)
             } else {
@@ -526,7 +712,7 @@ impl<'a> FunResolver<'a> {
         Ok(value)
     }
 
-    fn identifier(&mut self, ast: &Ast) -> Result<Option<Value>> {
+    fn ident(&mut self, ast: &Ast) -> ExprResult {
         let name = ID::new().add(ast.token.spam.deref());
         self.context
             .find_variable(name)
@@ -534,7 +720,7 @@ impl<'a> FunResolver<'a> {
             .map(|var| Some(var))
     }
 
-    fn literal(&mut self, ast: &Ast) -> Result<Option<Value>> {
+    fn lit(&mut self, ast: &Ast) -> ExprResult {
         let datatype = match ast.token.kind {
             LTKind::Int(_, base) => match base {
                 1 => self.program.builtin_repo.i8,
@@ -560,8 +746,8 @@ impl<'a> FunResolver<'a> {
 
         let value = self.new_value(datatype);
 
-        self.context.add_instruction(InstEnt::new(
-            IKind::Literal(ast.token.kind.clone()),
+        self.context.add_inst(InstEnt::new(
+            IKind::Lit(ast.token.kind.clone()),
             Some(value),
             &ast.token,
         ));
@@ -569,13 +755,13 @@ impl<'a> FunResolver<'a> {
         Ok(Some(value))
     }
 
-    fn binary_operation(&mut self, ast: &Ast) -> Result<Option<Value>> {
+    fn binary_op(&mut self, ast: &Ast) -> ExprResult {
         if ast[0].token.spam.deref() == "=" {
             return Ok(self.assignment(ast)?);
         }
 
-        let left = self.expression(&ast[1])?;
-        let right = self.expression(&ast[2])?;
+        let left = self.expr(&ast[1])?;
+        let right = self.expr(&ast[2])?;
 
         let base_id = ID::new().add(ast[0].token.spam.deref());
 
@@ -662,6 +848,15 @@ impl<'a> FunResolver<'a> {
 
                         frontier.push((val, datatype));
                     }
+                    IKind::UnresolvedDot(header, field) => {
+                        let header = *header;
+                        let field = *field;
+                        let token = inst.token_hint.clone();
+                        let value = inst.value.unwrap();
+                        self.context.function_body.insts.remove(dep);
+                        let datatype = self.field_access(header, field, value, &token)?;
+                        frontier.push((value, datatype));
+                    }
                     _ => todo!("{:?}", inst),
                 }
             }
@@ -672,6 +867,62 @@ impl<'a> FunResolver<'a> {
         self.context.graph_frontier = frontier;
 
         Ok(())
+    }
+
+    fn field_access(
+        &mut self,
+        mut header: Value,
+        field: ID,
+        value: Value,
+        token: &Token,
+    ) -> Result<Type> {
+        let header_datatype = self.context[header].datatype;
+        let mut path = vec![];
+        if !self.find_field(header_datatype, field, &mut path) {
+            return Err(FunError::new(FEKind::UnknownField, token));
+        }
+
+        let mut offset = 0;
+        let mut current_type = header_datatype;
+        for &i in path.iter().rev() {
+            match &self.program[current_type].kind {
+                TKind::Structure(structure) => {
+                    let field = &structure.fields[i];
+                    offset += field.offset;
+                    current_type = field.datatype;
+                }
+                TKind::Pointer(pointed) => {
+                    current_type = *pointed;
+                    let prev_inst = self.inst_of(header);
+                    let value = self.new_value(current_type);
+                    self.context.add_inst_under(
+                        InstEnt::new(IKind::Load(header, offset), Some(value), &Token::default()),
+                        prev_inst,
+                    );
+                    header = value;
+                }
+                _ => todo!("{:?}", self.program[current_type]),
+            }
+        }
+
+        let inst = self.inst_of(header);
+        let inst = self.context.add_inst_under(
+            InstEnt::new(IKind::Load(header, offset), Some(value), token),
+            inst,
+        );
+
+        self.context[value].inst = Some(inst);
+        self.context[value].mutable = self.context[header].mutable;
+
+        Ok(current_type)
+    }
+
+    fn inst_of(&mut self, value: Value) -> Inst {
+        // if inst is none then this is function parameter and its safe to put it
+        // at the beginning of the entry block
+        self.context[value]
+            .inst
+            .unwrap_or(self.context.function_body.insts.first().unwrap())
     }
 
     fn new_auto_value(&mut self) -> Value {
@@ -688,9 +939,9 @@ impl<'a> FunResolver<'a> {
         value
     }
 
-    fn assignment(&mut self, ast: &Ast) -> Result<Option<Value>> {
-        let target = self.expression(&ast[1])?;
-        let value = self.expression(&ast[2])?;
+    fn assignment(&mut self, ast: &Ast) -> ExprResult {
+        let target = self.expr(&ast[1])?;
+        let value = self.expr(&ast[2])?;
         let target_datatype = self.context[target].datatype;
         let value_datatype = self.context[value].datatype;
 
@@ -710,11 +961,9 @@ impl<'a> FunResolver<'a> {
             false
         };
 
-        let inst = self.context.add_instruction(InstEnt::new(
-            IKind::Assign(target),
-            Some(value),
-            &ast.token,
-        ));
+        let inst =
+            self.context
+                .add_inst(InstEnt::new(IKind::Assign(target), Some(value), &ast.token));
 
         if unresolved {
             self.add_type_dependency(value, inst);
@@ -789,7 +1038,13 @@ impl<'a> FunResolver<'a> {
                         match pattern {
                             GenericElement::Parameter(param) => match real {
                                 GenericElement::Element(_, id) => {
-                                    generic.inferred[*param] = *id;
+                                    if let Some(already) = generic.inferred[*param] {
+                                        if Some(already) != *id {
+                                            return Ok(None);
+                                        }
+                                    } else {
+                                        generic.inferred[*param] = *id;
+                                    }
                                 }
                                 _ => return Ok(None),
                             },
@@ -829,6 +1084,8 @@ impl<'a> FunResolver<'a> {
                     .push(id);
             }
         }
+
+        generic.inferred.clear();
 
         self.context.generic = generic;
 
@@ -923,7 +1180,7 @@ impl<'a> FunResolver<'a> {
     }
 
     fn collect(&mut self) -> Result {
-        let mut collected_ast = SymVec::new();
+        let mut collected_ast = List::new();
 
         for module in unsafe { self.program.modules.direct_ids() } {
             if !self.program.modules.is_direct_valid(module) {
@@ -938,7 +1195,7 @@ impl<'a> FunResolver<'a> {
                         let a = &collected_ast[a_ref];
                         let header = &a[0];
                         match header[0].kind {
-                            AKind::Identifier => {
+                            AKind::Ident => {
                                 let name = ID::new().add(header[0].token.spam.deref());
                                 self.collect_normal_function(
                                     module, a_ref, a, name, visibility, i,
@@ -956,7 +1213,7 @@ impl<'a> FunResolver<'a> {
             self.program.modules[module].ast = ast;
         }
 
-        self.context.function_ast = LockedSymVec::new(collected_ast);
+        self.context.function_ast = LockedList::new(collected_ast);
 
         Ok(())
     }
@@ -988,7 +1245,7 @@ impl<'a> FunResolver<'a> {
 
         self.program
             .generic_functions
-            .get_mut_or(name, Vec::new())
+            .get_mut_or(name, vec![])
             .push(function);
 
         Ok(self.program.generic_functions.id_to_direct(name).unwrap())
@@ -1003,7 +1260,7 @@ impl<'a> FunResolver<'a> {
         visibility: Vis,
         attribute_id: usize,
     ) -> Result<Fun> {
-        let mut args = Vec::new();
+        let mut args = vec![];
         let header = &a[0];
         for param_line in &header[1..header.len() - 1] {
             let datatype = param_line.last().unwrap();
@@ -1016,6 +1273,7 @@ impl<'a> FunResolver<'a> {
                     name,
                     datatype,
                     mutable,
+                    inst: None,
                     type_dependency: None,
                     value: None,
                     on_stack: false,
@@ -1127,7 +1385,7 @@ impl<'a> FunResolver<'a> {
 
     fn load_arg(&mut self, ast: &Ast) -> Result {
         match &ast.kind {
-            AKind::Identifier => {
+            AKind::Ident => {
                 let id = ID::new().add(ast.token.spam.deref());
                 if let Some(index) = self
                     .context
@@ -1199,14 +1457,31 @@ impl<'a> FunResolver<'a> {
     fn is_auto(&self, datatype: Type) -> bool {
         self.program.builtin_repo.auto == datatype || self.program[datatype].kind == TKind::Generic
     }
+
+    fn find_loop(&self, token: &Token) -> std::result::Result<Loop, bool> {
+        if token.spam.is_empty() {
+            return self.context.loops.last().cloned().ok_or(true);
+        }
+
+        let name = ID::new().add(token.spam.deref());
+
+        self.context
+            .loops
+            .iter()
+            .rev()
+            .find(|l| l.name == name)
+            .cloned()
+            .ok_or_else(|| self.context.loops.is_empty())
+    }
 }
 
 #[derive(Debug)]
 pub struct FunResolverContext {
     pub generic: GenericFunContext,
     pub call_value_buffer: Vec<Value>,
-    pub function_ast: LockedSymVec<AstRef, Ast>,
+    pub function_ast: LockedList<AstRef, Ast>,
     pub graph_frontier: Vec<(Value, Type)>,
+    pub type_frontier: Vec<(usize, usize, Type)>,
     pub type_resolver_context: TypeResolverContext,
     pub function_context_pool: Vec<FunContext>,
     pub current_context: usize,
@@ -1235,10 +1510,11 @@ impl FunResolverContext {
 impl Default for FunResolverContext {
     fn default() -> Self {
         FunResolverContext {
-            function_ast: LockedSymVec::default(),
-            call_value_buffer: Vec::new(),
+            function_ast: LockedList::default(),
+            call_value_buffer: vec![],
             generic: Default::default(),
             graph_frontier: vec![],
+            type_frontier: vec![],
             type_resolver_context: Default::default(),
             function_context_pool: vec![Default::default()],
             current_context: 0,
@@ -1271,10 +1547,10 @@ pub struct GenericFunContext {
 pub struct FunContext {
     pub return_type: Option<Type>,
     pub current_module: Option<Module>,
-    pub current_block: Option<Block>,
-    pub current_instruction: Option<Inst>,
+    pub current_block: Option<Inst>,
     pub variables: Vec<Option<Value>>,
-    pub type_graph: SymVec<TypeDep, Vec<Inst>>,
+    pub loops: Vec<Loop>,
+    pub type_graph: List<TypeDep, Vec<Inst>>,
     pub unresolved_functions: Vec<Fun>,
     pub type_graph_pool: Vec<Vec<Inst>>,
     pub function_body: FunBody,
@@ -1324,58 +1600,61 @@ impl FunContext {
         }
     }
 
-    pub fn add_instruction(&mut self, instruction: InstEnt) -> Inst {
-        debug_assert!(
-            self.current_block.is_some(),
-            "no block to add instruction to"
-        );
-        let closing = instruction.kind.is_closing();
-        let inst = self.function_body.instructions.add(instruction);
-        self.current_instruction = Some(inst);
+    pub fn add_inst(&mut self, inst: InstEnt) -> Inst {
+        debug_assert!(self.current_block.is_some(), "no block to add inst to");
+        let closing = inst.kind.is_closing();
+        let value = inst.value;
+        let inst = self.function_body.insts.push(inst);
+        if let Some(value) = value {
+            self[value].inst = Some(inst);
+        }
         if closing {
             self.close_block();
         }
         inst
     }
 
-    pub fn new_block(&mut self) -> Block {
-        self.function_body.blocks.add(Default::default())
+    pub fn add_inst_under(&mut self, inst: InstEnt, under: Inst) -> Inst {
+        debug_assert!(!inst.kind.is_closing(), "cannot insert closing instruction");
+        let value = inst.value;
+        let inst = self.function_body.insts.insert(under, inst);
+        if let Some(value) = value {
+            self[value].inst = Some(inst);
+        }
+        inst
     }
 
-    pub fn make_block_current(&mut self, block: Block) {
-        self.function_body.blocks[block].first_instruction =
-            self.current_instruction.map(|i| Inst::new(i.raw() + 1));
+    pub fn new_block(&mut self) -> Inst {
+        self.function_body.insts.add_hidden(InstEnt::new(
+            IKind::Block(Default::default()),
+            None,
+            &Token::default(),
+        ))
+    }
+
+    pub fn make_block_current(&mut self, block: Inst) {
+        debug_assert!(self.current_block.is_none(), "current block is not closed");
+        self.function_body.insts.show_as_last(block);
         self.current_block = Some(block);
     }
 
     pub fn close_block(&mut self) {
-        if let Some(block) = self.current_block {
-            self.function_body.blocks[block].last_instruction = self.current_instruction;
-            self.current_block = None;
-        } else {
-            panic!("no block to close");
-        }
+        debug_assert!(self.current_block.is_some(), "no block to close");
+        let block = self.current_block.unwrap();
+        let inst = self.function_body.insts.push(InstEnt::new(
+            IKind::BlockEnd(block),
+            None,
+            &Token::default(),
+        ));
+        self[block].kind.block_mut().end = Some(inst);
+        self.current_block = None;
     }
 
     pub fn new_type_dependency(&mut self) -> TypeDep {
         let mut value = self.type_graph_pool.pop().unwrap_or_default();
-        value.push(Inst::new(0));
+        value.push(Inst::new(usize::MAX));
         let value = self.type_graph.add(value);
         value
-    }
-}
-
-impl Index<Block> for FunContext {
-    type Output = BlockEnt;
-
-    fn index(&self, val: Block) -> &Self::Output {
-        &self.function_body.blocks[val]
-    }
-}
-
-impl IndexMut<Block> for FunContext {
-    fn index_mut(&mut self, val: Block) -> &mut Self::Output {
-        &mut self.function_body.blocks[val]
     }
 }
 
@@ -1411,13 +1690,13 @@ impl Index<Inst> for FunContext {
     type Output = InstEnt;
 
     fn index(&self, val: Inst) -> &Self::Output {
-        &self.function_body.instructions[val]
+        &self.function_body.insts[val]
     }
 }
 
 impl IndexMut<Inst> for FunContext {
     fn index_mut(&mut self, val: Inst) -> &mut Self::Output {
-        &mut self.function_body.instructions[val]
+        &mut self.function_body.insts[val]
     }
 }
 
@@ -1447,7 +1726,11 @@ pub enum FEKind {
     UnexpectedReturnValue,
     UndefinedVariable,
     UnresolvedType(TypeDep),
+    UnknownField,
     MissingElseBranch,
+    ContinueOutsideLoop,
+    BreakOutsideLoop,
+    WrongLabel,
 }
 
 impl Into<FunError> for TypeError {
@@ -1481,26 +1764,31 @@ pub fn test() {
         let fun = &program.functions[fun];
 
         println!("{}", fun.token_hint.spam.deref());
+        println!();
 
-        for (id, block) in fun.body.blocks.iter() {
-            println!("  {}{:?}:", id, block.args);
-            for inst in (block.first_instruction.map(|i| i.raw()).unwrap_or(0)
-                ..=block.last_instruction.unwrap().raw())
-                .map(|i| &fun.body.instructions[Inst::new(i)])
-            {
-                if let Some(value) = inst.value {
-                    println!(
-                        "    {:?}: {} = {:?} |{}",
-                        value,
-                        program[fun.body.values[value].datatype]
-                            .token_hint
-                            .spam
-                            .deref(),
-                        inst.kind,
-                        inst.token_hint.spam.deref()
-                    );
-                } else {
-                    println!("    {:?} |{}", inst.kind, inst.token_hint.spam.deref());
+        for (i, inst) in fun.body.insts.iter() {
+            match &inst.kind {
+                IKind::Block(block) => {
+                    println!("  {}{:?}", i, block.args);
+                }
+                IKind::BlockEnd(_) => {
+                    println!();
+                }
+                _ => {
+                    if let Some(value) = inst.value {
+                        println!(
+                            "    {:?}: {} = {:?} |{}",
+                            value,
+                            program[fun.body.values[value].datatype]
+                                .token_hint
+                                .spam
+                                .deref(),
+                            inst.kind,
+                            inst.token_hint.spam.deref()
+                        );
+                    } else {
+                        println!("    {:?} |{}", inst.kind, inst.token_hint.spam.deref());
+                    }
                 }
             }
         }

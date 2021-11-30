@@ -108,7 +108,7 @@ pub struct Pool<T> {
 impl<T> Pool<T> {
     pub fn new() -> Self {
         Self {
-            cells: Rc::new(RefCell::new(Vec::new())),
+            cells: Rc::new(RefCell::new(vec![])),
         }
     }
 

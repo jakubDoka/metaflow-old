@@ -11,7 +11,11 @@ impl ID {
 
     #[inline]
     pub fn combine(self, id: Self) -> Self {
-        ID(self.0.wrapping_add(id.0 << 14))
+        ID(id
+            .0
+            .wrapping_add(self.0 << 6)
+            .wrapping_add(self.0 << 16)
+            .wrapping_sub(self.0))
     }
 }
 

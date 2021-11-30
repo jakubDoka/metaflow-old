@@ -56,9 +56,10 @@ enum Foo {
 
 #[cfg(feature = "testing")]
 fn test() {
+    util::test();
     cli::test();
     lexer::test();
     ast::test();
     ir::test();
-    ir_gen::gen::test();
+    //ir_gen::gen::test();
 }

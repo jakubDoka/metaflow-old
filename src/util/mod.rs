@@ -1,6 +1,6 @@
 pub mod cell;
 pub mod sdbm;
-pub mod sym_table;
+pub mod storage;
 
 // taken from standard lib and modified to return result
 pub fn try_retain<T, F, E>(vec: &mut Vec<T>, mut f: F) -> Result<(), E>
@@ -85,4 +85,8 @@ where
     drop(g);
 
     Ok(())
+}
+
+pub fn test() {
+    storage::test();
 }

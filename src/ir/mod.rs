@@ -10,27 +10,29 @@ use cranelift_codegen::{ir, ir::types::*, isa::TargetIsa, settings};
 
 use crate::{
     ast::{Ast, Vis},
-    lexer::{self, Spam, Token},
+    lexer::{self, Token},
     util::{
         sdbm::{SdbmHashState, ID},
-        sym_table::{SymID, SymTable, SymVec},
+        storage::{LinkedList, List, SymID, Table},
     },
 };
 
 use self::attributes::Attributes;
 
-pub type CrValue = ir::Value;
 pub type LTKind = lexer::TKind;
+
+pub type CrValue = ir::Value;
 pub type CrType = ir::Type;
+pub type CrBlock = ir::Block;
 
 pub struct Program {
     pub builtin: Module,
     pub builtin_repo: BuiltinRepo,
     pub isa: Box<dyn TargetIsa>,
-    pub types: SymTable<Type, TypeEnt>,
-    pub functions: SymTable<Fun, FunEnt>,
-    pub generic_functions: SymTable<Fun, Vec<FunEnt>>,
-    pub modules: SymTable<Module, ModuleEnt>,
+    pub types: Table<Type, TypeEnt>,
+    pub functions: Table<Fun, FunEnt>,
+    pub generic_functions: Table<Fun, Vec<FunEnt>>,
+    pub modules: Table<Module, ModuleEnt>,
 }
 
 impl Program {
@@ -59,8 +61,8 @@ impl Program {
             name: module_id,
             id: module_id,
             absolute_path: "".to_string(),
-            dependency: Vec::new(),
-            dependant: Vec::new(),
+            dependency: vec![],
+            dependant: vec![],
             ast: Ast::none(),
             attributes: Attributes::default(),
             is_external: true,
@@ -71,7 +73,7 @@ impl Program {
 
         self.builtin_repo = BuiltinRepo::new(self);
 
-        let builtin_operations = [
+        let builtin_ops = [
             (
                 "+ - * / == != >= <= > < ^ | & >> <<",
                 &[
@@ -92,12 +94,11 @@ impl Program {
             ("&& || ^^", &[self.builtin_repo.bool][..]),
         ];
 
-        for &(operators, types) in builtin_operations.iter() {
-            for operation in operators.split(' ') {
+        for &(operators, types) in builtin_ops.iter() {
+            for op in operators.split(' ') {
                 for &datatype in types.iter() {
                     let datatype_id = self.types.direct_to_id(datatype);
-                    let return_type = if matches!(operation, "==" | "!=" | ">" | "<" | ">=" | "<=")
-                    {
+                    let return_type = if matches!(op, "==" | "!=" | ">" | "<" | ">=" | "<=") {
                         self.builtin_repo.bool
                     } else {
                         datatype
@@ -105,7 +106,7 @@ impl Program {
                     let binary_op = FunEnt {
                         visibility: Vis::Public,
                         name: ID::new()
-                            .add(operation)
+                            .add(op)
                             .combine(datatype_id)
                             .combine(datatype_id)
                             .combine(module_id),
@@ -154,7 +155,7 @@ macro_rules! define_repo {
 
                         token_hint: Token::builtin(stringify!($name)),
 
-                        params: Vec::new(),
+                        params: vec![],
                         ast: Ast::none(),
                         attribute_id: 0,
                     };
@@ -225,10 +226,10 @@ impl Default for Program {
             isa,
             builtin: Module::new(0),
             builtin_repo: unsafe { std::mem::zeroed() },
-            types: SymTable::new(),
-            functions: SymTable::new(),
-            modules: SymTable::new(),
-            generic_functions: SymTable::new(),
+            types: Table::new(),
+            functions: Table::new(),
+            modules: Table::new(),
+            generic_functions: Table::new(),
         };
 
         program.build_builtin();
@@ -279,16 +280,14 @@ impl FunEnt {
 
 #[derive(Debug, Default, Clone)]
 pub struct FunBody {
-    pub values: SymVec<Value, ValueEnt>,
-    pub instructions: SymVec<Inst, InstEnt>,
-    pub blocks: SymVec<Block, BlockEnt>,
+    pub values: List<Value, ValueEnt>,
+    pub insts: LinkedList<Inst, InstEnt>,
 }
 
 impl FunBody {
     pub fn clear(&mut self) {
         self.values.clear();
-        self.instructions.clear();
-        self.blocks.clear();
+        self.insts.clear();
     }
 }
 
@@ -318,18 +317,36 @@ pub enum IKind {
     NoOp,
     Call(Fun, Vec<Value>),
     UnresolvedCall(ID, Vec<Value>),
+    UnresolvedDot(Value, ID),
     VarDecl(Value),
     ZeroValue,
-    Literal(LTKind),
+    Lit(LTKind),
     Return(Option<Value>),
     Assign(Value),
-    Jump(Block, Vec<Value>),
-    JumpIfTrue(Value, Block, Vec<Value>),
+    Block(Block),
+    BlockEnd(Inst),
+    Jump(Inst, Vec<Value>),
+    JumpIfTrue(Value, Inst, Vec<Value>),
+    Load(Value, u32),
 }
 
 impl IKind {
     pub fn is_closing(&self) -> bool {
         matches!(self, IKind::Jump(..) | IKind::Return(..))
+    }
+
+    pub fn block(&self) -> &Block {
+        match self {
+            IKind::Block(block) => block,
+            _ => panic!("cannot access block on {:?}", self),
+        }
+    }
+
+    pub fn block_mut(&mut self) -> &mut Block {
+        match self {
+            IKind::Block(block) => block,
+            _ => panic!("cannot access block on {:?}", self),
+        }
     }
 }
 
@@ -339,13 +356,18 @@ impl Default for IKind {
     }
 }
 
-crate::sym_id!(Block);
+#[derive(Debug, Clone, Default)]
+pub struct Block {
+    block: Option<CrBlock>,
+    args: Vec<Value>,
+    end: Option<Inst>,
+}
 
-#[derive(Debug, Default, Clone)]
-pub struct BlockEnt {
-    pub args: Vec<Value>,
-    pub first_instruction: Option<Inst>,
-    pub last_instruction: Option<Inst>,
+#[derive(Debug, Clone)]
+pub struct Loop {
+    name: ID,
+    start_block: Inst,
+    end_block: Inst,
 }
 
 #[derive(Debug, Clone)]
@@ -403,6 +425,7 @@ crate::sym_id!(Value);
 pub struct ValueEnt {
     pub name: ID,
     pub datatype: Type,
+    pub inst: Option<Inst>,
     pub type_dependency: Option<TypeDep>,
     pub value: Option<CrValue>,
     pub mutable: bool,
@@ -412,8 +435,9 @@ pub struct ValueEnt {
 impl ValueEnt {
     pub fn temp(datatype: Type) -> Self {
         Self {
-            datatype,
             name: ID::new(),
+            datatype,
+            inst: None,
             type_dependency: None,
             value: None,
             mutable: false,
@@ -478,8 +502,9 @@ pub struct Field {
     pub visibility: Vis,
     pub embedded: bool,
     pub offset: u32,
-    pub name: Spam,
+    pub name: ID,
     pub datatype: Type,
+    pub token_hint: Token,
 }
 
 pub fn test() {

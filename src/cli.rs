@@ -12,9 +12,9 @@ impl Arguments {
     pub fn new<T: Iterator<Item = String>>(mut args: T) -> Result<Arguments, ArgumentError> {
         let mut result = Arguments {
             filename: args.next().ok_or(ArgumentError::MissingFilename)?,
-            flags: Vec::new(),
-            field_flags: Vec::new(),
-            args: Vec::new(),
+            flags: vec![],
+            field_flags: vec![],
+            args: vec![],
         };
 
         loop {

@@ -13,6 +13,18 @@ fun goo[T](x: T) -> T: x
 
 fun ++[T](a, b: T) -> T: a + b
 
+struct Fun:
+  a: i32
+  b: i32
+
+fun init() -> Fun:
+  var fn
+  
+  fn.a = 1
+  fn.b = 2
+  
+  fn
+
 fun main -> i64:
   var 
     val
@@ -33,10 +45,29 @@ fun main -> i64:
     foo = 10
   else:
     return foo
+    foo = 10
   
   if foo > 10:
     foo = 20
   else:
     foo = 30 | 6
+  
+  var i = 0
+  loop:
+    if i >= 10:
+      break
+    i += 1
+  
+  var i = 0
+  loop:
+    i += 1
+    if i < 10:
+      continue
+    break
+
+  loop: 
+    loop: 
+      break
+    break
 
   return val

@@ -234,7 +234,7 @@ impl Lexer {
         let line_data = self.line_data();
         let start = self.cursor.progress();
         self.cursor.advance()?;
-        let mut string_data = Vec::new();
+        let mut string_data = vec![];
         loop {
             match self.cursor.peek()? {
                 '\\' => {
@@ -586,7 +586,7 @@ impl std::fmt::Display for TKind {
             TKind::Struct => "'struct'",
             TKind::Embed => "'embed'",
             TKind::Label => "'label'",
-            TKind::Ident => "identifier",
+            TKind::Ident => "ident",
             TKind::Op => "operator",
             TKind::LPar => "'('",
             TKind::RPar => "')'",

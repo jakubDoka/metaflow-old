@@ -153,7 +153,8 @@ impl<'a> TypeResolver<'a> {
             for name in field_line[..field_line.len() - 1].iter() {
                 fields.push(Field {
                     visibility: Vis::Public,
-                    name: name.token.spam.clone(),
+                    name: ID::new().add(name.token.spam.deref()),
+                    token_hint: name.token.clone(),
                     embedded,
                     offset: 0,
                     datatype: datatype.clone(),
@@ -176,7 +177,7 @@ impl<'a> TypeResolver<'a> {
             ));
         }
         let (host_module, datatype) = match ast.kind {
-            AKind::Identifier => self.find_by_token(module, &ast.token)?,
+            AKind::Ident => self.find_by_token(module, &ast.token)?,
             AKind::ExplicitPackage => {
                 let package_name = ID::new().add(ast[0].token.spam.deref());
                 let dep = self.program[module]
@@ -332,13 +333,13 @@ impl<'a> TypeResolver<'a> {
                 match a.kind.clone() {
                     AKind::StructDeclaration(visibility) => {
                         let ident = &a[0];
-                        let (ident, kind) = if ident.kind == AKind::Identifier {
+                        let (ident, kind) = if ident.kind == AKind::Ident {
                             (ident, TKind::Unresolved)
                         } else {
                             (&ident[0], TKind::Generic)
                         };
 
-                        if ident.kind != AKind::Identifier {
+                        if ident.kind != AKind::Ident {
                             return Err(TypeError::new(
                                 TEKind::UnexpectedAst(ident.clone()),
                                 &ident.token,
@@ -357,7 +358,7 @@ impl<'a> TypeResolver<'a> {
                             ast: std::mem::take(a),
                             module,
                             attribute_id: i,
-                            params: Vec::new(),
+                            params: vec![],
                             align: 0,
                         };
 
