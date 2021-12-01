@@ -1,7 +1,9 @@
+use std::fmt::Display;
 use std::ops::Deref;
 
 use crate::ast::{AKind, Ast, Vis};
 use crate::ir::{Field, SKind, TKind};
+use crate::lexer::TokenView;
 use crate::util::sdbm::ID;
 use crate::{lexer::Token, util::sdbm::SdbmHashState};
 
@@ -9,6 +11,49 @@ use super::module_tree::ModuleTreeBuilder;
 use super::{Module, Program, Structure, Type, TypeEnt};
 
 type Result<T> = std::result::Result<T, TypeError>;
+
+pub struct TypePrinter<'a> {
+    program: &'a Program,
+}
+
+impl<'a> TypePrinter<'a> {
+    pub fn new(program: &'a Program) -> Self {
+        Self { program }
+    }
+
+    pub fn print(&self, datatype: Type) -> String {
+        let mut buffer = String::new();
+
+        self.print_buff(datatype, &mut buffer);
+        
+        buffer
+    }
+
+    pub fn print_buff(&self, datatype: Type, buffer: &mut String) {
+        let dt = &self.program[datatype];
+        match &dt.kind {
+            TKind::Structure(_) if dt.params.len() > 1 => {
+                self.print_buff(dt.params[0], buffer);
+                buffer.push('[');
+                for param in &dt.params[1..] {
+                    self.print_buff(*param, buffer);
+                    buffer.push(',');
+                }
+                buffer.pop();
+                buffer.push(']');
+            }
+            TKind::Structure(_) |
+            TKind::Builtin(_) |
+            TKind::Generic => buffer.push_str(dt.debug_name),
+            TKind::Pointer(pointed, _) => {
+                buffer.push_str(dt.debug_name);
+                buffer.push(' ');
+                self.print_buff(*pointed, buffer);
+            },
+            TKind::Unresolved => unreachable!(),
+        }
+    }
+}    
 
 pub struct TypeResolver<'a> {
     immediate: bool,
@@ -251,6 +296,7 @@ impl<'a> TypeResolver<'a> {
                             size: u32::MAX,
                             module: host_module,
                             attribute_id: self.program[base_type].attribute_id,
+                            debug_name: self.program[base_type].debug_name,
                             params,
                             align: 0,
                         }
@@ -353,7 +399,9 @@ impl<'a> TypeResolver<'a> {
 
                         if ident.kind != AKind::Ident {
                             return Err(TypeError::new(
-                                TEKind::UnexpectedAst(ident.clone()),
+                                TEKind::UnexpectedAst(String::from(
+                                    "expected struct identifier"
+                                )),
                                 &ident.token,
                             ));
                         }
@@ -367,6 +415,7 @@ impl<'a> TypeResolver<'a> {
                             kind: kind.clone(),
                             name,
                             token_hint: token_hint.clone(),
+                            debug_name: ident.token.spam.raw(),
                             ast: std::mem::take(a),
                             module,
                             attribute_id: i,
@@ -410,8 +459,9 @@ impl<'a> TypeResolver<'a> {
 
     pub fn pointer_to(&mut self, datatype: Type, mutable: bool) -> Type {
         let module = self.program[datatype].module;
+        let debug_name = if mutable { "&var" } else { "&" };
         let name = ID::new()
-            .add(if mutable { "&var" } else { "&" })
+            .add(debug_name)
             .combine(self.program[datatype].name);
 
         let pointer_type = TypeEnt {
@@ -423,6 +473,7 @@ impl<'a> TypeResolver<'a> {
             align: self.program.isa.pointer_bytes() as u32,
             attribute_id: 0,
             ast: Ast::none(),
+            debug_name,
             module,
             token_hint: Token::default(),
         };
@@ -468,9 +519,38 @@ impl TypeError {
     }
 }
 
+impl Display for TypeError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        writeln!(f, "{}", TokenView::new(&self.token))?;
+        match &self.kind {
+            TEKind::UnexpectedAst(message) => writeln!(f, "{}", message),
+            TEKind::UnknownType => writeln!(f, "seems like type does not exist, check the spelling and make sure correct package is imported"),
+            TEKind::UnknownPackage => writeln!(f, "cant find this package, package import should be relative to compilation root"),
+            TEKind::InstantiationDepthExceeded => writeln!(f, "instantiation depth exceeded, there is probably some cycle in definition"),
+            TEKind::WrongInstantiationArgAmount(actual, supposed) => writeln!(f, "wrong amount of generic arguments, expected {} but got {}", supposed, actual),
+            TEKind::AccessingExternalPrivateType => writeln!(f, "type is external and does not have 'pub' modifier"),
+            TEKind::AccessingFilePrivateType => writeln!(f, "type is from different file and has 'priv' modifier"),
+            TEKind::InfiniteSize(cycle) => {
+                writeln!(f, "{}", TokenView::new(&cycle[0]))?;
+                for c in cycle[1..cycle.len() - 1].iter() {
+                    writeln!(f, "references")?;
+                    writeln!(f, "{}", TokenView::new(c))?;
+                }
+                writeln!(f, "ends the cycle in")?;
+                writeln!(f, "{}", TokenView::new(&cycle[cycle.len() - 1]))?;
+                writeln!(f, "thus has an infinite size")
+            },
+            TEKind::Redefinition(other) => {
+                writeln!(f, "redefines the type")?;
+                writeln!(f, "{}", TokenView::new(&other))
+            },
+        }
+    }
+}
+
 #[derive(Clone, Debug)]
 pub enum TEKind {
-    UnexpectedAst(Ast),
+    UnexpectedAst(String),
     UnknownType,
     UnknownPackage,
     InstantiationDepthExceeded,

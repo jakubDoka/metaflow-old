@@ -55,6 +55,11 @@ impl Spam {
     pub fn string(&self) -> &'static str {
         unsafe { &*self.string }
     }
+
+    #[inline]
+    pub fn raw(&self) -> &'static str {
+        &self.string()[self.range.clone()]
+    }
 }
 
 impl Default for Spam {

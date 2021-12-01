@@ -2,28 +2,57 @@ pub mod spam;
 
 pub use spam::*;
 
-use std::{
-    fmt::Debug,
-    ops::{Deref, Range},
-    rc::Rc,
-    str::Chars,
-};
+use std::{fmt::{Debug, Display}, ops::{Deref, Range}, rc::Rc, str::Chars};
 
-use crate::util::sdbm::ID;
+pub struct TokenView {
+    repr: String, 
+}
+
+impl TokenView {
+    pub fn new(token: &Token) -> Self {
+        if token.kind == TKind::None {
+            return Self {
+                repr: String::from("|> no line information"),
+            };
+        }
+
+        let range = token.spam.range.clone();
+        let string = token.spam.string();
+        let mut repr = String::new();
+        repr.push_str(format!("|> {}\n", token.line_data).as_str());
+        repr.push_str("|");
+
+        let end = string[range.end..].find('\n').map(|i| i + range.end).unwrap_or(string.len());
+        let start = string[..range.start].rfind('\n').unwrap_or(0) + 1;
+
+        repr.push_str(&string[start..end]);
+        repr.push_str("\n|");
+        repr.extend(std::iter::repeat(' ').take(range.start - start));
+        repr.extend(std::iter::repeat('^').take(range.end - range.start));
+
+        Self {
+            repr,
+        }
+    }
+}
+
+impl Display for TokenView {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", self.repr)
+    }
+}
 
 pub struct Lexer {
     cursor: Cursor,
     file_name: &'static str,
-    id: ID,
 }
 
 impl Lexer {
-    pub fn new(id: ID, file_name: String, file: String) -> Lexer {
+    pub fn new(file_name: String, file: String) -> Lexer {
         let file_name = Box::leak(file_name.into_boxed_str());
         Lexer {
             cursor: Cursor::new(file),
             file_name,
-            id,
         }
     }
 
@@ -322,7 +351,6 @@ impl Lexer {
         LineData::new(
             self.cursor.line,
             self.cursor.column(),
-            self.id,
             Spam::whole(&self.file_name),
         )
     }
@@ -393,7 +421,6 @@ pub trait IsOperator {
 //#[cfg(feature = "testing")]
 pub fn test() {
     let lexer = Lexer::new(
-        ID::new(),
         "test_code.pmh".to_string(),
         crate::testing::TEST_CODE.to_string(),
     );
@@ -626,21 +653,25 @@ impl Default for TKind {
 pub struct LineData {
     pub line: usize,
     pub column: usize,
-    pub id: ID,
     pub file_name: Spam,
 }
 
 impl LineData {
-    pub fn new(line: usize, column: usize, id: ID, file_name: Spam) -> Self {
+    pub fn new(line: usize, column: usize, file_name: Spam) -> Self {
         Self {
             line,
             column,
-            id,
             file_name,
         }
     }
 
     pub fn file_name(&self) -> &Spam {
         &self.file_name
+    }
+}
+
+impl Display for LineData {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}:{}:{}", self.line, self.column, self.file_name.raw())
     }
 }

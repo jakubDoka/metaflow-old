@@ -1,7 +1,7 @@
 pub mod ast;
 pub mod error;
 
-use crate::{lexer::*, util::sdbm::ID};
+use crate::lexer::*;
 pub use ast::*;
 pub use error::*;
 
@@ -844,7 +844,6 @@ pub fn precedence(op: &str) -> i64 {
 
 pub fn test() {
     let lexer = Lexer::new(
-        ID::new(),
         "test_code.pmh".to_string(),
         crate::testing::TEST_CODE.to_string(),
     );

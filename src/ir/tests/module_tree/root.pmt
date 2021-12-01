@@ -119,9 +119,12 @@ struct Seq[T]:
   len, cap: i32
   data: &var T
 
+struct Embedded[T]:
+  embed vec: Seq[T]
+
 fun push[T](seq: &var Seq[T], x: T): pass
 
-fun something -> Vec:
+fun something -> Embedded[i64]:
   var a, b: Vec
   
   a.x = 1f32
@@ -132,8 +135,12 @@ fun something -> Vec:
   
   a += b
 
-  var s: Seq
+  var s
 
   s.push(10)
 
-  return a
+  s.push(10)
+
+  var v: Embedded[i64]
+
+  v.push(10)

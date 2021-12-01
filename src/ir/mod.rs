@@ -190,6 +190,7 @@ macro_rules! define_repo {
 
                         token_hint: Token::builtin(stringify!($name)),
 
+                        debug_name: stringify!($name),
                         params: vec![],
                         ast: Ast::none(),
                         attribute_id: 0,
@@ -351,7 +352,7 @@ impl InstEnt {
 pub enum IKind {
     NoOp,
     Call(Fun, Vec<Value>),
-    UnresolvedCall(ID, bool, Vec<Value>),
+    UnresolvedCall(ID, &'static str, bool, Vec<Value>),
     UnresolvedDot(Value, ID),
     VarDecl(Value),
     ZeroValue,
@@ -522,6 +523,7 @@ pub struct TypeEnt {
     pub ast: Ast,
     pub module: Module,
     pub name: ID,
+    pub debug_name: &'static str,
     pub token_hint: Token,
 }
 

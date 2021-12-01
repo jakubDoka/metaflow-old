@@ -81,7 +81,7 @@ impl ModuleTreeBuilder {
             .ok_or_else(|| ModuleTreeError::new(MTEKind::NonUTF8Path, token))?
             .to_string();
 
-        let ast = AstParser::new(Lexer::new(id, path.to_string(), file))
+        let ast = AstParser::new(Lexer::new(path.to_string(), file))
             .parse()
             .map_err(Into::into)?;
 
