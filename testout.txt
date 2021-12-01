@@ -821,7 +821,7 @@ fun main -> i64
     Jump(Inst(60), [Value(29)]) |foo = 30 | 6
 
   Inst60[Value(26)]
-    Value(30): auto = Lit(Int(0, 64)) |0
+    Value(30): i64 = Lit(Int(0, 64)) |0
     Value(31): i64 = VarDecl(Value(30)) |i = 0
     Jump(Inst(76), []) |
 
@@ -841,7 +841,7 @@ fun main -> i64
     Jump(Inst(76), []) |
 
   Inst77[]
-    Value(36): auto = Lit(Int(0, 64)) |0
+    Value(36): i64 = Lit(Int(0, 64)) |0
     Value(37): i64 = VarDecl(Value(36)) |i = 0
     Jump(Inst(96), []) |
 
@@ -918,9 +918,9 @@ fun something -> Embedded[i64]
     Value(26): &var Seq[i64] = Ref(Value(14)) |s.push(10)
     Value(25): & Seq[i64] = Ref(Value(14)) |s.push(10)
     Value(15): i64 = Lit(Int(10, 64)) |10
-    Value(16): auto = Call(Fun(168), [Value(25), Value(15)]) |s.push(10)
+    Call(Fun(168), [Value(25), Value(15)]) |s.push(10)
     Value(17): i64 = Lit(Int(10, 64)) |10
-    Value(18): auto = Call(Fun(168), [Value(26), Value(17)]) |s.push(10)
+    Call(Fun(168), [Value(26), Value(17)]) |s.push(10)
     Value(19): Embedded[i64] = ZeroValue |
     Value(20): Embedded[i64] = VarDecl(Value(19)) |v: Embedded[i64]
     Value(22): Seq[i64] = Offset(Value(20)) |v.push(10)
