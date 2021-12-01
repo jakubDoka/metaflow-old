@@ -695,8 +695,14 @@ Group 'use' "use":
      Ident ident "c"
     Lit integer "30"
 
-FunError { kind: UnresolvedType(TypeDep(0)), token: Token { kind: Ident, spam: "s", line_data: LineData { line: 135, column: 6, id: ID(8714239933621611091), file_name: "/root" } } }
-FunError { kind: UnresolvedType(TypeDep(1)), token: Token { kind: Ident, spam: "s.push(10)", line_data: LineData { line: 137, column: 2, id: ID(8714239933621611091), file_name: "/root" } } }
+[Pointer(false), Element(Type(3), Some(Type(3)))] [Pointer(false), Parameter(0)]
+[Element(Type(3), Some(Type(3)))] [Parameter(0)]
+[Element(Type(3), Some(Type(3)))] [Parameter(0)]
+[Element(Type(3), Some(Type(3)))] [Parameter(0)]
+[Element(Type(17), Some(Type(17))), ScopeStart, Element(Type(11), Some(Type(11))), ScopeEnd] [Pointer(true), Element(Type(17), None), ScopeStart, Parameter(0), ScopeEnd]
+[Pointer(true), Element(Type(17), Some(Type(17))), ScopeStart, Element(Type(11), Some(Type(11))), ScopeEnd] [Pointer(true), Element(Type(17), None), ScopeStart, Parameter(0), ScopeEnd]
+[Pointer(true), Element(Type(17), Some(Type(17))), ScopeStart, Element(Type(11), Some(Type(11))), ScopeEnd] [Pointer(true), Element(Type(17), None), ScopeStart, Parameter(0), ScopeEnd]
+[Element(Type(3), Some(Type(3)))] [Parameter(0)]
 fun init -> Fun
 
   Inst1[]
@@ -915,17 +921,18 @@ fun something -> Vec
     Value(11): f32 = Assign(Value(10)) |b.y = 3f32
     Value(12): Vec = Call(Fun(163), [Value(1), Value(3)]) |a += b
     Value(12): Vec = Assign(Value(1)) |a += b
-    Value(13): auto = ZeroValue |
-    Value(14): auto = VarDecl(Value(13)) |s
+    Value(13): Seq[T] = ZeroValue |
+    Value(14): Seq[T] = VarDecl(Value(13)) |s: Seq
+    Value(17):  = Ref(Value(14)) |s.push(10)
     Value(15): i64 = Lit(Int(10, 64)) |10
-    Value(16): auto = UnresolvedCall(ID(31616704170395194), true, [Value(14), Value(15)]) |s.push(10)
+    Value(16): auto = Call(Fun(168), [Value(17), Value(15)]) |s.push(10)
     Return(Some(Value(1))) |return a
 
 
 fun boo[T](x: &T) -> T
 
-  Inst1[Value(0)]
     Value(1): i64 = Deref(Value(0)) |*x
+  Inst1[Value(0)]
     Return(Some(Value(1))) |*x
 
 fun ++[T](a, b: T) -> T
@@ -938,4 +945,9 @@ fun goo[T](x: T) -> T
 
   Inst1[Value(0)]
     Return(Some(Value(0))) |x
+
+fun push[T](seq: &var Seq[T], x: T)
+
+  Inst1[Value(0), Value(1)]
+    Return(None) |
 

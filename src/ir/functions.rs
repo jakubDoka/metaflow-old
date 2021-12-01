@@ -122,7 +122,7 @@ impl<'a> FunResolver<'a> {
             self.context.add_inst(InstEnt::new(
                 IKind::Return(None),
                 None,
-                &ast[1].last().unwrap().token,
+                &ast[1].last().unwrap_or(&Ast::none()).token,
             ));
         }
 
@@ -131,6 +131,49 @@ impl<'a> FunResolver<'a> {
             let on_stack =
                 self.program.types[datatype].size > self.program.isa.pointer_bytes() as u32;
             self.context[value_id].on_stack = self.context[value_id].on_stack || on_stack;
+        }
+
+        let mut unresolved = std::mem::take(&mut self.context.unresolved_functions);
+        for dep in unresolved.drain(..) {
+            let inst = &mut self.context[dep];
+            match &mut inst.kind {
+                IKind::UnresolvedCall(fun, dot_call, args) => {
+                    let fun = *fun;
+                    let dot_call = *dot_call;
+                    let mut args = std::mem::take(args);
+                    inst.kind = IKind::NoOp;
+                    let token = inst.token_hint.clone();
+                    let fun = self.smart_find_or_instantiate(fun, &mut args, dot_call, &token, false)?;
+                    
+                    let mut types = std::mem::take(&mut self.context.type_buffer);
+                    types.clear();
+                    types.extend(
+                        self.program[fun].signature().args.iter().map(|arg| arg.datatype),
+                    );
+                    for (datatype, value) in types.iter().zip(args.iter()) {
+                        if self.is_auto(self.context[*value].datatype) {
+                            self.infer(*value, *datatype)?;
+                        }
+                    }
+
+                    let datatype = self.program[fun].signature().return_type;
+                    let inst = &mut self.context[dep];
+                    let value = inst.value;
+                    inst.kind = IKind::Call(fun, args);
+
+                    if let (Some(value), Some(datatype)) = (value, datatype) {
+                        self.infer(value, datatype)?;
+                    } else if let Some(dep) = self.context[value.unwrap()].type_dependency {
+                        if self.context[dep].len() > 1 {
+                            return Err(FunError::new(FEKind::ExpectedValue, &token));
+                        }
+                        self.context[dep].clear();
+                    }  else {
+                        self.context[dep].value = None;
+                    }
+                }
+                _ => (),
+            }
         }
 
         for (id, dep) in self.context.type_graph.iter() {
@@ -433,12 +476,13 @@ impl<'a> FunResolver<'a> {
 
     fn ref_expr_low(&mut self, value: Value, mutable: bool, token: &Token) -> Value {
         let datatype = self.context[value].datatype;
+        let inst = self.context[value].inst.unwrap_or(Inst::new(0));
         let unresolved = self.is_auto(datatype);
         let datatype = self.pointer_of(datatype, mutable);
         let reference = self.new_value(datatype);
         let inst = self
             .context
-            .add_inst(InstEnt::new(IKind::Ref(value), Some(reference), token));
+            .add_inst_under(InstEnt::new(IKind::Ref(value), Some(reference), token), inst);
 
         if unresolved {
             self.add_type_dependency(value, inst);
@@ -457,13 +501,14 @@ impl<'a> FunResolver<'a> {
 
     fn deref_expr_low(&mut self, value: Value, token: &Token) -> Result<Value> {
         let datatype = self.context[value].datatype;
+        let inst = self.context[value].inst.unwrap_or(Inst::new(0));
         let (pointed, mutable) = self.base_of_err(datatype, token)?;
 
         let val = self.new_value(pointed);
         self.context[val].mutable = mutable;
         let inst = self
             .context
-            .add_inst(InstEnt::new(IKind::Deref(value), Some(value), token));
+            .add_inst_under(InstEnt::new(IKind::Deref(value), Some(val), token), inst);
 
         if self.is_auto(pointed) {
             self.add_type_dependency(value, inst);
@@ -735,16 +780,17 @@ impl<'a> FunResolver<'a> {
     fn call_low(&mut self, base_name: ID, dot_call: bool, token: &Token) -> ExprResult {
         let mut values = self.context.call_value_buffer.clone();
         let mut unresolved = std::mem::take(&mut self.context.call_value_buffer);
-        unresolved.retain(|f| !self.is_auto(self.context[*f].datatype));
+        unresolved.retain(|f| self.is_auto(self.context[*f].datatype));
 
         let value = if unresolved.len() > 0 {
             let value = self.new_auto_value();
             let inst = self
                 .context
-                .add_inst(InstEnt::new(IKind::NoOp, Some(value), token));
+                .add_inst(InstEnt::new(IKind::UnresolvedCall(base_name, dot_call, values), Some(value), token));
             unresolved
                 .drain(..)
                 .for_each(|v| self.add_type_dependency(v, inst));
+            self.context.unresolved_functions.push(inst);
             self.context.call_value_buffer = unresolved;
             Some(value)
         } else {
@@ -774,19 +820,19 @@ impl<'a> FunResolver<'a> {
     fn lit(&mut self, ast: &Ast) -> ExprResult {
         let datatype = match ast.token.kind {
             LTKind::Int(_, base) => match base {
-                1 => self.program.builtin_repo.i8,
-                2 => self.program.builtin_repo.i16,
-                4 => self.program.builtin_repo.i32,
+                8 => self.program.builtin_repo.i8,
+                16 => self.program.builtin_repo.i16,
+                32 => self.program.builtin_repo.i32,
                 _ => self.program.builtin_repo.i64,
             },
             LTKind::Uint(_, base) => match base {
-                1 => self.program.builtin_repo.u8,
-                2 => self.program.builtin_repo.u16,
-                4 => self.program.builtin_repo.u32,
+                8 => self.program.builtin_repo.u8,
+                16 => self.program.builtin_repo.u16,
+                32 => self.program.builtin_repo.u32,
                 _ => self.program.builtin_repo.u64,
             },
             LTKind::Float(_, base) => match base {
-                4 => self.program.builtin_repo.f32,
+                32 => self.program.builtin_repo.f32,
                 _ => self.program.builtin_repo.f64,
             },
             LTKind::Bool(_) => self.program.builtin_repo.bool,
@@ -910,8 +956,11 @@ impl<'a> FunResolver<'a> {
 
                         if let (Some(value), Some(datatype)) = (value, datatype) {
                             frontier.push((value, datatype));
-                        } else if self.context[value.unwrap()].type_dependency.is_some() {
-                            return Err(FunError::new(FEKind::ExpectedValue, &token));
+                        } else if let Some(dep) = self.context[value.unwrap()].type_dependency {
+                            if self.context[dep].len() > 1 {
+                                return Err(FunError::new(FEKind::ExpectedValue, &token));
+                            }
+                            self.context[dep].clear();
                         } else {
                             self.context[dep].value = None;
                         }
@@ -956,6 +1005,7 @@ impl<'a> FunResolver<'a> {
                         };
                         frontier.push((val, datatype));
                     }
+                    IKind::NoOp => (),
                     _ => todo!("{:?}", inst),
                 }
             }
@@ -1221,7 +1271,7 @@ impl<'a> FunResolver<'a> {
             }
         }
 
-        Err(FunError::new(FEKind::NotFound, token))
+        Err(FunError::new(FEKind::FunctionNotFound, token))
     }
 
     fn instantiate(
@@ -1263,9 +1313,10 @@ impl<'a> FunResolver<'a> {
                 self.load_arg_from_datatype(datatype, &mut generic);
                 let pattern = &signature.elements[i + 1..i + length + 1];
 
-                for (real, pattern) in generic.arg_buffer.iter().zip(pattern) {
-                    if real != pattern {
-                        match pattern {
+                for (real, pat) in generic.arg_buffer.iter().zip(pattern) {
+                    if real != pat {
+                        println!("{:?} {:?}", generic.arg_buffer, pattern);
+                        match pat {
                             GenericElement::Parameter(param) => match real {
                                 GenericElement::Element(_, id) => {
                                     if let Some(already) = generic.inferred[*param] {
@@ -1278,6 +1329,14 @@ impl<'a> FunResolver<'a> {
                                 }
                                 _ => return Ok(None),
                             },
+                            GenericElement::Element(..) => match real {
+                                GenericElement::Element(_, id) => {
+                                    if !self.is_auto(id.unwrap()) {
+                                        return Ok(None);
+                                    }
+                                }
+                                _ => return Ok(None),
+                            }
                             _ => return Ok(None),
                         }
                     }
@@ -1417,6 +1476,8 @@ impl<'a> FunResolver<'a> {
                 continue;
             }
 
+            self.context.current_module = Some(module);
+
             let mut ast = std::mem::take(&mut self.program.modules[module].ast);
             for (i, a) in ast.iter_mut().enumerate() {
                 match a.kind.clone() {
@@ -1495,8 +1556,8 @@ impl<'a> FunResolver<'a> {
         for param_line in &header[1..header.len() - 1] {
             let datatype = param_line.last().unwrap();
             let datatype = self.resolve_type_low(module, datatype)?;
-            name = name.combine(self.program.types.direct_to_id(datatype));
             for param in param_line[0..param_line.len() - 1].iter() {
+                name = name.combine(self.program.types.direct_to_id(datatype));
                 let name = ID::new().add(param.token.spam.deref());
                 let mutable = param_line.kind == AKind::FunArgument(true);
                 args.push(ValueEnt::new(name, datatype, None, mutable));
@@ -1586,28 +1647,29 @@ impl<'a> FunResolver<'a> {
 
     fn load_arg_from_datatype(&self, datatype: Type, generic: &mut GenericFunContext) {
         let dt = &self.program[datatype];
-        let id = self.program.types.direct_to_id(datatype);
 
         if dt.params.is_empty() {
             if let TKind::Pointer(pointed, mutable) = dt.kind {
                 generic.arg_buffer.push(GenericElement::Pointer(mutable));
                 self.load_arg_from_datatype(pointed, generic);
+            } else {
+                generic
+                    .arg_buffer
+                    .push(GenericElement::Element(datatype, Some(datatype)));
             }
-
-            generic
-                .arg_buffer
-                .push(GenericElement::Element(id, Some(datatype)));
             return;
         }
 
         generic.arg_buffer.push(GenericElement::Element(
-            self.program.types.direct_to_id(dt.params[0]),
+            dt.params[0],
             Some(datatype),
         ));
 
+        generic.arg_buffer.push(GenericElement::ScopeStart);
         for &param in &dt.params[1..] {
             self.load_arg_from_datatype(param, generic)
         }
+        generic.arg_buffer.push(GenericElement::ScopeEnd);
     }
 
     fn load_arg(&mut self, ast: &Ast) -> Result {
@@ -1627,7 +1689,6 @@ impl<'a> FunResolver<'a> {
                         .push(GenericElement::Parameter(index));
                 } else {
                     let datatype = self.find_type(&ast.token)?;
-                    let datatype = self.program.types.direct_to_id(datatype);
                     self.context
                         .generic
                         .arg_buffer
@@ -1803,7 +1864,7 @@ pub struct FunContext {
     pub variables: Vec<Option<Value>>,
     pub loops: Vec<Loop>,
     pub type_graph: List<TypeDep, Vec<Inst>>,
-    pub unresolved_functions: Vec<Fun>,
+    pub unresolved_functions: Vec<Inst>,
     pub type_graph_pool: Vec<Vec<Inst>>,
     pub function_body: FunBody,
     pub embed_frontier: Vec<(Type, ID)>,
@@ -1996,7 +2057,7 @@ pub enum FEKind {
     Duplicate(Token),
     ExpectedValue,
     TypeMismatch(Type, Type),
-    NotFound,
+    FunctionNotFound,
     UnexpectedValue,
     UnexpectedReturnValue,
     UndefinedVariable,

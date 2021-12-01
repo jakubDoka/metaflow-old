@@ -429,7 +429,7 @@ pub enum GenericElement {
     ScopeStart,
     ScopeEnd,
     Pointer(bool),
-    Element(ID, Option<Type>),
+    Element(Type, Option<Type>),
     Parameter(usize),
     NextArgument(usize, usize),
     NextReturn(bool),

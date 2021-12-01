@@ -391,7 +391,7 @@ impl<'a> TypeResolver<'a> {
                                     params.push(id);
                                     params.extend(
                                         std::iter::repeat(self.program.builtin_repo.auto)
-                                            .take(param_count - 1)
+                                            .take(param_count)
                                     );
                                     self.program[id].params = params;
                                 }

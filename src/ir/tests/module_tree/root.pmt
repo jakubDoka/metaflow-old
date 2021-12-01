@@ -47,7 +47,7 @@ fun boo[T](x: &T) -> T: *x
 fun deref -> i32:
   var x
   var y = &x
-  *y 
+  *y
 
 fun moo:
   var a
@@ -105,3 +105,35 @@ fun main -> i64:
     break
 
   return val
+
+struct Vec:
+  x, y: f32
+
+fun +(a, b: Vec) -> Vec:
+  var v
+  v.x = a.x + b.x
+  v.y = a.y + b.y
+  v
+
+struct Seq[T]:
+  len, cap: i32
+  data: &var T
+
+fun push[T](seq: &var Seq[T], x: T): pass
+
+fun something -> Vec:
+  var a, b: Vec
+  
+  a.x = 1f32
+  a.y = 4f32
+  
+  b.x = 2f32
+  b.y = 3f32
+  
+  a += b
+
+  var s: Seq
+
+  s.push(10)
+
+  return a
