@@ -695,14 +695,7 @@ Group 'use' "use":
      Ident ident "c"
     Lit integer "30"
 
-[Pointer(false), Element(Type(3), Some(Type(3)))] [Pointer(false), Parameter(0)]
-[Element(Type(3), Some(Type(3)))] [Parameter(0)]
-[Element(Type(3), Some(Type(3)))] [Parameter(0)]
-[Element(Type(3), Some(Type(3)))] [Parameter(0)]
-[Element(Type(17), Some(Type(17))), ScopeStart, Element(Type(11), Some(Type(11))), ScopeEnd] [Pointer(true), Element(Type(17), None), ScopeStart, Parameter(0), ScopeEnd]
-[Pointer(true), Element(Type(17), Some(Type(17))), ScopeStart, Element(Type(11), Some(Type(11))), ScopeEnd] [Pointer(true), Element(Type(17), None), ScopeStart, Parameter(0), ScopeEnd]
-[Pointer(true), Element(Type(17), Some(Type(17))), ScopeStart, Element(Type(11), Some(Type(11))), ScopeEnd] [Pointer(true), Element(Type(17), None), ScopeStart, Parameter(0), ScopeEnd]
-[Element(Type(3), Some(Type(3)))] [Parameter(0)]
+FunError { kind: UnresolvedType(TypeDep(0)), token: Token { kind: Ident, spam: "v.push(10i32)", line_data: LineData { line: 146, column: 2, id: ID(8714239933621611091), file_name: "/root" } } }
 fun init -> Fun
 
   Inst1[]
@@ -922,10 +915,19 @@ fun something -> Vec
     Value(12): Vec = Call(Fun(163), [Value(1), Value(3)]) |a += b
     Value(12): Vec = Assign(Value(1)) |a += b
     Value(13): Seq[T] = ZeroValue |
-    Value(14): Seq[T] = VarDecl(Value(13)) |s: Seq
-    Value(17):  = Ref(Value(14)) |s.push(10)
+    Value(14): Seq[T] = VarDecl(Value(13)) |s: Seq[i64]
+    Value(18):  = Ref(Value(14)) |s.push(10)
+    Value(16):  = Ref(Value(14)) |s.push(10)
     Value(15): i64 = Lit(Int(10, 64)) |10
-    Value(16): auto = Call(Fun(168), [Value(17), Value(15)]) |s.push(10)
+    Call(Fun(168), [Value(16), Value(15)]) |s.push(10)
+    Value(17): i64 = Lit(Int(10, 64)) |10
+    Call(Fun(168), [Value(18), Value(17)]) |s.push(10)
+    Value(19): Embedded = ZeroValue |
+    Value(20): Embedded = VarDecl(Value(19)) |v: Embedded
+    Value(22): Seq[T] = Offset(Value(20)) |v.push(10i32)
+    Value(23):  = Ref(Value(22)) |v.push(10i32)
+    Value(21): i32 = Lit(Int(10, 32)) |10i32
+    Call(Fun(169), [Value(23), Value(21)]) |v.push(10i32)
     Return(Some(Value(1))) |return a
 
 
@@ -945,6 +947,11 @@ fun goo[T](x: T) -> T
 
   Inst1[Value(0)]
     Return(Some(Value(0))) |x
+
+fun push[T](seq: &var Seq[T], x: T)
+
+  Inst1[Value(0), Value(1)]
+    Return(None) |
 
 fun push[T](seq: &var Seq[T], x: T)
 
