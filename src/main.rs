@@ -5,8 +5,8 @@ extern crate cranelift_frontend;
 
 pub mod ast;
 pub mod cli;
+pub mod gen;
 pub mod ir;
-pub mod ir_gen;
 pub mod lexer;
 pub mod testing;
 pub mod util;
@@ -21,7 +21,7 @@ fn main() {
 }
 
 fn run() {
-    let args = match cli::Arguments::new(std::env::args()) {
+    /*let args = match cli::Arguments::new(std::env::args()) {
         Ok(args) => args,
         Err(e) => {
             println!("{:?}", e);
@@ -29,13 +29,13 @@ fn run() {
         }
     };
 
-    match ir_gen::gen::compile(args) {
+    match gen::gen::compile(args) {
         Ok(_) => println!("Successfully compiled"),
         Err(err) => println!("Failed to compile: {:?}", err),
     };
 
     #[cfg(debug_assertions)]
-    assert!(util::cell::report_cell_state() == 0);
+    assert!(util::cell::report_cell_state() == 0);*/
 }
 
 #[repr(C)]

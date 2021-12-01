@@ -433,11 +433,28 @@ impl AstParser {
             }
             TKind::If => return self.if_expr(),
             TKind::Loop => return self.loop_expr(),
-            TKind::Op | TKind::Var => {
+            TKind::Op => {
                 let mut ast = self.ast(AKind::UnaryOp);
-                ast.push(self.ast(AKind::Ident));
-                self.advance();
+                match self.current_token.spam.deref() {
+                    "&" => {
+                        self.advance();
+                        let mutable = self.current_token.kind == TKind::Var;
+                        ast.kind = AKind::Ref(mutable);
+                        if mutable {
+                            self.advance();
+                        }
+                    }
+                    "*" => {
+                        ast.kind = AKind::Deref;
+                        self.advance();
+                    }
+                    _ => {
+                        ast.push(self.ast(AKind::Ident));
+                        self.advance();
+                    }
+                }
                 ast.push(self.simple_expr()?);
+                ast.token.to_group(&self.current_token, true);
                 return Ok(ast);
             }
             _ => todo!("unmatched simple expr pattern {:?}", self.current_token),
@@ -458,10 +475,12 @@ impl AstParser {
                         ast = new_ast;
                     }
                     TKind::LPar => {
-                        let mut new_ast = Ast::new(AKind::Call, ast.token.clone());
+                        let mut new_ast = Ast::new(AKind::None, ast.token.clone());
                         if ast.kind == AKind::DotExpr {
+                            new_ast.kind = AKind::Call(true);
                             ast.drain(..).rev().for_each(|e| new_ast.push(e));
                         } else {
+                            new_ast.kind = AKind::Call(false);
                             new_ast.push(ast);
                         }
 

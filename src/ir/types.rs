@@ -84,7 +84,7 @@ impl<'a> TypeResolver<'a> {
 
         let mut kind = std::mem::take(&mut self.program[datatype].kind);
         let size = match &mut kind {
-            TKind::Pointer(_) => self.program.isa.pointer_bytes() as u32,
+            TKind::Pointer(..) => self.program.isa.pointer_bytes() as u32,
             TKind::Structure(structure) => {
                 let mut size = 0;
                 match structure.kind {
@@ -191,7 +191,9 @@ impl<'a> TypeResolver<'a> {
             }
             AKind::Instantiation => {
                 let start = self.context.instance_buffer.len();
-                let (id, base_type, host_module) = self.create_instance_id(module, &ast)?;
+                let (name, base_type, host_module) = self.create_instance_name(module, &ast)?;
+
+                let id = name.combine(self.program.modules.direct_to_id(host_module));
 
                 if let Some(datatype) = self.program.types.id_to_direct(id) {
                     self.context.instance_buffer.truncate(start);
@@ -242,7 +244,7 @@ impl<'a> TypeResolver<'a> {
                         let structure = self.connect_struct(host_module, &ast)?;
                         TypeEnt {
                             visibility,
-                            name: id,
+                            name,
                             kind: TKind::Structure(structure),
                             token_hint,
                             ast: Ast::none(),
@@ -274,7 +276,14 @@ impl<'a> TypeResolver<'a> {
 
                 (host_module, self.program.types.insert(id, datatype).1)
             }
-            _ => unreachable!("{}", ast),
+            AKind::Ref(mutable) => {
+                let (module, datatype) = self.find_or_instantiate(module, &ast[0])?;
+
+                let datatype = self.pointer_to(datatype, mutable);
+
+                (module, datatype)
+            }
+            _ => todo!("{}", ast),
         };
 
         let visibility = self.program[datatype].visibility;
@@ -295,7 +304,7 @@ impl<'a> TypeResolver<'a> {
         Ok((host_module, datatype))
     }
 
-    fn create_instance_id(&mut self, module: Module, ast: &Ast) -> Result<(ID, Type, Module)> {
+    fn create_instance_name(&mut self, module: Module, ast: &Ast) -> Result<(ID, Type, Module)> {
         let (host_module, base_type) = self.find_or_instantiate(module, &ast[0])?;
         self.context.instance_buffer.push(base_type);
         let mut id = self.program[base_type].name;
@@ -310,7 +319,10 @@ impl<'a> TypeResolver<'a> {
 
     pub fn find_by_token(&mut self, module: Module, token: &Token) -> Result<(Module, Type)> {
         self.find_by_name(module, ID::new().add(token.spam.deref()))
-            .ok_or_else(|| TypeError::new(TEKind::UnknownType, token))
+            .ok_or_else(|| {
+                println!("{:?} {:?}", module, self.program[module].dependency);
+                TypeError::new(TEKind::UnknownType, token)
+            })
     }
 
     fn find_by_name(&self, module: Module, name: ID) -> Option<(Module, Type)> {
@@ -346,7 +358,7 @@ impl<'a> TypeResolver<'a> {
                             ));
                         }
 
-                        let name = ID::new().add(ident.token.spam.deref()).combine(module_name);
+                        let name = ID::new().add(ident.token.spam.deref());
                         let token_hint = a[0].token.clone();
 
                         let datatype = TypeEnt {
@@ -362,7 +374,11 @@ impl<'a> TypeResolver<'a> {
                             align: 0,
                         };
 
-                        if let (Some(datatype), _) = self.program.types.insert(name, datatype) {
+                        if let (Some(datatype), _) = self
+                            .program
+                            .types
+                            .insert(name.combine(module_name), datatype)
+                        {
                             return Err(TypeError::new(
                                 TEKind::Redefinition(datatype.token_hint.clone()),
                                 &token_hint,
@@ -377,6 +393,33 @@ impl<'a> TypeResolver<'a> {
         }
 
         Ok(())
+    }
+
+    pub fn pointer_to(&mut self, datatype: Type, mutable: bool) -> Type {
+        let module = self.program[datatype].module;
+        let name = ID::new()
+            .add(if mutable { "&var" } else { "&" })
+            .combine(self.program[datatype].name);
+
+        let pointer_type = TypeEnt {
+            visibility: Vis::Public,
+            name,
+            params: vec![],
+            kind: TKind::Pointer(datatype, mutable),
+            size: self.program.isa.pointer_bytes() as u32,
+            align: self.program.isa.pointer_bytes() as u32,
+            attribute_id: 0,
+            ast: Ast::none(),
+            module,
+            token_hint: Token::default(),
+        };
+
+        let (_, datatype) = self.program.types.insert(
+            name.combine(self.program.modules.direct_to_id(module)),
+            pointer_type,
+        );
+
+        datatype
     }
 }
 

@@ -17,13 +17,45 @@ struct Fun:
   a: i32
   b: i32
 
-fun init() -> Fun:
+fun init -> Fun:
   var fn
   
   fn.a = 1
   fn.b = 2
   
   fn
+
+struct Complex:
+  embed fn: Fun
+  c: i32
+
+fun init2 -> Complex:
+  var cp
+  
+  cp.a = 1
+  cp.b = 2
+  cp.c = 3
+  
+  cp
+
+struct Complex2:
+  embed fn: &var Fun
+  c: &i32
+
+fun boo[T](x: &T) -> T: *x
+
+fun deref -> i32:
+  var x
+  var y = &x
+  *y 
+
+fun moo:
+  var a
+  let b = &a
+
+  a = boo(b)
+
+  let c: i64 = a
 
 fun main -> i64:
   var 
@@ -33,6 +65,8 @@ fun main -> i64:
   val ++= 10
 
   var foo = goo(val)
+
+  var foo: i64 = foo
 
   foo += if foo == 10: 1 else: 1
 

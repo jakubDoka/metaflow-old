@@ -73,20 +73,58 @@ impl Program {
 
         self.builtin_repo = BuiltinRepo::new(self);
 
-        let builtin_ops = [
+        let integer_types = &[
+            self.builtin_repo.i8,
+            self.builtin_repo.i16,
+            self.builtin_repo.i32,
+            self.builtin_repo.i64,
+            self.builtin_repo.u8,
+            self.builtin_repo.u16,
+            self.builtin_repo.u32,
+            self.builtin_repo.u64,
+        ][..];
+
+        let builtin_unary_ops = [
+            ("~", integer_types),
             (
-                "+ - * / == != >= <= > < ^ | & >> <<",
+                "-",
                 &[
                     self.builtin_repo.i8,
                     self.builtin_repo.i16,
                     self.builtin_repo.i32,
                     self.builtin_repo.i64,
-                    self.builtin_repo.u8,
-                    self.builtin_repo.u16,
-                    self.builtin_repo.u32,
-                    self.builtin_repo.u64,
+                    self.builtin_repo.f32,
+                    self.builtin_repo.f64,
                 ][..],
             ),
+            ("!", &[self.builtin_repo.bool][..]),
+        ];
+
+        for &(operators, types) in builtin_unary_ops.iter() {
+            for op in operators.split(' ') {
+                for &datatype in types.iter() {
+                    let datatype_id = self.types.direct_to_id(datatype);
+                    let unary_op = FunEnt {
+                        visibility: Vis::Public,
+                        name: ID::new().add(op).combine(datatype_id),
+                        module,
+                        kind: FKind::Builtin(FunSignature {
+                            args: vec![ValueEnt::temp(datatype)],
+                            return_type: Some(datatype),
+                        }),
+                        token_hint: Default::default(),
+                        body: Default::default(),
+                        ast: AstRef::new(usize::MAX),
+                        attribute_id: 0,
+                    };
+                    self.functions
+                        .insert(unary_op.name.combine(module_id), unary_op);
+                }
+            }
+        }
+
+        let builtin_bin_ops = [
+            ("+ - * / == != >= <= > < ^ | & >> <<", integer_types),
             (
                 "+ - * / == != >= <= > <",
                 &[self.builtin_repo.f32, self.builtin_repo.f64][..],
@@ -94,7 +132,7 @@ impl Program {
             ("&& || ^^", &[self.builtin_repo.bool][..]),
         ];
 
-        for &(operators, types) in builtin_ops.iter() {
+        for &(operators, types) in builtin_bin_ops.iter() {
             for op in operators.split(' ') {
                 for &datatype in types.iter() {
                     let datatype_id = self.types.direct_to_id(datatype);
@@ -105,11 +143,7 @@ impl Program {
                     };
                     let binary_op = FunEnt {
                         visibility: Vis::Public,
-                        name: ID::new()
-                            .add(op)
-                            .combine(datatype_id)
-                            .combine(datatype_id)
-                            .combine(module_id),
+                        name: ID::new().add(op).combine(datatype_id).combine(datatype_id),
                         module,
                         kind: FKind::Builtin(FunSignature {
                             args: vec![ValueEnt::temp(datatype), ValueEnt::temp(datatype)],
@@ -121,7 +155,8 @@ impl Program {
                         ast: AstRef::new(usize::MAX),
                         attribute_id: 0,
                     };
-                    self.functions.insert(binary_op.name, binary_op);
+                    self.functions
+                        .insert(binary_op.name.combine(module_id), binary_op);
                 }
             }
         }
@@ -144,11 +179,11 @@ macro_rules! define_repo {
                 let builtin_id = ID::new().add("builtin");
 
                 $(
-                    let id = ID::new().add(stringify!($name)).combine(builtin_id);
+                    let name = ID::new().add(stringify!($name));
                     let type_ent = TypeEnt {
                         visibility: Vis::Public,
                         kind: TKind::Builtin($repr),
-                        name: id,
+                        name,
                         size: $size,
                         align: $size.min(8),
                         module: program.builtin,
@@ -159,7 +194,7 @@ macro_rules! define_repo {
                         ast: Ast::none(),
                         attribute_id: 0,
                     };
-                    let (_, $name) = program.types.insert(id, type_ent);
+                    let (_, $name) = program.types.insert(name.combine(builtin_id), type_ent);
                 )+
 
                 Self {
@@ -316,7 +351,7 @@ impl InstEnt {
 pub enum IKind {
     NoOp,
     Call(Fun, Vec<Value>),
-    UnresolvedCall(ID, Vec<Value>),
+    UnresolvedCall(ID, bool, Vec<Value>),
     UnresolvedDot(Value, ID),
     VarDecl(Value),
     ZeroValue,
@@ -327,7 +362,10 @@ pub enum IKind {
     BlockEnd(Inst),
     Jump(Inst, Vec<Value>),
     JumpIfTrue(Value, Inst, Vec<Value>),
-    Load(Value, u32),
+    Offset(Value),
+    Load(Value),
+    Deref(Value),
+    Ref(Value),
 }
 
 impl IKind {
@@ -390,6 +428,7 @@ pub struct GenericSignature {
 pub enum GenericElement {
     ScopeStart,
     ScopeEnd,
+    Pointer(bool),
     Element(ID, Option<Type>),
     Parameter(usize),
     NextArgument(usize, usize),
@@ -428,11 +467,26 @@ pub struct ValueEnt {
     pub inst: Option<Inst>,
     pub type_dependency: Option<TypeDep>,
     pub value: Option<CrValue>,
+    pub offset: u32,
     pub mutable: bool,
     pub on_stack: bool,
 }
 
 impl ValueEnt {
+    pub fn new(name: ID, datatype: Type, type_dependency: Option<TypeDep>, mutable: bool) -> Self {
+        Self {
+            name,
+            datatype,
+            type_dependency,
+            mutable,
+
+            inst: None,
+            value: None,
+            offset: 0,
+            on_stack: false,
+        }
+    }
+
     pub fn temp(datatype: Type) -> Self {
         Self {
             name: ID::new(),
@@ -440,6 +494,7 @@ impl ValueEnt {
             inst: None,
             type_dependency: None,
             value: None,
+            offset: 0,
             mutable: false,
             on_stack: false,
         }
@@ -475,7 +530,7 @@ pub enum TKind {
     Unresolved,
     Builtin(CrType),
     Generic,
-    Pointer(Type),
+    Pointer(Type, bool),
     Structure(Structure),
 }
 

@@ -1,4 +1,4 @@
-use cranelift_codegen::{
+/*use cranelift_codegen::{
     isa::{self, LookupError},
     settings::{self, Configurable, SetError},
 };
@@ -190,7 +190,7 @@ fun fib(v: i32) -> i32:
     fib(v - 1i32) + fib(v - 2i32)
 
 fun fib_loop(v: i32) -> i32:
-  var 
+  var
     a, b, c = 1i32
     v = v
   loop'a:
@@ -221,12 +221,12 @@ struct Rect:
   mi: Point
   ma: Point
 
-fun main -> i64: 
-  var 
+fun main -> i64:
+  var
     p: Point
     p3: Point3
     r: Rect
-  
+
   p.x = 1
   p3.point = p
   p3.y = 2
@@ -290,10 +290,10 @@ attr linkage(import), call_conv(windows_fastcall)
 fun putchar(i: i32)
 
 fun main -> i64:
-  var 
+  var
     a = "Hello, World!"
     b = 0
-  let addr = a.data  
+  let addr = a.data
   loop:
     putchar(*((a.data as i64 + b) as &u8) as i32)
     b = b + 1
@@ -335,3 +335,4 @@ pub fn test_sippet(sippet: &str, exit_code: i32) {
     std::fs::remove_file("test_case.pmt").unwrap_or(());
     std::fs::remove_file("test_case.exe").unwrap_or(());
 }
+*/

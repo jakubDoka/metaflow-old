@@ -80,7 +80,7 @@ pub enum AKind {
     Fun(Vis),
     FunHeader,
     FunArgument(bool),
-    Call,
+    Call(bool), // true if dot syntax is used
     Index,
 
     StructDeclaration(Vis),
@@ -99,6 +99,8 @@ pub enum AKind {
     UnaryOp,
     IfExpr,
     DotExpr,
+    Ref(bool),
+    Deref,
 
     Loop,
     Break,
