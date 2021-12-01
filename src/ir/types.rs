@@ -364,7 +364,7 @@ impl<'a> TypeResolver<'a> {
                         let datatype = TypeEnt {
                             visibility,
                             size: u32::MAX * !matches!(kind, TKind::Generic) as u32,
-                            kind,
+                            kind: kind.clone(),
                             name,
                             token_hint: token_hint.clone(),
                             ast: std::mem::take(a),
@@ -374,16 +374,29 @@ impl<'a> TypeResolver<'a> {
                             align: 0,
                         };
 
-                        if let (Some(datatype), _) = self
-                            .program
-                            .types
-                            .insert(name.combine(module_name), datatype)
-                        {
-                            return Err(TypeError::new(
-                                TEKind::Redefinition(datatype.token_hint.clone()),
-                                &token_hint,
-                            ));
-                        };
+                        match self
+                        .program
+                        .types
+                        .insert(name.combine(module_name), datatype) {
+                            (Some(datatype), _) => {
+                                return Err(TypeError::new(
+                                    TEKind::Redefinition(datatype.token_hint.clone()),
+                                    &token_hint,
+                                ));
+                            }
+                            (None, id) => {
+                                if kind == TKind::Generic {
+                                    let param_count = self.program[id].ast[0].len() - 1;
+                                    let mut params = Vec::with_capacity(param_count + 1);
+                                    params.push(id);
+                                    params.extend(
+                                        std::iter::repeat(self.program.builtin_repo.auto)
+                                            .take(param_count - 1)
+                                    );
+                                    self.program[id].params = params;
+                                }
+                            }
+                        }
                     }
                     _ => (),
                 }

@@ -1272,7 +1272,7 @@ impl<'a> FunResolver<'a> {
                                         if Some(already) != *id {
                                             return Ok(None);
                                         }
-                                    } else {
+                                    } else if !self.is_auto(id.unwrap()) {
                                         generic.inferred[*param] = *id;
                                     }
                                 }
