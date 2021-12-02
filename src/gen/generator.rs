@@ -465,14 +465,12 @@ impl<'a> Generator<'a> {
                 let repr = self.repr_of(return_type);
 
                 let purpose = if self.on_stack(return_type) {
-                    signature.params.push(AbiParam::new(repr));
                     ArgumentPurpose::StructReturn
                 } else {
                     ArgumentPurpose::Normal
                 };
 
                 signature.returns.push(AbiParam::special(repr, purpose));
-                
             }
 
             for arg in self.program[fun].signature().args.iter() {
