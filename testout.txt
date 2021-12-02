@@ -741,7 +741,7 @@ fun moo
     Value(1): i64 = VarDecl(Value(0)) |a
     Value(2): & i64 = Ref(Value(1)) |&a
     Value(3): & i64 = VarDecl(Value(2)) |b = &a
-    Value(4): i64 = Call(Fun(165), [Value(3)]) |boo(b)
+    Value(4): i64 = Call(Fun(175), [Value(3)]) |boo(b)
     Value(4): i64 = Assign(Value(1)) |a = boo(b)
     Value(5): i64 = VarDecl(Value(1)) |c: i64 = a
     Return(None) |let c: i64 = a
@@ -753,13 +753,13 @@ fun main -> i64
     Value(1): i64 = VarDecl(Value(0)) |val
     Value(2): i64 = VarDecl(Value(1)) |val2 = val
     Value(3): i64 = Lit(Int(10, 64)) |10
-    Value(4): i64 = Call(Fun(166), [Value(1), Value(3)]) |val ++= 10
+    Value(4): i64 = Call(Fun(176), [Value(1), Value(3)]) |val ++= 10
     Value(4): i64 = Assign(Value(1)) |val ++= 10
-    Value(5): i64 = Call(Fun(167), [Value(1)]) |goo(val)
+    Value(5): i64 = Call(Fun(177), [Value(1)]) |goo(val)
     Value(6): i64 = VarDecl(Value(5)) |foo = goo(val)
     Value(7): i64 = VarDecl(Value(6)) |foo: i64 = foo
     Value(8): i64 = Lit(Int(10, 64)) |10
-    Value(9): bool = Call(Fun(50), [Value(7), Value(8)]) |foo == 10
+    Value(9): bool = Call(Fun(58), [Value(7), Value(8)]) |foo == 10
     JumpIfTrue(Value(9), Inst(13), []) |foo == 10
     Jump(Inst(16), []) |:
 
@@ -772,10 +772,10 @@ fun main -> i64
     Jump(Inst(15), [Value(12)]) |1
 
   Inst15[Value(11)]
-    Value(13): i64 = Call(Fun(18), [Value(7), Value(11)]) |foo += if foo == 10: 1 else: 1
+    Value(13): i64 = Call(Fun(26), [Value(7), Value(11)]) |foo += if foo == 10: 1 else: 1
     Value(13): i64 = Assign(Value(7)) |foo += if foo == 10: 1 else: 1
     Value(14): i64 = Lit(Int(10, 64)) |10
-    Value(15): bool = Call(Fun(50), [Value(7), Value(14)]) |foo == 10
+    Value(15): bool = Call(Fun(58), [Value(7), Value(14)]) |foo == 10
     JumpIfTrue(Value(15), Inst(29), []) |foo == 10
     Jump(Inst(32), []) |:
 
@@ -784,13 +784,13 @@ fun main -> i64
 
   Inst32[]
     Value(16): i64 = Lit(Int(1, 64)) |1
-    Value(17): i64 = Call(Fun(18), [Value(7), Value(16)]) |foo += 1
+    Value(17): i64 = Call(Fun(26), [Value(7), Value(16)]) |foo += 1
     Value(17): i64 = Assign(Value(7)) |foo += 1
     Jump(Inst(31), [Value(17)]) |foo += 1
 
   Inst31[Value(18)]
     Value(19): i64 = Lit(Int(30, 64)) |30
-    Value(20): bool = Call(Fun(74), [Value(7), Value(19)]) |foo <= 30
+    Value(20): bool = Call(Fun(82), [Value(7), Value(19)]) |foo <= 30
     JumpIfTrue(Value(20), Inst(44), []) |foo <= 30
     Jump(Inst(47), []) |:
 
@@ -804,7 +804,7 @@ fun main -> i64
 
   Inst46[Value(22)]
     Value(23): i64 = Lit(Int(10, 64)) |10
-    Value(24): bool = Call(Fun(82), [Value(7), Value(23)]) |foo > 10
+    Value(24): bool = Call(Fun(90), [Value(7), Value(23)]) |foo > 10
     JumpIfTrue(Value(24), Inst(58), []) |foo > 10
     Jump(Inst(61), []) |:
 
@@ -816,7 +816,7 @@ fun main -> i64
   Inst61[]
     Value(27): i64 = Lit(Int(30, 64)) |30
     Value(28): i64 = Lit(Int(6, 64)) |6
-    Value(29): i64 = Call(Fun(106), [Value(27), Value(28)]) |30 | 6
+    Value(29): i64 = Call(Fun(114), [Value(27), Value(28)]) |30 | 6
     Value(29): i64 = Assign(Value(7)) |foo = 30 | 6
     Jump(Inst(60), [Value(29)]) |foo = 30 | 6
 
@@ -827,7 +827,7 @@ fun main -> i64
 
   Inst76[]
     Value(32): i64 = Lit(Int(10, 64)) |10
-    Value(33): bool = Call(Fun(66), [Value(31), Value(32)]) |i >= 10
+    Value(33): bool = Call(Fun(74), [Value(31), Value(32)]) |i >= 10
     JumpIfTrue(Value(33), Inst(82), []) |i >= 10
     Jump(Inst(84), []) |
 
@@ -836,7 +836,7 @@ fun main -> i64
 
   Inst84[]
     Value(34): i64 = Lit(Int(1, 64)) |1
-    Value(35): i64 = Call(Fun(18), [Value(31), Value(34)]) |i += 1
+    Value(35): i64 = Call(Fun(26), [Value(31), Value(34)]) |i += 1
     Value(35): i64 = Assign(Value(31)) |i += 1
     Jump(Inst(76), []) |
 
@@ -847,10 +847,10 @@ fun main -> i64
 
   Inst96[]
     Value(38): i64 = Lit(Int(1, 64)) |1
-    Value(39): i64 = Call(Fun(18), [Value(37), Value(38)]) |i += 1
+    Value(39): i64 = Call(Fun(26), [Value(37), Value(38)]) |i += 1
     Value(39): i64 = Assign(Value(37)) |i += 1
     Value(40): i64 = Lit(Int(10, 64)) |10
-    Value(41): bool = Call(Fun(90), [Value(37), Value(40)]) |i < 10
+    Value(41): bool = Call(Fun(98), [Value(37), Value(40)]) |i < 10
     JumpIfTrue(Value(41), Inst(105), []) |i < 10
     Jump(Inst(107), []) |
 
@@ -886,9 +886,9 @@ fun +(a, b: Vec) -> Vec
     Value(3): Vec = VarDecl(Value(2)) |v
     Value(8): f32 = Offset(Value(3)) |v.y
     Value(4): f32 = Offset(Value(3)) |v.x
-    Value(7): f32 = Call(Fun(135), [Value(5), Value(6)]) |a.x + b.x
+    Value(7): f32 = Call(Fun(143), [Value(5), Value(6)]) |a.x + b.x
     Value(7): f32 = Assign(Value(4)) |v.x = a.x + b.x
-    Value(11): f32 = Call(Fun(135), [Value(9), Value(10)]) |a.y + b.y
+    Value(11): f32 = Call(Fun(143), [Value(9), Value(10)]) |a.y + b.y
     Value(11): f32 = Assign(Value(8)) |v.y = a.y + b.y
     Return(Some(Value(3))) |v
 
@@ -911,22 +911,22 @@ fun something -> Embedded[i64]
     Value(9): f32 = Assign(Value(8)) |b.x = 2f32
     Value(11): f32 = Lit(Float(NaN, 32)) |3f32
     Value(11): f32 = Assign(Value(10)) |b.y = 3f32
-    Value(12): Vec = Call(Fun(163), [Value(1), Value(3)]) |a += b
+    Value(12): Vec = Call(Fun(173), [Value(1), Value(3)]) |a += b
     Value(12): Vec = Assign(Value(1)) |a += b
     Value(13): Seq[i64] = ZeroValue |
     Value(14): Seq[i64] = VarDecl(Value(13)) |s
     Value(26): &var Seq[i64] = Ref(Value(14)) |s.push(10)
     Value(25): & Seq[i64] = Ref(Value(14)) |s.push(10)
     Value(15): i64 = Lit(Int(10, 64)) |10
-    Call(Fun(168), [Value(25), Value(15)]) |s.push(10)
+    Call(Fun(178), [Value(25), Value(15)]) |s.push(10)
     Value(17): i64 = Lit(Int(10, 64)) |10
-    Call(Fun(168), [Value(26), Value(17)]) |s.push(10)
+    Call(Fun(178), [Value(26), Value(17)]) |s.push(10)
     Value(19): Embedded[i64] = ZeroValue |
     Value(20): Embedded[i64] = VarDecl(Value(19)) |v: Embedded[i64]
     Value(22): Seq[i64] = Offset(Value(20)) |v.push(10)
     Value(23): &var Seq[i64] = Ref(Value(22)) |v.push(10)
     Value(21): i64 = Lit(Int(10, 64)) |10
-    Call(Fun(168), [Value(23), Value(21)]) |v.push(10)
+    Call(Fun(178), [Value(23), Value(21)]) |v.push(10)
     Value(24): Embedded[i64] = ZeroValue |v.push(10)
     Return(Some(Value(24))) |v.push(10)
 
@@ -939,7 +939,7 @@ fun boo[T](x: &T) -> T
 fun ++[T](a, b: T) -> T
 
   Inst1[Value(0), Value(1)]
-    Value(2): i64 = Call(Fun(18), [Value(0), Value(1)]) |a + b
+    Value(2): i64 = Call(Fun(26), [Value(0), Value(1)]) |a + b
     Return(Some(Value(2))) |a + b
 
 fun goo[T](x: T) -> T
@@ -952,3 +952,7 @@ fun push[T](seq: &var Seq[T], x: T)
   Inst1[Value(0), Value(1)]
     Return(None) |
 
+Table { table: {ID(16485028606920662577): Attribute(0)}, data: [(ID(16485028606920662577), Ast { kind: AttributeElement, children: [Ast { kind: Ident, children: [], token: Token { kind: Ident, spam: "entry", line_data: LineData { line: 2, column: 5, file_name: "test_case" } } }], token: Token { kind: Ident, spam: "entry", line_data: LineData { line: 2, column: 5, file_name: "test_case" } } })], free: [] }
+Table { table: {ID(16485028606920662577): Attribute(0)}, data: [(ID(16485028606920662577), Ast { kind: AttributeElement, children: [Ast { kind: Ident, children: [], token: Token { kind: Ident, spam: "entry", line_data: LineData { line: 2, column: 5, file_name: "test_case" } } }], token: Token { kind: Ident, spam: "entry", line_data: LineData { line: 2, column: 5, file_name: "test_case" } } })], free: [] }
+Table { table: {ID(16485028606920662577): Attribute(0)}, data: [(ID(16485028606920662577), Ast { kind: AttributeElement, children: [Ast { kind: Ident, children: [], token: Token { kind: Ident, spam: "entry", line_data: LineData { line: 2, column: 5, file_name: "test_case" } } }], token: Token { kind: Ident, spam: "entry", line_data: LineData { line: 2, column: 5, file_name: "test_case" } } })], free: [] }
+tk82hu96tac33
