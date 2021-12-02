@@ -1,4 +1,8 @@
-/*use cranelift_codegen::{
+pub mod generator;
+
+use generator::*;
+
+use cranelift_codegen::{
     isa::{self, LookupError},
     settings::{self, Configurable, SetError},
 };
@@ -6,7 +10,16 @@
 use cranelift_object::{ObjectBuilder, ObjectModule};
 use std::process::Command;
 
-use crate::cli::Arguments;
+use crate::{
+    cli::Arguments,
+    ir::{
+        functions::{FunError, FunResolver, FunResolverContext},
+        module_tree::{ModuleTreeBuilder, ModuleTreeError},
+        types::{TypeError, TypeResolver, TypeResolverContext},
+        Program,
+    },
+    lexer::Token,
+};
 
 use super::*;
 
@@ -34,7 +47,7 @@ pub fn compile(args: Arguments) -> Result<()> {
 
     let obj_name = format!("{}.o", output_name);
 
-    std::fs::write(&obj_name, obj_file).map_err(Into::into)?;
+    std::fs::write(&obj_name, obj_file).map_err(|e| GEKind::IoError(e).into())?;
 
     if args.enabled("obj") {
         return Ok(());
@@ -56,13 +69,13 @@ pub fn compile(args: Arguments) -> Result<()> {
                     .chain(link_with),
             )
             .status()
-            .map_err(Into::into)?
+            .map_err(|e| GEKind::IoError(e).into())?
             .code()
             .unwrap(),
         0,
     );
 
-    std::fs::remove_file(&obj_name).map_err(Into::into)?;
+    std::fs::remove_file(&obj_name).map_err(|e| GEKind::IoError(e).into())?;
 
     Ok(())
 }
@@ -82,7 +95,7 @@ pub fn generate_obj_file(args: &Arguments) -> Result<Vec<u8>> {
         }
     }
 
-    let const_fold = args.enabled("const-fold") || args.enabled("cf");
+    //let const_fold = args.enabled("const-fold") || args.enabled("cf");
 
     if let Some(opt_level) = args.get_flag("opt_level").or(args.get_flag("ol")) {
         settings
@@ -103,50 +116,65 @@ pub fn generate_obj_file(args: &Arguments) -> Result<Vec<u8>> {
     let builder =
         ObjectBuilder::new(isa, "all", cranelift_module::default_libcall_names()).unwrap();
 
-    let main_module = Generator::new(ObjectModule::new(builder), const_fold)
-        .generate(&args[0])
-        .map_err(Into::into)?;
+    let mut program = Program::new(ObjectModule::new(builder));
 
-    Ok(main_module.finish().emit().unwrap())
+    ModuleTreeBuilder::new(&mut program)
+        .build(&args[0])
+        .map_err(|e| GEKind::ModuleTreeError(e).into())?;
+
+    let mut ctx = TypeResolverContext::default();
+
+    TypeResolver::new(&mut program, &mut ctx)
+        .resolve()
+        .map_err(|e| GEKind::TypeError(e).into())?;
+
+    let mut ctx = FunResolverContext::default();
+
+    FunResolver::new(&mut program, &mut ctx)
+        .resolve()
+        .map_err(|e| GEKind::FunError(e).into())?;
+
+    let mut ctx = GeneratorContext::default();
+
+    Generator::new(&mut program, &mut ctx).generate()?;
+
+    Ok(program.object_module.finish().emit().unwrap())
 }
 
 #[derive(Debug)]
 pub struct GenError {
-    kine: GEKind,
+    kind: GEKind,
     token: Token,
 }
 
-impl Into<GenError> for IrGenError {
-    fn into(self) -> GenError {
+impl GenError {
+    pub fn new(kind: GEKind, token: &Token) -> GenError {
         GenError {
-            kine: GEKind::IrGenError(self.kind),
-            token: self.token,
-        }
-    }
-}
-
-impl Into<GenError> for std::io::Error {
-    fn into(self) -> GenError {
-        GenError {
-            kine: GEKind::IoError(self),
-            token: Token::default(),
+            kind,
+            token: token.clone(),
         }
     }
 }
 
 #[derive(Debug)]
 pub enum GEKind {
-    IrGenError(IGEKind),
+    TooShortAttribute(usize, usize),
+    InvalidCallConv,
+    InvalidLinkage,
+    TypeError(TypeError),
+    ModuleTreeError(ModuleTreeError),
+    FunError(FunError),
     IoError(std::io::Error),
     InvalidTriplet(LookupError),
     CompilationFlagError(SetError),
+    InvalidAttributeLength(usize, usize),
     NoFiles,
 }
 
 impl Into<GenError> for GEKind {
     fn into(self) -> GenError {
         GenError {
-            kine: self,
+            kind: self,
             token: Token::default(),
         }
     }
@@ -335,4 +363,3 @@ pub fn test_sippet(sippet: &str, exit_code: i32) {
     std::fs::remove_file("test_case.pmt").unwrap_or(());
     std::fs::remove_file("test_case.exe").unwrap_or(());
 }
-*/

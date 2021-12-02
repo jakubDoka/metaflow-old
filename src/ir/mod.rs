@@ -4,9 +4,12 @@ pub mod globals;
 pub mod module_tree;
 pub mod types;
 
-use std::ops::{Index, IndexMut};
+use std::ops::{Index, IndexMut, RangeInclusive};
 
-use cranelift_codegen::{ir, ir::types::*, isa::TargetIsa, settings};
+use cranelift_codegen::{ir, ir::{Signature, StackSlot, types::*}, isa::TargetIsa, settings};
+use cranelift_frontend::Variable;
+use cranelift_module::{FuncId, Module};
+use cranelift_object::{ObjectBuilder, ObjectModule};
 
 use crate::{
     ast::{Ast, Vis},
@@ -24,21 +27,48 @@ pub type LTKind = lexer::TKind;
 pub type CrValue = ir::Value;
 pub type CrType = ir::Type;
 pub type CrBlock = ir::Block;
+pub type CrVar = Variable;
 
 pub struct Program {
-    pub builtin: Module,
+    pub builtin: Mod,
     pub builtin_repo: BuiltinRepo,
-    pub isa: Box<dyn TargetIsa>,
+    pub object_module: ObjectModule,
     pub types: Table<Type, TypeEnt>,
     pub functions: Table<Fun, FunEnt>,
     pub generic_functions: Table<Fun, Vec<FunEnt>>,
-    pub modules: Table<Module, ModuleEnt>,
+    pub modules: Table<Mod, ModuleEnt>,
 }
 
 impl Program {
-    pub fn walk_accessible_scopes<T, F: FnMut(ID, Module) -> Option<T>>(
+    pub fn new(object_module: ObjectModule) -> Self {
+        let mut program = Program {
+            object_module,
+            builtin: Mod::new(0),
+            builtin_repo: unsafe { std::mem::zeroed() },
+            types: Table::new(),
+            functions: Table::new(),
+            modules: Table::new(),
+            generic_functions: Table::new(),
+        };
+
+        program.build_builtin();
+
+        program
+    }
+
+    pub fn attr_enabled(&self, fun: Fun, name: &str) -> bool {
+        self.get_attr(fun, name).is_some()
+    }
+
+    pub fn get_attr(&self, fun: Fun, name: &str) -> Option<&Ast> {
+        let module = self.functions[fun].module;
+        let attr_id = self.functions[fun].attribute_id;
+        self.modules[module].attributes.get_attr(attr_id, name)
+    }
+
+    pub fn walk_accessible_scopes<T, F: FnMut(ID, Mod) -> Option<T>>(
         &self,
-        module: Module,
+        module: Mod,
         mut fun: F,
     ) -> Option<T> {
         if let Some(t) = fun(self.modules[module].id, module) {
@@ -116,6 +146,8 @@ impl Program {
                         body: Default::default(),
                         ast: AstRef::new(usize::MAX),
                         attribute_id: 0,
+                        final_signature: None,
+                        object_id: None,
                     };
                     self.functions
                         .insert(unary_op.name.combine(module_id), unary_op);
@@ -154,6 +186,8 @@ impl Program {
                         body: Default::default(),
                         ast: AstRef::new(usize::MAX),
                         attribute_id: 0,
+                        final_signature: None,
+                        object_id: None,
                     };
                     self.functions
                         .insert(binary_op.name.combine(module_id), binary_op);
@@ -161,15 +195,23 @@ impl Program {
             }
         }
     }
+
+    pub fn isa(&self) -> &dyn TargetIsa {
+        self.object_module.isa()
+    }
 }
 
 crate::sym_id!(AstRef);
 
 macro_rules! define_repo {
-    ($($name:ident, $repr:ident, $size:expr),+,) => {
+    (
+        $($name:ident, $repr:ident, $size:expr);+,
+        $($pointer_type:ident)*
+    ) => {
         #[derive(Clone, Debug)]
         pub struct BuiltinRepo {
             $(pub $name: Type,)+
+            $(pub $pointer_type: Type,)+
         }
 
         impl BuiltinRepo {
@@ -198,8 +240,29 @@ macro_rules! define_repo {
                     let (_, $name) = program.types.insert(name.combine(builtin_id), type_ent);
                 )+
 
+                $(
+                    let name = ID::new().add(stringify!($pointer_type));
+                    let type_ent = TypeEnt {
+                        visibility: Vis::Public,
+                        kind: TKind::Builtin(program.isa().pointer_type()),
+                        name,
+                        size: program.isa().pointer_bytes() as u32,
+                        align: program.isa().pointer_bytes() as u32,
+                        module: program.builtin,
+
+                        token_hint: Token::builtin(stringify!($pointer_type)),
+
+                        debug_name: stringify!($pointer_type),
+                        params: vec![],
+                        ast: Ast::none(),
+                        attribute_id: 0,
+                    };
+                    let (_, $pointer_type) = program.types.insert(name.combine(builtin_id), type_ent);
+                )+
+
                 Self {
-                    $($name),+
+                    $($name),+,
+                    $($pointer_type),+
                 }
             }
         }
@@ -208,8 +271,19 @@ macro_rules! define_repo {
 }
 
 define_repo!(
-    i8, I8, 1, i16, I16, 2, i32, I32, 4, i64, I64, 8, u8, I8, 1, u16, I16, 2, u32, I32, 4, u64,
-    I64, 8, f32, F32, 4, f64, F64, 8, bool, B1, 1, auto, INVALID, 0,
+    i8, I8, 1;
+    i16, I16, 2;
+    i32, I32, 4;
+    i64, I64, 8;
+    u8, I8, 1;
+    u16, I16, 2;
+    u32, I32, 4;
+    u64, I64, 8;
+    f32, F32, 4;
+    f64, F64, 8;
+    bool, B1, 1;
+    auto, INVALID, 0,
+    ptr usize isize
 );
 
 impl Index<Type> for Program {
@@ -240,16 +314,16 @@ impl IndexMut<Fun> for Program {
     }
 }
 
-impl Index<Module> for Program {
+impl Index<Mod> for Program {
     type Output = ModuleEnt;
 
-    fn index(&self, index: Module) -> &Self::Output {
+    fn index(&self, index: Mod) -> &Self::Output {
         &self.modules[index]
     }
 }
 
-impl IndexMut<Module> for Program {
-    fn index_mut(&mut self, index: Module) -> &mut Self::Output {
+impl IndexMut<Mod> for Program {
+    fn index_mut(&mut self, index: Mod) -> &mut Self::Output {
         &mut self.modules[index]
     }
 }
@@ -258,9 +332,11 @@ impl Default for Program {
     fn default() -> Self {
         let flags = settings::Flags::new(settings::builder());
         let isa = cranelift_native::builder().unwrap().finish(flags);
+        let builder =
+            ObjectBuilder::new(isa, "all", cranelift_module::default_libcall_names()).unwrap();
         let mut program = Program {
-            isa,
-            builtin: Module::new(0),
+            object_module: ObjectModule::new(builder),
+            builtin: Mod::new(0),
             builtin_repo: unsafe { std::mem::zeroed() },
             types: Table::new(),
             functions: Table::new(),
@@ -274,15 +350,15 @@ impl Default for Program {
     }
 }
 
-crate::sym_id!(Module);
+crate::sym_id!(Mod);
 
 #[derive(Clone, Debug, Default)]
 pub struct ModuleEnt {
     pub name: ID,
     pub id: ID,
     pub absolute_path: String,
-    pub dependency: Vec<(ID, Module)>,
-    pub dependant: Vec<Module>,
+    pub dependency: Vec<(ID, Mod)>,
+    pub dependant: Vec<Mod>,
 
     pub ast: Ast,
     pub attributes: Attributes,
@@ -296,11 +372,13 @@ crate::sym_id!(Fun);
 pub struct FunEnt {
     pub visibility: Vis,
     pub name: ID,
-    pub module: Module,
+    pub module: Mod,
     pub token_hint: Token,
     pub kind: FKind,
     pub body: FunBody,
     pub ast: AstRef,
+    pub final_signature: Option<Signature>,
+    pub object_id: Option<FuncId>,
     pub attribute_id: usize,
 }
 
@@ -331,10 +409,10 @@ crate::sym_id!(Inst);
 
 #[derive(Debug, Default, Clone)]
 pub struct InstEnt {
-    kind: IKind,
-    value: Option<Value>,
-    token_hint: Token,
-    unresolved: usize,
+    pub kind: IKind,
+    pub value: Option<Value>,
+    pub token_hint: Token,
+    pub unresolved: usize,
 }
 
 impl InstEnt {
@@ -397,9 +475,9 @@ impl Default for IKind {
 
 #[derive(Debug, Clone, Default)]
 pub struct Block {
-    block: Option<CrBlock>,
-    args: Vec<Value>,
-    end: Option<Inst>,
+    pub block: Option<CrBlock>,
+    pub args: Vec<Value>,
+    pub end: Option<Inst>,
 }
 
 #[derive(Debug, Clone)]
@@ -467,7 +545,7 @@ pub struct ValueEnt {
     pub datatype: Type,
     pub inst: Option<Inst>,
     pub type_dependency: Option<TypeDep>,
-    pub value: Option<CrValue>,
+    pub value: FinalValue,
     pub offset: u32,
     pub mutable: bool,
     pub on_stack: bool,
@@ -482,7 +560,7 @@ impl ValueEnt {
             mutable,
 
             inst: None,
-            value: None,
+            value: FinalValue::None,
             offset: 0,
             on_stack: false,
         }
@@ -494,12 +572,22 @@ impl ValueEnt {
             datatype,
             inst: None,
             type_dependency: None,
-            value: None,
+            value: FinalValue::None,
             offset: 0,
             mutable: false,
             on_stack: false,
         }
     }
+}
+
+#[derive(Debug, Clone)]
+pub enum FinalValue {
+    None,
+    Zero,
+    Value(CrValue),
+    Pointer(CrValue),
+    Var(CrVar),
+    StackSlot(StackSlot),
 }
 
 impl Default for FKind {
@@ -521,7 +609,7 @@ pub struct TypeEnt {
     pub align: u32,
     pub attribute_id: usize,
     pub ast: Ast,
-    pub module: Module,
+    pub module: Mod,
     pub name: ID,
     pub debug_name: &'static str,
     pub token_hint: Token,

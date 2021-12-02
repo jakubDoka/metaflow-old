@@ -2,10 +2,15 @@ pub mod spam;
 
 pub use spam::*;
 
-use std::{fmt::{Debug, Display}, ops::{Deref, Range}, rc::Rc, str::Chars};
+use std::{
+    fmt::{Debug, Display},
+    ops::{Deref, Range},
+    rc::Rc,
+    str::Chars,
+};
 
 pub struct TokenView {
-    repr: String, 
+    repr: String,
 }
 
 impl TokenView {
@@ -22,7 +27,10 @@ impl TokenView {
         repr.push_str(format!("|> {}\n", token.line_data).as_str());
         repr.push_str("|");
 
-        let end = string[range.end..].find('\n').map(|i| i + range.end).unwrap_or(string.len());
+        let end = string[range.end..]
+            .find('\n')
+            .map(|i| i + range.end)
+            .unwrap_or(string.len());
         let start = string[..range.start].rfind('\n').unwrap_or(0) + 1;
 
         repr.push_str(&string[start..end]);
@@ -30,9 +38,7 @@ impl TokenView {
         repr.extend(std::iter::repeat(' ').take(range.start - start));
         repr.extend(std::iter::repeat('^').take(range.end - range.start));
 
-        Self {
-            repr,
-        }
+        Self { repr }
     }
 }
 

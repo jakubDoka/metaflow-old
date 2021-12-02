@@ -8,7 +8,7 @@ use crate::util::sdbm::ID;
 use crate::{lexer::Token, util::sdbm::SdbmHashState};
 
 use super::module_tree::ModuleTreeBuilder;
-use super::{Module, Program, Structure, Type, TypeEnt};
+use super::{Mod, Program, Structure, Type, TypeEnt};
 
 type Result<T> = std::result::Result<T, TypeError>;
 
@@ -25,7 +25,7 @@ impl<'a> TypePrinter<'a> {
         let mut buffer = String::new();
 
         self.print_buff(datatype, &mut buffer);
-        
+
         buffer
     }
 
@@ -42,18 +42,18 @@ impl<'a> TypePrinter<'a> {
                 buffer.pop();
                 buffer.push(']');
             }
-            TKind::Structure(_) |
-            TKind::Builtin(_) |
-            TKind::Generic => buffer.push_str(dt.debug_name),
+            TKind::Structure(_) | TKind::Builtin(_) | TKind::Generic => {
+                buffer.push_str(dt.debug_name)
+            }
             TKind::Pointer(pointed, _) => {
                 buffer.push_str(dt.debug_name);
                 buffer.push(' ');
                 self.print_buff(*pointed, buffer);
-            },
+            }
             TKind::Unresolved => unreachable!(),
         }
     }
-}    
+}
 
 pub struct TypeResolver<'a> {
     immediate: bool,
@@ -78,7 +78,7 @@ impl<'a> TypeResolver<'a> {
         }
     }
 
-    pub fn resolve_immediate(&mut self, module: Module, ast: &Ast) -> Result<Type> {
+    pub fn resolve_immediate(&mut self, module: Mod, ast: &Ast) -> Result<Type> {
         let (_, datatype) = self.find_or_instantiate(module, ast)?;
         self.materialize_datatype(datatype)?;
 
@@ -129,16 +129,28 @@ impl<'a> TypeResolver<'a> {
 
         let mut kind = std::mem::take(&mut self.program[datatype].kind);
         let size = match &mut kind {
-            TKind::Pointer(..) => self.program.isa.pointer_bytes() as u32,
+            TKind::Pointer(..) => self.program.isa().pointer_bytes() as u32,
             TKind::Structure(structure) => {
                 let mut size = 0;
                 match structure.kind {
                     SKind::Struct => {
+                        let align = structure
+                            .fields
+                            .iter()
+                            .map(|field| self.program[field.datatype].align)
+                            .max()
+                            .unwrap_or(0);
+
+                        let calc = move |offset| align - offset % align;
+
                         for field in &mut structure.fields {
                             self.materialize_datatype(field.datatype)?;
+                            size += calc(size);
                             field.offset = size;
                             size += self.program[field.datatype].size;
                         }
+
+                        size += calc(size);
                     }
                     SKind::Union => {
                         for field in &mut structure.fields {
@@ -189,7 +201,7 @@ impl<'a> TypeResolver<'a> {
         Ok(())
     }
 
-    fn connect_struct(&mut self, module: Module, ast: &Ast) -> Result<Structure> {
+    fn connect_struct(&mut self, module: Mod, ast: &Ast) -> Result<Structure> {
         let mut fields = vec![];
 
         for field_line in ast[1].iter() {
@@ -213,7 +225,7 @@ impl<'a> TypeResolver<'a> {
         })
     }
 
-    fn find_or_instantiate(&mut self, module: Module, ast: &Ast) -> Result<(Module, Type)> {
+    fn find_or_instantiate(&mut self, module: Mod, ast: &Ast) -> Result<(Mod, Type)> {
         self.depth += 1;
         if self.depth > Self::MAX_DEPTH {
             return Err(TypeError::new(
@@ -350,7 +362,7 @@ impl<'a> TypeResolver<'a> {
         Ok((host_module, datatype))
     }
 
-    fn create_instance_name(&mut self, module: Module, ast: &Ast) -> Result<(ID, Type, Module)> {
+    fn create_instance_name(&mut self, module: Mod, ast: &Ast) -> Result<(ID, Type, Mod)> {
         let (host_module, base_type) = self.find_or_instantiate(module, &ast[0])?;
         self.context.instance_buffer.push(base_type);
         let mut id = self.program[base_type].name;
@@ -363,7 +375,7 @@ impl<'a> TypeResolver<'a> {
         Ok((id, base_type, host_module))
     }
 
-    pub fn find_by_token(&mut self, module: Module, token: &Token) -> Result<(Module, Type)> {
+    pub fn find_by_token(&mut self, module: Mod, token: &Token) -> Result<(Mod, Type)> {
         self.find_by_name(module, ID::new().add(token.spam.deref()))
             .ok_or_else(|| {
                 println!("{:?} {:?}", module, self.program[module].dependency);
@@ -371,7 +383,7 @@ impl<'a> TypeResolver<'a> {
             })
     }
 
-    fn find_by_name(&self, module: Module, name: ID) -> Option<(Module, Type)> {
+    fn find_by_name(&self, module: Mod, name: ID) -> Option<(Mod, Type)> {
         self.program.walk_accessible_scopes(module, |id, module| {
             self.program
                 .types
@@ -399,9 +411,7 @@ impl<'a> TypeResolver<'a> {
 
                         if ident.kind != AKind::Ident {
                             return Err(TypeError::new(
-                                TEKind::UnexpectedAst(String::from(
-                                    "expected struct identifier"
-                                )),
+                                TEKind::UnexpectedAst(String::from("expected struct identifier")),
                                 &ident.token,
                             ));
                         }
@@ -424,9 +434,10 @@ impl<'a> TypeResolver<'a> {
                         };
 
                         match self
-                        .program
-                        .types
-                        .insert(name.combine(module_name), datatype) {
+                            .program
+                            .types
+                            .insert(name.combine(module_name), datatype)
+                        {
                             (Some(datatype), _) => {
                                 return Err(TypeError::new(
                                     TEKind::Redefinition(datatype.token_hint.clone()),
@@ -440,7 +451,7 @@ impl<'a> TypeResolver<'a> {
                                     params.push(id);
                                     params.extend(
                                         std::iter::repeat(self.program.builtin_repo.auto)
-                                            .take(param_count)
+                                            .take(param_count),
                                     );
                                     self.program[id].params = params;
                                 }
@@ -469,8 +480,8 @@ impl<'a> TypeResolver<'a> {
             name,
             params: vec![],
             kind: TKind::Pointer(datatype, mutable),
-            size: self.program.isa.pointer_bytes() as u32,
-            align: self.program.isa.pointer_bytes() as u32,
+            size: self.program.isa().pointer_bytes() as u32,
+            align: self.program.isa().pointer_bytes() as u32,
             attribute_id: 0,
             ast: Ast::none(),
             debug_name,
@@ -562,8 +573,9 @@ pub enum TEKind {
 }
 
 pub fn test() {
-    let builder = ModuleTreeBuilder::default();
-    let mut program = builder.build("src/ir/tests/module_tree/root").unwrap();
+    let mut program = Program::default();
+    let builder = ModuleTreeBuilder::new(&mut program);
+    builder.build("src/ir/tests/module_tree/root").unwrap();
 
     let mut ctx = TypeResolverContext::default();
 

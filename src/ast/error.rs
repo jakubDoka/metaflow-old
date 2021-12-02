@@ -24,7 +24,6 @@ impl Display for AstError {
     }
 }
 
-
 #[derive(Debug, Clone)]
 pub enum AEKind {
     UnexpectedToken(String),

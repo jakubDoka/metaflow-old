@@ -5,7 +5,7 @@ use std::ops::{Deref, DerefMut, Index, IndexMut};
 use crate::ast::{AKind, Ast, Vis};
 use crate::ir::types::TypePrinter;
 use crate::ir::{
-    FKind, Fun, FunBody, FunEnt, Inst, LTKind, Module, ModuleEnt, Type, TypeDep, Value, ValueEnt,
+    FKind, Fun, FunBody, FunEnt, Inst, LTKind, Mod, ModuleEnt, Type, TypeDep, Value, ValueEnt,
 };
 use crate::lexer::{Token, TokenView};
 use crate::util::storage::LockedList;
@@ -75,11 +75,11 @@ impl<'a> FunResolver<'a> {
         let fun = &mut self.program.functions[function];
         fun.kind = FKind::Normal(signature);
         fun.body = self.context.function_body.clone();
-        
+
         Ok(())
     }
 
-    fn function_low(&mut self, module: Module, ast: &Ast, signature: &FunSignature) -> Result {
+    fn function_low(&mut self, module: Mod, ast: &Ast, signature: &FunSignature) -> Result {
         debug_assert!(self.context.current_block.is_none());
         self.context.current_module = Some(module);
         self.context.return_type = signature.return_type;
@@ -131,7 +131,7 @@ impl<'a> FunResolver<'a> {
         for value_id in self.context.function_body.values.ids() {
             let datatype = self.context[value_id].datatype;
             let on_stack =
-                self.program.types[datatype].size > self.program.isa.pointer_bytes() as u32;
+                self.program.types[datatype].size > self.program.isa().pointer_bytes() as u32;
             self.context[value_id].on_stack = self.context[value_id].on_stack || on_stack;
         }
 
@@ -147,15 +147,20 @@ impl<'a> FunResolver<'a> {
                     let mut args = std::mem::take(args);
                     let name = *name;
                     inst.kind = IKind::NoOp;
-                    
+
                     let token = inst.token_hint.clone();
                     assert!(self.context.current_module == Some(module));
-                    let fun = self.smart_find_or_instantiate(fun, name, &mut args, dot_call, &token)?;
-                    
+                    let fun =
+                        self.smart_find_or_instantiate(fun, name, &mut args, dot_call, &token)?;
+
                     let mut types = std::mem::take(&mut self.context.type_buffer);
                     types.clear();
                     types.extend(
-                        self.program[fun].signature().args.iter().map(|arg| arg.datatype),
+                        self.program[fun]
+                            .signature()
+                            .args
+                            .iter()
+                            .map(|arg| arg.datatype),
                     );
                     for (datatype, value) in types.iter().zip(args.iter()) {
                         if self.is_auto(self.context[*value].datatype) {
@@ -176,7 +181,7 @@ impl<'a> FunResolver<'a> {
                         }
                         self.context[dependency].clear();
                         self.context[dep].value = None;
-                    }  else {
+                    } else {
                         self.context[dep].value = None;
                     }
                 }
@@ -198,8 +203,11 @@ impl<'a> FunResolver<'a> {
                     .unwrap()
                     .0
                     .clone();
-                
-                return Err(FunError::new(FEKind::UnresolvedType, &self.context[inst].token_hint));
+
+                return Err(FunError::new(
+                    FEKind::UnresolvedType,
+                    &self.context[inst].token_hint,
+                ));
             }
         }
 
@@ -481,9 +489,10 @@ impl<'a> FunResolver<'a> {
         let unresolved = self.is_auto(datatype);
         let datatype = self.pointer_of(datatype, mutable);
         let reference = self.new_value(datatype);
-        let inst = self
-            .context
-            .add_inst_under(InstEnt::new(IKind::Ref(value), Some(reference), token), inst);
+        let inst = self.context.add_inst_under(
+            InstEnt::new(IKind::Ref(value), Some(reference), token),
+            inst,
+        );
 
         if unresolved {
             self.add_type_dependency(value, inst);
@@ -759,14 +768,20 @@ impl<'a> FunResolver<'a> {
 
     fn call(&mut self, ast: &Ast) -> ExprResult {
         let (base_name, name) = match ast[0].kind {
-            AKind::Ident => (ID::new().add(ast[0].token.spam.deref()), ast[0].token.spam.raw()),
+            AKind::Ident => (
+                ID::new().add(ast[0].token.spam.deref()),
+                ast[0].token.spam.raw(),
+            ),
             AKind::Instantiation => {
                 self.context.generic.inferred.resize(ast[0].len() - 1, None);
                 for (i, arg) in ast[0][1..].iter().enumerate() {
                     let id = self.resolve_type(arg)?;
                     self.context.generic.inferred[i] = Some(id);
                 }
-                (ID::new().add(ast[0][0].token.spam.deref()), ast[0][0].token.spam.raw())
+                (
+                    ID::new().add(ast[0][0].token.spam.deref()),
+                    ast[0][0].token.spam.raw(),
+                )
             }
             _ => unreachable!(),
         };
@@ -778,16 +793,24 @@ impl<'a> FunResolver<'a> {
         self.call_low(base_name, name, ast.kind == AKind::Call(true), &ast.token)
     }
 
-    fn call_low(&mut self, base_name: ID, name: &'static str, dot_call: bool, token: &Token) -> ExprResult {
+    fn call_low(
+        &mut self,
+        base_name: ID,
+        name: &'static str,
+        dot_call: bool,
+        token: &Token,
+    ) -> ExprResult {
         let mut values = self.context.call_value_buffer.clone();
         let mut unresolved = std::mem::take(&mut self.context.call_value_buffer);
         unresolved.retain(|f| self.is_auto(self.context[*f].datatype));
 
         let value = if unresolved.len() > 0 {
             let value = self.new_auto_value();
-            let inst = self
-                .context
-                .add_inst(InstEnt::new(IKind::UnresolvedCall(base_name, name, dot_call, values), Some(value), token));
+            let inst = self.context.add_inst(InstEnt::new(
+                IKind::UnresolvedCall(base_name, name, dot_call, values),
+                Some(value),
+                token,
+            ));
             unresolved
                 .drain(..)
                 .for_each(|v| self.add_type_dependency(v, inst));
@@ -958,7 +981,9 @@ impl<'a> FunResolver<'a> {
 
                         if let (Some(value), Some(datatype)) = (value, datatype) {
                             frontier.push((value, datatype));
-                        } else if let Some(dependency) = self.context[value.unwrap()].type_dependency {
+                        } else if let Some(dependency) =
+                            self.context[value.unwrap()].type_dependency
+                        {
                             if self.context[dependency].len() > 1 {
                                 return Err(FunError::new(FEKind::ExpectedValue, &token));
                             }
@@ -1151,13 +1176,8 @@ impl<'a> FunResolver<'a> {
         let result = if dot_expr {
             let first_mutable = self.context[args[0]].mutable;
             assert!(self.context.current_module.is_some());
-            let (fun, id, kind) = self.dot_find_or_instantiate(
-                base,
-                name,
-                &mut types,
-                first_mutable,
-                &token,
-            )?;
+            let (fun, id, kind) =
+                self.dot_find_or_instantiate(base, name, &mut types, first_mutable, &token)?;
             if id != ID::new() {
                 let value = self.new_value(self.program.builtin_repo.bool);
                 self.field_access(args[0], id, value, &token)?;
@@ -1198,11 +1218,17 @@ impl<'a> FunResolver<'a> {
                 match $expr {
                     Ok(expr) => return Ok((expr, $id, DotInstr::$type)),
                     #[allow(unused_assignments)]
-                    Err(err) => if let FunError { kind: FEKind::FunctionNotFound(..), .. } = err {
-                        final_err = Some(err);
-                    } else {
-                        return Err(err);
-                    },
+                    Err(err) => {
+                        if let FunError {
+                            kind: FEKind::FunctionNotFound(..),
+                            ..
+                        } = err
+                        {
+                            final_err = Some(err);
+                        } else {
+                            return Err(err);
+                        }
+                    }
                 }
             };
         }
@@ -1235,11 +1261,7 @@ impl<'a> FunResolver<'a> {
 
                 values[0] = self.pointer_of(datatype, false);
                 assert!(self.context.current_module.is_some());
-                unwrap!(
-                    self.find_or_instantiate(base, name, values, token),
-                    id,
-                    Ref
-                );
+                unwrap!(self.find_or_instantiate(base, name, values, token), id, Ref);
             }
 
             match &self.program[datatype].kind {
@@ -1268,7 +1290,8 @@ impl<'a> FunResolver<'a> {
             base.combine(self.program.types.direct_to_id(val))
         });
         assert!(self.context.current_module.is_some());
-        if let Some((_, fun)) = self.find_by_name(self.context.current_module.unwrap(), specific_id) {
+        if let Some((_, fun)) = self.find_by_name(self.context.current_module.unwrap(), specific_id)
+        {
             return Ok(fun);
         }
 
@@ -1281,12 +1304,15 @@ impl<'a> FunResolver<'a> {
             }
         }
 
-        Err(FunError::new(FEKind::FunctionNotFound(name.to_string(), values.to_vec()), token))
+        Err(FunError::new(
+            FEKind::FunctionNotFound(name.to_string(), values.to_vec()),
+            token,
+        ))
     }
 
     fn instantiate(
         &mut self,
-        module: Module,
+        module: Mod,
         functions: Fun,
         index: usize,
         values: &[Type],
@@ -1345,7 +1371,7 @@ impl<'a> FunResolver<'a> {
                                     }
                                 }
                                 _ => return Ok(None),
-                            }
+                            },
                             _ => return Ok(None),
                         }
                     }
@@ -1448,17 +1474,16 @@ impl<'a> FunResolver<'a> {
         Ok(Some(fun))
     }
 
-    fn find_by_name(&mut self, module: Module, name: ID) -> Option<(Module, Fun)> {
-        self.program
-            .walk_accessible_scopes(module, |id, module| {
-                self.program
-                    .functions
-                    .id_to_direct(name.combine(id))
-                    .map(|fun| (module, fun))
-            })
+    fn find_by_name(&mut self, module: Mod, name: ID) -> Option<(Mod, Fun)> {
+        self.program.walk_accessible_scopes(module, |id, module| {
+            self.program
+                .functions
+                .id_to_direct(name.combine(id))
+                .map(|fun| (module, fun))
+        })
     }
 
-    fn find_generic_by_name(&mut self, name: ID) -> Option<(Module, Fun)> {
+    fn find_generic_by_name(&mut self, name: ID) -> Option<(Mod, Fun)> {
         self.program
             .walk_accessible_scopes(self.context.current_module.unwrap(), |id, module| {
                 self.program
@@ -1525,14 +1550,13 @@ impl<'a> FunResolver<'a> {
 
     fn collect_generic_function(
         &mut self,
-        module: Module,
+        module: Mod,
         a_ref: AstRef,
         a: &Ast,
         visibility: Vis,
         attribute_id: usize,
     ) -> Result<Fun> {
-        let name = ID::new()
-            .add(a[0][0][0].token.spam.deref());
+        let name = ID::new().add(a[0][0][0].token.spam.deref());
 
         let signature = self.generic_signature(&a[0])?;
 
@@ -1545,20 +1569,21 @@ impl<'a> FunResolver<'a> {
             ast: a_ref,
             attribute_id,
             body: Default::default(),
+            final_signature: None,
+            object_id: None,
         };
-        
+
         let name = name.combine(self.program.modules.direct_to_id(module));
 
         self.program
             .generic_functions
             .get_mut_or(name, vec![])
             .push(function);
-        
 
         Ok(self.program.generic_functions.id_to_direct(name).unwrap())
     }
 
-    fn id_of_ast_signature(&mut self, module: Module, base_name: ID, ast: &Ast) -> Result<ID> {
+    fn id_of_ast_signature(&mut self, module: Mod, base_name: ID, ast: &Ast) -> Result<ID> {
         let mut name = base_name;
         for param_line in &ast[1..ast.len() - 1] {
             let raw_datatype = param_line.last().unwrap();
@@ -1573,7 +1598,7 @@ impl<'a> FunResolver<'a> {
 
     fn collect_normal_function(
         &mut self,
-        module: Module,
+        module: Mod,
         a_ref: AstRef,
         a: &Ast,
         mut name: ID,
@@ -1586,10 +1611,7 @@ impl<'a> FunResolver<'a> {
             let raw_datatype = param_line.last().unwrap();
             let datatype = self.resolve_type_low(module, raw_datatype)?;
             if self.is_auto(datatype) {
-                return Err(FunError::new(
-                    FEKind::UnexpectedAuto,
-                    &raw_datatype.token,
-                ));
+                return Err(FunError::new(FEKind::UnexpectedAuto, &raw_datatype.token));
             }
             for param in param_line[0..param_line.len() - 1].iter() {
                 name = name.combine(self.program.types.direct_to_id(datatype));
@@ -1626,6 +1648,8 @@ impl<'a> FunResolver<'a> {
             attribute_id,
             ast: a_ref,
             body: Default::default(),
+            final_signature: None,
+            object_id: None,
         };
 
         name = name.combine(self.program.modules.direct_to_id(module));
@@ -1702,10 +1726,9 @@ impl<'a> FunResolver<'a> {
             return;
         }
 
-        generic.arg_buffer.push(GenericElement::Element(
-            dt.params[0],
-            Some(datatype),
-        ));
+        generic
+            .arg_buffer
+            .push(GenericElement::Element(dt.params[0], Some(datatype)));
 
         generic.arg_buffer.push(GenericElement::ScopeStart);
         for &param in &dt.params[1..] {
@@ -1769,7 +1792,7 @@ impl<'a> FunResolver<'a> {
         self.resolve_type_low(self.context.current_module.unwrap(), ast)
     }
 
-    fn resolve_type_low(&mut self, module: Module, ast: &Ast) -> Result<Type> {
+    fn resolve_type_low(&mut self, module: Mod, ast: &Ast) -> Result<Type> {
         TypeResolver::new(self.program, &mut self.context.type_resolver_context)
             .resolve_immediate(module, ast)
             .map_err(Into::into)
@@ -1779,7 +1802,7 @@ impl<'a> FunResolver<'a> {
         self.find_type_low(self.context.current_module.unwrap(), token)
     }
 
-    fn find_type_low(&mut self, module: Module, token: &Token) -> Result<Type> {
+    fn find_type_low(&mut self, module: Mod, token: &Token) -> Result<Type> {
         TypeResolver::new(self.program, &mut self.context.type_resolver_context)
             .find_by_token(module, token)
             .map(|(_, t)| t)
@@ -1901,7 +1924,7 @@ pub struct GenericFunContext {
 #[derive(Debug, Default)]
 pub struct FunContext {
     pub return_type: Option<Type>,
-    pub current_module: Option<Module>,
+    pub current_module: Option<Mod>,
     pub current_block: Option<Inst>,
     pub variables: Vec<Option<Value>>,
     pub loops: Vec<Loop>,
@@ -2095,34 +2118,73 @@ impl<'a> Display for FunErrorDisplay<'a> {
             writeln!(f, "{}", TokenView::new(&self.error.token))?;
         }
         match &self.error.kind {
-            FEKind::TypeError(kind) => writeln!(f, "{}", TypeError::new(kind.clone(), &self.error.token)),
+            FEKind::TypeError(kind) => {
+                writeln!(f, "{}", TypeError::new(kind.clone(), &self.error.token))
+            }
             FEKind::Redefinition(other) => {
                 writeln!(f, "redefines the")?;
                 writeln!(f, "{}", TokenView::new(other))
-            },
+            }
             FEKind::ExpectedValue => writeln!(f, "expected this expression to return a value"),
             &FEKind::TypeMismatch(actual, supposed) => {
                 let type_printer = TypePrinter::new(self.program);
-                write!(f, "type mismatch, found '{}' which does not match the '{}'", type_printer.print(actual), type_printer.print(supposed))
-            },
+                write!(
+                    f,
+                    "type mismatch, found '{}' which does not match the '{}'",
+                    type_printer.print(actual),
+                    type_printer.print(supposed)
+                )
+            }
             FEKind::FunctionNotFound(name, arguments) => {
                 let type_printer = TypePrinter::new(self.program);
-                let argument_string = arguments.iter().map(|&t| type_printer.print(t)).collect::<Vec<_>>().join(", ");
-                writeln!(f, "function with signature '{}({})' not found", name, argument_string)
-            },
-            FEKind::UnexpectedValue => writeln!(f, "expression that returns value is not allowed here, use 'discard' <expr> syntax"),
-            FEKind::UnexpectedReturnValue => writeln!(f, "function does not return value this return with value is invalid"),
+                let argument_string = arguments
+                    .iter()
+                    .map(|&t| type_printer.print(t))
+                    .collect::<Vec<_>>()
+                    .join(", ");
+                writeln!(
+                    f,
+                    "function with signature '{}({})' not found",
+                    name, argument_string
+                )
+            }
+            FEKind::UnexpectedValue => writeln!(
+                f,
+                "expression that returns value is not allowed here, use 'discard' <expr> syntax"
+            ),
+            FEKind::UnexpectedReturnValue => writeln!(
+                f,
+                "function does not return value this return with value is invalid"
+            ),
             FEKind::UnexpectedAuto => writeln!(f, "inference cannot be used here"),
-            FEKind::UndefinedVariable => writeln!(f, "variable is not defined in the current scope"),
-            FEKind::UnresolvedType => writeln!(f, "type of this expression cannot be inferred, try to add some annotations"),
+            FEKind::UndefinedVariable => {
+                writeln!(f, "variable is not defined in the current scope")
+            }
+            FEKind::UnresolvedType => writeln!(
+                f,
+                "type of this expression cannot be inferred, try to add some annotations"
+            ),
             &FEKind::UnknownField(datatype) => {
                 let type_printer = TypePrinter::new(self.program);
-                writeln!(f, "'{}' does not have a this field", type_printer.print(datatype))
+                writeln!(
+                    f,
+                    "'{}' does not have a this field",
+                    type_printer.print(datatype)
+                )
             }
-            FEKind::MutableRefOfImmutable => writeln!(f, "cannot take mutable reference of immutable value"),
-            FEKind::MissingElseBranch => writeln!(f, "missing else branch, it is expected as if branch returns value"),
-            FEKind::ContinueOutsideLoop => writeln!(f, "continue statement is not allowed outside of a loop"),
-            FEKind::BreakOutsideLoop => writeln!(f, "break statement is not allowed outside of a loop"),
+            FEKind::MutableRefOfImmutable => {
+                writeln!(f, "cannot take mutable reference of immutable value")
+            }
+            FEKind::MissingElseBranch => writeln!(
+                f,
+                "missing else branch, it is expected as if branch returns value"
+            ),
+            FEKind::ContinueOutsideLoop => {
+                writeln!(f, "continue statement is not allowed outside of a loop")
+            }
+            FEKind::BreakOutsideLoop => {
+                writeln!(f, "break statement is not allowed outside of a loop")
+            }
             FEKind::WrongLabel => writeln!(f, "label is not defined in the current scope"),
             FEKind::NonPointerDereference => writeln!(f, "cannot dereference non-pointer value"),
         }
@@ -2185,8 +2247,9 @@ pub enum DotInstr {
 }
 
 pub fn test() {
-    let builder = ModuleTreeBuilder::default();
-    let mut program = builder.build("src/ir/tests/module_tree/root").unwrap();
+    let mut program = Program::default();
+    let builder = ModuleTreeBuilder::new(&mut program);
+    builder.build("src/ir/tests/module_tree/root").unwrap();
 
     let mut ctx = TypeResolverContext::default();
 
@@ -2194,10 +2257,13 @@ pub fn test() {
 
     let mut ctx = FunResolverContext::default();
 
-    FunResolver::new(&mut program, &mut ctx).resolve().map_err(|e| {
-        println!("{}", FunErrorDisplay::new(&program, &e));
-        e
-    }).unwrap();
+    FunResolver::new(&mut program, &mut ctx)
+        .resolve()
+        .map_err(|e| {
+            println!("{}", FunErrorDisplay::new(&program, &e));
+            e
+        })
+        .unwrap();
 
     for fun in unsafe { program.functions.direct_ids() } {
         if !program.functions.is_direct_valid(fun)
@@ -2221,7 +2287,8 @@ pub fn test() {
                 }
                 _ => {
                     if let Some(value) = inst.value {
-                        let datatype = TypePrinter::new(&program).print(fun.body.values[value].datatype);
+                        let datatype =
+                            TypePrinter::new(&program).print(fun.body.values[value].datatype);
                         println!(
                             "    {:?}: {} = {:?} |{}",
                             value,

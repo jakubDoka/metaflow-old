@@ -12,7 +12,7 @@ use cranelift_codegen::{
     isa::{CallConv, TargetIsa},
 };
 use cranelift_frontend::{FunctionBuilder, FunctionBuilderContext, Variable};
-use cranelift_module::{DataContext, DataId, FuncId, Linkage, Module};
+use cranelift_module::{DataContext, DataId, FuncId, Linkage, Mod};
 use cranelift_object::ObjectModule;
 use std::{ops::Deref, str::FromStr};
 
@@ -1543,108 +1543,6 @@ impl<'a> SealCurrentBlock for FunctionBuilder<'a> {
 
 trait SealCurrentBlock {
     fn seal_current_block(&mut self);
-}
-
-const MOVERS: &'static [Type] = &[I8, I16, I32, I64];
-const MOVER_SIZES: &'static [u32] = &[1, 2, 4, 8];
-const MAX_MOVER_SIZE: u32 = 64;
-
-fn find_best_mover(size: u32) -> (Type, u32) {
-    let size = size.min(MAX_MOVER_SIZE);
-    MOVER_SIZES
-        .iter()
-        .rev()
-        .position(|&s| s <= size)
-        .map(|i| {
-            (
-                MOVERS[MOVERS.len() - i - 1],
-                MOVER_SIZES[MOVER_SIZES.len() - i - 1],
-            )
-        })
-        .unwrap()
-}
-
-fn static_memset(
-    pointer: Value,
-    pointer_offset: u32,
-    value: i8,
-    size: u32,
-    builder: &mut FunctionBuilder,
-) {
-    let (mover, mover_size) = find_best_mover(size);
-
-    let flags = MemFlags::new();
-
-    let value = builder.ins().iconst(mover, value as i64);
-
-    let mut offset = 0;
-    loop {
-        builder
-            .ins()
-            .store(flags, value, pointer, (offset + pointer_offset) as i32);
-        offset += mover_size;
-        if offset + mover_size >= size {
-            break;
-        }
-    }
-
-    if size > offset {
-        // overlap should not matter
-        let offset = size - mover_size;
-        builder
-            .ins()
-            .store(flags, value, pointer, (offset + pointer_offset) as i32);
-    }
-}
-
-fn static_memmove(
-    dst_pointer: Value,
-    dst_pointer_offset: u32,
-    src_pointer: Value,
-    src_pointer_offset: u32,
-    size: u32,
-    builder: &mut FunctionBuilder,
-) {
-    let (mover, mover_size) = find_best_mover(size);
-
-    let flags = MemFlags::new();
-
-    let mut offset = 0;
-    loop {
-        let value = builder.ins().load(
-            mover,
-            flags,
-            src_pointer,
-            (offset + src_pointer_offset) as i32,
-        );
-        builder.ins().store(
-            flags,
-            value,
-            dst_pointer,
-            (offset + dst_pointer_offset) as i32,
-        );
-        offset += mover_size;
-        if offset + mover_size > size {
-            break;
-        }
-    }
-
-    if size > offset {
-        // overlap should not matter
-        let offset = size - mover_size;
-        let value = builder.ins().load(
-            mover,
-            flags,
-            src_pointer,
-            (offset + src_pointer_offset) as i32,
-        );
-        builder.ins().store(
-            flags,
-            value,
-            dst_pointer,
-            (offset + dst_pointer_offset) as i32,
-        );
-    }
 }
 
 #[derive(Debug, Clone, PartialEq)]

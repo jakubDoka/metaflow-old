@@ -1,7 +1,7 @@
 use std::cmp::Ordering;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Default, Hash)]
-pub struct ID(u64);
+pub struct ID(pub u64);
 
 impl ID {
     #[inline]

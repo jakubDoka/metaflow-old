@@ -11,27 +11,37 @@ use super::*;
 
 type Result<T> = std::result::Result<T, ModuleTreeError>;
 
-#[derive(Default)]
-pub struct ModuleTreeBuilder {
+pub struct ModuleTreeBuilder<'a> {
     import_stack: Vec<ID>,
     base: String,
     buffer: String,
-    program: Program,
+    program: &'a mut Program,
     module_id_counter: u64,
     attributes: Attributes,
 }
 
-impl ModuleTreeBuilder {
-    pub fn build(mut self, root: &str) -> Result<Program> {
+impl<'a> ModuleTreeBuilder<'a> {
+    pub fn new(program: &'a mut Program) -> Self {
+        ModuleTreeBuilder {
+            import_stack: Vec::new(),
+            base: String::new(),
+            buffer: String::new(),
+            program,
+            module_id_counter: 0,
+            attributes: Attributes::default(),
+        }
+    }
+
+    pub fn build(mut self, root: &str) -> Result<()> {
         self.program.build_builtin();
 
         self.base = root[..root.rfind('/').map(|i| i + 1).unwrap_or(root.len())].to_string();
         self.load_module(&root[root.rfind('/').unwrap_or(0)..], &Token::default())?;
 
-        Ok(self.program)
+        Ok(())
     }
 
-    fn load_module(&mut self, path: &str, token: &Token) -> Result<Module> {
+    fn load_module(&mut self, path: &str, token: &Token) -> Result<Mod> {
         self.load_path(path);
 
         let id = ID::new().add(&self.buffer);
@@ -184,6 +194,7 @@ pub enum MTEKind {
 }
 
 pub fn test() {
-    let builder = ModuleTreeBuilder::default();
-    let _program = builder.build("src/ir/tests/module_tree/root").unwrap();
+    let mut program = Program::default();
+    let builder = ModuleTreeBuilder::new(&mut program);
+    builder.build("src/ir/tests/module_tree/root").unwrap();
 }
