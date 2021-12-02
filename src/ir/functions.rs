@@ -112,7 +112,7 @@ impl<'a> FunResolver<'a> {
         } else if let (Some(return_type), Some(_)) =
             (signature.return_type, self.context.current_block)
         {
-            let temp = self.new_value(return_type);
+            let temp = self.new_temp_value(return_type);
             self.context.add_inst(InstEnt::new(
                 IKind::ZeroValue,
                 Some(temp),
@@ -293,7 +293,7 @@ impl<'a> FunResolver<'a> {
                 self.may_infer(return_value, current_value, &ast[1].token)?;
             } else {
                 let datatype = self.context[return_value].datatype;
-                let value = self.new_value(datatype);
+                let value = self.new_temp_value(datatype);
                 self.context[loop_header.end_block]
                     .kind
                     .block_mut()
@@ -322,7 +322,7 @@ impl<'a> FunResolver<'a> {
 
         let value = if ast[0].kind == AKind::None {
             if let Some(datatype) = datatype {
-                let temp_value = self.new_value(datatype);
+                let temp_value = self.new_temp_value(datatype);
 
                 self.context.add_inst(InstEnt::new(
                     IKind::ZeroValue,
@@ -380,25 +380,15 @@ impl<'a> FunResolver<'a> {
                         .values
                         .add(ValueEnt::temp(datatype));
 
-                    let unresolved = self.is_auto(datatype);
-
                     let inst = self.context.add_inst(InstEnt::new(
                         IKind::ZeroValue,
                         Some(temp_value),
                         &Token::default(),
                     ));
 
-                    let type_dependency = if unresolved {
-                        Some(self.context.new_type_dependency())
-                    } else {
-                        None
-                    };
+                    let var = self.add_variable(name, datatype, mutable);
 
-                    let var = ValueEnt::new(name, datatype, type_dependency, mutable);
-
-                    let var = self.context.add_variable(var);
-
-                    if unresolved {
+                    if self.is_auto(datatype) {
                         self.add_type_dependency(var, inst);
                     }
 
@@ -426,15 +416,7 @@ impl<'a> FunResolver<'a> {
                         false
                     };
 
-                    let type_dependency = if unresolved {
-                        Some(self.context.new_type_dependency())
-                    } else {
-                        None
-                    };
-
-                    let var = ValueEnt::new(name, actual_datatype, type_dependency, mutable);
-
-                    let var = self.context.add_variable(var);
+                    let var = self.add_variable(name, actual_datatype, mutable);
 
                     let inst = self.context.add_inst(InstEnt::new(
                         IKind::VarDecl(value),
@@ -491,7 +473,7 @@ impl<'a> FunResolver<'a> {
         let inst = self.context[value].inst.unwrap_or(Inst::new(0));
         let unresolved = self.is_auto(datatype);
         let datatype = self.pointer_of(datatype, mutable);
-        let reference = self.new_value(datatype);
+        let reference = self.new_temp_value(datatype);
         let inst = self.context.add_inst_under(
             InstEnt::new(IKind::Ref(value), Some(reference), token),
             inst,
@@ -517,7 +499,7 @@ impl<'a> FunResolver<'a> {
         let inst = self.context[value].inst.unwrap_or(Inst::new(0));
         let (pointed, mutable) = self.base_of_err(datatype, token)?;
 
-        let val = self.new_value(pointed);
+        let val = self.new_anonymous_value(pointed, mutable);
         self.context[val].mutable = mutable;
         let inst = self
             .context
@@ -540,10 +522,11 @@ impl<'a> FunResolver<'a> {
 
     fn dot_expr(&mut self, ast: &Ast) -> ExprResult {
         let header = self.expr(&ast[0])?;
+        let mutable = self.context[header].mutable;
         let field = ID::new().add(ast[1].token.spam.deref());
         let datatype = self.context[header].datatype;
         if self.is_auto(datatype) {
-            let value = self.new_auto_value();
+            let value = self.new_anonymous_value(self.auto(), mutable);
             self.pass_mutability(header, value);
             let inst = self.context.add_inst(InstEnt::new(
                 IKind::UnresolvedDot(header, field),
@@ -554,7 +537,7 @@ impl<'a> FunResolver<'a> {
             Ok(Some(value))
         } else {
             // bool is a placeholder
-            let value = self.new_value(self.program.builtin_repo.bool);
+            let value = self.new_anonymous_value(self.program.builtin_repo.bool, mutable);
             let datatype = self.field_access(header, field, value, &ast.token)?;
             self.context[value].datatype = datatype;
             Ok(Some(value))
@@ -710,7 +693,7 @@ impl<'a> FunResolver<'a> {
             ));
 
             let datatype = self.context[val].datatype;
-            let value = self.new_value(datatype);
+            let value = self.new_temp_value(datatype);
             self.context[merge_block].kind.block_mut().args.push(value);
             result = Some(value);
         } else if self.context.current_block.is_some() {
@@ -745,7 +728,7 @@ impl<'a> FunResolver<'a> {
                     ));
 
                     let datatype = self.context[val].datatype;
-                    let value = self.new_value(datatype);
+                    let value = self.new_temp_value(datatype);
                     self.context[merge_block].kind.block_mut().args.push(value);
                     result = Some(value);
                 } else {
@@ -809,7 +792,8 @@ impl<'a> FunResolver<'a> {
         unresolved.retain(|f| self.is_auto(self.context[*f].datatype));
 
         let value = if unresolved.len() > 0 {
-            let value = self.new_auto_value();
+            let value = self.auto();
+            let value = self.new_temp_value(value);
             let inst = self.context.add_inst(InstEnt::new(
                 IKind::UnresolvedCall(base_name, name, dot_call, values),
                 Some(value),
@@ -827,7 +811,7 @@ impl<'a> FunResolver<'a> {
                 self.smart_find_or_instantiate(base_name, name, &mut values, dot_call, token)?;
             let return_type = self.program[fun].signature().return_type;
             
-            let value = return_type.map(|t| self.new_value(t));
+            let value = return_type.map(|t| self.new_temp_value(t));
             self.context
                 .add_inst(InstEnt::new(IKind::Call(fun, values), value, token));
             value
@@ -870,7 +854,7 @@ impl<'a> FunResolver<'a> {
             _ => unreachable!("{}", ast),
         };
 
-        let value = self.new_value(datatype);
+        let value = self.new_temp_value(datatype);
 
         self.context.add_inst(InstEnt::new(
             IKind::Lit(ast.token.kind.clone()),
@@ -1077,13 +1061,13 @@ impl<'a> FunResolver<'a> {
                 TKind::Pointer(pointed, _) => {
                     let pointed = *pointed;
                     let prev_inst = self.inst_of(header);
-                    let value = self.new_value(current_type);
+                    let value = self.new_anonymous_value(current_type, mutable);
                     self.context[value].offset = offset;
                     let prev_inst = self.context.add_inst_under(
                         InstEnt::new(IKind::Offset(header), Some(value), &Token::default()),
                         prev_inst,
                     );
-                    let loaded = self.new_value(pointed);
+                    let loaded = self.new_anonymous_value(pointed, mutable);
                     self.context[loaded].mutable = mutable;
                     self.context.add_inst_under(
                         InstEnt::new(IKind::Load(value), Some(loaded), &token),
@@ -1106,7 +1090,6 @@ impl<'a> FunResolver<'a> {
         let val = &mut self.context[value];
         val.inst = Some(inst);
         val.offset = offset;
-        val.mutable = mutable;
         val.datatype = current_type;
 
         Ok(current_type)
@@ -1120,18 +1103,30 @@ impl<'a> FunResolver<'a> {
             .unwrap_or(self.context.function_body.insts.first().unwrap())
     }
 
-    fn new_auto_value(&mut self) -> Value {
-        self.new_value(self.auto())
+    pub fn add_variable(&mut self, name: ID, datatype: Type, mutable: bool) -> Value {
+        let val = self.new_value(name, datatype, mutable);
+        self.context.variables.push(Some(val));
+        val
     }
 
-    fn new_value(&mut self, datatype: Type) -> Value {
-        let value = ValueEnt::temp(datatype);
-        let value = self.context.function_body.values.add(value);
+    #[inline]
+    fn new_temp_value(&mut self, datatype: Type) -> Value {
+        self.new_anonymous_value(datatype, false)
+    }
+
+    #[inline]
+    fn new_anonymous_value(&mut self, datatype: Type, mutable: bool) -> Value {
+        self.new_value(ID::new(), datatype, mutable)
+    }
+
+    #[inline]
+    fn new_value(&mut self, name: ID, datatype: Type, mutable: bool) -> Value {
+        let mut value = ValueEnt::new(name, datatype, mutable);
         if self.is_auto(datatype) {
             let dep = self.context.new_type_dependency();
-            self.context[value].type_dependency = Some(dep);
+            value.type_dependency = Some(dep);
         }
-        value
+        self.context.function_body.values.add(value)
     }
 
     fn assignment(&mut self, ast: &Ast) -> ExprResult {
@@ -1190,7 +1185,7 @@ impl<'a> FunResolver<'a> {
             let (fun, id, kind) =
                 self.dot_find_or_instantiate(base, name, &mut types, first_mutable, &token)?;
             if id != ID::new() {
-                let value = self.new_value(self.program.builtin_repo.bool);
+                let value = self.new_anonymous_value(self.program.builtin_repo.bool, first_mutable);
                 self.field_access(args[0], id, value, &token)?;
                 args[0] = value;
             }
@@ -1628,7 +1623,7 @@ impl<'a> FunResolver<'a> {
                 name = name.combine(self.program.types.direct_to_id(datatype));
                 let name = ID::new().add(param.token.spam.deref());
                 let mutable = param_line.kind == AKind::FunArgument(true);
-                args.push(ValueEnt::new(name, datatype, None, mutable));
+                args.push(ValueEnt::new(name, datatype, mutable));
             }
         }
 
@@ -1957,11 +1952,6 @@ pub struct FunContext {
 }
 
 impl FunContext {
-    pub fn add_variable(&mut self, val: ValueEnt) -> Value {
-        let val = self.function_body.values.add(val);
-        self.variables.push(Some(val));
-        val
-    }
 
     pub fn find_variable(&mut self, name: ID) -> Option<Value> {
         self.variables

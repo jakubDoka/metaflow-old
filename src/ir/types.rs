@@ -144,9 +144,9 @@ impl<'a> TypeResolver<'a> {
                             .map(|field| self.program[field.datatype].align)
                             .max()
                             .unwrap_or(0);
-
+                        
                         if align != 0 {
-                            let calc = move |offset| align - offset % align;
+                            let calc = move |offset| align * ((offset & (align - 1)) != 0) as u32 - (offset & (align - 1));
 
                             for field in &mut structure.fields {
                                 self.materialize_datatype(field.datatype)?;

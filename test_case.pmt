@@ -1,25 +1,24 @@
 
-fun fib(v: i32) -> i32:
-  return if v < 2i32:
-    1i32
-  else:
-    fib(v - 1i32) + fib(v - 2i32)
+struct Point:
+  x, y: i64
 
-fun fib_loop(v: i32) -> i32:
-  var
-    a, b, c = 1i32
-    v = v
-  loop'a:
-    c = a + b
-    a = b
-    b = c
-    v = v - 1i32
-    if v == 1i32:
-      break'a
-  return c
+fun set(p: Point, x: i64, y: i64) -> Point:
+  var p = p
+  p.x = x
+  p.y = y
+  return p
+
+fun add(a, b: Point) -> Point:
+  var a = a
+  a.x = a.x + b.x
+  a.y = a.y + b.y
+  return a
 
 attr entry
-fun main -> i32:
-  let v = 10i32
-  return fib_loop(v) - fib(v)
+fun main -> i64:
+  var p, q: Point
+  p = p.set(1, 2)
+  q = q.set(3, 4)
+  p = p.add(q)
+  return p.x + p.y - 10
         

@@ -253,12 +253,13 @@ macro_rules! define_repo {
 
                 $(
                     let name = ID::new().add(stringify!($pointer_type));
+                    let size = program.isa().pointer_bytes() as u32;
                     let type_ent = TypeEnt {
                         visibility: Vis::Public,
                         kind: TKind::Builtin(program.isa().pointer_type()),
                         name,
-                        size: program.isa().pointer_bytes() as u32,
-                        align: program.isa().pointer_bytes() as u32,
+                        size,
+                        align: size,
                         module: program.builtin,
 
                         token_hint: Token::builtin(stringify!($pointer_type)),
@@ -563,13 +564,13 @@ pub struct ValueEnt {
 }
 
 impl ValueEnt {
-    pub fn new(name: ID, datatype: Type, type_dependency: Option<TypeDep>, mutable: bool) -> Self {
+    pub fn new(name: ID, datatype: Type, mutable: bool) -> Self {
         Self {
             name,
             datatype,
-            type_dependency,
             mutable,
-
+            
+            type_dependency: None,
             inst: None,
             value: FinalValue::None,
             offset: 0,

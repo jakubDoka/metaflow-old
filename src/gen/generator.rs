@@ -69,6 +69,8 @@ impl<'a> Generator<'a> {
 
             builder.finalize();
 
+            println!("{}", ctx.func.display());
+
             ctx.compute_cfg();
             ctx.compute_domtree();
             ctx.compute_loop_analysis();
@@ -134,9 +136,6 @@ impl<'a> Generator<'a> {
         loop {
             let inst = &self.program[fun].body.insts[current];
             let value = inst.value;
-            let datatype = value
-                .map(|v| self.program[fun].body.values[v].datatype)
-                .unwrap_or_else(|| self.program.builtin_repo.auto);
 
             match &inst.kind {
                 IKind::Call(id, args) => {
@@ -171,8 +170,9 @@ impl<'a> Generator<'a> {
                 IKind::VarDecl(init) => {
                     let init = *init;
                     let value = value.unwrap();
+                    let datatype = self.program[fun].body.values[value].datatype;
                     let size = self.program[datatype].size;
-                    let size = size + 8 - size & 7; // align
+                    let size = size + 8 * ((size & 7) != 0) as u32 - (size & 7); // align
                     let val = &mut self.program[fun].body.values[value];
                     if val.on_stack {
                         let data = StackSlotData::new(StackSlotKind::ExplicitSlot, size);
@@ -185,7 +185,7 @@ impl<'a> Generator<'a> {
                         builder.declare_var(var, self.repr_of(datatype));
                         self.assign_val(fun, value, init, builder)
                     } else {
-                        let val = self.unwrap_val(fun, value, builder);
+                        let val = self.unwrap_val(fun, init, builder);
                         self.program[fun].body.values[value].value = FinalValue::Value(val);
                     }
                 }
@@ -193,6 +193,8 @@ impl<'a> Generator<'a> {
                     self.program[fun].body.values[value.unwrap()].value = FinalValue::Zero;
                 }
                 IKind::Lit(lit) => {
+                    let value = value.unwrap();
+                    let datatype = self.program[fun].body.values[value].datatype;
                     let repr = self.repr_of(datatype);
                     let lit = match lit {
                         LTKind::Int(val, _) => builder.ins().iconst(repr, *val),
@@ -209,7 +211,7 @@ impl<'a> Generator<'a> {
                         LTKind::String(_) => todo!(),
                         lit => todo!("{}", lit),
                     };
-                    self.program[fun].body.values[value.unwrap()].value = FinalValue::Value(lit);
+                    self.program[fun].body.values[value].value = FinalValue::Value(lit);
                 }
                 IKind::Return(value) => {
                     if let Some(value) = value {
@@ -221,7 +223,7 @@ impl<'a> Generator<'a> {
                 }
                 IKind::Assign(other) => {
                     let other = *other;
-                    self.assign_val(fun, value.unwrap(), other, builder);
+                    self.assign_val(fun, other, value.unwrap(), builder);
                 }
                 IKind::Jump(block, values) => {
                     let block = *block;
@@ -458,22 +460,25 @@ impl<'a> Generator<'a> {
 
             signature.clear(call_conv);
 
-            for arg in self.program[fun].signature().args.iter() {
-                let repr = self.repr_of(arg.datatype);
-
-                signature.params.push(AbiParam::new(repr));
-            }
-
+            
             if let Some(return_type) = self.program[fun].signature().return_type {
                 let repr = self.repr_of(return_type);
 
                 let purpose = if self.on_stack(return_type) {
+                    signature.params.push(AbiParam::new(repr));
                     ArgumentPurpose::StructReturn
                 } else {
                     ArgumentPurpose::Normal
                 };
 
                 signature.returns.push(AbiParam::special(repr, purpose));
+                
+            }
+
+            for arg in self.program[fun].signature().args.iter() {
+                let repr = self.repr_of(arg.datatype);
+
+                signature.params.push(AbiParam::new(repr));
             }
 
             let alias = if let Some(attr) = self.program.get_attr(fun, "entry") {
@@ -553,7 +558,7 @@ impl<'a> Generator<'a> {
                 let value = self.unwrap_val(fun, source, builder);
                 builder.def_var(var, value);
             }
-            kind => unreachable!("{:?} {:?}", kind, self.program[fun].body.insts[target.inst.unwrap()].token_hint),
+            kind => unreachable!("{:?}", kind),
         };
     }
 

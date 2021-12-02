@@ -288,6 +288,7 @@ fun add(a, b: Point) -> Point:
   a.y = a.y + b.y
   return a
 
+attr entry
 fun main -> i64:
   var p, q: Point
   p = p.set(1, 2)
