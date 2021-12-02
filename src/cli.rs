@@ -17,51 +17,44 @@ impl Arguments {
             args: vec![],
         };
 
-        loop {
-            let mut arg = match args.next() {
-                Some(arg) => arg,
-                None => break,
-            };
-
-            if arg.starts_with("--") || arg.starts_with("-") {
-                let i = if arg.starts_with("--") { 2 } else { 1 };
-
-                arg.replace_range(..i, "");
-
-                if arg.ends_with(":") {
-                    arg.pop();
-                    let value = args
-                        .next()
-                        .ok_or_else(|| ArgumentError::MissingValue(arg.clone()))?;
-                    result.field_flags.push((arg, value));
-                } else {
-                    result.flags.push(arg);
-                }
+        while let Some(mut arg) = args.next() {
+            if arg.starts_with("--") {
+                arg.replace_range(0..2, "");
+                let mut value = args
+                    .next()
+                    .ok_or_else(|| ArgumentError::MissingValue(arg.clone()))?;
+                Self::collect_arg(&mut value, &mut args);
+                result.field_flags.push((arg, value));
                 continue;
             }
 
-            if arg.starts_with('"') {
-                loop {
-                    let rest = match args.next() {
-                        Some(rest) => rest,
-                        None => break,
-                    };
-
-                    arg.push(' ');
-                    arg.push_str(&rest);
-
-                    if rest.ends_with('"') {
-                        arg.remove(0);
-                        arg.pop();
-                        break;
-                    }
-                }
+            if arg.starts_with("-") {
+                arg.replace_range(0..1, "");
+                result.flags.push(arg);
+                continue;
             }
+
+            Self::collect_arg(&mut arg, &mut args);
 
             result.args.push(arg);
         }
 
         Ok(result)
+    }
+
+    fn collect_arg<T: Iterator<Item = String>>(arg: &mut String, args: &mut T) {
+        if arg.starts_with('"') {
+            arg.remove(0);
+            while let Some(rest) = args.next() {
+                arg.push(' ');
+                arg.push_str(&rest);
+
+                if rest.ends_with('"') {
+                    arg.pop();
+                    break;
+                }
+            }
+        }
     }
 
     pub fn from_str(s: &str) -> Result<Arguments, ArgumentError> {
@@ -98,7 +91,7 @@ pub fn test() {
     println!(
         "{:?}",
         Arguments::new(
-            "file arg -flag --flag: value arg --flag"
+            "file arg -flag --flag value arg -flag"
                 .split(" ")
                 .map(|s| s.to_string())
         )

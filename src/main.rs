@@ -61,5 +61,5 @@ fn test() {
     lexer::test();
     ast::test();
     ir::test();
-    //ir_gen::gen::test();
+    gen::test();
 }

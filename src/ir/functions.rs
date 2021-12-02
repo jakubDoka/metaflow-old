@@ -60,7 +60,10 @@ impl<'a> FunResolver<'a> {
         let fun = &mut self.program.functions[function];
 
         let signature = match &mut fun.kind {
-            FKind::Normal(signature) => std::mem::take(signature),
+            FKind::Normal(signature) => FunSignature {
+                args: std::mem::take(&mut signature.args),
+                return_type: signature.return_type.clone(),
+            },
             _ => unreachable!(),
         };
 
@@ -451,7 +454,7 @@ impl<'a> FunResolver<'a> {
 
     fn expr(&mut self, ast: &Ast) -> Result<Value> {
         self.expr_low(ast)?
-            .ok_or_else(|| FunError::new(FEKind::ExpectedValue, &ast.token))
+            .ok_or_else(||  panic!(""))//FunError::new(FEKind::ExpectedValue, &ast.token))
     }
 
     fn expr_low(&mut self, ast: &Ast) -> ExprResult {
@@ -541,6 +544,7 @@ impl<'a> FunResolver<'a> {
         let datatype = self.context[header].datatype;
         if self.is_auto(datatype) {
             let value = self.new_auto_value();
+            self.pass_mutability(header, value);
             let inst = self.context.add_inst(InstEnt::new(
                 IKind::UnresolvedDot(header, field),
                 Some(value),
@@ -822,6 +826,7 @@ impl<'a> FunResolver<'a> {
             let fun =
                 self.smart_find_or_instantiate(base_name, name, &mut values, dot_call, token)?;
             let return_type = self.program[fun].signature().return_type;
+            
             let value = return_type.map(|t| self.new_value(t));
             self.context
                 .add_inst(InstEnt::new(IKind::Call(fun, values), value, token));
@@ -1053,6 +1058,7 @@ impl<'a> FunResolver<'a> {
         value: Value,
         token: &Token,
     ) -> Result<Type> {
+        let mutable = self.context[header].mutable;
         let header_datatype = self.context[header].datatype;
         let mut path = vec![];
         if !self.find_field(header_datatype, field, &mut path) {
@@ -1078,6 +1084,7 @@ impl<'a> FunResolver<'a> {
                         prev_inst,
                     );
                     let loaded = self.new_value(pointed);
+                    self.context[loaded].mutable = mutable;
                     self.context.add_inst_under(
                         InstEnt::new(IKind::Load(value), Some(loaded), &token),
                         prev_inst,
@@ -1095,7 +1102,7 @@ impl<'a> FunResolver<'a> {
             inst,
         );
 
-        let mutable = self.context[header].mutable;
+        
         let val = &mut self.context[value];
         val.inst = Some(inst);
         val.offset = offset;
@@ -1132,6 +1139,10 @@ impl<'a> FunResolver<'a> {
         let value = self.expr(&ast[2])?;
         let target_datatype = self.context[target].datatype;
         let value_datatype = self.context[value].datatype;
+
+        if !self.context[target].mutable {
+            return Err(FunError::new(FEKind::AssignToImmutable, &ast.token));
+        }
 
         let unresolved = if self.is_auto(target_datatype) {
             if !self.is_auto(value_datatype) {
@@ -1854,8 +1865,14 @@ impl<'a> FunResolver<'a> {
             .pointer_to(datatype, mutable)
     }
 
+    #[inline]
     pub fn is_pointer(&self, datatype: Type) -> bool {
         matches!(self.program[datatype].kind, TKind::Pointer(_, _))
+    }
+
+    #[inline]
+    fn pass_mutability(&mut self, from: Value, to: Value) {
+        self.context[to].mutable = self.context[from].mutable;
     }
 }
 
@@ -2118,6 +2135,7 @@ impl<'a> Display for FunErrorDisplay<'a> {
             writeln!(f, "{}", TokenView::new(&self.error.token))?;
         }
         match &self.error.kind {
+            FEKind::AssignToImmutable => writeln!(f, "cannot assign to immutable value"),
             FEKind::TypeError(kind) => {
                 writeln!(f, "{}", TypeError::new(kind.clone(), &self.error.token))
             }
@@ -2212,6 +2230,7 @@ impl FunError {
 pub enum FEKind {
     TypeError(TEKind),
     Redefinition(Token),
+    AssignToImmutable,
     ExpectedValue,
     TypeMismatch(Type, Type),
     FunctionNotFound(String, Vec<Type>),

@@ -23,15 +23,17 @@ impl Attributes {
         while i < ast.len() {
             if ast[i].kind != AKind::Attribute {
                 for &stacked in &self.stack {
-                    let id = ID::new()
-                        .add(self.map[stacked][0].token.spam.deref())
-                        .add(i);
-                    self.map.redirect(id, stacked);
+                    for attr in 1..self.map[stacked].len() {
+                        let id = ID::new()
+                            .add(self.map[stacked][attr][0].token.spam.raw())
+                            .add(marker);
+                        self.map.redirect(id, stacked);
+                    }
                 }
                 if marker < i {
                     ast.drain(marker..i).for_each(|mut attr| {
                         attr.drain(..).for_each(|ast| {
-                            let id = ID::new().add(ast[0].token.spam.deref()).add(i);
+                            let id = ID::new().add(ast[0].token.spam.deref()).add(marker);
                             let (_, id) = self.map.insert(id, ast);
                             match self.map[id][0].token.spam.deref() {
                                 "push" => {

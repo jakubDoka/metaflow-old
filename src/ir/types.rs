@@ -128,29 +128,35 @@ impl<'a> TypeResolver<'a> {
         self.context.instance_buffer.push(datatype);
 
         let mut kind = std::mem::take(&mut self.program[datatype].kind);
-        let size = match &mut kind {
-            TKind::Pointer(..) => self.program.isa().pointer_bytes() as u32,
+        let (size, align) = match &mut kind {
+            TKind::Pointer(..) => {
+                let size = self.program.isa().pointer_bytes() as u32;
+                (size, size)
+            }
             TKind::Structure(structure) => {
                 let mut size = 0;
+                let mut align = 0;
                 match structure.kind {
                     SKind::Struct => {
-                        let align = structure
+                        align = structure
                             .fields
                             .iter()
                             .map(|field| self.program[field.datatype].align)
                             .max()
                             .unwrap_or(0);
 
-                        let calc = move |offset| align - offset % align;
+                        if align != 0 {
+                            let calc = move |offset| align - offset % align;
 
-                        for field in &mut structure.fields {
-                            self.materialize_datatype(field.datatype)?;
+                            for field in &mut structure.fields {
+                                self.materialize_datatype(field.datatype)?;
+                                size += calc(size);
+                                field.offset = size;
+                                size += self.program[field.datatype].size;
+                            }
+
                             size += calc(size);
-                            field.offset = size;
-                            size += self.program[field.datatype].size;
                         }
-
-                        size += calc(size);
                     }
                     SKind::Union => {
                         for field in &mut structure.fields {
@@ -159,7 +165,7 @@ impl<'a> TypeResolver<'a> {
                         }
                     }
                 }
-                size
+                (size, align)
             }
             _ => unreachable!(),
         };
@@ -167,6 +173,7 @@ impl<'a> TypeResolver<'a> {
         let dt = &mut self.program[datatype];
         dt.kind = kind;
         dt.size = size;
+        dt.align = align;
 
         self.context
             .instance_buffer

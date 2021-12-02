@@ -4,9 +4,14 @@ pub mod globals;
 pub mod module_tree;
 pub mod types;
 
-use std::ops::{Index, IndexMut, RangeInclusive};
+use std::ops::{Index, IndexMut};
 
-use cranelift_codegen::{ir, ir::{Signature, StackSlot, types::*}, isa::TargetIsa, settings};
+use cranelift_codegen::{
+    ir,
+    ir::{types::*, Signature, StackSlot},
+    isa::TargetIsa,
+    settings,
+};
 use cranelift_frontend::Variable;
 use cranelift_module::{FuncId, Module};
 use cranelift_object::{ObjectBuilder, ObjectModule};
@@ -115,7 +120,7 @@ impl Program {
         ][..];
 
         let builtin_unary_ops = [
-            ("~", integer_types),
+            ("~ +", integer_types),
             (
                 "-",
                 &[
@@ -138,10 +143,13 @@ impl Program {
                         visibility: Vis::Public,
                         name: ID::new().add(op).combine(datatype_id),
                         module,
-                        kind: FKind::Builtin(FunSignature {
-                            args: vec![ValueEnt::temp(datatype)],
-                            return_type: Some(datatype),
-                        }),
+                        kind: FKind::Builtin(
+                            FunSignature {
+                                args: vec![ValueEnt::temp(datatype)],
+                                return_type: Some(datatype),
+                            },
+                            op,
+                        ),
                         token_hint: Default::default(),
                         body: Default::default(),
                         ast: AstRef::new(usize::MAX),
@@ -161,7 +169,7 @@ impl Program {
                 "+ - * / == != >= <= > <",
                 &[self.builtin_repo.f32, self.builtin_repo.f64][..],
             ),
-            ("&& || ^^", &[self.builtin_repo.bool][..]),
+            ("&& || ^ | &", &[self.builtin_repo.bool][..]),
         ];
 
         for &(operators, types) in builtin_bin_ops.iter() {
@@ -177,10 +185,13 @@ impl Program {
                         visibility: Vis::Public,
                         name: ID::new().add(op).combine(datatype_id).combine(datatype_id),
                         module,
-                        kind: FKind::Builtin(FunSignature {
-                            args: vec![ValueEnt::temp(datatype), ValueEnt::temp(datatype)],
-                            return_type: Some(return_type),
-                        }),
+                        kind: FKind::Builtin(
+                            FunSignature {
+                                args: vec![ValueEnt::temp(datatype), ValueEnt::temp(datatype)],
+                                return_type: Some(return_type),
+                            },
+                            op,
+                        ),
 
                         token_hint: Default::default(),
                         body: Default::default(),
@@ -386,7 +397,7 @@ impl FunEnt {
     pub fn signature(&self) -> &FunSignature {
         match &self.kind {
             FKind::Normal(sig) => sig,
-            FKind::Builtin(sig) => sig,
+            FKind::Builtin(sig, _) => sig,
             _ => panic!("cannot access signature on {:?}", self.kind),
         }
     }
@@ -490,7 +501,7 @@ pub struct Loop {
 #[derive(Debug, Clone)]
 pub enum FKind {
     Unresolved,
-    Builtin(FunSignature),
+    Builtin(FunSignature, &'static str),
     Generic(GenericSignature),
     Normal(FunSignature),
 }
@@ -650,6 +661,29 @@ pub struct Field {
     pub name: ID,
     pub datatype: Type,
     pub token_hint: Token,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub enum BTKind {
+    Int,
+    Uint,
+    Float(u8),
+    Bool,
+    Ptr,
+}
+
+impl BTKind {
+    pub fn of(tp: Type) -> Self {
+        match SymID::raw(&tp) {
+            0..=3 | 14 => Self::Int,
+            4..=7 | 13 => Self::Uint,
+            8 => Self::Float(32),
+            9 => Self::Float(64),
+            10 => Self::Bool,
+            12 => Self::Ptr,
+            _ => panic!("cannot get builtin type of {:?}", tp),
+        }
+    }
 }
 
 pub fn test() {

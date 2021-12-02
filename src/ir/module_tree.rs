@@ -35,8 +35,12 @@ impl<'a> ModuleTreeBuilder<'a> {
     pub fn build(mut self, root: &str) -> Result<()> {
         self.program.build_builtin();
 
-        self.base = root[..root.rfind('/').map(|i| i + 1).unwrap_or(root.len())].to_string();
-        self.load_module(&root[root.rfind('/').unwrap_or(0)..], &Token::default())?;
+        self.base = root[..root.rfind('/').map(|i| i + 1).unwrap_or(0)].to_string();
+        self.load_module(
+            &root[root.rfind('/').map(|i| i + 1).unwrap_or(0)
+                ..root.rfind('.').unwrap_or(root.len())],
+            &Token::default(),
+        )?;
 
         Ok(())
     }
@@ -49,7 +53,7 @@ impl<'a> ModuleTreeBuilder<'a> {
         if let Some(idx) = self.import_stack.iter().position(|&m| m == id) {
             let absolute_path = Path::new(self.buffer.as_str())
                 .canonicalize()
-                .map_err(|err| ModuleTreeError::new(MTEKind::Io(err), token))?
+                .map_err(|err| ModuleTreeError::new(MTEKind::Io(self.buffer.clone(), err), token))?
                 .to_str()
                 .ok_or_else(|| ModuleTreeError::new(MTEKind::NonUTF8Path, token))?
                 .to_string();
@@ -83,10 +87,10 @@ impl<'a> ModuleTreeBuilder<'a> {
         }
 
         let file = std::fs::read_to_string(self.buffer.as_str())
-            .map_err(|err| ModuleTreeError::new(MTEKind::Io(err), token))?;
+            .map_err(|err| ModuleTreeError::new(MTEKind::Io(self.buffer.clone(), err), token))?;
         let absolute_path = Path::new(self.buffer.as_str())
             .canonicalize()
-            .map_err(|err| ModuleTreeError::new(MTEKind::Io(err), token))?
+            .map_err(|err| ModuleTreeError::new(MTEKind::Io(self.buffer.clone(), err), token))?
             .to_str()
             .ok_or_else(|| ModuleTreeError::new(MTEKind::NonUTF8Path, token))?
             .to_string();
@@ -186,7 +190,7 @@ impl Into<ModuleTreeError> for AstError {
 
 #[derive(Debug)]
 pub enum MTEKind {
-    Io(std::io::Error),
+    Io(String, std::io::Error),
     Ast(AEKind),
     NonUTF8Path,
     NoFileStem,

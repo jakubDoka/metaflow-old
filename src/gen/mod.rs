@@ -161,6 +161,7 @@ pub enum GEKind {
     TooShortAttribute(usize, usize),
     InvalidCallConv,
     InvalidLinkage,
+    DuplicateEntrypoint(Token),
     TypeError(TypeError),
     ModuleTreeError(ModuleTreeError),
     FunError(FunError),
@@ -183,6 +184,7 @@ impl Into<GenError> for GEKind {
 pub fn test() {
     test_sippet(
         r#"
+attr entry
 fun main -> i64:
   return 0
         "#,
@@ -190,6 +192,7 @@ fun main -> i64:
     );
     test_sippet(
         r#"
+attr entry
 fun main -> i64:
   return 1 - 1
         "#,
@@ -197,6 +200,7 @@ fun main -> i64:
     );
     test_sippet(
         r#"
+attr entry
 fun main -> i64:
   return 1 + 1
         "#,
@@ -204,6 +208,7 @@ fun main -> i64:
     );
     test_sippet(
         r#"
+attr entry
 fun main -> i64:
   return if 1 == 1: 0 else: 1
         "#,
@@ -230,6 +235,7 @@ fun fib_loop(v: i32) -> i32:
       break'a
   return c
 
+attr entry
 fun main -> i32:
   let v = 10i32
   return fib_loop(v) - fib(v)
@@ -249,6 +255,7 @@ struct Rect:
   mi: Point
   ma: Point
 
+attr entry
 fun main -> i64:
   var
     p: Point
@@ -292,6 +299,7 @@ fun main -> i64:
     );
     test_sippet(
         r#"
+attr entry
 fun main -> i64:
   var a: i64
   ++a
@@ -302,6 +310,7 @@ fun main -> i64:
     );
     test_sippet(
         r#"
+attr entry
 fun main -> i64:
   var a = 1.0
   loop:
@@ -317,6 +326,7 @@ fun main -> i64:
 attr linkage(import), call_conv(windows_fastcall)
 fun putchar(i: i32)
 
+attr entry
 fun main -> i64:
   var
     a = "Hello, World!"
@@ -340,6 +350,7 @@ fun init(v: &var Point, x: i64, y: i64) -> Point:
   v.x = x
   v.y = y
 
+attr entry
 fun main -> i64:
   var p: Point
   (&p).init(2, 2)
