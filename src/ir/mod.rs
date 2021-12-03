@@ -147,6 +147,7 @@ impl Program {
                             FunSignature {
                                 args: vec![ValueEnt::temp(datatype)],
                                 return_type: Some(datatype),
+                                struct_return: false,
                             },
                             op,
                         ),
@@ -189,6 +190,7 @@ impl Program {
                             FunSignature {
                                 args: vec![ValueEnt::temp(datatype), ValueEnt::temp(datatype)],
                                 return_type: Some(return_type),
+                                struct_return: false,
                             },
                             op,
                         ),
@@ -417,6 +419,50 @@ impl FunBody {
     }
 }
 
+#[derive(Debug, Clone)]
+pub enum FKind {
+    Unresolved,
+    Builtin(FunSignature, &'static str),
+    Generic(GenericSignature),
+    Normal(FunSignature),
+}
+
+#[derive(Debug, Clone)]
+pub struct GenericSignature {
+    pub params: Vec<ID>,
+    pub elements: Vec<GenericElement>,
+    pub return_index: usize,
+    pub arg_count: usize,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum GenericElement {
+    ScopeStart,
+    ScopeEnd,
+    Pointer(bool),
+    Element(Type, Option<Type>),
+    Parameter(usize),
+    NextArgument(usize, usize),
+    NextReturn(bool),
+}
+
+impl GenericElement {
+    pub fn compare(&self, other: &Self) -> bool {
+        match (self, other) {
+            (GenericElement::Element(id1, _), GenericElement::Element(id2, _)) => id1 == id2,
+            _ => self == other,
+        }
+    }
+}
+
+#[derive(Debug, Default, Clone)]
+pub struct FunSignature {
+    pub args: Vec<ValueEnt>,
+    pub return_type: Option<Type>,
+    pub struct_return: bool,
+}
+
+
 crate::sym_id!(Inst);
 
 #[derive(Debug, Default, Clone)]
@@ -497,48 +543,6 @@ pub struct Loop {
     name: ID,
     start_block: Inst,
     end_block: Inst,
-}
-
-#[derive(Debug, Clone)]
-pub enum FKind {
-    Unresolved,
-    Builtin(FunSignature, &'static str),
-    Generic(GenericSignature),
-    Normal(FunSignature),
-}
-
-#[derive(Debug, Clone)]
-pub struct GenericSignature {
-    pub params: Vec<ID>,
-    pub elements: Vec<GenericElement>,
-    pub return_index: usize,
-    pub arg_count: usize,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub enum GenericElement {
-    ScopeStart,
-    ScopeEnd,
-    Pointer(bool),
-    Element(Type, Option<Type>),
-    Parameter(usize),
-    NextArgument(usize, usize),
-    NextReturn(bool),
-}
-
-impl GenericElement {
-    pub fn compare(&self, other: &Self) -> bool {
-        match (self, other) {
-            (GenericElement::Element(id1, _), GenericElement::Element(id2, _)) => id1 == id2,
-            _ => self == other,
-        }
-    }
-}
-
-#[derive(Debug, Default, Clone)]
-pub struct FunSignature {
-    pub args: Vec<ValueEnt>,
-    pub return_type: Option<Type>,
 }
 
 crate::sym_id!(GlobalValue);

@@ -92,7 +92,8 @@ impl<'a> Generator<'a> {
     }
 
     fn body(&mut self, fun: Fun, builder: &mut FunctionBuilder) -> Result {
-        let mut current = self.program[fun].body.insts.first().unwrap();
+        let entry_block = self.program[fun].body.insts.first().unwrap();
+        let mut current = entry_block;
 
         let mut buffer = std::mem::take(&mut self.context.block_buffer);
 
@@ -139,16 +140,29 @@ impl<'a> Generator<'a> {
 
             match &inst.kind {
                 IKind::Call(id, args) => {
+                    let id = *id;
                     
+                    let other = &self.program[id];
                     
-                    let other = &self.program[*id];
-                    
+                    arg_buffer.clear();
+                    arg_buffer.extend(args);
+
                     if let FKind::Builtin(_, name) = other.kind {
-                        arg_buffer.clear();
-                        arg_buffer.extend(args);
+                        
                         self.call_builtin(fun, name, &arg_buffer, value, builder);
                     } else {
                         let object_id = other.object_id.unwrap();
+                        let sig = other.signature();
+                        let struct_return = sig.struct_return;
+
+                        if struct_return {
+                            let datatype = sig.return_type.unwrap();
+                            let size = self.program[datatype].size;
+                            let last = arg_buffer[arg_buffer.len() - 1];
+                            let data = StackSlotData::new(StackSlotKind::ExplicitSlot, size);
+                            let slot = builder.create_stack_slot(data);
+                            self.program[fun].body.values[last].value = FinalValue::StackSlot(slot);
+                        }
 
                         let fun_ref = self
                             .program
@@ -157,7 +171,7 @@ impl<'a> Generator<'a> {
 
                         
                         call_buffer.clear();
-                        call_buffer.extend(args.iter().map(|&a| self.unwrap_val(fun, a, builder)));
+                        call_buffer.extend(arg_buffer.iter().map(|&a| self.unwrap_val(fun, a, builder)));
 
                         let inst = builder.ins().call(fun_ref, &call_buffer);
 
@@ -473,10 +487,17 @@ impl<'a> Generator<'a> {
                 signature.returns.push(AbiParam::special(repr, purpose));
             }
 
-            for arg in self.program[fun].signature().args.iter() {
+            let sig = self.program[fun].signature();
+
+            for arg in sig.args.iter() {
                 let repr = self.repr_of(arg.datatype);
 
                 signature.params.push(AbiParam::new(repr));
+            }
+
+            if sig.struct_return {
+                let last = signature.params.len() - 1;
+                signature.params[last].purpose = ArgumentPurpose::StructReturn;
             }
 
             let alias = if let Some(attr) = self.program.get_attr(fun, "entry") {

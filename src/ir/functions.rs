@@ -63,6 +63,7 @@ impl<'a> FunResolver<'a> {
             FKind::Normal(signature) => FunSignature {
                 args: std::mem::take(&mut signature.args),
                 return_type: signature.return_type.clone(),
+                struct_return: signature.struct_return,
             },
             _ => unreachable!(),
         };
@@ -95,6 +96,10 @@ impl<'a> FunResolver<'a> {
             self.context.variables.push(Some(var));
         });
 
+        if signature.struct_return {
+            self.context.struct_return = Some(self.context.variables.pop().unwrap().unwrap());
+        }
+
         let value = self.block(&ast[1])?;
 
         if let (Some(value), Some(_), Some(return_type)) =
@@ -104,6 +109,16 @@ impl<'a> FunResolver<'a> {
             if self.is_auto(value_type) {
                 self.infer(value, return_type)?;
             }
+            let value = if let Some(struct_return) = self.context.struct_return {
+                self.context.add_inst(InstEnt::new(
+                    IKind::Assign(struct_return),
+                    Some(value),
+                    &Token::default(),
+                ));
+                struct_return
+            } else {
+                value
+            };
             self.context.add_inst(InstEnt::new(
                 IKind::Return(Some(value)),
                 None,
@@ -112,14 +127,24 @@ impl<'a> FunResolver<'a> {
         } else if let (Some(return_type), Some(_)) =
             (signature.return_type, self.context.current_block)
         {
-            let temp = self.new_temp_value(return_type);
+            let value = self.new_temp_value(return_type);
             self.context.add_inst(InstEnt::new(
                 IKind::ZeroValue,
-                Some(temp),
+                Some(value),
                 &ast[1].last().unwrap().token,
             ));
+            let value = if let Some(struct_return) = self.context.struct_return {
+                self.context.add_inst(InstEnt::new(
+                    IKind::Assign(struct_return),
+                    Some(value),
+                    &Token::default(),
+                ));
+                struct_return
+            } else {
+                value
+            };
             self.context.add_inst(InstEnt::new(
-                IKind::Return(Some(temp)),
+                IKind::Return(Some(value)),
                 None,
                 &ast[1].last().unwrap().token,
             ));
@@ -140,57 +165,21 @@ impl<'a> FunResolver<'a> {
 
         assert!(self.context.current_module == Some(module));
 
+        let mut frontier = std::mem::take(&mut self.context.second_graph_frontier);
         let mut unresolved = std::mem::take(&mut self.context.unresolved_functions);
-        for dep in unresolved.drain(..) {
-            let inst = &mut self.context[dep];
-            match &mut inst.kind {
-                IKind::UnresolvedCall(fun, name, dot_call, args) => {
-                    let fun = *fun;
-                    let dot_call = *dot_call;
-                    let mut args = std::mem::take(args);
-                    let name = *name;
-                    inst.kind = IKind::NoOp;
-
-                    let token = inst.token_hint.clone();
-                    assert!(self.context.current_module == Some(module));
-                    let fun =
-                        self.smart_find_or_instantiate(fun, name, &mut args, dot_call, &token)?;
-
-                    let mut types = std::mem::take(&mut self.context.type_buffer);
-                    types.clear();
-                    types.extend(
-                        self.program[fun]
-                            .signature()
-                            .args
-                            .iter()
-                            .map(|arg| arg.datatype),
-                    );
-                    for (datatype, value) in types.iter().zip(args.iter()) {
-                        if self.is_auto(self.context[*value].datatype) {
-                            self.infer(*value, *datatype)?;
-                        }
-                    }
-
-                    let datatype = self.program[fun].signature().return_type;
-                    let inst = &mut self.context[dep];
-                    let value = inst.value;
-                    inst.kind = IKind::Call(fun, args);
-
-                    if let (Some(value), Some(datatype)) = (value, datatype) {
-                        self.infer(value, datatype)?;
-                    } else if let Some(dependency) = self.context[value.unwrap()].type_dependency {
-                        if self.context[dependency].len() > 1 {
-                            return Err(FunError::new(FEKind::ExpectedValue, &token));
-                        }
-                        self.context[dependency].clear();
-                        self.context[dep].value = None;
-                    } else {
-                        self.context[dep].value = None;
-                    }
+        for inst in unresolved.drain(..) {
+            match &self.context[inst].kind {
+                IKind::UnresolvedCall(..) => {
+                    self.infer_call(inst, &mut frontier)?;
                 }
                 _ => (),
             }
+
+            for (value, datatype) in frontier.drain(..) {
+                self.infer(value, datatype)?;
+            }
         }
+        self.context.second_graph_frontier = frontier;
 
         for (id, dep) in self.context.type_graph.iter() {
             if dep.len() > 0 {
@@ -323,13 +312,21 @@ impl<'a> FunResolver<'a> {
         let value = if ast[0].kind == AKind::None {
             if let Some(datatype) = datatype {
                 let temp_value = self.new_temp_value(datatype);
-
                 self.context.add_inst(InstEnt::new(
                     IKind::ZeroValue,
                     Some(temp_value),
                     &Token::default(),
                 ));
-                Some(temp_value)
+                if let Some(struct_return) = self.context.struct_return {
+                    self.context.add_inst(InstEnt::new(
+                        IKind::Assign(struct_return),
+                        Some(temp_value),
+                        &Token::default(),
+                    ));
+                    Some(struct_return)
+                } else {
+                    Some(temp_value)
+                }
             } else {
                 None
             }
@@ -344,7 +341,16 @@ impl<'a> FunResolver<'a> {
                 self.assert_type(actual_type, datatype, &ast[0].token)?;
             }
 
-            Some(value)
+            if let Some(struct_return) = self.context.struct_return {
+                self.context.add_inst(InstEnt::new(
+                    IKind::Assign(struct_return),
+                    Some(value),
+                    &Token::default(),
+                ));
+                Some(struct_return)
+            } else {
+                Some(value)
+            }
         };
 
         self.context
@@ -809,9 +815,18 @@ impl<'a> FunResolver<'a> {
             self.context.call_value_buffer = unresolved;
             let fun =
                 self.smart_find_or_instantiate(base_name, name, &mut values, dot_call, token)?;
-            let return_type = self.program[fun].signature().return_type;
+            let sig = self.program[fun].signature();
+            let struct_return = sig.struct_return;
+            let return_type = sig.return_type;
             
-            let value = return_type.map(|t| self.new_temp_value(t));
+            let value = return_type.map(|t| {
+                let value = self.new_anonymous_value(t, struct_return);
+                if struct_return {
+                    values.push(value);
+                }
+                value
+            });
+            
             self.context
                 .add_inst(InstEnt::new(IKind::Call(fun, values), value, token));
             value
@@ -953,34 +968,8 @@ impl<'a> FunResolver<'a> {
                         let value = inst.value.unwrap();
                         frontier.push((value, datatype));
                     }
-                    IKind::UnresolvedCall(base_id, name, dot_expr, args) => {
-                        let mut args = std::mem::take(args);
-                        let base_id = *base_id;
-                        let dot_expr = *dot_expr;
-                        let name = *name;
-
-                        let fun = self.smart_find_or_instantiate(
-                            base_id, name, &mut args, dot_expr, &token,
-                        )?;
-
-                        let inst = &mut self.context[dep];
-                        inst.kind = IKind::Call(fun, args);
-                        let value = inst.value;
-                        let datatype = self.program[fun].signature().return_type;
-
-                        if let (Some(value), Some(datatype)) = (value, datatype) {
-                            frontier.push((value, datatype));
-                        } else if let Some(dependency) =
-                            self.context[value.unwrap()].type_dependency
-                        {
-                            if self.context[dependency].len() > 1 {
-                                return Err(FunError::new(FEKind::ExpectedValue, &token));
-                            }
-                            self.context[dependency].clear();
-                            self.context[dep].value = None;
-                        } else {
-                            self.context[dep].value = None;
-                        }
+                    IKind::UnresolvedCall(..) => {
+                        self.infer_call(dep, &mut frontier)?;
                     }
                     IKind::ZeroValue => {
                         let value = inst.value.unwrap();
@@ -1022,7 +1011,7 @@ impl<'a> FunResolver<'a> {
                         };
                         frontier.push((val, datatype));
                     }
-                    IKind::NoOp => (),
+                    IKind::NoOp | IKind::Call(..) => (),
                     _ => todo!("{:?}", inst),
                 }
             }
@@ -1032,6 +1021,62 @@ impl<'a> FunResolver<'a> {
 
         self.context.graph_frontier = frontier;
 
+        Ok(())
+    }
+
+    fn infer_call(&mut self, inst: Inst, frontier: &mut Vec<(Value, Type)>) -> Result {
+        let (name, dot_expr, base_id, mut args) = match std::mem::take(&mut self.context[inst].kind) {
+            IKind::UnresolvedCall(base_id, name, dot_expr, args) => (name, dot_expr, base_id, args),
+            _ => unreachable!(),
+        };
+
+        let token = self.context[inst].token_hint.clone();
+
+        let fun = self.smart_find_or_instantiate(
+            base_id, name, &mut args, dot_expr, &token,
+        )?;
+
+        if self.context[inst].unresolved != 0 {
+            let mut types = std::mem::take(&mut self.context.type_buffer);
+            types.clear();
+            types.extend(
+                self.program[fun]
+                    .signature()
+                    .args
+                    .iter()
+                    .map(|arg| arg.datatype),
+            );
+            for (&datatype, &value) in types.iter().zip(args.iter()) {
+                if self.is_auto(self.context[value].datatype) {
+                    frontier.push((value, datatype));
+                }
+            }
+            self.context.type_buffer = types;
+        }
+
+        let value = self.context[inst].value;
+        let sig = self.program[fun].signature();
+        let struct_return = sig.struct_return;
+        let datatype = sig.return_type;
+
+        if let (Some(value), Some(datatype)) = (value, datatype) {
+            if struct_return {
+                self.context[value].mutable = true;
+                args.push(value);
+            }
+            frontier.push((value, datatype));
+        } else if let Some(dependency) =
+            self.context[value.unwrap()].type_dependency
+            {
+            if self.context[dependency].len() > 1 {
+                return Err(FunError::new(FEKind::ExpectedValue, &token));
+            }
+            self.context[dependency].clear();
+            self.context[inst].value = None;
+        }        
+        
+        self.context[inst].kind = IKind::Call(fun, args);
+        
         Ok(())
     }
 
@@ -1628,8 +1673,8 @@ impl<'a> FunResolver<'a> {
         }
 
         let raw_return_type = header.last().unwrap();
-        let return_type = if raw_return_type.kind == AKind::None {
-            None
+        let (return_type, struct_return) = if raw_return_type.kind == AKind::None {
+            (None, false)
         } else {
             let return_type = self.resolve_type_low(module, raw_return_type)?;
             if self.is_auto(return_type) {
@@ -1638,10 +1683,14 @@ impl<'a> FunResolver<'a> {
                     &raw_return_type.token,
                 ));
             }
-            Some(return_type)
+            let struct_return = self.program[return_type].size > self.program.isa().pointer_bytes() as u32;
+            if struct_return {
+                args.push(ValueEnt::new(ID::new(), return_type, true));
+            }
+            (Some(return_type), struct_return)
         };
 
-        let function_signature = FunSignature { args, return_type };
+        let function_signature = FunSignature { args, return_type, struct_return };
 
         let token_hint = header.token.clone();
 
@@ -1936,6 +1985,7 @@ pub struct GenericFunContext {
 #[derive(Debug, Default)]
 pub struct FunContext {
     pub return_type: Option<Type>,
+    pub struct_return: Option<Value>,
     pub current_module: Option<Mod>,
     pub current_block: Option<Inst>,
     pub variables: Vec<Option<Value>>,
@@ -1946,6 +1996,7 @@ pub struct FunContext {
     pub function_body: FunBody,
     pub embed_frontier: Vec<(Type, ID)>,
     pub graph_frontier: Vec<(Value, Type)>,
+    pub second_graph_frontier: Vec<(Value, Type)>,
     pub call_value_buffer: Vec<Value>,
     pub type_frontier: Vec<(usize, usize, Type)>,
     pub type_buffer: Vec<Type>,
