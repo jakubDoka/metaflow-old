@@ -18,6 +18,7 @@ use super::module_tree::ModuleTreeBuilder;
 use super::types::{TEKind, TypeError, TypeResolver, TypeResolverContext};
 use super::{
     AstRef, FunSignature, GenericElement, GenericSignature, IKind, InstEnt, Loop, Program, TKind,
+    FUN_SALT, TYPE_SALT,
 };
 
 type Result<T = ()> = std::result::Result<T, FunError>;
@@ -106,48 +107,25 @@ impl<'a> FunResolver<'a> {
             (value, self.context.current_block, signature.return_type)
         {
             let value_type = self.context[value].datatype;
+            let token = &ast[1].last().unwrap().token;
             if self.is_auto(value_type) {
                 self.infer(value, return_type)?;
-            }
-            let value = if let Some(struct_return) = self.context.struct_return {
-                self.context.add_inst(InstEnt::new(
-                    IKind::Assign(struct_return),
-                    Some(value),
-                    &Token::default(),
-                ));
-                struct_return
             } else {
-                value
-            };
-            self.context.add_inst(InstEnt::new(
-                IKind::Return(Some(value)),
-                None,
-                &ast[1].last().unwrap().token,
-            ));
+                self.assert_type(value_type, return_type, token)?;
+            }
+            let value = self.return_value(value, token);
+            self.context
+                .add_inst(InstEnt::new(IKind::Return(Some(value)), None, token));
         } else if let (Some(return_type), Some(_)) =
             (signature.return_type, self.context.current_block)
         {
             let value = self.new_temp_value(return_type);
-            self.context.add_inst(InstEnt::new(
-                IKind::ZeroValue,
-                Some(value),
-                &ast[1].last().unwrap().token,
-            ));
-            let value = if let Some(struct_return) = self.context.struct_return {
-                self.context.add_inst(InstEnt::new(
-                    IKind::Assign(struct_return),
-                    Some(value),
-                    &Token::default(),
-                ));
-                struct_return
-            } else {
-                value
-            };
-            self.context.add_inst(InstEnt::new(
-                IKind::Return(Some(value)),
-                None,
-                &ast[1].last().unwrap().token,
-            ));
+            let token = &ast[1].last().unwrap().token;
+            self.context
+            .add_inst(InstEnt::new(IKind::ZeroValue, Some(value), token));
+            let value = self.return_value(value, token);
+            self.context
+                .add_inst(InstEnt::new(IKind::Return(Some(value)), None, token));
         } else if self.context.current_block.is_some() {
             self.context.add_inst(InstEnt::new(
                 IKind::Return(None),
@@ -204,6 +182,22 @@ impl<'a> FunResolver<'a> {
         }
 
         Ok(())
+    }
+
+    fn return_value(&mut self, value: Value, token: &Token) -> Value {
+        if let Some(struct_return) = self.context.struct_return {
+            let deref = self.new_temp_value(self.context.return_type.unwrap());
+            self.context.add_inst(InstEnt::new(
+                IKind::Deref(struct_return),
+                Some(deref),
+                &token,
+            ));
+            self.context
+                .add_inst(InstEnt::new(IKind::Assign(deref), Some(value), &token));
+            struct_return
+        } else {
+            value
+        }
     }
 
     fn block(&mut self, ast: &Ast) -> ExprResult {
@@ -312,21 +306,9 @@ impl<'a> FunResolver<'a> {
         let value = if ast[0].kind == AKind::None {
             if let Some(datatype) = datatype {
                 let temp_value = self.new_temp_value(datatype);
-                self.context.add_inst(InstEnt::new(
-                    IKind::ZeroValue,
-                    Some(temp_value),
-                    &Token::default(),
-                ));
-                if let Some(struct_return) = self.context.struct_return {
-                    self.context.add_inst(InstEnt::new(
-                        IKind::Assign(struct_return),
-                        Some(temp_value),
-                        &Token::default(),
-                    ));
-                    Some(struct_return)
-                } else {
-                    Some(temp_value)
-                }
+                self.context
+                    .add_inst(InstEnt::new(IKind::ZeroValue, Some(temp_value), &ast.token));
+                Some(self.return_value(temp_value, &ast.token))
             } else {
                 None
             }
@@ -341,16 +323,7 @@ impl<'a> FunResolver<'a> {
                 self.assert_type(actual_type, datatype, &ast[0].token)?;
             }
 
-            if let Some(struct_return) = self.context.struct_return {
-                self.context.add_inst(InstEnt::new(
-                    IKind::Assign(struct_return),
-                    Some(value),
-                    &Token::default(),
-                ));
-                Some(struct_return)
-            } else {
-                Some(value)
-            }
+            Some(self.return_value(value, &ast.token))
         };
 
         self.context
@@ -378,7 +351,7 @@ impl<'a> FunResolver<'a> {
 
             if var_line[2].kind == AKind::None {
                 for name in var_line[0].iter() {
-                    let name = ID::new().add(name.token.spam.deref());
+                    let name = ID(0).add(name.token.spam.deref());
 
                     let temp_value = self
                         .context
@@ -389,7 +362,7 @@ impl<'a> FunResolver<'a> {
                     let inst = self.context.add_inst(InstEnt::new(
                         IKind::ZeroValue,
                         Some(temp_value),
-                        &Token::default(),
+                        &var_line.token,
                     ));
 
                     let var = self.add_variable(name, datatype, mutable);
@@ -406,7 +379,7 @@ impl<'a> FunResolver<'a> {
                 }
             } else {
                 for (name, raw_value) in var_line[0].iter().zip(var_line[2].iter()) {
-                    let name = ID::new().add(name.token.spam.deref());
+                    let name = ID(0).add(name.token.spam.deref());
                     let value = self.expr(raw_value)?;
                     let mut actual_datatype = self.context[value].datatype;
 
@@ -441,8 +414,7 @@ impl<'a> FunResolver<'a> {
     }
 
     fn expr(&mut self, ast: &Ast) -> Result<Value> {
-        self.expr_low(ast)?
-            .ok_or_else(||  panic!(""))//FunError::new(FEKind::ExpectedValue, &ast.token))
+        self.expr_low(ast)?.ok_or_else(|| panic!("")) //FunError::new(FEKind::ExpectedValue, &ast.token))
     }
 
     fn expr_low(&mut self, ast: &Ast) -> ExprResult {
@@ -457,6 +429,7 @@ impl<'a> FunResolver<'a> {
             AKind::Deref => self.deref_expr(ast),
             AKind::Ref(_) => self.ref_expr(ast),
             AKind::UnaryOp => self.unary_op(ast),
+            AKind::Pass => Ok(None),
             _ => todo!("unmatched expr ast {}", ast),
         }
     }
@@ -476,7 +449,7 @@ impl<'a> FunResolver<'a> {
 
     fn ref_expr_low(&mut self, value: Value, mutable: bool, token: &Token) -> Value {
         let datatype = self.context[value].datatype;
-        let inst = self.context[value].inst.unwrap_or(Inst::new(0));
+        let inst = self.inst_of(value);
         let unresolved = self.is_auto(datatype);
         let datatype = self.pointer_of(datatype, mutable);
         let reference = self.new_temp_value(datatype);
@@ -484,6 +457,32 @@ impl<'a> FunResolver<'a> {
             InstEnt::new(IKind::Ref(value), Some(reference), token),
             inst,
         );
+
+        // we need to allocate it since register cannot be referenced
+        let mut current = reference;
+        loop {
+            let value = &mut self.context[current];
+            if value.on_stack {
+                break;
+            }
+            value.on_stack = true;
+
+            if let Some(inst) = value.inst {
+                match &self.context[inst].kind {
+                    IKind::Offset(value) => {
+                        current = *value;
+                        continue;
+                    }
+                    IKind::Cast(value) => {
+                        current = *value;
+                        continue;
+                    }
+                    _ => (),
+                }
+            }
+
+            break;
+        }
 
         if unresolved {
             self.add_type_dependency(value, inst);
@@ -502,7 +501,7 @@ impl<'a> FunResolver<'a> {
 
     fn deref_expr_low(&mut self, value: Value, token: &Token) -> Result<Value> {
         let datatype = self.context[value].datatype;
-        let inst = self.context[value].inst.unwrap_or(Inst::new(0));
+        let inst = self.inst_of(value);
         let (pointed, mutable) = self.base_of_err(datatype, token)?;
 
         let val = self.new_anonymous_value(pointed, mutable);
@@ -519,7 +518,7 @@ impl<'a> FunResolver<'a> {
     }
 
     fn unary_op(&mut self, ast: &Ast) -> ExprResult {
-        let name = ID::new().add(ast[0].token.spam.deref());
+        let name = FUN_SALT.add(ast[0].token.spam.deref());
         let value = self.expr(&ast[1])?;
 
         self.context.call_value_buffer.push(value);
@@ -529,7 +528,7 @@ impl<'a> FunResolver<'a> {
     fn dot_expr(&mut self, ast: &Ast) -> ExprResult {
         let header = self.expr(&ast[0])?;
         let mutable = self.context[header].mutable;
-        let field = ID::new().add(ast[1].token.spam.deref());
+        let field = ID(0).add(ast[1].token.spam.deref());
         let datatype = self.context[header].datatype;
         if self.is_auto(datatype) {
             let value = self.new_anonymous_value(self.auto(), mutable);
@@ -590,7 +589,7 @@ impl<'a> FunResolver<'a> {
     }
 
     fn loop_expr(&mut self, ast: &Ast) -> ExprResult {
-        let name = ID::new().add(ast[0].token.spam.deref());
+        let name = ID(0).add(ast[0].token.spam.deref());
 
         let start_block = self.context.new_block();
         let end_block = self.context.new_block();
@@ -604,7 +603,7 @@ impl<'a> FunResolver<'a> {
         self.context.add_inst(InstEnt::new(
             IKind::Jump(start_block, vec![]),
             None,
-            &Token::default(),
+            &ast.token,
         ));
 
         self.context.loops.push(header);
@@ -619,7 +618,7 @@ impl<'a> FunResolver<'a> {
             self.context.add_inst(InstEnt::new(
                 IKind::Jump(start_block, vec![]),
                 None,
-                &Token::default(),
+                &ast.token,
             ));
         }
         self.context.make_block_current(end_block);
@@ -695,7 +694,7 @@ impl<'a> FunResolver<'a> {
             self.context.add_inst(InstEnt::new(
                 IKind::Jump(merge_block, vec![val]),
                 None,
-                &Token::default(),
+                &ast.token,
             ));
 
             let datatype = self.context[val].datatype;
@@ -706,7 +705,7 @@ impl<'a> FunResolver<'a> {
             self.context.add_inst(InstEnt::new(
                 IKind::Jump(merge_block, vec![]),
                 None,
-                &Token::default(),
+                &ast.token,
             ));
         } else {
             then_filled = true;
@@ -748,7 +747,7 @@ impl<'a> FunResolver<'a> {
                     self.context.add_inst(InstEnt::new(
                         IKind::Jump(merge_block, vec![]),
                         None,
-                        &Token::default(),
+                        &ast.token,
                     ));
                 }
             }
@@ -762,7 +761,7 @@ impl<'a> FunResolver<'a> {
     fn call(&mut self, ast: &Ast) -> ExprResult {
         let (base_name, name) = match ast[0].kind {
             AKind::Ident => (
-                ID::new().add(ast[0].token.spam.deref()),
+                FUN_SALT.add(ast[0].token.spam.deref()),
                 ast[0].token.spam.raw(),
             ),
             AKind::Instantiation => {
@@ -772,7 +771,7 @@ impl<'a> FunResolver<'a> {
                     self.context.generic.inferred[i] = Some(id);
                 }
                 (
-                    ID::new().add(ast[0][0].token.spam.deref()),
+                    FUN_SALT.add(ast[0][0].token.spam.deref()),
                     ast[0][0].token.spam.raw(),
                 )
             }
@@ -818,7 +817,7 @@ impl<'a> FunResolver<'a> {
             let sig = self.program[fun].signature();
             let struct_return = sig.struct_return;
             let return_type = sig.return_type;
-            
+
             let value = return_type.map(|t| {
                 let value = self.new_anonymous_value(t, struct_return);
                 if struct_return {
@@ -826,7 +825,7 @@ impl<'a> FunResolver<'a> {
                 }
                 value
             });
-            
+
             self.context
                 .add_inst(InstEnt::new(IKind::Call(fun, values), value, token));
             value
@@ -838,7 +837,7 @@ impl<'a> FunResolver<'a> {
     }
 
     fn ident(&mut self, ast: &Ast) -> ExprResult {
-        let name = ID::new().add(ast.token.spam.deref());
+        let name = ID(0).add(ast.token.spam.deref());
         self.context
             .find_variable(name)
             .ok_or_else(|| FunError::new(FEKind::UndefinedVariable, &ast.token))
@@ -865,7 +864,7 @@ impl<'a> FunResolver<'a> {
             },
             LTKind::Bool(_) => self.program.builtin_repo.bool,
             LTKind::Char(_) => self.program.builtin_repo.i32,
-
+            LTKind::String(_) => self.pointer_of(self.program.builtin_repo.u8, false),
             _ => unreachable!("{}", ast),
         };
 
@@ -881,18 +880,42 @@ impl<'a> FunResolver<'a> {
     }
 
     fn binary_op(&mut self, ast: &Ast) -> ExprResult {
-        if ast[0].token.spam.deref() == "=" {
-            return Ok(self.assignment(ast)?);
+        match ast[0].token.spam.deref() {
+            "=" => return self.assignment(ast),
+            "as" => return self.bit_cast(ast),
+            _ => (),
         }
 
         let left = self.expr(&ast[1])?;
         let right = self.expr(&ast[2])?;
 
-        let base_id = ID::new().add(ast[0].token.spam.deref());
+        let base_id = FUN_SALT.add(ast[0].token.spam.deref());
 
         self.context.call_value_buffer.extend(&[left, right]);
 
         self.call_low(base_id, ast[0].token.spam.raw(), false, &ast.token)
+    }
+
+    fn bit_cast(&mut self, ast: &Ast) -> ExprResult {
+        let target = self.expr(&ast[1])?;
+        let datatype = self.resolve_type(&ast[2])?;
+
+        let original_datatype = self.context[target].datatype;
+        let original_size = self.program[original_datatype].size;
+        let datatype_size = self.program[datatype].size;
+
+        if original_size != datatype_size {
+            return Err(FunError::new(
+                FEKind::InvalidBitCast(original_size, datatype_size),
+                &ast.token,
+            ));
+        }
+
+        let value = self.new_anonymous_value(datatype, self.context[target].mutable);
+        self.context
+            .add_inst(InstEnt::new(IKind::Cast(target), Some(value), &ast.token));
+
+        Ok(Some(value))
     }
 
     fn may_infer(&mut self, a: Value, b: Value, token: &Token) -> Result<bool> {
@@ -1025,16 +1048,15 @@ impl<'a> FunResolver<'a> {
     }
 
     fn infer_call(&mut self, inst: Inst, frontier: &mut Vec<(Value, Type)>) -> Result {
-        let (name, dot_expr, base_id, mut args) = match std::mem::take(&mut self.context[inst].kind) {
+        let (name, dot_expr, base_id, mut args) = match std::mem::take(&mut self.context[inst].kind)
+        {
             IKind::UnresolvedCall(base_id, name, dot_expr, args) => (name, dot_expr, base_id, args),
             _ => unreachable!(),
         };
 
         let token = self.context[inst].token_hint.clone();
 
-        let fun = self.smart_find_or_instantiate(
-            base_id, name, &mut args, dot_expr, &token,
-        )?;
+        let fun = self.smart_find_or_instantiate(base_id, name, &mut args, dot_expr, &token)?;
 
         if self.context[inst].unresolved != 0 {
             let mut types = std::mem::take(&mut self.context.type_buffer);
@@ -1065,18 +1087,16 @@ impl<'a> FunResolver<'a> {
                 args.push(value);
             }
             frontier.push((value, datatype));
-        } else if let Some(dependency) =
-            self.context[value.unwrap()].type_dependency
-            {
+        } else if let Some(dependency) = self.context[value.unwrap()].type_dependency {
             if self.context[dependency].len() > 1 {
                 return Err(FunError::new(FEKind::ExpectedValue, &token));
             }
             self.context[dependency].clear();
             self.context[inst].value = None;
-        }        
-        
+        }
+
         self.context[inst].kind = IKind::Call(fun, args);
-        
+
         Ok(())
     }
 
@@ -1109,15 +1129,16 @@ impl<'a> FunResolver<'a> {
                     let value = self.new_anonymous_value(current_type, mutable);
                     self.context[value].offset = offset;
                     let prev_inst = self.context.add_inst_under(
-                        InstEnt::new(IKind::Offset(header), Some(value), &Token::default()),
+                        InstEnt::new(IKind::Offset(header), Some(value), &token),
                         prev_inst,
                     );
                     let loaded = self.new_anonymous_value(pointed, mutable);
                     self.context[loaded].mutable = mutable;
                     self.context.add_inst_under(
-                        InstEnt::new(IKind::Load(value), Some(loaded), &token),
+                        InstEnt::new(IKind::Deref(value), Some(loaded), &token),
                         prev_inst,
                     );
+                    offset = 0;
                     current_type = pointed;
                     header = loaded;
                 }
@@ -1131,7 +1152,6 @@ impl<'a> FunResolver<'a> {
             inst,
         );
 
-        
         let val = &mut self.context[value];
         val.inst = Some(inst);
         val.offset = offset;
@@ -1161,7 +1181,7 @@ impl<'a> FunResolver<'a> {
 
     #[inline]
     fn new_anonymous_value(&mut self, datatype: Type, mutable: bool) -> Value {
-        self.new_value(ID::new(), datatype, mutable)
+        self.new_value(ID(0), datatype, mutable)
     }
 
     #[inline]
@@ -1229,7 +1249,7 @@ impl<'a> FunResolver<'a> {
             assert!(self.context.current_module.is_some());
             let (fun, id, kind) =
                 self.dot_find_or_instantiate(base, name, &mut types, first_mutable, &token)?;
-            if id != ID::new() {
+            if id.0 != 0 {
                 let value = self.new_anonymous_value(self.program.builtin_repo.bool, first_mutable);
                 self.field_access(args[0], id, value, &token)?;
                 args[0] = value;
@@ -1260,7 +1280,7 @@ impl<'a> FunResolver<'a> {
     ) -> Result<(Fun, ID, DotInstr)> {
         let mut frontier = std::mem::take(&mut self.context.embed_frontier);
         frontier.clear();
-        frontier.push((values[0], ID::new()));
+        frontier.push((values[0], ID(0)));
 
         let mut final_err = None;
 
@@ -1577,7 +1597,7 @@ impl<'a> FunResolver<'a> {
                         let header = &a[0];
                         match header[0].kind {
                             AKind::Ident => {
-                                let name = ID::new().add(header[0].token.spam.deref());
+                                let name = FUN_SALT.add(header[0].token.spam.deref());
                                 self.collect_normal_function(
                                     module, a_ref, a, name, visibility, i,
                                 )?;
@@ -1607,7 +1627,7 @@ impl<'a> FunResolver<'a> {
         visibility: Vis,
         attribute_id: usize,
     ) -> Result<Fun> {
-        let name = ID::new().add(a[0][0][0].token.spam.deref());
+        let name = FUN_SALT.add(a[0][0][0].token.spam.deref());
 
         let signature = self.generic_signature(&a[0])?;
 
@@ -1619,6 +1639,7 @@ impl<'a> FunResolver<'a> {
             kind: FKind::Generic(signature),
             ast: a_ref,
             attribute_id,
+            import: false,
             body: Default::default(),
             final_signature: None,
             object_id: None,
@@ -1666,7 +1687,7 @@ impl<'a> FunResolver<'a> {
             }
             for param in param_line[0..param_line.len() - 1].iter() {
                 name = name.combine(self.program.types.direct_to_id(datatype));
-                let name = ID::new().add(param.token.spam.deref());
+                let name = ID(0).add(param.token.spam.deref());
                 let mutable = param_line.kind == AKind::FunArgument(true);
                 args.push(ValueEnt::new(name, datatype, mutable));
             }
@@ -1683,14 +1704,23 @@ impl<'a> FunResolver<'a> {
                     &raw_return_type.token,
                 ));
             }
-            let struct_return = self.program[return_type].size > self.program.isa().pointer_bytes() as u32;
+            let struct_return =
+                self.program[return_type].size > self.program.isa().pointer_bytes() as u32;
             if struct_return {
-                args.push(ValueEnt::new(ID::new(), return_type, true));
+                args.push(ValueEnt::new(
+                    ID(0),
+                    self.pointer_of(return_type, true),
+                    false,
+                ));
             }
             (Some(return_type), struct_return)
         };
 
-        let function_signature = FunSignature { args, return_type, struct_return };
+        let function_signature = FunSignature {
+            args,
+            return_type,
+            struct_return,
+        };
 
         let token_hint = header.token.clone();
 
@@ -1702,6 +1732,7 @@ impl<'a> FunResolver<'a> {
             kind: FKind::Normal(function_signature),
             attribute_id,
             ast: a_ref,
+            import: false,
             body: Default::default(),
             final_signature: None,
             object_id: None,
@@ -1727,7 +1758,7 @@ impl<'a> FunResolver<'a> {
             self.context
                 .generic
                 .param_buffer
-                .push(ID::new().add(ident.token.spam.deref()))
+                .push(TYPE_SALT.add(ident.token.spam.deref()))
         }
 
         let mut arg_count = 0;
@@ -1795,7 +1826,7 @@ impl<'a> FunResolver<'a> {
     fn load_arg(&mut self, ast: &Ast) -> Result {
         match &ast.kind {
             AKind::Ident => {
-                let id = ID::new().add(ast.token.spam.deref());
+                let id = TYPE_SALT.add(ast.token.spam.deref());
                 if let Some(index) = self
                     .context
                     .generic
@@ -1881,7 +1912,7 @@ impl<'a> FunResolver<'a> {
             return self.context.loops.last().cloned().ok_or(true);
         }
 
-        let name = ID::new().add(token.spam.deref());
+        let name = ID(0).add(token.spam.deref());
 
         self.context
             .loops
@@ -2003,7 +2034,6 @@ pub struct FunContext {
 }
 
 impl FunContext {
-
     pub fn find_variable(&mut self, name: ID) -> Option<Value> {
         self.variables
             .iter()
@@ -2033,6 +2063,7 @@ impl FunContext {
     pub fn clear(&mut self) {
         self.current_module = None;
         self.current_block = None;
+        self.struct_return = None;
         self.variables.clear();
         self.function_body.clear();
 
@@ -2246,6 +2277,11 @@ impl<'a> Display for FunErrorDisplay<'a> {
             }
             FEKind::WrongLabel => writeln!(f, "label is not defined in the current scope"),
             FEKind::NonPointerDereference => writeln!(f, "cannot dereference non-pointer value"),
+            FEKind::InvalidBitCast(actual, supposed) => writeln!(
+                f,
+                "'as' requires operand to be of same size as target ({} as {})",
+                actual, supposed
+            ),
         }
     }
 }
@@ -2271,6 +2307,7 @@ impl FunError {
 pub enum FEKind {
     TypeError(TEKind),
     Redefinition(Token),
+    InvalidBitCast(u32, u32),
     AssignToImmutable,
     ExpectedValue,
     TypeMismatch(Type, Type),

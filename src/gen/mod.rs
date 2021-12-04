@@ -8,17 +8,17 @@ use cranelift_codegen::{
 };
 
 use cranelift_object::{ObjectBuilder, ObjectModule};
-use std::process::Command;
+use std::{fmt::Display, process::Command};
 
 use crate::{
     cli::Arguments,
     ir::{
-        functions::{FunError, FunResolver, FunResolverContext},
+        functions::{FunError, FunErrorDisplay, FunResolver, FunResolverContext},
         module_tree::{ModuleTreeBuilder, ModuleTreeError},
         types::{TypeError, TypeResolver, TypeResolverContext},
         Program,
     },
-    lexer::Token,
+    lexer::{Token, TokenView},
 };
 
 use super::*;
@@ -118,27 +118,122 @@ pub fn generate_obj_file(args: &Arguments) -> Result<Vec<u8>> {
 
     let mut program = Program::new(ObjectModule::new(builder));
 
-    ModuleTreeBuilder::new(&mut program)
-        .build(&args[0])
-        .map_err(|e| GEKind::ModuleTreeError(e).into())?;
+    let mut compile = || -> Result<()> {
+        ModuleTreeBuilder::new(&mut program)
+            .build(&args[0])
+            .map_err(|e| GEKind::ModuleTreeError(e).into())?;
 
-    let mut ctx = TypeResolverContext::default();
+        let mut ctx = TypeResolverContext::default();
 
-    TypeResolver::new(&mut program, &mut ctx)
-        .resolve()
-        .map_err(|e| GEKind::TypeError(e).into())?;
+        TypeResolver::new(&mut program, &mut ctx)
+            .resolve()
+            .map_err(|e| GEKind::TypeError(e).into())?;
 
-    let mut ctx = FunResolverContext::default();
+        let mut ctx = FunResolverContext::default();
 
-    FunResolver::new(&mut program, &mut ctx)
-        .resolve()
-        .map_err(|e| GEKind::FunError(e).into())?;
+        FunResolver::new(&mut program, &mut ctx)
+            .resolve()
+            .map_err(|e| GEKind::FunError(e).into())?;
 
-    let mut ctx = GeneratorContext::default();
+        let mut ctx = GeneratorContext::default();
 
-    Generator::new(&mut program, &mut ctx).generate()?;
+        Generator::new(&mut program, &mut ctx).generate()?;
+
+        Ok(())
+    };
+
+    compile().map_err(|e| {
+        eprintln!("{}", GenErrorDisplay::new(&program, &e));
+        e
+    })?;
 
     Ok(program.object_module.finish().emit().unwrap())
+}
+
+pub struct GenErrorDisplay<'a> {
+    program: &'a Program,
+    error: &'a GenError,
+}
+
+impl<'a> GenErrorDisplay<'a> {
+    pub fn new(program: &'a Program, error: &'a GenError) -> Self {
+        Self { program, error }
+    }
+}
+
+impl<'a> Display for GenErrorDisplay<'a> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match &self.error.kind {
+            GEKind::TooShortAttribute(actual, supposed) => {
+                writeln!(f, "{}", TokenView::new(&self.error.token))?;
+                writeln!(f, "Too short attribute: {} instead of {}", actual, supposed)
+            }
+            GEKind::InvalidCallConv => {
+                writeln!(f, "{}", TokenView::new(&self.error.token))?;
+                writeln!(
+                    f,
+                    "Invalid call convention, list of valid call conventions:"
+                )?;
+                for cc in [
+                    "fast cold system_v",
+                    "windows_fastcall",
+                    "apple_aarch64",
+                    "baldrdash_system_v",
+                    "baldrdash_windows",
+                    "baldrdash_2020",
+                    "probestack",
+                    "wasmtime_system_v",
+                    "wasmtime_fastcall",
+                    "wasmtime_apple_aarch64",
+                ] {
+                    writeln!(f, "  {}", cc)?;
+                }
+
+                Ok(())
+            }
+            GEKind::InvalidLinkage => {
+                writeln!(f, "{}", TokenView::new(&self.error.token))?;
+                writeln!(f, "Invalid linkage, valid linkages are:")?;
+                for cc in ["import", "local", "export", "preemptible", "hidden"] {
+                    writeln!(f, "  {}", cc)?;
+                }
+
+                Ok(())
+            }
+            GEKind::DuplicateEntrypoint(other) => {
+                writeln!(f, "{}", TokenView::new(&self.error.token))?;
+                writeln!(f, "and other entrypoint here")?;
+                writeln!(f, "{}", TokenView::new(&other))?;
+                writeln!(f, "only one entrypoint is allowed")?;
+                Ok(())
+            }
+            GEKind::TypeError(error) => {
+                writeln!(f, "{}", error)?;
+                Ok(())
+            }
+            GEKind::FunError(error) => {
+                writeln!(f, "{}", FunErrorDisplay::new(self.program, &error))?;
+                Ok(())
+            }
+            GEKind::ModuleTreeError(error) => {
+                writeln!(f, "{:?}", error)?;
+                Ok(())
+            }
+            GEKind::IoError(err) => {
+                writeln!(f, "{}", err)?;
+                Ok(())
+            }
+            GEKind::InvalidTriplet(error) => {
+                writeln!(f, "invalid triplet: {}", error)?;
+                Ok(())
+            }
+            GEKind::CompilationFlagError(err) => {
+                writeln!(f, "invalid compilation flag: {}", err)?;
+                Ok(())
+            }
+            GEKind::NoFiles => writeln!(f, "first argument is missing <FILE>"),
+        }
+    }
 }
 
 #[derive(Debug)]
@@ -168,7 +263,6 @@ pub enum GEKind {
     IoError(std::io::Error),
     InvalidTriplet(LookupError),
     CompilationFlagError(SetError),
-    InvalidAttributeLength(usize, usize),
     NoFiles,
 }
 
@@ -282,19 +376,11 @@ fun set(p: Point, x: i64, y: i64) -> Point:
   p.y = y
   return p
 
-fun add(a, b: Point) -> Point:
-  var a = a
-  a.x = a.x + b.x
-  a.y = a.y + b.y
-  return a
-
 attr entry
 fun main -> i64:
   var p, q: Point
   p = p.set(1, 2)
-  q = q.set(3, 4)
-  p = p.add(q)
-  return p.x + p.y - 10
+  return p.x + p.y - 3
         "#,
         0,
     );
@@ -305,7 +391,7 @@ fun main -> i64:
   var a: i64
   ++a
   --a
-  return !true as i64 + ~1 + 2 + abs -1 - 1 + a
+  return i64(!true) + ~1 + 2 + abs -1 - 1 + a
         "#,
         0,
     );
@@ -318,26 +404,23 @@ fun main -> i64:
     a = a + 1.0
     if a > 100.0:
       break
-  return a as i64 - 101
+  return i64(a) - 101
         "#,
         0,
     );
     test_sippet(
         r#"
-attr linkage(import), call_conv(windows_fastcall)
-fun putchar(i: i32)
 
 attr entry
 fun main -> i64:
   var
     a = "Hello, World!"
-    b = 0
-  let addr = a.data
+    b = a as usize 
   loop:
-    putchar(*((a.data as i64 + b) as &u8) as i32)
-    b = b + 1
-    if b >= a.len as i64:
+    let char = *(b as &u8) 
+    if char == 0u8:
       break
+    b += 1 as usize
   return 0
         "#,
         0,
@@ -348,13 +431,13 @@ struct Point:
   x, y: i64
 
 fun init(v: &var Point, x: i64, y: i64) -> Point:
-  v.x = x
-  v.y = y
+  (*v).x = x
+  drop (*v).y = y
 
 attr entry
 fun main -> i64:
   var p: Point
-  (&p).init(2, 2)
+  p.init(2, 2)
   return p.x - p.y
         "#,
         0,

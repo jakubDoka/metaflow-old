@@ -1,8 +1,8 @@
-use std::{ops::Deref, path::Path};
+use std::{fmt::Display, ops::Deref, path::Path};
 
 use crate::{
     ast::{AEKind, AKind, AstError, AstParser},
-    lexer::{Lexer, Token},
+    lexer::{Lexer, Token, TokenView},
     util::{self, sdbm::SdbmHashState},
 };
 
@@ -33,8 +33,6 @@ impl<'a> ModuleTreeBuilder<'a> {
     }
 
     pub fn build(mut self, root: &str) -> Result<()> {
-        self.program.build_builtin();
-
         self.base = root[..root.rfind('/').map(|i| i + 1).unwrap_or(0)].to_string();
         self.load_module(
             &root[root.rfind('/').map(|i| i + 1).unwrap_or(0)
@@ -48,7 +46,7 @@ impl<'a> ModuleTreeBuilder<'a> {
     fn load_module(&mut self, path: &str, token: &Token) -> Result<Mod> {
         self.load_path(path);
 
-        let id = ID::new().add(&self.buffer);
+        let id = MOD_SALT.add(&self.buffer);
 
         if let Some(idx) = self.import_stack.iter().position(|&m| m == id) {
             let absolute_path = Path::new(self.buffer.as_str())
@@ -105,7 +103,7 @@ impl<'a> ModuleTreeBuilder<'a> {
             .to_str()
             .ok_or_else(|| ModuleTreeError::new(MTEKind::NonUTF8Path, token))?;
 
-        let name = ID::new().add(name);
+        let name = MOD_SALT.add(name);
 
         let module = ModuleEnt {
             name,
@@ -113,7 +111,7 @@ impl<'a> ModuleTreeBuilder<'a> {
             absolute_path,
             ast,
 
-            dependency: vec![(ID::new().add("builtin"), self.program.builtin)],
+            dependency: vec![(MOD_SALT.add("builtin"), self.program.builtin)],
 
             ..Default::default()
         };
@@ -130,7 +128,7 @@ impl<'a> ModuleTreeBuilder<'a> {
                 let m_id = self.load_module(&path[1..path.len() - 1], &a[1].token)?; // strip "
                 let m = &mut self.program[m_id];
                 let nickname = if a[0].kind != AKind::None {
-                    ID::new().add(a[0].token.spam.deref())
+                    MOD_SALT.add(a[0].token.spam.deref())
                 } else {
                     m.name
                 };
@@ -175,6 +173,24 @@ impl ModuleTreeError {
         Self {
             kind,
             token: token.clone(),
+        }
+    }
+}
+
+impl Display for ModuleTreeError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        if !matches!(self.kind, MTEKind::Ast(_)) {
+            writeln!(f, "{}", TokenView::new(&self.token))?;
+        }
+        match &self.kind {
+            MTEKind::Io(name, err) => writeln!(f, "cannot open file {:?}, cause: {}", name, err),
+            MTEKind::NonUTF8Path => writeln!(f, "path contains non-utf8 characters"),
+            MTEKind::NoFileStem => writeln!(f, "path has no file stem"),
+            MTEKind::Ast(ast) => writeln!(f, "{}", AstError::new(ast.clone(), self.token.clone())),
+            MTEKind::CyclicDependency(cycle) => {
+                writeln!(f, "cyclic dependency detected:")?;
+                writeln!(f, "{}", cycle)
+            }
         }
     }
 }

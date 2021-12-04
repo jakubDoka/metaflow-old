@@ -457,6 +457,11 @@ impl AstParser {
                 ast.token.to_group(&self.current_token, true);
                 return Ok(ast);
             }
+            TKind::Pass => {
+                let ast = self.ast(AKind::Pass);
+                self.advance();
+                return Ok(ast);
+            }
             _ => todo!("unmatched simple expr pattern {:?}", self.current_token),
         };
 
@@ -671,18 +676,10 @@ impl AstParser {
             }
             self.level += 1;
             while self.level_continues()? {
-                if self.current_token == TKind::Pass {
-                    self.advance();
-                } else {
-                    parser(self)?;
-                }
-            }
-        } else {
-            if self.current_token == TKind::Pass {
-                self.advance();
-            } else {
                 parser(self)?;
             }
+        } else {
+            parser(self)?;
         }
         Ok(())
     }

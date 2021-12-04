@@ -5,17 +5,8 @@ pub struct ID(pub u64);
 
 impl ID {
     #[inline]
-    pub fn new() -> ID {
-        ID(0)
-    }
-
-    #[inline]
     pub fn combine(self, id: Self) -> Self {
-        ID(id
-            .0
-            .wrapping_add(self.0 << 6)
-            .wrapping_add(self.0 << 16)
-            .wrapping_sub(self.0))
+        ID((id.0 >> 1) ^ (self.0 << 1))
     }
 }
 
@@ -86,5 +77,12 @@ impl SdbmHash for usize {
                 std::mem::size_of::<usize>(),
             )
         }
+    }
+}
+
+impl SdbmHash for &Vec<u8> {
+    #[inline]
+    fn bytes(&self) -> &[u8] {
+        self.as_slice()
     }
 }

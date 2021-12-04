@@ -303,6 +303,8 @@ impl Lexer {
             }
         }
 
+        string_data.push(0);
+
         // note: we don't care if string has incorrect encoding
         let end = self.cursor.progress();
         let value = self.cursor.sub(start..end);

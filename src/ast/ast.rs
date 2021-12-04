@@ -105,6 +105,8 @@ pub enum AKind {
     Loop,
     Break,
     Continue,
+    
+    Pass,
 
     Group,
 

@@ -85,13 +85,13 @@ impl<I: SymID, T> Table<I, T> {
     }
 
     pub fn iter(&self) -> impl Iterator<Item = &T> {
-        self.data.iter().filter(|x| x.0 != ID::new()).map(|x| &x.1)
+        self.data.iter().filter(|x| x.0 .0 != 0).map(|x| &x.1)
     }
 
     pub fn iter_mut(&mut self) -> impl Iterator<Item = &mut T> {
         self.data
             .iter_mut()
-            .filter(|x| x.0 != ID::new())
+            .filter(|x| x.0 .0 != 0)
             .map(|x| &mut x.1)
     }
 
@@ -104,7 +104,7 @@ impl<I: SymID, T> Table<I, T> {
     }
 
     pub fn is_direct_valid(&self, direct: I) -> bool {
-        self.data[direct.raw()].0 != ID::new()
+        self.data[direct.raw()].0 .0 != 0
     }
 
     pub fn redirect(&mut self, id: ID, param: I) -> Option<I> {
@@ -152,14 +152,14 @@ impl<I: SymID, T> Index<I> for Table<I, T> {
     type Output = T;
 
     fn index(&self, id: I) -> &Self::Output {
-        debug_assert!(self.data[id.raw()].0 != ID::new(), "invalid direct index",);
+        debug_assert!(self.data[id.raw()].0 .0 != 0, "invalid direct index",);
         &self.data[id.raw()].1
     }
 }
 
 impl<I: SymID, T> IndexMut<I> for Table<I, T> {
     fn index_mut(&mut self, id: I) -> &mut Self::Output {
-        debug_assert!(self.data[id.raw()].0 != ID::new(), "invalid direct index",);
+        debug_assert!(self.data[id.raw()].0 .0 != 0, "invalid direct index",);
         &mut self.data[id.raw()].1
     }
 }

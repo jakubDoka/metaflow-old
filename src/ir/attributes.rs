@@ -24,7 +24,7 @@ impl Attributes {
             if ast[i].kind != AKind::Attribute {
                 for &stacked in &self.stack {
                     for attr in 1..self.map[stacked].len() {
-                        let id = ID::new()
+                        let id = ID(0)
                             .add(self.map[stacked][attr][0].token.spam.raw())
                             .add(marker);
                         self.map.redirect(id, stacked);
@@ -33,7 +33,7 @@ impl Attributes {
                 if marker < i {
                     ast.drain(marker..i).for_each(|mut attr| {
                         attr.drain(..).for_each(|ast| {
-                            let id = ID::new().add(ast[0].token.spam.deref()).add(marker);
+                            let id = ID(0).add(ast[0].token.spam.deref()).add(marker);
                             let (_, id) = self.map.insert(id, ast);
                             match self.map[id][0].token.spam.deref() {
                                 "push" => {
@@ -63,7 +63,7 @@ impl Attributes {
     }
 
     pub fn get_attr(&self, idx: usize, name: &str) -> Option<&Ast> {
-        let id = ID::new().add(name).add(idx);
+        let id = ID(0).add(name).add(idx);
 
         self.map.get_id(id)
     }

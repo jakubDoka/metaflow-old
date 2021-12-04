@@ -8,7 +8,7 @@ use crate::util::sdbm::ID;
 use crate::{lexer::Token, util::sdbm::SdbmHashState};
 
 use super::module_tree::ModuleTreeBuilder;
-use super::{Mod, Program, Structure, Type, TypeEnt};
+use super::{Mod, Program, Structure, Type, TypeEnt, MOD_SALT, TYPE_SALT};
 
 type Result<T> = std::result::Result<T, TypeError>;
 
@@ -144,9 +144,12 @@ impl<'a> TypeResolver<'a> {
                             .map(|field| self.program[field.datatype].align)
                             .max()
                             .unwrap_or(0);
-                        
+
                         if align != 0 {
-                            let calc = move |offset| align * ((offset & (align - 1)) != 0) as u32 - (offset & (align - 1));
+                            let calc = move |offset| {
+                                align * ((offset & (align - 1)) != 0) as u32
+                                    - (offset & (align - 1))
+                            };
 
                             for field in &mut structure.fields {
                                 self.materialize_datatype(field.datatype)?;
@@ -217,7 +220,7 @@ impl<'a> TypeResolver<'a> {
             for name in field_line[..field_line.len() - 1].iter() {
                 fields.push(Field {
                     visibility: Vis::Public,
-                    name: ID::new().add(name.token.spam.deref()),
+                    name: ID(0).add(name.token.spam.deref()),
                     token_hint: name.token.clone(),
                     embedded,
                     offset: 0,
@@ -243,7 +246,7 @@ impl<'a> TypeResolver<'a> {
         let (host_module, datatype) = match ast.kind {
             AKind::Ident => self.find_by_token(module, &ast.token)?,
             AKind::ExplicitPackage => {
-                let package_name = ID::new().add(ast[0].token.spam.deref());
+                let package_name = MOD_SALT.add(ast[0].token.spam.deref());
                 let dep = self.program[module]
                     .dependency
                     .iter()
@@ -292,7 +295,7 @@ impl<'a> TypeResolver<'a> {
                     .iter()
                     .zip(self.context.instance_buffer.drain(start..).skip(1))
                 {
-                    let id = ID::new()
+                    let id = TYPE_SALT
                         .add(name.token.spam.deref())
                         .combine(self.program.modules.direct_to_id(host_module));
 
@@ -383,7 +386,7 @@ impl<'a> TypeResolver<'a> {
     }
 
     pub fn find_by_token(&mut self, module: Mod, token: &Token) -> Result<(Mod, Type)> {
-        self.find_by_name(module, ID::new().add(token.spam.deref()))
+        self.find_by_name(module, TYPE_SALT.add(token.spam.deref()))
             .ok_or_else(|| {
                 println!("{:?} {:?}", module, self.program[module].dependency);
                 TypeError::new(TEKind::UnknownType, token)
@@ -423,7 +426,7 @@ impl<'a> TypeResolver<'a> {
                             ));
                         }
 
-                        let name = ID::new().add(ident.token.spam.deref());
+                        let name = TYPE_SALT.add(ident.token.spam.deref());
                         let token_hint = a[0].token.clone();
 
                         let datatype = TypeEnt {
@@ -478,7 +481,7 @@ impl<'a> TypeResolver<'a> {
     pub fn pointer_to(&mut self, datatype: Type, mutable: bool) -> Type {
         let module = self.program[datatype].module;
         let debug_name = if mutable { "&var" } else { "&" };
-        let name = ID::new()
+        let name = TYPE_SALT
             .add(debug_name)
             .combine(self.program[datatype].name);
 

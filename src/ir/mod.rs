@@ -34,6 +34,10 @@ pub type CrType = ir::Type;
 pub type CrBlock = ir::Block;
 pub type CrVar = Variable;
 
+pub const TYPE_SALT: ID = ID(0xFACD184950);
+pub const FUN_SALT: ID = ID(0x7485978ADC);
+pub const MOD_SALT: ID = ID(0x85403875FF);
+
 pub struct Program {
     pub builtin: Mod,
     pub builtin_repo: BuiltinRepo,
@@ -90,7 +94,7 @@ impl Program {
     }
 
     pub fn build_builtin(&mut self) {
-        let module_id = ID::new().add("builtin");
+        let module_id = MOD_SALT.add("builtin");
 
         let module = ModuleEnt {
             name: module_id,
@@ -108,6 +112,43 @@ impl Program {
 
         self.builtin_repo = BuiltinRepo::new(self);
 
+        let types = self.builtin_repo.type_list();
+
+        for i in types {
+            for j in types {
+                if i == self.builtin_repo.auto || j == self.builtin_repo.auto {
+                    continue;
+                }
+                let datatype_id = self.types.direct_to_id(j);
+                let name = self.types[i].debug_name;
+                let unary_op = FunEnt {
+                    visibility: Vis::Public,
+                    name: FUN_SALT.add(name).combine(datatype_id),
+                    module,
+                    kind: FKind::Builtin(
+                        FunSignature {
+                            args: vec![ValueEnt::temp(j)],
+                            return_type: Some(i),
+                            struct_return: false,
+                        },
+                        name,
+                    ),
+                    import: false,
+                    token_hint: Default::default(),
+                    body: Default::default(),
+                    ast: AstRef::new(usize::MAX),
+                    attribute_id: 0,
+                    final_signature: None,
+                    object_id: None,
+                };
+                assert!(self
+                    .functions
+                    .insert(unary_op.name.combine(module_id), unary_op)
+                    .0
+                    .is_none());
+            }
+        }
+
         let integer_types = &[
             self.builtin_repo.i8,
             self.builtin_repo.i16,
@@ -117,12 +158,15 @@ impl Program {
             self.builtin_repo.u16,
             self.builtin_repo.u32,
             self.builtin_repo.u64,
+            self.builtin_repo.isize,
+            self.builtin_repo.usize,
+            self.builtin_repo.ptr,
         ][..];
 
         let builtin_unary_ops = [
-            ("~ +", integer_types),
+            ("~ + ++ --", integer_types),
             (
-                "-",
+                "- abs",
                 &[
                     self.builtin_repo.i8,
                     self.builtin_repo.i16,
@@ -130,6 +174,7 @@ impl Program {
                     self.builtin_repo.i64,
                     self.builtin_repo.f32,
                     self.builtin_repo.f64,
+                    self.builtin_repo.isize,
                 ][..],
             ),
             ("!", &[self.builtin_repo.bool][..]),
@@ -141,7 +186,7 @@ impl Program {
                     let datatype_id = self.types.direct_to_id(datatype);
                     let unary_op = FunEnt {
                         visibility: Vis::Public,
-                        name: ID::new().add(op).combine(datatype_id),
+                        name: FUN_SALT.add(op).combine(datatype_id),
                         module,
                         kind: FKind::Builtin(
                             FunSignature {
@@ -151,6 +196,8 @@ impl Program {
                             },
                             op,
                         ),
+
+                        import: false,
                         token_hint: Default::default(),
                         body: Default::default(),
                         ast: AstRef::new(usize::MAX),
@@ -158,8 +205,11 @@ impl Program {
                         final_signature: None,
                         object_id: None,
                     };
-                    self.functions
-                        .insert(unary_op.name.combine(module_id), unary_op);
+                    assert!(self
+                        .functions
+                        .insert(unary_op.name.combine(module_id), unary_op)
+                        .0
+                        .is_none());
                 }
             }
         }
@@ -184,7 +234,7 @@ impl Program {
                     };
                     let binary_op = FunEnt {
                         visibility: Vis::Public,
-                        name: ID::new().add(op).combine(datatype_id).combine(datatype_id),
+                        name: FUN_SALT.add(op).combine(datatype_id).combine(datatype_id),
                         module,
                         kind: FKind::Builtin(
                             FunSignature {
@@ -195,6 +245,7 @@ impl Program {
                             op,
                         ),
 
+                        import: false,
                         token_hint: Default::default(),
                         body: Default::default(),
                         ast: AstRef::new(usize::MAX),
@@ -202,8 +253,11 @@ impl Program {
                         final_signature: None,
                         object_id: None,
                     };
-                    self.functions
-                        .insert(binary_op.name.combine(module_id), binary_op);
+                    assert!(self
+                        .functions
+                        .insert(binary_op.name.combine(module_id), binary_op)
+                        .0
+                        .is_none());
                 }
             }
         }
@@ -231,10 +285,10 @@ macro_rules! define_repo {
             pub fn new(program: &mut Program) -> Self {
 
 
-                let builtin_id = ID::new().add("builtin");
+                let builtin_id = MOD_SALT.add("builtin");
 
                 $(
-                    let name = ID::new().add(stringify!($name));
+                    let name = TYPE_SALT.add(stringify!($name));
                     let type_ent = TypeEnt {
                         visibility: Vis::Public,
                         kind: TKind::Builtin($repr),
@@ -254,7 +308,7 @@ macro_rules! define_repo {
                 )+
 
                 $(
-                    let name = ID::new().add(stringify!($pointer_type));
+                    let name = TYPE_SALT.add(stringify!($pointer_type));
                     let size = program.isa().pointer_bytes() as u32;
                     let type_ent = TypeEnt {
                         visibility: Vis::Public,
@@ -275,12 +329,18 @@ macro_rules! define_repo {
                 )+
 
                 Self {
-                    $($name),+,
-                    $($pointer_type),+
+                    $($name,)+
+                    $($pointer_type,)+
                 }
             }
-        }
 
+            pub fn type_list(&self) -> [Type; 15] {
+                [
+                    $(self.$name,)+
+                    $(self.$pointer_type,)+
+                ]
+            }
+        }
     };
 }
 
@@ -391,6 +451,7 @@ pub struct FunEnt {
     pub kind: FKind,
     pub body: FunBody,
     pub ast: AstRef,
+    pub import: bool,
     pub final_signature: Option<Signature>,
     pub object_id: Option<FuncId>,
     pub attribute_id: usize,
@@ -462,7 +523,6 @@ pub struct FunSignature {
     pub struct_return: bool,
 }
 
-
 crate::sym_id!(Inst);
 
 #[derive(Debug, Default, Clone)]
@@ -500,9 +560,9 @@ pub enum IKind {
     Jump(Inst, Vec<Value>),
     JumpIfTrue(Value, Inst, Vec<Value>),
     Offset(Value),
-    Load(Value),
     Deref(Value),
     Ref(Value),
+    Cast(Value),
 }
 
 impl IKind {
@@ -573,7 +633,7 @@ impl ValueEnt {
             name,
             datatype,
             mutable,
-            
+
             type_dependency: None,
             inst: None,
             value: FinalValue::None,
@@ -584,7 +644,7 @@ impl ValueEnt {
 
     pub fn temp(datatype: Type) -> Self {
         Self {
-            name: ID::new(),
+            name: ID(0),
             datatype,
             inst: None,
             type_dependency: None,
