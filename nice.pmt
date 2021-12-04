@@ -2,9 +2,6 @@
 attr linkage(import), call_conv(platform)
 fun putchar(c: i32)
 
-attr linkage(import), call_conv(platform)
-fun printf(p: &u8)
-
 attr entry
 fun main -> i64:
   var
@@ -16,7 +13,5 @@ fun main -> i64:
       break
     char.i32().putchar()
     b += 1u
-  
-  printf("Or just use printf.\n")
-  
+
   return 0

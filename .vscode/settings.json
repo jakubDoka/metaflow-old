@@ -38,6 +38,7 @@
         "libcall",
         "memmove",
         "memset",
+        "metaprogramming",
         "Preemptible",
         "preopt",
         "putchar",

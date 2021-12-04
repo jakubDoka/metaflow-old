@@ -11,7 +11,7 @@ use cranelift_codegen::{
     Context,
 };
 use cranelift_frontend::{FunctionBuilder, FunctionBuilderContext};
-use cranelift_module::{Linkage, Module, DataContext};
+use cranelift_module::{Linkage, Module, DataContext, FuncOrDataId};
 use std::{str::FromStr, ops::Deref};
 
 use crate::{
@@ -75,7 +75,7 @@ impl<'a> Generator<'a> {
 
             builder.finalize();
 
-            println!("{}", ctx.func.display());
+            //println!("{}", ctx.func.display());
 
             ctx.compute_cfg();
             ctx.compute_domtree();
@@ -244,14 +244,20 @@ impl<'a> Generator<'a> {
                             let mut name_buffer = std::mem::take(&mut self.context.name_buffer);
                             name_buffer.clear();
                             write_base36(id, &mut name_buffer);
-                            let data_id = self.program.object_module.declare_data(&name_buffer, Linkage::Export, false, false).unwrap();
-                            let value = self.program.object_module.declare_data_in_func(data_id, builder.func);
-                            let context = unsafe {
-                                std::mem::transmute::<_, &mut DataContext>(&mut self.context.data_context)
+                            let data_id = if let Some(FuncOrDataId::Data(data_id)) = self.program.object_module.get_name(&name_buffer) {
+                                data_id
+                            } else {
+                                let data_id = self.program.object_module.declare_data(&name_buffer, Linkage::Export, false, false).unwrap();
+                                let context = unsafe {
+                                    std::mem::transmute::<_, &mut DataContext>(&mut self.context.data_context)
+                                };
+                                context.define(data.deref().to_owned().into_boxed_slice());
+                                self.program.object_module.define_data(data_id, context).unwrap();
+                                context.clear();
+                                data_id
                             };
-                            context.define(data.deref().to_owned().into_boxed_slice());
-                            self.program.object_module.define_data(data_id, context).unwrap();
-                            context.clear();
+                            
+                            let value = self.program.object_module.declare_data_in_func(data_id, builder.func);
                             builder.ins().global_value(self.program.isa().pointer_type(), value)
                         },
                         lit => todo!("{}", lit),
