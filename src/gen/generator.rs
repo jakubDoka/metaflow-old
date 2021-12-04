@@ -101,8 +101,6 @@ impl<'a> Generator<'a> {
         let entry_block = self.program[fun].body.insts.first().unwrap();
         let mut current = entry_block;
 
-        println!("{:?}", self.program[fun].body.insts.iter().map(|(_, i)| &i.kind).collect::<Vec<_>>());
-
         let mut buffer = std::mem::take(&mut self.context.block_buffer);
 
         loop {
@@ -160,9 +158,9 @@ impl<'a> Generator<'a> {
                     arg_buffer.clear();
                     arg_buffer.extend(args);
 
-                    if let FKind::Builtin(sig, name) = &other.kind {
+                    if let FKind::Builtin(sig) = &other.kind {
                         let return_type = sig.return_type;
-                        let name = *name;
+                        let name = self.program[id].debug_name;
                         self.call_builtin(fun, name, return_type, &arg_buffer, value, builder);
                     } else {
                         let object_id = other.object_id.unwrap();
@@ -253,6 +251,7 @@ impl<'a> Generator<'a> {
                             };
                             context.define(data.deref().to_owned().into_boxed_slice());
                             self.program.object_module.define_data(data_id, context).unwrap();
+                            context.clear();
                             builder.ins().global_value(self.program.isa().pointer_type(), value)
                         },
                         lit => todo!("{}", lit),
@@ -378,7 +377,7 @@ impl<'a> Generator<'a> {
                             builder.ins().select(condition, a, neg)
                         }
                         ("bool", _) => builder.ins().icmp_imm(IntCC::NotEqual, a, 0),
-                        ("i8" | "i16" | "i32" | "i64" | "isize", _) => {
+                        ("i8" | "i16" | "i32" | "i64" | "int", _) => {
                             let to = self.repr_of(return_type.unwrap());
                             match to.bytes().cmp(&repr.bytes()) {
                                 std::cmp::Ordering::Less => builder.ins().ireduce(to, a),
@@ -386,7 +385,7 @@ impl<'a> Generator<'a> {
                                 std::cmp::Ordering::Greater => builder.ins().sextend(to, a),
                             }
                         }
-                        ("u8" | "u16" | "u32" | "u64" | "usize" | "ptr", _) => {
+                        ("u8" | "u16" | "u32" | "u64" | "uint", _) => {
                             let to = self.repr_of(return_type.unwrap());
                             match to.bytes().cmp(&repr.bytes()) {
                                 std::cmp::Ordering::Less => builder.ins().ireduce(to, a),
@@ -402,11 +401,11 @@ impl<'a> Generator<'a> {
                             "+" => a,
                             "-" => builder.ins().fneg(a),
                             "abs" => builder.ins().fabs(a),
-                            "u8" | "u16" | "u32" | "u64" | "usize" | "ptr" => {
+                            "u8" | "u16" | "u32" | "u64" | "uint" | "ptr" => {
                                 let to = self.repr_of(return_type.unwrap());
                                 builder.ins().fcvt_to_uint(to, a)
                             }
-                            "i8" | "i16" | "i32" | "i64" | "isize" => {
+                            "i8" | "i16" | "i32" | "i64" | "int" => {
                                 let to = self.repr_of(return_type.unwrap());
                                 builder.ins().fcvt_to_sint(to, a)
                             }
@@ -440,7 +439,7 @@ impl<'a> Generator<'a> {
                         "i32" | "u32" => builder.ins().bint(I32, a),
                         "i16" | "u16" => builder.ins().bint(I16, a),
                         "i8" | "u8" => builder.ins().bint(I8, a),
-                        "ptr" | "usize" | "isize" => {
+                        "uint" | "int" => {
                             builder.ins().bint(self.program.isa().pointer_type(), a)
                         }
                         "f32" => {
@@ -454,7 +453,6 @@ impl<'a> Generator<'a> {
                         "bool" => a,
                         name => todo!("{}", name),
                     },
-                    BTKind::Ptr => todo!(),
                 };
 
                 self.wrap_val(fun, target.unwrap(), value)
@@ -549,7 +547,6 @@ impl<'a> Generator<'a> {
                         }
                         name => todo!("{:?}", name),
                     },
-                    BTKind::Ptr => todo!(),
                 };
                 self.wrap_val(fun, target.unwrap(), value)
             }
@@ -595,6 +592,8 @@ impl<'a> Generator<'a> {
 
                 if attr.len() > 2 {
                     (linkage, attr[2].token.spam.raw())
+                } else if linkage == Linkage::Import {
+                    (linkage, self.program[fun].debug_name)
                 } else {
                     (linkage, &name_buffer[..])
                 }
@@ -654,7 +653,7 @@ impl<'a> Generator<'a> {
                         &attr.token,
                     ));
                 }
-                "WinMain"
+                "main"
             } else {
                 alias
             };
@@ -735,15 +734,23 @@ impl<'a> Generator<'a> {
                 builder.def_var(var, value);
             }
             FinalValue::Pointer(pointer) => {
-                let value = self.unwrap_val(fun, source, builder);
-                static_memmove(
-                    pointer,
-                    target.offset,
-                    value,
-                    source_v.offset,
-                    self.program[datatype].size,
-                    builder,
-                );
+                if source_v.value == FinalValue::Zero {
+                    static_memset(pointer, target.offset, 0, self.program[datatype].size, builder);
+                } else  {
+                    let value = self.unwrap_val(fun, source, builder);
+                    if source_v.on_stack {
+                        static_memmove(
+                            pointer,
+                            target.offset,
+                            value,
+                            source_v.offset,
+                            self.program[datatype].size,
+                            builder,
+                        );
+                    } else {
+                        builder.ins().store(MemFlags::new(), value, pointer, target.offset as i32);
+                    }
+                } 
             }
             kind => unreachable!("{:?}", kind),
         };
@@ -807,7 +814,6 @@ impl<'a> Generator<'a> {
                     BTKind::Float(32) => builder.ins().f32const(0.0),
                     BTKind::Float(64) => builder.ins().f64const(0.0),
                     BTKind::Bool => builder.ins().bconst(B1, false),
-                    BTKind::Ptr => builder.ins().null(repr),
                     _ => unreachable!("{}", datatype),
                 }
             }
@@ -873,6 +879,16 @@ impl<'a> Generator<'a> {
             &TKind::Builtin(repr) => repr,
             TKind::Pointer(..) | TKind::Structure(..) => self.program.isa().pointer_type(),
             _ => unreachable!("{:?}", self.program[datatype].kind),
+        }
+    }
+
+    pub fn is_zero(&self, fun: Fun, value: Value) -> bool {
+        let inst = self.program[fun].body.values[value].inst;
+        if let Some(inst) = inst {
+            let inst = &self.program[fun].body.insts[inst];
+            matches!(inst.kind, IKind::ZeroValue)
+        } else {
+            false
         }
     }
 }

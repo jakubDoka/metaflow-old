@@ -317,7 +317,7 @@ impl AstParser {
     fn return_statement(&mut self) -> Result<Ast> {
         let mut ast = self.ast(AKind::ReturnStatement);
         self.advance();
-        let ret_val = if let TKind::Indent(_) = self.current_token.kind {
+        let ret_val = if let TKind::Indent(_) | TKind::Eof = self.current_token.kind {
             Ast::none()
         } else {
             self.expr()?
@@ -671,7 +671,7 @@ impl AstParser {
         if let TKind::Indent(level) = self.current_token.kind {
             if level > self.level + 1 {
                 self.unexpected_str(
-                    "too deep indentation, one indentation level is equal 2 spaces of one tab",
+                    "too deep indentation, one indentation level is equal 2 spaces or one tab",
                 )?;
             }
             self.level += 1;

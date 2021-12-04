@@ -16,10 +16,10 @@ impl AstError {
 
 impl Display for AstError {
     fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
-        write!(f, "{}", TokenView::new(&self.token))?;
+        writeln!(f, "{}", TokenView::new(&self.token))?;
         match &self.kind {
-            AEKind::UnexpectedToken(expected) => write!(f, "{}\n", expected),
-            AEKind::UnexpectedEof => write!(f, "unexpected end of file\n"),
+            AEKind::UnexpectedToken(expected) => writeln!(f, "{}\n", expected),
+            AEKind::UnexpectedEof => writeln!(f, "unexpected end of file\n"),
         }
     }
 }

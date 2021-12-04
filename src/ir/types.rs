@@ -47,7 +47,6 @@ impl<'a> TypePrinter<'a> {
             }
             TKind::Pointer(pointed, _) => {
                 buffer.push_str(dt.debug_name);
-                buffer.push(' ');
                 self.print_buff(*pointed, buffer);
             }
             TKind::Unresolved => unreachable!(),
@@ -388,7 +387,6 @@ impl<'a> TypeResolver<'a> {
     pub fn find_by_token(&mut self, module: Mod, token: &Token) -> Result<(Mod, Type)> {
         self.find_by_name(module, TYPE_SALT.add(token.spam.deref()))
             .ok_or_else(|| {
-                println!("{:?} {:?}", module, self.program[module].dependency);
                 TypeError::new(TEKind::UnknownType, token)
             })
     }
@@ -480,7 +478,7 @@ impl<'a> TypeResolver<'a> {
 
     pub fn pointer_to(&mut self, datatype: Type, mutable: bool) -> Type {
         let module = self.program[datatype].module;
-        let debug_name = if mutable { "&var" } else { "&" };
+        let debug_name = if mutable { "&var " } else { "&" };
         let name = TYPE_SALT
             .add(debug_name)
             .combine(self.program[datatype].name);

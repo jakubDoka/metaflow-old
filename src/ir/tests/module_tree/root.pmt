@@ -57,7 +57,7 @@ fun moo:
 
   let c: i64 = a
 
-fun main -> i64:
+fun main -> int:
   var 
     val
     val2 = val
@@ -66,7 +66,7 @@ fun main -> i64:
 
   var foo = goo(val)
 
-  var foo: i64 = foo
+  var foo = foo
 
   foo += if foo == 10: 1 else: 1
 
@@ -141,6 +141,6 @@ fun something -> Embedded[i64]:
 
   s.push(10)
 
-  var v: Embedded[i64]
+  var v: Embedded[int]
 
   v.push(10)

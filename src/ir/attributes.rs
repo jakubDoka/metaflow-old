@@ -46,7 +46,9 @@ impl Attributes {
                             }
                         })
                     });
-                }
+                    i = marker;
+                } 
+                
                 marker = i + 1;
             }
             i += 1;

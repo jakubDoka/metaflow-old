@@ -131,8 +131,8 @@ impl Program {
                             return_type: Some(i),
                             struct_return: false,
                         },
-                        name,
                     ),
+                    debug_name: name,
                     import: false,
                     token_hint: Default::default(),
                     body: Default::default(),
@@ -158,9 +158,8 @@ impl Program {
             self.builtin_repo.u16,
             self.builtin_repo.u32,
             self.builtin_repo.u64,
-            self.builtin_repo.isize,
-            self.builtin_repo.usize,
-            self.builtin_repo.ptr,
+            self.builtin_repo.int,
+            self.builtin_repo.uint,
         ][..];
 
         let builtin_unary_ops = [
@@ -174,7 +173,7 @@ impl Program {
                     self.builtin_repo.i64,
                     self.builtin_repo.f32,
                     self.builtin_repo.f64,
-                    self.builtin_repo.isize,
+                    self.builtin_repo.int,
                 ][..],
             ),
             ("!", &[self.builtin_repo.bool][..]),
@@ -194,9 +193,8 @@ impl Program {
                                 return_type: Some(datatype),
                                 struct_return: false,
                             },
-                            op,
                         ),
-
+                        debug_name: op,
                         import: false,
                         token_hint: Default::default(),
                         body: Default::default(),
@@ -242,9 +240,8 @@ impl Program {
                                 return_type: Some(return_type),
                                 struct_return: false,
                             },
-                            op,
                         ),
-
+                        debug_name: op,
                         import: false,
                         token_hint: Default::default(),
                         body: Default::default(),
@@ -334,7 +331,7 @@ macro_rules! define_repo {
                 }
             }
 
-            pub fn type_list(&self) -> [Type; 15] {
+            pub fn type_list(&self) -> [Type; 14] {
                 [
                     $(self.$name,)+
                     $(self.$pointer_type,)+
@@ -357,7 +354,7 @@ define_repo!(
     f64, F64, 8;
     bool, B1, 1;
     auto, INVALID, 0,
-    ptr usize isize
+    int uint 
 );
 
 impl Index<Type> for Program {
@@ -451,6 +448,7 @@ pub struct FunEnt {
     pub kind: FKind,
     pub body: FunBody,
     pub ast: AstRef,
+    pub debug_name: &'static str,
     pub import: bool,
     pub final_signature: Option<Signature>,
     pub object_id: Option<FuncId>,
@@ -461,7 +459,7 @@ impl FunEnt {
     pub fn signature(&self) -> &FunSignature {
         match &self.kind {
             FKind::Normal(sig) => sig,
-            FKind::Builtin(sig, _) => sig,
+            FKind::Builtin(sig) => sig,
             _ => panic!("cannot access signature on {:?}", self.kind),
         }
     }
@@ -483,7 +481,7 @@ impl FunBody {
 #[derive(Debug, Clone)]
 pub enum FKind {
     Unresolved,
-    Builtin(FunSignature, &'static str),
+    Builtin(FunSignature),
     Generic(GenericSignature),
     Normal(FunSignature),
 }
@@ -656,7 +654,7 @@ impl ValueEnt {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum FinalValue {
     None,
     Zero,
@@ -734,18 +732,16 @@ pub enum BTKind {
     Uint,
     Float(u8),
     Bool,
-    Ptr,
 }
 
 impl BTKind {
     pub fn of(tp: Type) -> Self {
         match SymID::raw(&tp) {
-            0..=3 | 14 => Self::Int,
+            0..=3 | 12 => Self::Int,
             4..=7 | 13 => Self::Uint,
             8 => Self::Float(32),
             9 => Self::Float(64),
             10 => Self::Bool,
-            12 => Self::Ptr,
             _ => panic!("cannot get builtin type of {:?}", tp),
         }
     }

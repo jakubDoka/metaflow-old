@@ -21,8 +21,11 @@ impl TokenView {
             };
         }
 
-        let range = token.spam.range.clone();
+        let mut range = token.spam.range.clone();
         let string = token.spam.string();
+        if string[range.start..range.end].starts_with("\n") {
+            range.start += 1;
+        }
         let mut repr = String::new();
         repr.push_str(format!("|> {}\n", token.line_data).as_str());
         repr.push_str("|");
@@ -33,10 +36,30 @@ impl TokenView {
             .unwrap_or(string.len());
         let start = string[..range.start].rfind('\n').unwrap_or(0) + 1;
 
-        repr.push_str(&string[start..end]);
+        let mut new_string = String::with_capacity(range.end - range.start);
+        new_string.push_str(&string[start..range.start]);
+        let mut max = 0;
+        let mut min = range.start - start;
+        let mut i = min;
+        for ch in string[range.start..range.end].chars() {
+            new_string.push(ch);
+            if ch.is_whitespace() {
+                if ch == '\n' {
+                    new_string.push_str("|");
+                    i = 0;
+                }
+            } else {
+                max = (i + 1).max(max);
+                min = (i - 1).min(min);
+            }
+            i += 1;
+        }
+
+        repr.push_str(&new_string);
+        repr.push_str(&string[range.end..end]);
         repr.push_str("\n|");
-        repr.extend(std::iter::repeat(' ').take(range.start - start));
-        repr.extend(std::iter::repeat('^').take(range.end - range.start));
+        repr.extend(std::iter::repeat(' ').take(min));
+        repr.extend(std::iter::repeat('^').take(max - min));
 
         Self { repr }
     }
@@ -179,7 +202,7 @@ impl Lexer {
             }
             _ => {
                 if fraction == 0 && !is_float {
-                    TKind::Int(number as i64, 64)
+                    TKind::Int(number as i64, 0)
                 } else {
                     TKind::Float(number as f64 + fraction as f64 / exponent as f64, 64)
                 }
@@ -331,9 +354,9 @@ impl Lexer {
                 _ => current,
             },
             '0'..='7' => {
-                let mut res = 0u8;
-                for _ in 0..3 {
-                    res = res * 8 + (self.cursor.advance()?.to_digit(8)? as u8 - '0' as u8);
+                let mut res = 0u8 + current as u8 - '0' as u8;
+                for _ in 0..2 {
+                    res = res * 8 + self.cursor.advance()?.to_digit(8)? as u8;
                 }
                 res as char
             }
@@ -347,7 +370,7 @@ impl Lexer {
 
                 let mut res = 0u32;
                 for _ in 0..len {
-                    res = res * 16 + (self.cursor.advance()?.to_digit(16)? - '0' as u32);
+                    res = res * 16 + self.cursor.advance()?.to_digit(16)?;
                 }
                 return char::from_u32(res);
             }

@@ -850,13 +850,15 @@ impl<'a> FunResolver<'a> {
                 8 => self.program.builtin_repo.i8,
                 16 => self.program.builtin_repo.i16,
                 32 => self.program.builtin_repo.i32,
-                _ => self.program.builtin_repo.i64,
+                64 => self.program.builtin_repo.i64,
+                _ => self.program.builtin_repo.int,
             },
             LTKind::Uint(_, base) => match base {
                 8 => self.program.builtin_repo.u8,
                 16 => self.program.builtin_repo.u16,
                 32 => self.program.builtin_repo.u32,
-                _ => self.program.builtin_repo.u64,
+                64 => self.program.builtin_repo.u64,
+                _ => self.program.builtin_repo.uint,
             },
             LTKind::Float(_, base) => match base {
                 32 => self.program.builtin_repo.f32,
@@ -1503,7 +1505,7 @@ impl<'a> FunResolver<'a> {
         };
 
         let fun = &self.program.generic_functions[functions][index];
-        let (ast_ref, name, vis, attr_id) = (fun.ast, fun.name, fun.visibility, fun.attribute_id);
+        let (ast_ref, name, debug_name, vis, attr_id) = (fun.ast, fun.name, fun.debug_name, fun.visibility, fun.attribute_id);
         let fun = {
             // SAFETY: the function_ast has same live-time as self ans scope ensures
             // the reference does not escape
@@ -1513,7 +1515,7 @@ impl<'a> FunResolver<'a> {
                 fun
             } else {
                 self.context.dive();
-                let fun = self.collect_normal_function(module, ast_ref, ast, name, vis, attr_id)?;
+                let fun = self.collect_normal_function(module, ast_ref, ast, name, debug_name, vis, attr_id)?;
                 self.function(fun)?;
                 self.context.bail();
                 fun
@@ -1597,9 +1599,10 @@ impl<'a> FunResolver<'a> {
                         let header = &a[0];
                         match header[0].kind {
                             AKind::Ident => {
-                                let name = FUN_SALT.add(header[0].token.spam.deref());
+                                let debug_name = header[0].token.spam.raw();
+                                let name = FUN_SALT.add(debug_name);
                                 self.collect_normal_function(
-                                    module, a_ref, a, name, visibility, i,
+                                    module, a_ref, a, name, debug_name, visibility, i,
                                 )?;
                             }
                             AKind::Instantiation => {
@@ -1627,7 +1630,8 @@ impl<'a> FunResolver<'a> {
         visibility: Vis,
         attribute_id: usize,
     ) -> Result<Fun> {
-        let name = FUN_SALT.add(a[0][0][0].token.spam.deref());
+        let debug_name = a[0][0][0].token.spam.raw();
+        let name = FUN_SALT.add(debug_name);
 
         let signature = self.generic_signature(&a[0])?;
 
@@ -1639,6 +1643,7 @@ impl<'a> FunResolver<'a> {
             kind: FKind::Generic(signature),
             ast: a_ref,
             attribute_id,
+            debug_name,
             import: false,
             body: Default::default(),
             final_signature: None,
@@ -1674,6 +1679,7 @@ impl<'a> FunResolver<'a> {
         a_ref: AstRef,
         a: &Ast,
         mut name: ID,
+        debug_name: &'static str,
         visibility: Vis,
         attribute_id: usize,
     ) -> Result<Fun> {
@@ -1732,6 +1738,7 @@ impl<'a> FunResolver<'a> {
             kind: FKind::Normal(function_signature),
             attribute_id,
             ast: a_ref,
+            debug_name,
             import: false,
             body: Default::default(),
             final_signature: None,

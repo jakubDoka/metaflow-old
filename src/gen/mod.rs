@@ -175,7 +175,10 @@ impl<'a> Display for GenErrorDisplay<'a> {
                     "Invalid call convention, list of valid call conventions:"
                 )?;
                 for cc in [
-                    "fast cold system_v",
+                    "platform - picks call convention based of target platform",
+                    "fast",
+                    "cold - then its unlikely this gets called", 
+                    "system_v",
                     "windows_fastcall",
                     "apple_aarch64",
                     "baldrdash_system_v",
@@ -216,7 +219,7 @@ impl<'a> Display for GenErrorDisplay<'a> {
                 Ok(())
             }
             GEKind::ModuleTreeError(error) => {
-                writeln!(f, "{:?}", error)?;
+                writeln!(f, "{}", error)?;
                 Ok(())
             }
             GEKind::IoError(err) => {
@@ -279,7 +282,7 @@ pub fn test() {
     test_sippet(
         r#"
 attr entry
-fun main -> i64:
+fun main -> int:
   return 0
         "#,
         0,
@@ -287,7 +290,7 @@ fun main -> i64:
     test_sippet(
         r#"
 attr entry
-fun main -> i64:
+fun main -> int:
   return 1 - 1
         "#,
         0,
@@ -295,7 +298,7 @@ fun main -> i64:
     test_sippet(
         r#"
 attr entry
-fun main -> i64:
+fun main -> int:
   return 1 + 1
         "#,
         2,
@@ -303,7 +306,7 @@ fun main -> i64:
     test_sippet(
         r#"
 attr entry
-fun main -> i64:
+fun main -> int:
   return if 1 == 1: 0 else: 1
         "#,
         0,
@@ -339,18 +342,18 @@ fun main -> i32:
     test_sippet(
         r#"
 struct Point:
-  x, y: i64
+  x, y: int
 
 struct Point3:
   embed point: Point
-  z: i64
+  z: int
 
 struct Rect:
   mi: Point
   ma: Point
 
 attr entry
-fun main -> i64:
+fun main -> int:
   var
     p: Point
     p3: Point3
@@ -368,16 +371,16 @@ fun main -> i64:
     test_sippet(
         r#"
 struct Point:
-  x, y: i64
+  x, y: int
 
-fun set(p: Point, x: i64, y: i64) -> Point:
+fun set(p: Point, x: int, y: int) -> Point:
   var p = p
   p.x = x
   p.y = y
   return p
 
 attr entry
-fun main -> i64:
+fun main -> int:
   var p, q: Point
   p = p.set(1, 2)
   return p.x + p.y - 3
@@ -387,40 +390,43 @@ fun main -> i64:
     test_sippet(
         r#"
 attr entry
-fun main -> i64:
-  var a: i64
+fun main -> int:
+  var a: int
   ++a
   --a
-  return i64(!true) + ~1 + 2 + abs -1 - 1 + a
+  return int(!true) + ~1 + 2 + abs -1 - 1 + a
         "#,
         0,
     );
     test_sippet(
         r#"
 attr entry
-fun main -> i64:
+fun main -> int:
   var a = 1.0
   loop:
     a = a + 1.0
     if a > 100.0:
       break
-  return i64(a) - 101
+  return int(a) - 101
         "#,
         0,
     );
     test_sippet(
         r#"
+attr linkage(import), call_conv(platform)
+fun putchar(c: i32)
 
 attr entry
-fun main -> i64:
+fun main -> int:
   var
     a = "Hello, World!"
-    b = a as usize 
+    b = a as uint 
   loop:
     let char = *(b as &u8) 
     if char == 0u8:
       break
-    b += 1 as usize
+    putchar(char.i32())
+    b += 1 as uint
   return 0
         "#,
         0,
@@ -428,14 +434,15 @@ fun main -> i64:
     test_sippet(
         r#"
 struct Point:
-  x, y: i64
+  x, y: int
 
-fun init(v: &var Point, x: i64, y: i64) -> Point:
+fun init(v: &var Point, x: int, y: int) -> Point:
   (*v).x = x
-  drop (*v).y = y
+  (*v).y = y
+  pass
 
 attr entry
-fun main -> i64:
+fun main -> int:
   var p: Point
   p.init(2, 2)
   return p.x - p.y
