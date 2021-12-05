@@ -100,50 +100,50 @@ impl<'a> FunResolver<'a> {
         if signature.struct_return {
             self.context.struct_return = Some(self.context.variables.pop().unwrap().unwrap());
         }
-        
+
         if ast[1].is_empty() {
             return Ok(());
-        } 
+        }
 
         let value = self.block(&ast[1])?;
 
-            if let (Some(value), Some(_), Some(return_type)) =
-                (value, self.context.current_block, signature.return_type)
-            {
-                let value_type = self.context[value].datatype;
-                let token = &ast[1].last().unwrap().token;
-                if self.is_auto(value_type) {
-                    self.infer(value, return_type)?;
-                } else {
-                    self.assert_type(value_type, return_type, token)?;
-                }
-                let value = self.return_value(value, token);
-                self.context
-                    .add_inst(InstEnt::new(IKind::Return(Some(value)), None, token));
-            } else if let (Some(return_type), Some(_)) =
-                (signature.return_type, self.context.current_block)
-            {
-                let value = self.new_temp_value(return_type);
-                let token = &ast[1].last().unwrap().token;
-                self.context
+        if let (Some(value), Some(_), Some(return_type)) =
+            (value, self.context.current_block, signature.return_type)
+        {
+            let value_type = self.context[value].datatype;
+            let token = &ast[1].last().unwrap().token;
+            if self.is_auto(value_type) {
+                self.infer(value, return_type)?;
+            } else {
+                self.assert_type(value_type, return_type, token)?;
+            }
+            let value = self.return_value(value, token);
+            self.context
+                .add_inst(InstEnt::new(IKind::Return(Some(value)), None, token));
+        } else if let (Some(return_type), Some(_)) =
+            (signature.return_type, self.context.current_block)
+        {
+            let value = self.new_temp_value(return_type);
+            let token = &ast[1].last().unwrap().token;
+            self.context
                 .add_inst(InstEnt::new(IKind::ZeroValue, Some(value), token));
-                let value = self.return_value(value, token);
-                self.context
-                    .add_inst(InstEnt::new(IKind::Return(Some(value)), None, token));
-            } else if self.context.current_block.is_some() {
-                self.context.add_inst(InstEnt::new(
-                    IKind::Return(None),
-                    None,
-                    &ast[1].last().unwrap_or(&Ast::none()).token,
-                ));
-            }
+            let value = self.return_value(value, token);
+            self.context
+                .add_inst(InstEnt::new(IKind::Return(Some(value)), None, token));
+        } else if self.context.current_block.is_some() {
+            self.context.add_inst(InstEnt::new(
+                IKind::Return(None),
+                None,
+                &ast[1].last().unwrap_or(&Ast::none()).token,
+            ));
+        }
 
-            for value_id in self.context.function_body.values.ids() {
-                let datatype = self.context[value_id].datatype;
-                let on_stack =
-                    self.program.types[datatype].size > self.program.isa().pointer_bytes() as u32;
-                self.context[value_id].on_stack = self.context[value_id].on_stack || on_stack;
-            }
+        for value_id in self.context.function_body.values.ids() {
+            let datatype = self.context[value_id].datatype;
+            let on_stack =
+                self.program.types[datatype].size > self.program.isa().pointer_bytes() as u32;
+            self.context[value_id].on_stack = self.context[value_id].on_stack || on_stack;
+        }
 
         let mut frontier = std::mem::take(&mut self.context.second_graph_frontier);
         let mut unresolved = std::mem::take(&mut self.context.unresolved_functions);
@@ -1507,7 +1507,13 @@ impl<'a> FunResolver<'a> {
         };
 
         let fun = &self.program.generic_functions[functions][index];
-        let (ast_ref, name, debug_name, vis, attr_id) = (fun.ast, fun.name, fun.debug_name, fun.visibility, fun.attribute_id);
+        let (ast_ref, name, debug_name, vis, attr_id) = (
+            fun.ast,
+            fun.name,
+            fun.debug_name,
+            fun.visibility,
+            fun.attribute_id,
+        );
         let fun = {
             // SAFETY: the function_ast has same live-time as self ans scope ensures
             // the reference does not escape
@@ -1517,7 +1523,9 @@ impl<'a> FunResolver<'a> {
                 fun
             } else {
                 self.context.dive();
-                let fun = self.collect_normal_function(module, ast_ref, ast, name, debug_name, vis, attr_id)?;
+                let fun = self.collect_normal_function(
+                    module, ast_ref, ast, name, debug_name, vis, attr_id,
+                )?;
                 self.function(fun)?;
                 self.context.bail();
                 fun

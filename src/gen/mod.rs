@@ -1,4 +1,4 @@
-pub mod generator;
+/*pub mod generator;
 
 use generator::*;
 
@@ -177,7 +177,7 @@ impl<'a> Display for GenErrorDisplay<'a> {
                 for cc in [
                     "platform - picks call convention based of target platform",
                     "fast",
-                    "cold - then its unlikely this gets called", 
+                    "cold - then its unlikely this gets called",
                     "system_v",
                     "windows_fastcall",
                     "apple_aarch64",
@@ -420,9 +420,9 @@ attr entry
 fun main -> int:
   var
     a = "Hello, World!"
-    b = a as uint 
+    b = a as uint
   loop:
-    let char = *(b as &u8) 
+    let char = *(b as &u8)
     if char == 0u8:
       break
     putchar(char.i32())
@@ -465,3 +465,4 @@ pub fn test_sippet(sippet: &str, exit_code: i32) {
     std::fs::remove_file("test_case.pmt").unwrap_or(());
     std::fs::remove_file("test_case.exe").unwrap_or(());
 }
+*/

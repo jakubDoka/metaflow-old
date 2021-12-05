@@ -386,9 +386,7 @@ impl<'a> TypeResolver<'a> {
 
     pub fn find_by_token(&mut self, module: Mod, token: &Token) -> Result<(Mod, Type)> {
         self.find_by_name(module, TYPE_SALT.add(token.spam.deref()))
-            .ok_or_else(|| {
-                TypeError::new(TEKind::UnknownType, token)
-            })
+            .ok_or_else(|| TypeError::new(TEKind::UnknownType, token))
     }
 
     fn find_by_name(&self, module: Mod, name: ID) -> Option<(Mod, Type)> {

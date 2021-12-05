@@ -11,16 +11,16 @@ use cranelift_codegen::{
     Context,
 };
 use cranelift_frontend::{FunctionBuilder, FunctionBuilderContext};
-use cranelift_module::{Linkage, Module, DataContext, FuncOrDataId};
-use std::{str::FromStr, ops::Deref};
+use cranelift_module::{DataContext, FuncOrDataId, Linkage, Module};
+use std::{ops::Deref, str::FromStr};
 
 use crate::{
     ast::Ast,
     ir::{
-        BTKind, CrBlock, CrType, CrValue, CrVar, FKind, FinalValue, Fun, IKind, Inst, LTKind,
-        Program, TKind, Type, Value, types::TypePrinter,
+        types::TypePrinter, BTKind, CrBlock, CrType, CrValue, CrVar, FKind, FinalValue, Fun, IKind,
+        Inst, LTKind, Program, TKind, Type, Value,
     },
-    util::{storage::SymID, sdbm::SdbmHash},
+    util::{sdbm::SdbmHash, storage::SymID},
 };
 
 use super::{GEKind, GenError};
@@ -244,22 +244,38 @@ impl<'a> Generator<'a> {
                             let mut name_buffer = std::mem::take(&mut self.context.name_buffer);
                             name_buffer.clear();
                             write_base36(id, &mut name_buffer);
-                            let data_id = if let Some(FuncOrDataId::Data(data_id)) = self.program.object_module.get_name(&name_buffer) {
+                            let data_id = if let Some(FuncOrDataId::Data(data_id)) =
+                                self.program.object_module.get_name(&name_buffer)
+                            {
                                 data_id
                             } else {
-                                let data_id = self.program.object_module.declare_data(&name_buffer, Linkage::Export, false, false).unwrap();
+                                let data_id = self
+                                    .program
+                                    .object_module
+                                    .declare_data(&name_buffer, Linkage::Export, false, false)
+                                    .unwrap();
                                 let context = unsafe {
-                                    std::mem::transmute::<_, &mut DataContext>(&mut self.context.data_context)
+                                    std::mem::transmute::<_, &mut DataContext>(
+                                        &mut self.context.data_context,
+                                    )
                                 };
                                 context.define(data.deref().to_owned().into_boxed_slice());
-                                self.program.object_module.define_data(data_id, context).unwrap();
+                                self.program
+                                    .object_module
+                                    .define_data(data_id, context)
+                                    .unwrap();
                                 context.clear();
                                 data_id
                             };
-                            
-                            let value = self.program.object_module.declare_data_in_func(data_id, builder.func);
-                            builder.ins().global_value(self.program.isa().pointer_type(), value)
-                        },
+
+                            let value = self
+                                .program
+                                .object_module
+                                .declare_data_in_func(data_id, builder.func);
+                            builder
+                                .ins()
+                                .global_value(self.program.isa().pointer_type(), value)
+                        }
                         lit => todo!("{}", lit),
                     };
                     self.program[fun].body.values[value].value = FinalValue::Value(lit);
@@ -323,7 +339,7 @@ impl<'a> Generator<'a> {
                         if self.repr_of_val(fun, other) != target {
                             let other_value = self.unwrap_val(fun, other, builder);
                             let val = builder.ins().bitcast(target, other_value);
-                            self.wrap_val(fun, value, val);    
+                            self.wrap_val(fun, value, val);
                         } else {
                             self.pass(fun, other, value);
                         }
@@ -445,9 +461,7 @@ impl<'a> Generator<'a> {
                         "i32" | "u32" => builder.ins().bint(I32, a),
                         "i16" | "u16" => builder.ins().bint(I16, a),
                         "i8" | "u8" => builder.ins().bint(I8, a),
-                        "uint" | "int" => {
-                            builder.ins().bint(self.program.isa().pointer_type(), a)
-                        }
+                        "uint" | "int" => builder.ins().bint(self.program.isa().pointer_type(), a),
                         "f32" => {
                             let value = builder.ins().bint(I32, a);
                             builder.ins().fcvt_from_uint(F32, value)
@@ -691,13 +705,12 @@ impl<'a> Generator<'a> {
         let type_printer = TypePrinter::new(self.program);
 
         debug_assert!(
-            target.datatype == datatype, 
-            "{} {} {:?} {:?}", 
-            type_printer.print(datatype), 
+            target.datatype == datatype,
+            "{} {} {:?} {:?}",
+            type_printer.print(datatype),
             type_printer.print(target.datatype),
             self.program[fun].body.insts[target.inst.unwrap()].kind,
             self.program[fun].body.insts[source_v.inst.unwrap()].kind
-
         );
 
         match target.value.clone() {
@@ -741,8 +754,14 @@ impl<'a> Generator<'a> {
             }
             FinalValue::Pointer(pointer) => {
                 if source_v.value == FinalValue::Zero {
-                    static_memset(pointer, target.offset, 0, self.program[datatype].size, builder);
-                } else  {
+                    static_memset(
+                        pointer,
+                        target.offset,
+                        0,
+                        self.program[datatype].size,
+                        builder,
+                    );
+                } else {
                     let value = self.unwrap_val(fun, source, builder);
                     if source_v.on_stack {
                         static_memmove(
@@ -754,9 +773,11 @@ impl<'a> Generator<'a> {
                             builder,
                         );
                     } else {
-                        builder.ins().store(MemFlags::new(), value, pointer, target.offset as i32);
+                        builder
+                            .ins()
+                            .store(MemFlags::new(), value, pointer, target.offset as i32);
                     }
-                } 
+                }
             }
             kind => unreachable!("{:?}", kind),
         };

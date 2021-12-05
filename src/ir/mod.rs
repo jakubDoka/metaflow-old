@@ -1,4 +1,4 @@
-pub mod attributes;
+/*pub mod attributes;
 pub mod functions;
 pub mod globals;
 pub mod module_tree;
@@ -125,13 +125,11 @@ impl Program {
                     visibility: Vis::Public,
                     name: FUN_SALT.add(name).combine(datatype_id),
                     module,
-                    kind: FKind::Builtin(
-                        FunSignature {
-                            args: vec![ValueEnt::temp(j)],
-                            return_type: Some(i),
-                            struct_return: false,
-                        },
-                    ),
+                    kind: FKind::Builtin(FunSignature {
+                        args: vec![ValueEnt::temp(j)],
+                        return_type: Some(i),
+                        struct_return: false,
+                    }),
                     debug_name: name,
                     import: false,
                     token_hint: Default::default(),
@@ -187,13 +185,11 @@ impl Program {
                         visibility: Vis::Public,
                         name: FUN_SALT.add(op).combine(datatype_id),
                         module,
-                        kind: FKind::Builtin(
-                            FunSignature {
-                                args: vec![ValueEnt::temp(datatype)],
-                                return_type: Some(datatype),
-                                struct_return: false,
-                            },
-                        ),
+                        kind: FKind::Builtin(FunSignature {
+                            args: vec![ValueEnt::temp(datatype)],
+                            return_type: Some(datatype),
+                            struct_return: false,
+                        }),
                         debug_name: op,
                         import: false,
                         token_hint: Default::default(),
@@ -234,13 +230,11 @@ impl Program {
                         visibility: Vis::Public,
                         name: FUN_SALT.add(op).combine(datatype_id).combine(datatype_id),
                         module,
-                        kind: FKind::Builtin(
-                            FunSignature {
-                                args: vec![ValueEnt::temp(datatype), ValueEnt::temp(datatype)],
-                                return_type: Some(return_type),
-                                struct_return: false,
-                            },
-                        ),
+                        kind: FKind::Builtin(FunSignature {
+                            args: vec![ValueEnt::temp(datatype), ValueEnt::temp(datatype)],
+                            return_type: Some(return_type),
+                            struct_return: false,
+                        }),
                         debug_name: op,
                         import: false,
                         token_hint: Default::default(),
@@ -354,7 +348,7 @@ define_repo!(
     f64, F64, 8;
     bool, B1, 1;
     auto, INVALID, 0,
-    int uint 
+    int uint
 );
 
 impl Index<Type> for Program {
@@ -752,3 +746,4 @@ pub fn test() {
     types::test();
     functions::test();
 }
+*/

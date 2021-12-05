@@ -71,6 +71,7 @@ impl Display for TokenView {
     }
 }
 
+#[derive(Debug, Default)]
 pub struct Lexer {
     cursor: Cursor,
     file_name: &'static str,
@@ -385,9 +386,19 @@ impl Lexer {
             Spam::whole(&self.file_name),
         )
     }
+
+    pub fn file_name(&self) -> &'static str {
+        self.file_name
+    }
 }
 
-impl<'a> Iterator for Lexer {
+impl Clone for Lexer {
+    fn clone(&self) -> Self {
+        unsafe { std::ptr::read(self as *const _) }
+    }
+}
+
+impl Iterator for Lexer {
     type Item = Token;
 
     fn next(&mut self) -> Option<Self::Item> {
@@ -459,11 +470,23 @@ pub fn test() {
     lexer.for_each(|token| println!("{:?}", token));
 }
 
+#[derive(Debug, Clone)]
 pub struct Cursor {
     data: &'static str,
     chars: Chars<'static>,
     line: usize,
     last_n_line: usize,
+}
+
+impl Default for Cursor {
+    fn default() -> Self {
+        Self {
+            data: "",
+            chars: "".chars(),
+            line: 1,
+            last_n_line: 1,
+        }
+    }
 }
 
 impl Cursor {

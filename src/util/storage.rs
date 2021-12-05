@@ -1,5 +1,4 @@
 use std::{
-    collections::HashMap,
     marker::PhantomData,
     ops::{Index, IndexMut},
 };
@@ -7,8 +6,300 @@ use std::{
 use super::sdbm::ID;
 
 #[derive(Clone, Debug)]
+pub struct Map<V> {
+    cache: Vec<Vec<(ID, V)>>,
+    size: u32,
+    mod_mask: u64,
+    count: usize,
+}
+
+impl<V> Map<V> {
+    pub fn new() -> Self {
+        Map::with_capacity(4)
+    }
+
+    pub fn with_capacity(capacity: usize) -> Self {
+        let mut map = Map {
+            cache: Vec::new(),
+            size: 0,
+            count: 0,
+            mod_mask: 0,
+        };
+
+        map.increase_cache();
+
+        while map.lim() < capacity {
+            map.increase_cache();
+        }
+
+        map
+    }
+
+    pub fn reserve(&mut self, additional: usize) {
+        let capacity = (self.count + additional).next_power_of_two();
+        while self.lim() < capacity {
+            self.increase_cache();
+        }
+    }
+
+    pub fn insert(&mut self, key: ID, value: V) -> Option<V> {
+        let ix = self.calc_index(key);
+
+        {
+            let ref mut vals = self.cache[ix];
+            for kv in vals.iter_mut() {
+                if kv.0 == key {
+                    return Some(std::mem::replace(&mut kv.1, value));
+                }
+            }
+
+            self.count += 1;
+            vals.push((key, value));
+        }
+        if (self.count & 4) == 4 {
+            self.ensure_load_rate();
+        }
+
+        None
+    }
+
+    pub fn get(&self, key: ID) -> Option<&V> {
+        let ix = self.calc_index(key);
+
+        let ref vals = self.cache[ix];
+
+        if vals.len() > 0 {
+            for kv in vals.iter() {
+                if kv.0 == key {
+                    return Some(&kv.1);
+                }
+            }
+
+            return None;
+        } else {
+            return None;
+        }
+    }
+
+    pub fn get_mut(&mut self, key: ID) -> Option<&mut V> {
+        let ix = self.calc_index(key);
+
+        let ref mut vals = self.cache[ix];
+
+        if vals.len() > 0 {
+            for kv in vals {
+                if kv.0 == key {
+                    return Some(&mut kv.1);
+                }
+            }
+
+            return None;
+        } else {
+            return None;
+        }
+    }
+
+    pub fn remove(&mut self, key: ID) -> Option<V> {
+        let ix = self.calc_index(key);
+
+        let ref mut vals = self.cache[ix];
+
+        if vals.len() > 0 {
+            for i in 0..vals.len() {
+                let peek = vals[i].0;
+
+                if peek == key {
+                    self.count -= 1;
+                    let kv = vals.swap_remove(i);
+                    return Some(kv.1);
+                }
+            }
+
+            return None;
+        } else {
+            return None;
+        }
+    }
+
+    pub fn contains_key(&self, key: ID) -> bool {
+        match self.get(key) {
+            Some(_) => true,
+            None => false,
+        }
+    }
+
+    pub fn clear(&mut self) {
+        for i in 0..self.cache.len() {
+            self.cache[i].clear();
+        }
+
+        self.count = 0;
+    }
+
+    pub fn retain<F>(&mut self, mut f: F)
+    where
+        F: FnMut(ID, &V) -> bool,
+    {
+        let mut removed = 0;
+        for i in 0..self.cache.len() {
+            self.cache[i].retain(|(k, v)| {
+                let keep = (f)(*k, v);
+                if !keep {
+                    removed += 1;
+                }
+                keep
+            });
+        }
+
+        self.count -= removed;
+    }
+
+    pub fn is_empty(&mut self) -> bool {
+        self.count == 0
+    }
+
+    #[inline]
+    fn hash_u64(seed: u64) -> u64 {
+        let a = 11400714819323198549u64;
+        let val = a.wrapping_mul(seed);
+        val
+    }
+
+    #[inline]
+    fn calc_index(&self, key: ID) -> usize {
+        let hash = Self::hash_u64(key.0);
+        // Faster modulus
+        (hash & self.mod_mask) as usize
+    }
+
+    #[inline]
+    fn lim(&self) -> usize {
+        2u64.pow(self.size) as usize
+    }
+
+    fn increase_cache(&mut self) {
+        self.size += 1;
+        let new_lim = self.lim();
+        self.mod_mask = (new_lim as u64) - 1;
+
+        let mut vec: Vec<Vec<(ID, V)>> = Vec::new();
+
+        vec.append(&mut self.cache);
+
+        for _ in 0..new_lim {
+            self.cache.push(Vec::with_capacity(0));
+        }
+
+        while vec.len() > 0 {
+            let mut values = vec.pop().unwrap();
+            while values.len() > 0 {
+                if let Some(k) = values.pop() {
+                    let ix = self.calc_index(k.0);
+
+                    let ref mut vals = self.cache[ix];
+                    vals.push(k);
+                }
+            }
+        }
+
+        debug_assert!(
+            self.cache.len() == self.lim(),
+            "cache vector the wrong length, lim: {:?} cache: {:?}",
+            self.lim(),
+            self.cache.len()
+        );
+    }
+
+    fn ensure_load_rate(&mut self) {
+        while ((self.count * 100) / self.cache.len()) > 70 {
+            self.increase_cache();
+        }
+    }
+
+    pub fn len(&self) -> usize {
+        self.count as usize
+    }
+
+    pub fn load(&self) -> u64 {
+        let mut count = 0;
+
+        for i in 0..self.cache.len() {
+            if self.cache[i].len() > 0 {
+                count += 1;
+            }
+        }
+
+        count
+    }
+
+    pub fn load_rate(&self) -> f64 {
+        (self.count as f64) / (self.cache.len() as f64) * 100f64
+    }
+
+    pub fn capacity(&self) -> usize {
+        self.cache.len()
+    }
+
+    pub fn assert_count(&self) -> bool {
+        let mut count = 0;
+
+        for i in 0..self.cache.len() {
+            for _ in self.cache[i].iter() {
+                count += 1;
+            }
+        }
+
+        self.count == count
+    }
+
+    pub fn collisions(&self) -> Map<u64> {
+        let mut map = Map::new();
+
+        for s in self.cache.iter() {
+            let key = ID(s.len() as u64);
+            if key.0 > 1 {
+                if !map.contains_key(key) {
+                    map.insert(key, 1);
+                } else {
+                    let counter = map.get_mut(key).unwrap();
+                    *counter += 1;
+                }
+            }
+        }
+
+        map
+    }
+
+    pub fn keys<'a>(&'a self) -> impl Iterator<Item = ID> + 'a {
+        self.cache.iter().map(|c| c.iter()).flatten().map(|kv| kv.0)
+    }
+
+    pub fn values<'a>(&'a self) -> impl Iterator<Item = &'a V> + 'a {
+        self.cache
+            .iter()
+            .map(|c| c.iter())
+            .flatten()
+            .map(|kv| &kv.1)
+    }
+
+    pub fn values_mut<'a>(&'a mut self) -> impl Iterator<Item = &'a mut V> + 'a {
+        self.cache
+            .iter_mut()
+            .map(|c| c.iter_mut())
+            .flatten()
+            .map(|kv| &mut kv.1)
+    }
+}
+
+impl<V> Default for Map<V> {
+    fn default() -> Self {
+        Map::new()
+    }
+}
+
+#[derive(Clone, Debug)]
 pub struct Table<I: SymID, T> {
-    table: HashMap<ID, I>,
+    table: Map<I>,
     data: Vec<(ID, T)>,
     free: Vec<usize>,
 }
@@ -16,7 +307,7 @@ pub struct Table<I: SymID, T> {
 impl<I: SymID, T> Table<I, T> {
     pub fn new() -> Self {
         Self {
-            table: HashMap::new(),
+            table: Map::new(),
             data: vec![],
             free: vec![],
         }
@@ -42,7 +333,7 @@ impl<I: SymID, T> Table<I, T> {
             }};
         }
 
-        match self.table.get(&id) {
+        match self.table.get(id) {
             Some(i) => {
                 if self.data[i.raw()].0 != id {
                     insert!()
@@ -58,13 +349,13 @@ impl<I: SymID, T> Table<I, T> {
 
     #[inline]
     pub fn get_id(&self, id: ID) -> Option<&T> {
-        self.table.get(&id).map(|i| &self.data[i.raw()].1)
+        self.table.get(id).map(|i| &self.data[i.raw()].1)
     }
 
     #[inline]
     pub fn get_mut_id(&mut self, id: ID) -> Option<&mut T> {
         self.table
-            .get(&id)
+            .get(id)
             .cloned()
             .map(move |i| &mut self.data[i.raw()].1)
     }
@@ -74,11 +365,11 @@ impl<I: SymID, T> Table<I, T> {
     }
 
     pub fn id_to_direct(&self, id: ID) -> Option<I> {
-        self.table.get(&id).cloned()
+        self.table.get(id).cloned()
     }
 
     pub fn remove(&mut self, id: ID) -> Option<T> {
-        self.table.remove(&id).map(|i| {
+        self.table.remove(id).map(|i| {
             self.free.push(i.raw());
             unsafe { std::mem::replace(&mut self.data[i.raw()], std::mem::zeroed()).1 }
         })
@@ -108,7 +399,7 @@ impl<I: SymID, T> Table<I, T> {
     }
 
     pub fn redirect(&mut self, id: ID, param: I) -> Option<I> {
-        match self.table.get_mut(&id) {
+        match self.table.get_mut(id) {
             Some(idx) => return Some(std::mem::replace(idx, param)),
             None => self.table.insert(id, param),
         };
@@ -116,7 +407,7 @@ impl<I: SymID, T> Table<I, T> {
     }
 
     pub fn remove_redirect(&mut self, id: ID, shadowed: Option<I>) -> Option<I> {
-        match self.table.get_mut(&id) {
+        match self.table.get_mut(id) {
             Some(idx) => {
                 // this is not a redirect
                 if self.data[idx.raw()].0 == id {
@@ -127,21 +418,21 @@ impl<I: SymID, T> Table<I, T> {
                     *idx = shadowed;
                     Some(current)
                 } else {
-                    Some(self.table.remove(&id).unwrap())
+                    Some(self.table.remove(id).unwrap())
                 }
             }
             None => None,
         }
     }
 
-    pub fn keys(&self) -> impl Iterator<Item = &ID> {
+    pub fn keys<'a>(&'a self) -> impl Iterator<Item = ID> + 'a {
         self.table.keys()
     }
 
     pub fn get_mut_or(&mut self, id: ID, data: T) -> &mut T {
         let i = self
             .table
-            .get(&id)
+            .get(id)
             .cloned()
             .unwrap_or_else(|| self.insert(id, data).1);
         &mut self.data[i.raw()].1
@@ -188,7 +479,6 @@ impl<I: SymID, T> Default for Table<I, T> {
     }
 }
 
-#[derive(Debug)]
 pub struct LinkedList<I: SymID, T> {
     data: Vec<(I, T, I)>,
     free: Vec<I>,
@@ -322,6 +612,12 @@ impl<I: SymID, T> LinkedList<I, T> {
             self.data.push((previous, data, after));
             I::new(self.data.len() - 1)
         }
+    }
+}
+
+impl<I: SymID, T: std::fmt::Debug> std::fmt::Debug for LinkedList<I, T> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_list().entries(self.iter().map(|a| a.1)).finish()
     }
 }
 
@@ -470,6 +766,10 @@ impl<I: SymID, T> List<I, T> {
 
     pub fn ids(&self) -> impl Iterator<Item = I> {
         (0..self.data.len()).map(I::new)
+    }
+
+    pub fn len(&self) -> usize {
+        self.data.len()
     }
 }
 

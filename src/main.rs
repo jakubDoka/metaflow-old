@@ -8,6 +8,7 @@ pub mod cli;
 pub mod gen;
 pub mod ir;
 pub mod lexer;
+pub mod module_tree;
 pub mod testing;
 pub mod util;
 
@@ -21,7 +22,7 @@ fn main() {
 }
 
 fn run() {
-    let args = match cli::Arguments::new(std::env::args()) {
+    /*let args = match cli::Arguments::new(std::env::args()) {
         Ok(args) => args,
         Err(e) => {
             println!("{:?}", e);
@@ -36,6 +37,7 @@ fn run() {
 
     #[cfg(debug_assertions)]
     assert!(util::cell::report_cell_state() == 0);
+    */
 }
 
 #[repr(C)]
