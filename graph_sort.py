@@ -27,7 +27,6 @@ def depsort(graph, print_frontier = False):
 
 def find_cycle(graph):
     stack = [[0, 0]]
-
     while len(stack) > 0:
         node, idx = stack[len(stack) - 1]
         if idx >= len(graph[node]):

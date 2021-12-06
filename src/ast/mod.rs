@@ -1,15 +1,8 @@
-use crate::{
-    lexer::*,
-    util::{
-        sdbm::{SdbmHashState, ID},
-        storage::Map,
-    },
-};
+use crate::lexer::*;
 
 use std::{
     fmt::{Display, Write},
     ops::{Deref, DerefMut},
-    path::Path,
 };
 
 pub type Result<T = ()> = std::result::Result<T, AstError>;
@@ -24,9 +17,9 @@ impl<'a> AstParser<'a> {
         Self { state, context }
     }
 
-    pub fn parse_manifest(&mut self, base_path: String) -> Result<Manifest> {
-        let mut attrs = Map::new();
-        let mut deps = Map::new();
+    pub fn parse_manifest(&mut self) -> Result<Manifest> {
+        let mut manifest = std::mem::take(&mut self.context.temp_manifest);
+        manifest.clear();
 
         loop {
             match self.state.token.kind {
@@ -50,52 +43,54 @@ impl<'a> AstParser<'a> {
                         return Err(self.unexpected_str("expected string literal"));
                     }
 
-                    let id = ID(0).add(name);
                     let value = self.state.token.spam.raw();
                     let value = &value[1..value.len() - 1];
 
-                    attrs.insert(id, value);
+                    manifest.attrs.push((name, value));
+
+                    self.state.next();
                 }
                 TKind::Colon => match name {
-                    "dependency" => {
+                    "dependencies" => {
+                        self.state.next();
                         self.walk_block(|s| {
-                                let mut token = s.state.token.clone();
+                            let mut token = s.state.token.clone();
 
-                                let external = if s.state.token == TKind::Extern {
-                                    s.state.next();
-                                    true
-                                } else {
-                                    false
-                                };
-                                
-                                s.expect_str(TKind::Ident, "expected dependency name")?;
-                                let name = s.state.token.spam.raw();
+                            let external = if s.state.token == TKind::Extern {
                                 s.state.next();
-                                
-                                if !matches!(s.state.token.kind, TKind::String(_)) {
-                                    return Err(s.unexpected_str("expected string literal as repository link with version or local path"));
-                                }
-                                let path_and_version = s.state.token.spam.raw();
-                                s.state.next();                             
-                                
-                                let mut parts = path_and_version.splitn(2, '@');
-                                let path = parts.next().unwrap_or("");
-                                let version = parts.next().unwrap_or("dev");
+                                true
+                            } else {
+                                false
+                            };
 
-                                token.to_group(&s.state.token, true);
+                            s.expect_str(TKind::Ident, "expected dependency name")?;
+                            let name = s.state.token.spam.raw();
+                            s.state.next();
 
-                                let id = ID(0).add(name);
-                                let dependency = Dep {
-                                    name,
-                                    path,
-                                    version,
-                                    external,
-                                    token
-                                };
+                            if !matches!(s.state.token.kind, TKind::String(_)) {
+                                return Err(s.unexpected_str("expected string literal as repository link with version or local path"));
+                            }
+                            let path_and_version = s.state.token.spam.raw();
+                            let path_and_version = &path_and_version[1..path_and_version.len() - 1];
+                            s.state.next();
 
-                                deps.insert(id, dependency);
-                                Ok(())
-                            })?;
+                            let mut parts = path_and_version.splitn(2, '@');
+                            let path = parts.next().unwrap_or("");
+                            let version = parts.next().unwrap_or("main");
+
+                            token.to_group(&s.state.token, true);
+
+                            let dependency = Dep {
+                                name,
+                                path,
+                                version,
+                                external,
+                                token
+                            };
+
+                            manifest.deps.push(dependency);
+                            Ok(())
+                        })?;
                     }
                     _ => {
                         return Err(
@@ -111,31 +106,7 @@ impl<'a> AstParser<'a> {
             }
         }
 
-        let root_module_path = attrs.get(ID(0).add("root")).ok_or_else(|| {
-            AstError::new(
-                AEKind::MissingAttribute("root", "path to base source file"),
-                Token::default(),
-            )
-        })?;
-
-        let root_module_name = Path::new(root_module_path)
-            .file_stem()
-            .ok_or_else(|| {
-                AstError::new(
-                    AEKind::InvalidAttribute("toot", "root has to point to a file not a directory"),
-                    Token::default(),
-                )
-            })?
-            .to_str()
-            .unwrap();
-
-        Ok(Manifest {
-            base_path,
-            root_module_path,
-            root_module_name,
-            attrs,
-            deps,
-        })
+        Ok(manifest)
     }
 
     pub fn take_imports(&mut self) -> Result {
@@ -941,14 +912,17 @@ impl<'a> AstParser<'a> {
     }
 }
 
+#[derive(Debug, Clone, Default)]
 pub struct AstContext {
     pub ast_pool: Vec<Ast>,
+    pub temp_manifest: Manifest,
 }
 
 impl AstContext {
     pub fn new() -> AstContext {
         AstContext {
             ast_pool: Vec::new(),
+            temp_manifest: Manifest::default(),
         }
     }
 
@@ -1019,11 +993,15 @@ pub struct Import {
 
 #[derive(Clone, Debug, Default)]
 pub struct Manifest {
-    pub base_path: String,
-    pub root_module_path: &'static str,
-    pub root_module_name: &'static str,
-    pub attrs: Map<&'static str>,
-    pub deps: Map<Dep>,
+    pub attrs: Vec<(&'static str, &'static str)>,
+    pub deps: Vec<Dep>,
+}
+
+impl Manifest {
+    pub fn clear(&mut self) {
+        self.attrs.clear();
+        self.deps.clear();
+    }
 }
 
 #[derive(Clone, Debug, Default)]
@@ -1209,6 +1187,12 @@ impl Display for AstError {
         match &self.kind {
             AEKind::UnexpectedToken(expected) => writeln!(f, "{}\n", expected),
             AEKind::UnexpectedEof => writeln!(f, "unexpected end of file\n"),
+            AEKind::InvalidAttribute(name, hint) => {
+                writeln!(f, "invalid attribute `{}`, hint: {}", name, hint)
+            }
+            AEKind::MissingAttribute(name, hint) => {
+                writeln!(f, "missing attribute `{}`, hint: {}", name, hint)
+            }
         }
     }
 }

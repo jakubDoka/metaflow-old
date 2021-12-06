@@ -1,8 +1,3 @@
-use extern "foo/moo"
-use extern "foo/moo/goo"
-use "foo/moo"
-use "foo/goo/noo"
-
 fun flo: pass
 
 fun foo(): pass

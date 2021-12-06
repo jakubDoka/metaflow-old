@@ -1,0 +1,4 @@
+use extern "dummy"
+
+fun main -> int:
+    return the_answer()
