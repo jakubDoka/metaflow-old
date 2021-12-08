@@ -4,11 +4,11 @@ use crate::{
     ast::{AKind, Ast},
     util::{
         sdbm::{SdbmHashState, ID},
-        storage::{SymID, Table},
+        storage::{IndexPointer, Table},
     },
 };
 
-crate::sym_id!(Attribute);
+crate::index_pointer!(Attribute);
 
 #[derive(Debug, Clone, Default)]
 pub struct Attributes {
@@ -27,7 +27,7 @@ impl Attributes {
                         let id = ID(0)
                             .add(self.map[stacked][attr][0].token.spam.raw())
                             .add(marker);
-                        self.map.redirect(id, stacked);
+                        self.map.link(id, stacked);
                     }
                 }
                 if marker < i {

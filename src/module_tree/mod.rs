@@ -3,7 +3,7 @@ use std::path::{Path, PathBuf};
 use crate::ast::{AstError, AstParser, AstState, Dep, Import};
 use crate::lexer::Lexer;
 use crate::util::sdbm::{SdbmHashState, ID};
-use crate::util::storage::{Map, SymID};
+use crate::util::storage::{IndexPointer, Map, Table};
 use crate::{ast::AstContext, lexer::Token, util::storage::List};
 
 type Result<T = ()> = std::result::Result<T, MTError>;
@@ -33,8 +33,12 @@ impl<'a> MTParser<'a> {
 
         let root_manifest_name = self.state.manifests[root_manifest_id].name;
 
-        let module =
-            self.load_module(root_manifest_name, Token::default(), root_manifest_id, &mut path_buffer)?;
+        let module = self.load_module(
+            root_manifest_name,
+            Token::default(),
+            root_manifest_id,
+            &mut path_buffer,
+        )?;
         let mut frontier = vec![module];
 
         while let Some(module_id) = frontier.pop() {
@@ -51,11 +55,12 @@ impl<'a> MTParser<'a> {
                         .as_os_str()
                         .to_str()
                         .unwrap();
-                    self
-                        .state
-                        .manifests[module.manifest]
+                    let id = ID(0).add(head);
+                    self.state.manifests[module.manifest]
                         .deps
-                        .get(ID(0).add(head))
+                        .iter()
+                        .find(|dep| dep.0 == id)
+                        .map(|dep| dep.1)
                         .ok_or_else(|| MTError::new(MTEKind::ImportNotFound, import.token.clone()))?
                         .clone()
                 } else {
@@ -75,88 +80,40 @@ impl<'a> MTParser<'a> {
             }
         }
 
-        self.detect_cycles()?;
+        if let Some(cycle) = detect_cycles(&self.state.modules, module) {
+            return Err(MTError::new(
+                MTEKind::CyclicDependency(cycle),
+                Token::default(),
+            ));
+        }
 
-        self.create_order()?;
+
+        let mut module_order = vec![];
+
+        create_module_order(&self.state.modules, Mod::new(0), &mut module_order);
+
+        self.split_modules(module_order);
 
         Ok(())
     }
 
-    fn create_order(&mut self) -> Result {
-        let mut result = Vec::with_capacity(self.state.modules.len() * 2);
-        let mut frontier = Vec::with_capacity(self.state.modules.len() * 4);
-        frontier.push(Mod::new(0));
-        let mut lookup = std::iter::repeat(None)
-            .take(self.state.modules.len())
-            .collect::<Vec<_>>();
-
-        let mut i = 0;
-
-        while i < frontier.len() {
-            let node = frontier[i];
-            if let Some(seen_at) = lookup[node.0] {
-                result[seen_at] = None;
-                lookup[node.0] = Some(result.len());
-            }
-            result.push(Some(node));
-            let last = frontier.len() - 1;
-            let last = frontier[last];
-            frontier.extend(
-                self.state.modules[node]
-                    .dependency
-                    .iter()
-                    .filter(|(_, module)| *module != last)
-                    .map(|(_, module)| *module),
-            );
-            i += 1;
+    fn split_modules(&mut self, module_order: Vec<Mod>) {
+        // calculate storage size
+        let mut counter = vec![0; self.state.manifests.len()];
+        for module in self.state.modules.iter() {
+            counter[module.manifest.raw()] += 1; 
         }
 
-        self.state.order.reserve(self.state.modules.len());
-        self.state.order.extend(
-            result
-                .drain(..)
-                .filter(|module| module.is_some())
-                .map(|module| module.unwrap()),
-        );
-
-        Ok(())
-    }
-
-    fn detect_cycles(&mut self) -> Result {
-        let mut stack = Vec::with_capacity(self.state.modules.len());
-        stack.push((Mod::new(0), 0));
-
-        while let Some(&(module_id, idx)) = stack.last() {
-            let module = &self.state.modules[module_id];
-            if idx >= module.dependency.len() {
-                stack.pop();
-            } else {
-                let len = stack.len();
-                stack[len - 1].1 += 1;
-                let (_, dependency) = module.dependency[idx];
-                if let Some(position) = stack.iter().position(|d| d.0 == dependency) {
-                    let mut log = String::new();
-
-                    for module in stack[position..]
-                        .iter()
-                        .chain(std::iter::once(&stack[position]))
-                    {
-                        log.push_str("  ");
-                        log.push_str(self.state.modules[module.0].ast.file_name());
-                        log.push('\n');
-                    }
-
-                    return Err(MTError::new(
-                        MTEKind::CyclicDependency(log),
-                        module.ast.imports[idx].token.clone(),
-                    ));
-                } else {
-                    stack.push((dependency, 0));
-                }
-            }
+        // allocate storage
+        for (id, manifest) in self.state.manifests.iter_mut() {
+            manifest.module_order = Vec::with_capacity(counter[id.raw()]);
         }
 
-        Ok(())
+        // fill storage
+        for id in module_order {
+            let manifest = self.state.modules[id].manifest;
+            self.state.manifests[manifest].module_order.push(id);
+        }
     }
 
     fn load_module(
@@ -171,24 +128,23 @@ impl<'a> MTParser<'a> {
         path_buffer.push(Path::new(manifest.root_path));
         path_buffer.push(Path::new(manifest.name));
 
-        
         let module_path = Path::new(root);
         let module_path = module_path
             .strip_prefix(
                 module_path
-                .components()
-                .next()
-                .map(|c| c.as_os_str().to_str().unwrap())
-                .unwrap_or(""),
+                    .components()
+                    .next()
+                    .map(|c| c.as_os_str().to_str().unwrap())
+                    .unwrap_or(""),
             )
             .unwrap();
-        
+
         path_buffer.push(module_path);
         path_buffer.set_extension(SOURCE_EXT);
 
         let id = MOD_SALT.add(path_buffer.to_str().unwrap());
 
-        if let Some(module) = self.state.module_map.get(id) {
+        if let Some(module) = self.state.modules.index(id) {
             return Ok(*module);
         }
 
@@ -199,16 +155,15 @@ impl<'a> MTParser<'a> {
         path_buffer.clear();
         let ast = AstState::new(lexer);
 
-        let ent = MTEnt {
+        let ent = ModEnt {
+            id,
             dependency: vec![],
             dependant: vec![],
             ast,
             manifest: manifest_id,
         };
 
-        let module = self.state.modules.add(ent);
-
-        self.state.module_map.insert(id, module);
+        let (_, module) = self.state.modules.insert(id, ent);
 
         Ok(module)
     }
@@ -221,6 +176,7 @@ impl<'a> MTParser<'a> {
             base_path: base_path.to_string(),
             ..ManifestEnt::default()
         });
+
         let mut frontier = vec![(manifest_id, Token::default(), Option::<Dep>::None)];
 
         while let Some((manifest_id, token, import)) = frontier.pop() {
@@ -264,24 +220,17 @@ impl<'a> MTParser<'a> {
             let manifest = AstParser::new(&mut state, &mut self.context.ast)
                 .parse_manifest()
                 .map_err(Into::into)?;
-            
-            let root_file = manifest.attrs
+
+            let root_file = manifest
+                .attrs
                 .iter()
                 .find(|(name, _)| *name == "root")
                 .map(|(_, value)| *value)
                 .unwrap_or("main.mf");
 
-            let parent = Path::new(root_file)
-                .parent()
-                .unwrap()
-                .to_str()
-                .unwrap();
-            
-            let name = Path::new(root_file)
-                .file_stem()
-                .unwrap()
-                .to_str()
-                .unwrap();
+            let parent = Path::new(root_file).parent().unwrap().to_str().unwrap();
+
+            let name = Path::new(root_file).file_stem().unwrap().to_str().unwrap();
 
             let manifest_ent = &mut self.state.manifests[manifest_id];
             manifest_ent.name = name;
@@ -294,6 +243,7 @@ impl<'a> MTParser<'a> {
                     path_buffer.push(Path::new(dependency.path));
                     path_buffer.push(Path::new(dependency.version));
                 } else {
+                    path_buffer.push(Path::new(base_path));
                     path_buffer.push(Path::new(dependency.path));
                 }
 
@@ -316,13 +266,28 @@ impl<'a> MTParser<'a> {
 
                 let id = ID(0).add(dependency.name);
 
-                self.state.manifests[manifest_id].deps.insert(id, manifest);
+                self.state.manifests[manifest_id].deps.push((id, manifest));
 
                 frontier.push((manifest, dependency.token.clone(), Some(dependency.clone())));
             }
 
             self.context.ast.temp_manifest = manifest;
         }
+
+        if let Some(cycle) = detect_cycles(&self.state.manifests, Manifest::new(0)) {
+            return Err(MTError::new(MTEKind::CyclicManifests(cycle), Token::default()));
+        }
+
+        let mut manifest_order = vec![];
+
+        create_module_order(&self.state.manifests, Manifest::new(0), &mut manifest_order);
+
+        create_independent_steps(
+            &self.state.manifests, 
+            &manifest_order, 
+            &mut self.state.independent_steps,
+            num_cpus::get(),
+        );
 
         Ok(())
     }
@@ -332,7 +297,7 @@ impl<'a> MTParser<'a> {
 
         std::fs::create_dir_all(base_path).unwrap();
 
-        let link = format!("https://{}",  &dep.path);
+        let link = format!("https://{}", &dep.path);
 
         let code = std::process::Command::new("git")
             .args(&[
@@ -355,7 +320,137 @@ impl<'a> MTParser<'a> {
     }
 }
 
-crate::sym_id!(Manifest);
+fn create_independent_steps<I: IndexPointer + 'static, S: TreeStorage<I>>(
+    storage: &S, 
+    order: &[I],
+    buffer: &mut Vec<Option<I>>,
+    stride: usize,
+) {
+    let len = order.len();
+    buffer.reserve(len * 2); // worst case size
+    let mut lookup = vec![false; len];
+
+    while !lookup[0] {
+        let mut j = 0;
+        for &i in order.iter().rev() {
+            if !lookup[i.raw()] && !iter(storage, i).any(|dep| !lookup[dep.raw()]) {
+                lookup[i.raw()] = true;
+                buffer.push(Some(i));
+                j += 1;
+                if j == stride {
+                    break;
+                }
+            }
+        }
+        buffer.push(None);
+    }
+}
+
+fn create_module_order<I: IndexPointer + 'static, S: TreeStorage<I>>(
+    storage: &S,
+    root: I,
+    buffer: &mut Vec<I>,
+) {
+    let len = storage.len();
+    let mut result = Vec::with_capacity(len * 2);
+    let mut frontier = Vec::with_capacity(len * 4);
+    frontier.push(root);
+    let mut lookup = vec![None; len];
+
+    let mut i = 0;
+
+    while i < frontier.len() {
+        let node = frontier[i];
+        if let Some(seen_at) = lookup[node.raw()] {
+            result[seen_at] = None;
+            lookup[node.raw()] = Some(result.len());
+        }
+        result.push(Some(node));
+        let last = frontier.len() - 1;
+        let last = frontier[last];
+
+        frontier.extend(
+            iter(storage, node)
+                .filter(|module| *module != last),
+        );
+        i += 1;
+    }
+
+    buffer.reserve(result.iter().filter(|node| node.is_some()).count());
+
+    buffer.extend(result.drain(..).filter_map(|node| node));
+}
+
+fn detect_cycles<I: IndexPointer, S: TreeStorage<I>>(
+    storage: &S,
+    root: I,
+) -> Option<Vec<I>> {
+    let mut stack = Vec::with_capacity(storage.len());
+    stack.push((root, 0));
+
+    while let Some(&(node_id, idx)) = stack.last() {
+        let len = storage.node_len(node_id);
+        if idx >= len {
+            stack.pop();
+        } else {
+            let len = stack.len();
+            stack[len - 1].1 += 1;
+            let dependency = storage.node_dep(node_id, idx);
+            if let Some(position) = stack.iter().position(|d| d.0 == dependency) {
+                let mut log = Vec::with_capacity(stack.len() - position);
+
+                log.extend(stack[position..].iter().map(|&(id, _)| id));
+
+                return Some(log);
+            } else {
+                stack.push((dependency, 0));
+            }
+        }
+    }
+
+    None
+}
+
+
+fn iter<'a, I: 'static + Clone + Copy, T: TreeStorage<I>>(storage: &'a T, id: I) -> impl Iterator<Item = I> + 'a {
+    (0..storage.node_len(id)).map(move |i| storage.node_dep(id, i))
+}
+
+impl TreeStorage<Mod> for Table<Mod, ModEnt> {
+    fn node_dep(&self, id: Mod, idx: usize) -> Mod {
+        self[id].dependency[idx].1
+    }
+
+    fn node_len(&self, id: Mod) -> usize {
+        self[id].dependency.len()
+    }
+
+    fn len(&self) -> usize {
+        Table::len(self)
+    }
+}
+
+impl TreeStorage<Manifest> for List<Manifest, ManifestEnt> {
+    fn node_dep(&self, id: Manifest, idx: usize) -> Manifest {
+        self[id].deps[idx].1
+    }
+
+    fn node_len(&self, id: Manifest) -> usize {
+        self[id].deps.len()
+    }
+
+    fn len(&self) -> usize {
+        List::len(self)
+    }
+}
+
+pub trait TreeStorage<I> {
+    fn node_dep(&self, id: I, idx: usize) -> I;
+    fn node_len(&self, id: I) -> usize;
+    fn len(&self) -> usize;
+}
+
+crate::index_pointer!(Manifest);
 
 #[derive(Debug, Clone, Default)]
 pub struct ManifestEnt {
@@ -363,15 +458,32 @@ pub struct ManifestEnt {
     pub base_path: String,
     pub name: &'static str,
     pub root_path: &'static str,
-    pub deps: Map<Manifest>,
+    pub deps: Vec<(ID, Manifest)>,
+    pub module_order: Vec<Mod>,
 }
 
 #[derive(Debug, Clone, Default)]
 pub struct MTState {
     pub manifests: List<Manifest, ManifestEnt>,
-    pub module_map: Map<Mod>,
-    pub modules: List<Mod, MTEnt>,
-    pub order: Vec<Mod>,
+    pub modules: Table<Mod, ModEnt>,
+    pub independent_steps: Vec<Option<Manifest>>,
+}
+
+impl MTState {
+    pub fn collect_scopes(&self, module: Mod, buffer: &mut Vec<(Mod, ID)>) {
+        let module_ent = &self.modules[module];
+        buffer.push((module, module_ent.id));
+        buffer.extend(module_ent.dependency.iter().map(|&(_, id)| (id, self.modules[id].id)));
+    }
+
+    pub fn find_dep(&self, inside: Mod, name: &Token) -> Option<Mod> {
+        let id = ID(0).add(name.spam.raw());
+        self
+            .modules[inside]
+            .dependency.iter()
+            .find(|&(m_id, _)| *m_id == id)
+            .map(|&(_, id)| id)
+    } 
 }
 
 #[derive(Debug, Clone, Default)]
@@ -380,19 +492,21 @@ pub struct MTContext {
     pub import_buffer: Vec<Import>,
 }
 
-crate::sym_id!(Mod);
+crate::index_pointer!(Mod);
 
 #[derive(Debug, Clone)]
-pub struct MTEnt {
+pub struct ModEnt {
+    pub id: ID,
     pub dependency: Vec<(ID, Mod)>,
     pub dependant: Vec<Mod>,
     pub ast: AstState,
     pub manifest: Manifest,
 }
 
-impl Default for MTEnt {
+impl Default for ModEnt {
     fn default() -> Self {
         Self {
+            id: ID(0),
             dependency: vec![],
             dependant: vec![],
             ast: Default::default(),
@@ -431,7 +545,8 @@ pub enum MTEKind {
     FileReadError(PathBuf, std::io::Error),
     ManifestReadError(PathBuf, std::io::Error),
     AstError(AstError),
-    CyclicDependency(String),
+    CyclicDependency(Vec<Mod>),
+    CyclicManifests(Vec<Manifest>),
     MissingDependency(PathBuf),
     DownloadError(std::io::Error),
     DownloadFailed,

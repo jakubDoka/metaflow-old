@@ -20,7 +20,7 @@ use crate::{
         types::TypePrinter, BTKind, CrBlock, CrType, CrValue, CrVar, FKind, FinalValue, Fun, IKind,
         Inst, LTKind, Program, TKind, Type, Value,
     },
-    util::{sdbm::SdbmHash, storage::SymID},
+    util::{sdbm::SdbmHash, storage::IndexPointer},
 };
 
 use super::{GEKind, GenError};

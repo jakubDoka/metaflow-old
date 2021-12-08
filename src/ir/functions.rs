@@ -11,7 +11,7 @@ use crate::lexer::{Token, TokenView};
 use crate::util::storage::LockedList;
 use crate::util::{
     sdbm::{SdbmHashState, ID},
-    storage::{List, SymID},
+    storage::{List, IndexPointer},
 };
 
 use super::module_tree::ModuleTreeBuilder;
@@ -1471,7 +1471,7 @@ impl<'a> FunResolver<'a> {
                 None => return Ok(None),
             };
             let id = name.combine(module_id);
-            if let Some(shadowed) = self.program.types.redirect(id, datatype) {
+            if let Some(shadowed) = self.program.types.link(id, datatype) {
                 self.context
                     .type_resolver_context
                     .shadowed_types
@@ -1534,7 +1534,7 @@ impl<'a> FunResolver<'a> {
         self.program[module].dependency.truncate(old_dependency_len);
 
         for i in old_id_len..self.context.type_resolver_context.instance_id_buffer.len() {
-            self.program.types.remove_redirect(
+            self.program.types.remove_link(
                 self.context.type_resolver_context.instance_id_buffer[i],
                 None,
             );
@@ -1547,7 +1547,7 @@ impl<'a> FunResolver<'a> {
         for i in old_len..self.context.type_resolver_context.shadowed_types.len() {
             let direct_id = self.context.type_resolver_context.shadowed_types[i];
             let id = self.program.types.direct_to_id(direct_id);
-            self.program.types.remove_redirect(id, Some(direct_id));
+            self.program.types.remove_link(id, Some(direct_id));
         }
         self.context
             .type_resolver_context

@@ -1,6 +1,6 @@
 use std::{
     marker::PhantomData,
-    ops::{Index, IndexMut},
+    ops::{Index, IndexMut}, sync::{atomic::{AtomicUsize, Ordering}, Arc},
 };
 
 use super::sdbm::ID;
@@ -297,194 +297,267 @@ impl<V> Default for Map<V> {
     }
 }
 
-#[derive(Clone, Debug)]
-pub struct Table<I: SymID, T> {
-    table: Map<I>,
-    data: Vec<(ID, T)>,
-    free: Vec<usize>,
+pub struct SyncTable<I: IndexPointer, T> {
+    pub map: Map<I>,
+    pub data: SyncList<I, T>,
 }
 
-impl<I: SymID, T> Table<I, T> {
-    pub fn new() -> Self {
+impl<I: IndexPointer, T> SyncTable<I, T> {
+    pub fn new(cursor: Cursor, offset: usize) -> Self {
         Self {
-            table: Map::new(),
-            data: vec![],
-            free: vec![],
+            map: Map::new(),
+            data: SyncList::new(cursor, offset),
         }
     }
 
     pub fn clear(&mut self) {
-        self.table.clear();
+        self.map.clear();
         self.data.clear();
-        self.free.clear();
     }
 
     pub fn insert(&mut self, id: ID, data: T) -> (Option<T>, I) {
-        macro_rules! insert {
-            () => {{
-                let i = I::new(if let Some(i) = self.free.pop() {
-                    i
-                } else {
-                    self.data.len()
-                });
-                self.table.insert(id, i);
-                self.data.push((id, data));
-                (None, i)
-            }};
-        }
-
-        match self.table.get(id) {
-            Some(i) => {
-                if self.data[i.raw()].0 != id {
-                    insert!()
-                } else {
-                    (Some(std::mem::replace(&mut self.data[i.raw()].1, data)), *i)
-                }
-            }
-            None => {
-                insert!()
-            }
+        if let Some(&i) = self.map.get(id) {
+            (Some(std::mem::replace(&mut self.data[i], data)), i)
+        } else {
+            let i = self.data.add(data);
+            self.map.insert(id, i);
+            (None, i)
         }
     }
 
     #[inline]
-    pub fn get_id(&self, id: ID) -> Option<&T> {
-        self.table.get(id).map(|i| &self.data[i.raw()].1)
+    pub fn index(&self, id: ID) -> Option<&I> {
+        self.map.get(id)
     }
 
-    #[inline]
-    pub fn get_mut_id(&mut self, id: ID) -> Option<&mut T> {
-        self.table
-            .get(id)
-            .cloned()
-            .map(move |i| &mut self.data[i.raw()].1)
-    }
-
-    pub fn direct_to_id(&self, direct: I) -> ID {
-        self.data[direct.raw()].0
-    }
-
-    pub fn id_to_direct(&self, id: ID) -> Option<I> {
-        self.table.get(id).cloned()
-    }
-
-    pub fn remove(&mut self, id: ID) -> Option<T> {
-        self.table.remove(id).map(|i| {
-            self.free.push(i.raw());
-            unsafe { std::mem::replace(&mut self.data[i.raw()], std::mem::zeroed()).1 }
-        })
-    }
-
-    pub fn iter(&self) -> impl Iterator<Item = &T> {
-        self.data.iter().filter(|x| x.0 .0 != 0).map(|x| &x.1)
+    pub fn iter<'a>(&'a self) -> impl Iterator<Item = &'a T> + 'a {
+        self.data.iter().map(|v| v.1)
     }
 
     pub fn iter_mut(&mut self) -> impl Iterator<Item = &mut T> {
-        self.data
-            .iter_mut()
-            .filter(|x| x.0 .0 != 0)
-            .map(|x| &mut x.1)
-    }
-
-    pub unsafe fn as_mut<'a>(&self) -> &'a mut Self {
-        &mut *(self as *const _ as *mut _)
+        self.data.iter_mut().map(|v| v.1)
     }
 
     pub unsafe fn direct_ids(&self) -> impl Iterator<Item = I> {
         (0..self.data.len()).map(|i| I::new(i))
     }
 
-    pub fn is_direct_valid(&self, direct: I) -> bool {
-        self.data[direct.raw()].0 .0 != 0
+    pub fn link(&mut self, id: ID, index: I) -> Option<I> {
+        self.map.insert(id, index)
     }
 
-    pub fn redirect(&mut self, id: ID, param: I) -> Option<I> {
-        match self.table.get_mut(id) {
-            Some(idx) => return Some(std::mem::replace(idx, param)),
-            None => self.table.insert(id, param),
-        };
-        None
-    }
-
-    pub fn remove_redirect(&mut self, id: ID, shadowed: Option<I>) -> Option<I> {
-        match self.table.get_mut(id) {
-            Some(idx) => {
-                // this is not a redirect
-                if self.data[idx.raw()].0 == id {
-                    return None;
-                }
-                if let Some(shadowed) = shadowed {
-                    let current = *idx;
-                    *idx = shadowed;
-                    Some(current)
-                } else {
-                    Some(self.table.remove(id).unwrap())
-                }
-            }
-            None => None,
+    pub fn remove_link(&mut self, id: ID, shadowed: Option<I>) -> Option<I> {
+        if let Some(shadowed) = shadowed {
+            self.map.insert(id, shadowed)
+        } else {
+            self.map.remove(id)
         }
     }
 
     pub fn keys<'a>(&'a self) -> impl Iterator<Item = ID> + 'a {
-        self.table.keys()
+        self.map.keys()
     }
 
-    pub fn get_mut_or(&mut self, id: ID, data: T) -> &mut T {
+    pub fn get(&self, id: ID) -> Option<&T> {
+        self.map.get(id).map(|&i| &self.data[i])
+    }
+
+    pub fn get_mut_or_else<F: FnOnce() -> T>(&mut self, id: ID, data: F) -> &mut T {
         let i = self
-            .table
+            .map
             .get(id)
             .cloned()
-            .unwrap_or_else(|| self.insert(id, data).1);
-        &mut self.data[i.raw()].1
+            .unwrap_or_else(|| self.insert(id, data()).1);
+        &mut self.data[i]
+    }
+
+    pub fn len(&self) -> usize {
+        self.data.len()
     }
 }
 
-impl<I: SymID, T> Index<I> for Table<I, T> {
+impl<I: IndexPointer, T> Index<I> for SyncTable<I, T> {
     type Output = T;
 
+    #[inline]
     fn index(&self, id: I) -> &Self::Output {
-        debug_assert!(self.data[id.raw()].0 .0 != 0, "invalid direct index",);
-        &self.data[id.raw()].1
+        &self.data[id]
     }
 }
 
-impl<I: SymID, T> IndexMut<I> for Table<I, T> {
+impl<I: IndexPointer, T> IndexMut<I> for SyncTable<I, T> {
+    #[inline]
     fn index_mut(&mut self, id: I) -> &mut Self::Output {
-        debug_assert!(self.data[id.raw()].0 .0 != 0, "invalid direct index",);
-        &mut self.data[id.raw()].1
+        &mut self.data[id]
     }
 }
 
-impl<I: SymID, T> Index<ID> for Table<I, T> {
+impl<I: IndexPointer, T> Index<ID> for SyncTable<I, T> {
     type Output = T;
 
     fn index(&self, id: ID) -> &Self::Output {
-        self.get_id(id).unwrap()
+        let i = *self.map.get(id).expect("invalid ID");
+        &self.data[i]
     }
 }
 
-impl<I: SymID, T> IndexMut<ID> for Table<I, T> {
+impl<I: IndexPointer, T> IndexMut<ID> for SyncTable<I, T> {
     fn index_mut(&mut self, id: ID) -> &mut Self::Output {
-        self.get_mut_id(id).unwrap()
+        let i = *self.map.get(id).expect("invalid ID");
+        &mut self.data[i]
     }
 }
 
-impl<I: SymID, T> Default for Table<I, T> {
+impl<I: IndexPointer, T> Default for SyncTable<I, T> {
     fn default() -> Self {
+        Self::new(Cursor::new(), 0)
+    }
+}
+
+impl<I: IndexPointer, T: Clone> Clone for SyncTable<I, T> {
+    fn clone(&self) -> Self {
         Self {
-            table: Default::default(),
-            data: Default::default(),
-            free: Default::default(),
+            map: self.map.clone(),
+            data: self.data.clone(),
         }
     }
 }
 
-pub struct LinkedList<I: SymID, T> {
+impl<I: IndexPointer, T: std::fmt::Debug> std::fmt::Debug for SyncTable<I, T> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f
+            .debug_list()
+            .entries(self.map.keys().map(|k| {
+                format!("{:?}: {:?}", k, &self[k])
+            })).finish()
+    }
+}
+
+
+#[derive(Clone, Debug)]
+pub struct Table<I: IndexPointer, T> {
+    map: Map<I>,
+    data: List<I, T>,
+}
+
+impl<I: IndexPointer, T> Table<I, T> {
+    pub fn new() -> Self {
+        Self {
+            map: Map::new(),
+            data: List::new(),
+        }
+    }
+
+    pub fn clear(&mut self) {
+        self.map.clear();
+        self.data.clear();
+    }
+
+    pub fn insert(&mut self, id: ID, data: T) -> (Option<T>, I) {
+        if let Some(&i) = self.map.get(id) {
+            (Some(std::mem::replace(&mut self.data[i], data)), i)
+        } else {
+            let i = self.data.add(data);
+            self.map.insert(id, i);
+            (None, i)
+        }
+    }
+
+    #[inline]
+    pub fn index(&self, id: ID) -> Option<&I> {
+        self.map.get(id)
+    }
+
+    pub fn iter<'a>(&'a self) -> impl Iterator<Item = &'a T> + 'a {
+        self.data.iter().map(|v| v.1)
+    }
+
+    pub fn iter_mut(&mut self) -> impl Iterator<Item = &mut T> {
+        self.data.iter_mut().map(|v| v.1)
+    }
+
+    pub unsafe fn direct_ids(&self) -> impl Iterator<Item = I> {
+        (0..self.data.len()).map(|i| I::new(i))
+    }
+
+    pub fn link(&mut self, id: ID, index: I) -> Option<I> {
+        self.map.insert(id, index)
+    }
+
+    pub fn remove_link(&mut self, id: ID, shadowed: Option<I>) -> Option<I> {
+        if let Some(shadowed) = shadowed {
+            self.map.insert(id, shadowed)
+        } else {
+            self.map.remove(id)
+        }
+    }
+
+    pub fn keys<'a>(&'a self) -> impl Iterator<Item = ID> + 'a {
+        self.map.keys()
+    }
+
+    pub fn get_mut_or_else<F: FnOnce() -> T>(&mut self, id: ID, data: F) -> &mut T {
+        let i = self
+            .map
+            .get(id)
+            .cloned()
+            .unwrap_or_else(|| self.insert(id, data()).1);
+        &mut self.data[i]
+    }
+
+    pub fn get(&self, id: ID) -> Option<&T> {
+        self.map.get(id).map(|&i| &self.data[i])
+    }
+
+    pub fn len(&self) -> usize {
+        self.data.len()
+    }
+}
+
+impl<I: IndexPointer, T> Index<I> for Table<I, T> {
+    type Output = T;
+
+    #[inline]
+    fn index(&self, id: I) -> &Self::Output {
+        &self.data[id]
+    }
+}
+
+impl<I: IndexPointer, T> IndexMut<I> for Table<I, T> {
+    #[inline]
+    fn index_mut(&mut self, id: I) -> &mut Self::Output {
+        &mut self.data[id]
+    }
+}
+
+impl<I: IndexPointer, T> Index<ID> for Table<I, T> {
+    type Output = T;
+
+    fn index(&self, id: ID) -> &Self::Output {
+        let i = *self.map.get(id).expect("invalid ID");
+        &self.data[i]
+    }
+}
+
+impl<I: IndexPointer, T> IndexMut<ID> for Table<I, T> {
+    fn index_mut(&mut self, id: ID) -> &mut Self::Output {
+        let i = *self.map.get(id).expect("invalid ID");
+        &mut self.data[i]
+    }
+}
+
+impl<I: IndexPointer, T> Default for Table<I, T> {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+pub struct LinkedList<I: IndexPointer, T> {
     data: Vec<(I, T, I)>,
     free: Vec<I>,
 }
 
-impl<I: SymID, T> LinkedList<I, T> {
+impl<I: IndexPointer, T> LinkedList<I, T> {
     pub fn new() -> Self {
         Self {
             data: vec![unsafe { std::mem::zeroed() }],
@@ -615,13 +688,13 @@ impl<I: SymID, T> LinkedList<I, T> {
     }
 }
 
-impl<I: SymID, T: std::fmt::Debug> std::fmt::Debug for LinkedList<I, T> {
+impl<I: IndexPointer, T: std::fmt::Debug> std::fmt::Debug for LinkedList<I, T> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_list().entries(self.iter().map(|a| a.1)).finish()
     }
 }
 
-impl<I: SymID, T> Index<I> for LinkedList<I, T> {
+impl<I: IndexPointer, T> Index<I> for LinkedList<I, T> {
     type Output = T;
 
     fn index(&self, index: I) -> &Self::Output {
@@ -629,19 +702,19 @@ impl<I: SymID, T> Index<I> for LinkedList<I, T> {
     }
 }
 
-impl<I: SymID, T> IndexMut<I> for LinkedList<I, T> {
+impl<I: IndexPointer, T> IndexMut<I> for LinkedList<I, T> {
     fn index_mut(&mut self, index: I) -> &mut Self::Output {
         &mut self.data[index.raw()].1
     }
 }
 
-impl<I: SymID, T> Default for LinkedList<I, T> {
+impl<I: IndexPointer, T> Default for LinkedList<I, T> {
     fn default() -> Self {
         Self::new()
     }
 }
 
-impl<I: SymID, T: Clone> Clone for LinkedList<I, T> {
+impl<I: IndexPointer, T: Clone> Clone for LinkedList<I, T> {
     fn clone(&self) -> Self {
         Self {
             data: self.data.clone(),
@@ -652,12 +725,12 @@ impl<I: SymID, T: Clone> Clone for LinkedList<I, T> {
 
 macro_rules! impl_linked_iter {
     ($name:ident $($modifier:tt)*) => {
-        pub struct $name<'a, I: SymID, T: 'a> {
+        pub struct $name<'a, I: IndexPointer, T: 'a> {
             list: &'a $($modifier)* LinkedList<I, T>,
             current: Option<I>,
         }
 
-        impl <'a, I: SymID, T: 'a> $name<'a, I, T> {
+        impl <'a, I: IndexPointer, T: 'a> $name<'a, I, T> {
             pub fn new(list: &'a $($modifier)* LinkedList<I, T>) -> Self {
                 Self {
                     current: Some(I::new(0)),
@@ -668,7 +741,7 @@ macro_rules! impl_linked_iter {
 
 
 
-        impl <'a, I: SymID, T: 'a> Iterator for $name<'a, I, T> {
+        impl <'a, I: IndexPointer, T: 'a> Iterator for $name<'a, I, T> {
             type Item = (I, &'a $($modifier)* T);
 
             fn next(&mut self) -> Option<Self::Item> {
@@ -695,11 +768,11 @@ impl_linked_iter!(LinkedListIter);
 impl_linked_iter!(LinkedListIterMut mut);
 
 #[derive(Debug)]
-pub struct LockedList<I: SymID, T> {
+pub struct LockedList<I: IndexPointer, T> {
     inner: List<I, T>,
 }
 
-impl<I: SymID, T> LockedList<I, T> {
+impl<I: IndexPointer, T> LockedList<I, T> {
     pub fn new(inner: List<I, T>) -> Self {
         Self { inner }
     }
@@ -711,7 +784,7 @@ impl<I: SymID, T> LockedList<I, T> {
     }
 }
 
-impl<I: SymID, T> Default for LockedList<I, T> {
+impl<I: IndexPointer, T> Default for LockedList<I, T> {
     fn default() -> Self {
         Self {
             inner: Default::default(),
@@ -719,7 +792,7 @@ impl<I: SymID, T> Default for LockedList<I, T> {
     }
 }
 
-impl<I: SymID, T> Index<I> for LockedList<I, T> {
+impl<I: IndexPointer, T> Index<I> for LockedList<I, T> {
     type Output = T;
 
     fn index(&self, id: I) -> &Self::Output {
@@ -727,19 +800,197 @@ impl<I: SymID, T> Index<I> for LockedList<I, T> {
     }
 }
 
-impl<I: SymID, T> IndexMut<I> for LockedList<I, T> {
+impl<I: IndexPointer, T> IndexMut<I> for LockedList<I, T> {
     fn index_mut(&mut self, id: I) -> &mut Self::Output {
         &mut self.inner[id]
     }
 }
 
-#[derive(Debug)]
-pub struct List<I: SymID, T> {
+pub struct SyncList<I: IndexPointer, T> {
     data: Vec<T>,
+    used: Vec<usize>,
+    cursor: Cursor,
+    offset: usize,
+    phantom: PhantomData<I>,
+}
+
+impl<I: IndexPointer, T> SyncList<I, T> {
+    pub fn new(cursor: Cursor, offset: usize) -> Self {
+        Self {
+            data: vec![],
+            used: vec![],
+            cursor,
+            offset,
+            phantom: PhantomData,
+        }
+    }
+
+    pub fn set_offset(&mut self, offset: usize) {
+        self.offset = offset;
+    }
+
+    pub fn set_cursor(&mut self, cursor: Cursor) {
+        self.cursor = cursor;
+    }
+
+    pub fn add(&mut self, data: T) -> I {
+        let id = self.cursor.next();
+        let len = id + 1;
+        self.data.reserve(len);
+
+        unsafe {
+            self.data.set_len(len);
+        }
+
+        self.data[id] = data;
+
+        I::new(id + self.offset)
+    }
+
+    pub fn clear(&mut self) {
+        for u in 0..self.used.len() {
+            let idx = self.used[u];
+            // SAFETY: we are dropping occupied elements so we can set_len later on 
+            unsafe {
+                drop(std::ptr::read(&mut self.data[idx] as *const T));
+            }
+        }
+        unsafe {
+            self.data.set_len(0);
+        }
+        self.used.clear();
+    }
+
+    pub fn merge(target: &mut Vec<T>, with: &mut [Self]) {
+        let len = with[0].len();
+        
+        // should ensure there are no gaps in merged list
+        #[cfg(debug_assertions)]
+        {
+            let range = 0..len;
+
+            assert!(with.iter().all(|l| l.len() == len));
+
+            let mut all: Vec<_> = with.iter().map(|s| s.used.iter().peekable()).collect();
+
+           'o: for i in range {
+                for iter in all.iter_mut() {
+                    if let Some(&&idx) = iter.peek() {
+                        if idx == i {
+                            iter.next();
+                            continue'o;
+                        }
+                    }
+                }
+                panic!("missing index {}", i);
+            }
+        }
+
+        let target_len = target.len();
+        let total_len = target_len + len;
+
+        target.reserve(total_len);
+        // SAFETY: reserve ensures the length, but we want uninitialized memory
+        unsafe {
+            target.set_len(total_len);
+        }
+
+        for collection in with {
+            for u in 0..collection.used.len() {
+                let idx = collection.used[u];
+                let data = &collection.data[idx];
+                // SAFETY: 
+                unsafe {
+                    std::ptr::copy(
+                        data as *const T, 
+                        &mut target[target_len + u] as *mut T, 
+                        std::mem::size_of::<T>()
+                    )
+                }
+            }
+            
+            // SAFETY: we copied all elements to target so they does not need drop
+            unsafe {
+                collection.data.set_len(0);
+            }
+            collection.used.clear();
+        }
+    }
+
+    pub fn iter(&self) -> impl Iterator<Item = (I, &T)> {
+        self.used.iter().map(move |&idx| (I::new(idx + self.offset), &self.data[idx]))
+    }
+
+    pub fn iter_mut<'a>(&'a mut self) -> impl Iterator<Item = (I, &'a mut T)> + 'a {
+        (0..self.used.len()).map(move |idx| {
+            let idx = self.used[idx];
+            (
+                I::new(idx + self.offset), 
+                // SAFETY: while iterator lives the self is mutably borrowed but rust
+                // cannot recognize this
+                unsafe {
+                    std::mem::transmute::<_, &'a mut T>(&mut self.data[idx])
+                },
+            )
+        })
+    }
+
+    pub fn len(&self) -> usize {
+        self.data.len()
+    }
+}
+
+impl<I: IndexPointer, T> Index<I> for SyncList<I, T> {
+    type Output = T;
+
+    fn index(&self, index: I) -> &Self::Output {
+        debug_assert!(self.used.iter().any(|&i| i == index.raw()));
+        &self.data[index.raw() - self.offset]
+    }
+}
+
+impl<I: IndexPointer, T> IndexMut<I> for SyncList<I, T> {
+    fn index_mut(&mut self, index: I) -> &mut Self::Output {
+        debug_assert!(self.used.iter().any(|&i| i == index.raw()));
+        &mut self.data[index.raw() - self.offset]
+    }
+}
+
+impl<I: IndexPointer, T: Clone> Clone for SyncList<I, T> {
+    fn clone(&self) -> Self {
+        Self {
+            data: self.data.clone(),
+            used: self.used.clone(),
+            cursor: self.cursor.clone(),
+            offset: self.offset,
+            phantom: PhantomData,
+        }
+    }
+}
+
+impl<I: IndexPointer, T> Default for SyncList<I, T> {
+    fn default() -> Self {
+        Self::new(Cursor::default(), 0)
+    }
+}
+
+impl<I: IndexPointer, T: std::fmt::Debug> std::fmt::Debug for SyncList<I, T> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f
+            .debug_list()
+            .entries(self.iter().map(|(_, v)| v))
+            .finish()
+    }
+}
+
+#[derive(Debug)]
+pub struct List<I: IndexPointer, T> {
+    data: Vec<T>,
+
     p: PhantomData<I>,
 }
 
-impl<I: SymID, T> List<I, T> {
+impl<I: IndexPointer, T> List<I, T> {
     pub fn new() -> Self {
         Self {
             data: vec![],
@@ -761,7 +1012,17 @@ impl<I: SymID, T> List<I, T> {
     }
 
     pub fn iter(&self) -> impl Iterator<Item = (I, &T)> {
-        self.data.iter().enumerate().map(|(i, d)| (I::new(i), d))
+        self.data
+            .iter()
+            .enumerate()
+            .map(move |(i, d)| (I::new(i), d))
+    }
+
+    pub fn iter_mut(&mut self) -> impl Iterator<Item = (I, &mut T)> {
+        self.data
+            .iter_mut()
+            .enumerate()
+            .map(move |(i, d)| (I::new(i), d))
     }
 
     pub fn ids(&self) -> impl Iterator<Item = I> {
@@ -773,7 +1034,7 @@ impl<I: SymID, T> List<I, T> {
     }
 }
 
-impl<I: SymID, T: Clone> Clone for List<I, T> {
+impl<I: IndexPointer, T: Clone> Clone for List<I, T> {
     fn clone(&self) -> Self {
         Self {
             data: self.data.clone(),
@@ -782,13 +1043,13 @@ impl<I: SymID, T: Clone> Clone for List<I, T> {
     }
 }
 
-impl<I: SymID, T> Default for List<I, T> {
+impl<I: IndexPointer, T> Default for List<I, T> {
     fn default() -> Self {
         Self::new()
     }
 }
 
-impl<I: SymID, T> Index<I> for List<I, T> {
+impl<I: IndexPointer, T> Index<I> for List<I, T> {
     type Output = T;
 
     fn index(&self, id: I) -> &Self::Output {
@@ -796,19 +1057,40 @@ impl<I: SymID, T> Index<I> for List<I, T> {
     }
 }
 
-impl<I: SymID, T> IndexMut<I> for List<I, T> {
+impl<I: IndexPointer, T> IndexMut<I> for List<I, T> {
     fn index_mut(&mut self, id: I) -> &mut Self::Output {
         &mut self.data[id.raw()]
     }
 }
 
+#[derive(Debug, Clone, Default)]
+pub struct Cursor {
+    counter: Arc<AtomicUsize>,
+}
+
+impl Cursor {
+    pub fn new() -> Self {
+        Self {
+            counter: Arc::new(AtomicUsize::new(0)),
+        }
+    }
+
+    pub fn next(&self) -> usize {
+        self.counter.fetch_add(1, Ordering::Relaxed)
+    }
+
+    pub fn set(&self, value: usize) {
+        self.counter.store(value, Ordering::Relaxed)
+    }
+}
+
 #[macro_export]
-macro_rules! sym_id {
+macro_rules! index_pointer {
     ($id:ident) => {
         #[derive(Clone, Copy, PartialEq, Eq, Debug)]
         pub struct $id(usize);
 
-        impl SymID for $id {
+        impl IndexPointer for $id {
             fn new(idx: usize) -> Self {
                 Self(idx)
             }
@@ -826,12 +1108,12 @@ macro_rules! sym_id {
     };
 }
 
-pub trait SymID: Copy + Clone + PartialEq + Eq {
+pub trait IndexPointer: Copy + Clone + PartialEq + Eq {
     fn new(value: usize) -> Self;
     fn raw(&self) -> usize;
 }
 
-crate::sym_id!(Dummy);
+crate::index_pointer!(Dummy);
 
 pub fn test() {
     let mut ll = LinkedList::<Dummy, usize>::new();

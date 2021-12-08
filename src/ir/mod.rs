@@ -21,7 +21,7 @@ use crate::{
     lexer::{self, Token},
     util::{
         sdbm::{SdbmHashState, ID},
-        storage::{LinkedList, List, SymID, Table},
+        storage::{LinkedList, List, IndexPointer, Table},
     },
 };
 
@@ -259,7 +259,7 @@ impl Program {
     }
 }
 
-crate::sym_id!(AstRef);
+crate::index_pointer!(AstRef);
 
 macro_rules! define_repo {
     (
@@ -415,7 +415,7 @@ impl Default for Program {
     }
 }
 
-crate::sym_id!(Mod);
+crate::index_pointer!(Mod);
 
 #[derive(Clone, Debug, Default)]
 pub struct ModuleEnt {
@@ -431,7 +431,7 @@ pub struct ModuleEnt {
     pub is_external: bool,
 }
 
-crate::sym_id!(Fun);
+crate::index_pointer!(Fun);
 
 #[derive(Debug, Clone)]
 pub struct FunEnt {
@@ -515,7 +515,7 @@ pub struct FunSignature {
     pub struct_return: bool,
 }
 
-crate::sym_id!(Inst);
+crate::index_pointer!(Inst);
 
 #[derive(Debug, Default, Clone)]
 pub struct InstEnt {
@@ -597,7 +597,7 @@ pub struct Loop {
     end_block: Inst,
 }
 
-crate::sym_id!(GlobalValue);
+crate::index_pointer!(GlobalValue);
 
 #[derive(Debug, Clone)]
 pub struct GlobalValueEnt {
@@ -605,7 +605,7 @@ pub struct GlobalValueEnt {
     pub ast: Ast,
 }
 
-crate::sym_id!(Value);
+crate::index_pointer!(Value);
 
 #[derive(Debug, Clone)]
 pub struct ValueEnt {
@@ -664,9 +664,9 @@ impl Default for FKind {
     }
 }
 
-crate::sym_id!(TypeDep);
+crate::index_pointer!(TypeDep);
 
-crate::sym_id!(Type);
+crate::index_pointer!(Type);
 
 #[derive(Clone, Debug, PartialEq)]
 pub struct TypeEnt {
@@ -730,7 +730,7 @@ pub enum BTKind {
 
 impl BTKind {
     pub fn of(tp: Type) -> Self {
-        match SymID::raw(&tp) {
+        match IndexPointer::raw(&tp) {
             0..=3 | 12 => Self::Int,
             4..=7 | 13 => Self::Uint,
             8 => Self::Float(32),

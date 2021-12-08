@@ -10,6 +10,7 @@ pub mod ir;
 pub mod lexer;
 pub mod module_tree;
 pub mod testing;
+pub mod types;
 pub mod util;
 
 pub const FILE_EXTENSION: &str = ".pmt";

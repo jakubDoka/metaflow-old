@@ -355,19 +355,19 @@ Token { kind: Int(30, 0), spam: "30", line_data: LineData { line: 64, column: 8,
 Token { kind: Indent(0), spam: "\n\r", line_data: LineData { line: 64, column: 11, file_name: "test_code.pmh" } }
 Token { kind: Indent(0), spam: "\n\r", line_data: LineData { line: 65, column: 1, file_name: "test_code.pmh" } }
 Group 'fun' "fun":
- Fun(Private) 'fun' "fun flo: pass":
+ Fun(None) 'fun' "fun flo: pass":
   FunHeader 'fun' "fun flo":
    Ident ident "flo"
    None end of file ""
   Group ':' ":":
    Pass 'pass' "pass"
- Fun(Private) 'fun' "fun foo(): pass":
+ Fun(None) 'fun' "fun foo(): pass":
   FunHeader 'fun' "fun foo()":
    Ident ident "foo"
    None end of file ""
   Group ':' ":":
    Pass 'pass' "pass"
- Fun(Private) 'fun' "fun goo(a: i8, b: i8): pass":
+ Fun(None) 'fun' "fun goo(a: i8, b: i8): pass":
   FunHeader 'fun' "fun goo(a: i8, b: i8)":
    Ident ident "goo"
    FunArgument(false) ident "a: i8":
@@ -379,7 +379,7 @@ Group 'fun' "fun":
    None end of file ""
   Group ':' ":":
    Pass 'pass' "pass"
- Fun(Private) 'fun' "fun loo:\r\n  noo::loo::[i8]()\r\n  pass":
+ Fun(None) 'fun' "fun loo:\r\n  noo::loo::[i8]()\r\n  pass":
   FunHeader 'fun' "fun loo":
    Ident ident "loo"
    None end of file ""
@@ -391,7 +391,7 @@ Group 'fun' "fun":
       Ident ident "loo"
      Ident ident "i8"
    Pass 'pass' "pass"
- Fun(Private) 'fun' "fun main -> i64:\r\n  return 10 + 4 - 2 * 1 + 8":
+ Fun(None) 'fun' "fun main -> i64:\r\n  return 10 + 4 - 2 * 1 + 8":
   FunHeader 'fun' "fun main -> i64":
    Ident ident "main"
    Ident ident "i64"
@@ -410,7 +410,7 @@ Group 'fun' "fun":
        Lit integer "2"
        Lit integer "1"
       Lit integer "8"
- Fun(Private) 'fun' "fun operator_stress_test -> i64:\r\n  return 10 + 2 * 1 - 9 | 4 & 1 ^ 2 >> 1 << 7 min 20 max 10":
+ Fun(None) 'fun' "fun operator_stress_test -> i64:\r\n  return 10 + 2 * 1 - 9 | 4 & 1 ^ 2 >> 1 << 7 min 20 max 10":
   FunHeader 'fun' "fun operator_stress_test -> i64":
    Ident ident "operator_stress_test"
    Ident ident "i64"
@@ -447,7 +447,7 @@ Group 'fun' "fun":
           Lit integer "7"
          Lit integer "20"
         Lit integer "10"
- Fun(Private) 'fun' "fun conditional -> i64:\r\n  if false:\r\n    return 10\r\n  elif true:\r\n    return if true: 10 else: 20\r\n  else:\r\n    return 0":
+ Fun(None) 'fun' "fun conditional -> i64:\r\n  if false:\r\n    return 10\r\n  elif true:\r\n    return if true: 10 else: 20\r\n  else:\r\n    return 0":
   FunHeader 'fun' "fun conditional -> i64":
    Ident ident "conditional"
    Ident ident "i64"
@@ -478,14 +478,14 @@ Group 'fun' "fun":
   AttributeAssign ident "call_conv = cold":
    Ident ident "call_conv"
    Ident ident "cold"
- Fun(Private) 'fun' "fun inline_fn -> u32:\r\n  return 10":
+ Fun(None) 'fun' "fun inline_fn -> u32:\r\n  return 10":
   FunHeader 'fun' "fun inline_fn -> u32":
    Ident ident "inline_fn"
    Ident ident "u32"
   Group ':' ":":
    ReturnStatement 'return' "return 10":
     Lit integer "10"
- Fun(Private) 'fun' "fun fib(v: i64) -> i64:\r\n  return if v == 0 | v == 1:\r\n    1\r\n  else:\r\n    fib(v - 1) + fib(v - 2)":
+ Fun(None) 'fun' "fun fib(v: i64) -> i64:\r\n  return if v == 0 | v == 1:\r\n    1\r\n  else:\r\n    fib(v - 1) + fib(v - 2)":
   FunHeader 'fun' "fun fib(v: i64) -> i64":
    Ident ident "fib"
    FunArgument(false) ident "v: i64":
@@ -522,7 +522,7 @@ Group 'fun' "fun":
          Ident operator "-"
          Ident ident "v"
          Lit integer "2"
- Fun(Private) 'fun' "fun fib_loop(v: i64) -> i64:\r\n  var a, b, c = 1\r\n  loop'a:\r\n    c = a + b\r\n    a = b\r\n    b = c\r\n    v = v - 1\r\n    if v == 0:\r\n      break'a\r\n  return c":
+ Fun(None) 'fun' "fun fib_loop(v: i64) -> i64:\r\n  var a, b, c = 1\r\n  loop'a:\r\n    c = a + b\r\n    a = b\r\n    b = c\r\n    v = v - 1\r\n    if v == 0:\r\n      break'a\r\n  return c":
   FunHeader 'fun' "fun fib_loop(v: i64) -> i64":
    Ident ident "fib_loop"
    FunArgument(false) ident "v: i64":
@@ -578,7 +578,7 @@ Group 'fun' "fun":
       None end of file ""
    ReturnStatement 'return' "return c":
     Ident ident "c"
- Fun(Private) 'fun' "fun unary_operators(a: i64) -> i64:\r\n  return -a + ~a + !a + ++a + --a":
+ Fun(None) 'fun' "fun unary_operators(a: i64) -> i64:\r\n  return -a + ~a + !a + ++a + --a":
   FunHeader 'fun' "fun unary_operators(a: i64) -> i64":
    Ident ident "unary_operators"
    FunArgument(false) ident "a: i64":
@@ -610,7 +610,7 @@ Group 'fun' "fun":
      UnaryOp operator "--a":
       Ident operator "--"
       Ident ident "a"
- StructDeclaration(Private) 'struct' "struct":
+ StructDeclaration(None) 'struct' "struct":
   Ident ident "Foo"
   Group ':' ":":
    StructField(false) ident "a, b, c: i64":
@@ -618,7 +618,7 @@ Group 'fun' "fun":
     Ident ident "b"
     Ident ident "c"
     Ident ident "i64"
- StructDeclaration(Private) 'struct' "struct":
+ StructDeclaration(None) 'struct' "struct":
   Ident ident "Goo"
   Group ':' ":":
    StructField(true) ident "foo: Foo":
@@ -630,7 +630,7 @@ Group 'fun' "fun":
    StructField(false) ident "gva: i64":
     Ident ident "gva"
     Ident ident "i64"
- Fun(Private) 'fun' "fun strings -> i64:\r\n  var hello = \"hello\"\r\n  return 0":
+ Fun(None) 'fun' "fun strings -> i64:\r\n  var hello = \"hello\"\r\n  return 0":
   FunHeader 'fun' "fun strings -> i64":
    Ident ident "strings"
    Ident ident "i64"
@@ -644,7 +644,7 @@ Group 'fun' "fun":
       Lit string "\"hello\""
    ReturnStatement 'return' "return 0":
     Lit integer "0"
- Fun(Private) 'fun' "fun mutable_ref(a: &var Foo):\r\n  a.a = 10\r\n  a.b = 20\r\n  a.c = 30":
+ Fun(None) 'fun' "fun mutable_ref(a: &var Foo):\r\n  a.a = 10\r\n  a.b = 20\r\n  a.c = 30":
   FunHeader 'fun' "fun mutable_ref(a: &var Foo)":
    Ident ident "mutable_ref"
    FunArgument(false) ident "a: &var Foo":

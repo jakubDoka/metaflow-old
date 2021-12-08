@@ -298,7 +298,7 @@ impl<'a> TypeResolver<'a> {
                         .add(name.token.spam.deref())
                         .combine(self.program.modules.direct_to_id(host_module));
 
-                    if let Some(shadowed) = self.program.types.redirect(id, param) {
+                    if let Some(shadowed) = self.program.types.link(id, param) {
                         self.context.shadowed_types.push(shadowed);
                     } else {
                         self.context.instance_id_buffer.push(id);
@@ -330,14 +330,14 @@ impl<'a> TypeResolver<'a> {
                 for i in old_id_len..self.context.instance_id_buffer.len() {
                     self.program
                         .types
-                        .remove_redirect(self.context.instance_id_buffer[i], None);
+                        .remove_link(self.context.instance_id_buffer[i], None);
                 }
                 self.context.instance_id_buffer.truncate(old_id_len);
 
                 for i in old_len..self.context.shadowed_types.len() {
                     let direct_id = self.context.shadowed_types[i];
                     let id = self.program.types.direct_to_id(direct_id);
-                    self.program.types.remove_redirect(id, Some(direct_id));
+                    self.program.types.remove_link(id, Some(direct_id));
                 }
                 self.context.shadowed_types.truncate(old_len);
 

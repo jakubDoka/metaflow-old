@@ -203,6 +203,8 @@ impl<'a> AstParser<'a> {
             return self.attr();
         }
 
+        let vis = self.visibility();
+
         let embedded = if self.state.token == TKind::Embed {
             self.state.next();
             true
@@ -210,7 +212,7 @@ impl<'a> AstParser<'a> {
             false
         };
 
-        let mut ast = self.ast(AKind::StructField(embedded));
+        let mut ast = self.ast(AKind::StructField(vis, embedded));
 
         self.list(
             &mut ast,
@@ -778,9 +780,9 @@ impl<'a> AstParser<'a> {
             }
             TKind::Priv => {
                 self.state.next();
-                Vis::FilePrivate
+                Vis::Private
             }
-            _ => Vis::Private,
+            _ => Vis::None,
         }
     }
 
@@ -1117,7 +1119,7 @@ pub enum AKind {
     Index,
 
     StructDeclaration(Vis),
-    StructField(bool),
+    StructField(Vis, bool),
 
     Attribute,
     AttributeElement,
@@ -1159,8 +1161,8 @@ impl Default for AKind {
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub enum Vis {
     Public,
+    None,
     Private,
-    FilePrivate,
 }
 
 impl Default for Vis {
