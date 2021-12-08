@@ -3,7 +3,7 @@ use std::path::{Path, PathBuf};
 use crate::ast::{AstError, AstParser, AstState, Dep, Import};
 use crate::lexer::Lexer;
 use crate::util::sdbm::{SdbmHashState, ID};
-use crate::util::storage::{IndexPointer, Map, Table};
+use crate::util::storage::{IndexPointer, Table};
 use crate::{ast::AstContext, lexer::Token, util::storage::List};
 
 type Result<T = ()> = std::result::Result<T, MTError>;
@@ -27,10 +27,20 @@ impl<'a> MTParser<'a> {
 
         self.load_manifests(root, &mut path_buffer)?;
 
-        path_buffer.clear();
-
         let root_manifest_id = Manifest::new(0);
 
+        let root_manifest_hash = self.state.manifests[root_manifest_id].id;
+        
+        let builtin_module = ModEnt {
+            id: MOD_SALT.add("builtin").combine(root_manifest_hash),
+            dependency: vec![],
+            dependant: vec![],
+            ast: AstState::default(),
+            manifest: root_manifest_id,
+        };
+
+        self.state.builtin_module = self.state.modules.insert(builtin_module.id, builtin_module).1;
+        
         let root_manifest_name = self.state.manifests[root_manifest_id].name;
 
         let module = self.load_module(
@@ -78,9 +88,12 @@ impl<'a> MTParser<'a> {
                 module.dependency.push((nickname, dependency));
                 self.state.modules[dependency].dependant.push(module_id);
             }
+            self.state.modules[module_id].dependency.push((MOD_SALT.add("builtin"), self.state.builtin_module));
         }
 
-        if let Some(cycle) = detect_cycles(&self.state.modules, module) {
+        let mut stack = vec![];
+
+        if let Some(cycle) = detect_cycles(&self.state.modules, module, &mut stack) {
             return Err(MTError::new(
                 MTEKind::CyclicDependency(cycle),
                 Token::default(),
@@ -88,32 +101,16 @@ impl<'a> MTParser<'a> {
         }
 
 
-        let mut module_order = vec![];
+        let mut module_order = OrderingContext::new();
 
-        create_module_order(&self.state.modules, Mod::new(0), &mut module_order);
+        create_order(&self.state.modules, module, &mut module_order);
 
-        self.split_modules(module_order);
+        module_order.result();
+
+        self.state.module_order = module_order.frontier;
+
 
         Ok(())
-    }
-
-    fn split_modules(&mut self, module_order: Vec<Mod>) {
-        // calculate storage size
-        let mut counter = vec![0; self.state.manifests.len()];
-        for module in self.state.modules.iter() {
-            counter[module.manifest.raw()] += 1; 
-        }
-
-        // allocate storage
-        for (id, manifest) in self.state.manifests.iter_mut() {
-            manifest.module_order = Vec::with_capacity(counter[id.raw()]);
-        }
-
-        // fill storage
-        for id in module_order {
-            let manifest = self.state.modules[id].manifest;
-            self.state.manifests[manifest].module_order.push(id);
-        }
     }
 
     fn load_module(
@@ -274,20 +271,13 @@ impl<'a> MTParser<'a> {
             self.context.ast.temp_manifest = manifest;
         }
 
-        if let Some(cycle) = detect_cycles(&self.state.manifests, Manifest::new(0)) {
+        let mut stack = vec![];
+
+        if let Some(cycle) = detect_cycles(&self.state.manifests, Manifest::new(0), &mut stack) {
             return Err(MTError::new(MTEKind::CyclicManifests(cycle), Token::default()));
         }
 
-        let mut manifest_order = vec![];
-
-        create_module_order(&self.state.manifests, Manifest::new(0), &mut manifest_order);
-
-        create_independent_steps(
-            &self.state.manifests, 
-            &manifest_order, 
-            &mut self.state.independent_steps,
-            num_cpus::get(),
-        );
+        path_buffer.clear();
 
         Ok(())
     }
@@ -320,72 +310,82 @@ impl<'a> MTParser<'a> {
     }
 }
 
-fn create_independent_steps<I: IndexPointer + 'static, S: TreeStorage<I>>(
-    storage: &S, 
-    order: &[I],
-    buffer: &mut Vec<Option<I>>,
-    stride: usize,
-) {
-    let len = order.len();
-    buffer.reserve(len * 2); // worst case size
-    let mut lookup = vec![false; len];
-
-    while !lookup[0] {
-        let mut j = 0;
-        for &i in order.iter().rev() {
-            if !lookup[i.raw()] && !iter(storage, i).any(|dep| !lookup[dep.raw()]) {
-                lookup[i.raw()] = true;
-                buffer.push(Some(i));
-                j += 1;
-                if j == stride {
-                    break;
-                }
-            }
-        }
-        buffer.push(None);
-    }
-}
-
-fn create_module_order<I: IndexPointer + 'static, S: TreeStorage<I>>(
+pub fn create_order<I: IndexPointer + 'static, S: TreeStorage<I>>(
     storage: &S,
     root: I,
-    buffer: &mut Vec<I>,
+    ctx: &mut OrderingContext<I>,
 ) {
+    ctx.clear();
     let len = storage.len();
-    let mut result = Vec::with_capacity(len * 2);
-    let mut frontier = Vec::with_capacity(len * 4);
-    frontier.push(root);
-    let mut lookup = vec![None; len];
+    ctx.result.reserve(len * 2);
+    ctx.frontier.reserve(len * 4);
+    ctx.frontier.push(root);
+    ctx.lookup.resize(len, None);
 
     let mut i = 0;
 
-    while i < frontier.len() {
-        let node = frontier[i];
-        if let Some(seen_at) = lookup[node.raw()] {
-            result[seen_at] = None;
-            lookup[node.raw()] = Some(result.len());
+    while i < ctx.frontier.len() {
+        let node = ctx.frontier[i];
+        if let Some(seen_at) = ctx.lookup[node.raw()] {
+            ctx.result[seen_at] = None;
+            ctx.lookup[node.raw()] = Some(ctx.result.len());
         }
-        result.push(Some(node));
-        let last = frontier.len() - 1;
-        let last = frontier[last];
+        ctx.result.push(Some(node));
+        let last = ctx.frontier.len() - 1;
+        let last = ctx.frontier[last];
 
-        frontier.extend(
+        ctx.frontier.extend(
             iter(storage, node)
                 .filter(|module| *module != last),
         );
         i += 1;
     }
-
-    buffer.reserve(result.iter().filter(|node| node.is_some()).count());
-
-    buffer.extend(result.drain(..).filter_map(|node| node));
 }
 
-fn detect_cycles<I: IndexPointer, S: TreeStorage<I>>(
+#[derive(Debug, Clone)]
+pub struct OrderingContext<I> {
+    pub lookup: Vec<Option<usize>>,
+    pub result: Vec<Option<I>>,
+    pub frontier: Vec<I>,
+}
+
+impl<I> OrderingContext<I> {
+    pub fn new() -> Self {
+        Self {
+            lookup: Vec::new(),
+            result: Vec::new(),
+            frontier: Vec::new(),
+        }
+    }
+
+    pub fn result(&mut self) -> &[I] {
+        let mut frontier = std::mem::take(&mut self.frontier);
+        frontier.clear();
+        frontier.extend(self.result.drain(..).filter_map(|node| node));
+        self.frontier = frontier;
+        &self.frontier
+    }
+
+    pub fn clear(&mut self) {
+        self.lookup.clear();
+        self.result.clear();
+        self.frontier.clear();
+    }
+}
+
+impl<I> Default for OrderingContext<I> {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+pub fn detect_cycles<I: IndexPointer, S: TreeStorage<I>>(
     storage: &S,
     root: I,
+    stack: &mut Vec<(I, usize)>,
 ) -> Option<Vec<I>> {
-    let mut stack = Vec::with_capacity(storage.len());
+    stack.clear();
+    stack.reserve(storage.len());
     stack.push((root, 0));
 
     while let Some(&(node_id, idx)) = stack.last() {
@@ -464,9 +464,10 @@ pub struct ManifestEnt {
 
 #[derive(Debug, Clone, Default)]
 pub struct MTState {
+    pub builtin_module: Mod,
     pub manifests: List<Manifest, ManifestEnt>,
     pub modules: Table<Mod, ModEnt>,
-    pub independent_steps: Vec<Option<Manifest>>,
+    pub module_order: Vec<Mod>,
 }
 
 impl MTState {

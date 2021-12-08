@@ -10,6 +10,7 @@
         "codegen",
         "condcodes",
         "conv",
+        "cpus",
         "cranelift",
         "deps",
         "Displayer",

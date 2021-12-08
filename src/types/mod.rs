@@ -1,145 +1,127 @@
-use std::ops::{Index, IndexMut};
+use std::ops::{Deref, DerefMut};
 
 use crate::ast::{Ast, Vis, AstParser, AstError, AKind};
 use crate::lexer::Token;
-use crate::module_tree::{MTState, Mod, MTContext};
+use crate::module_tree::{MTState, Mod, MTContext, TreeStorage, OrderingContext, self};
 use crate::util::sdbm::{ID, SdbmHashState};
-use crate::util::storage::{IndexPointer, SyncList, SyncTable, Table, List};
-use cranelift_codegen::ir::types::Type as CrType;
+use crate::util::storage::{IndexPointer, Table, List};
+use cranelift_codegen::ir::types::{Type as CrType, INVALID};
+use cranelift_codegen::ir::types::*;
 
 type Result<T = ()> = std::result::Result<T, TypeError>;
 
 pub const TYPE_SALT: ID = ID(0x9e3779b97f4a7c15);
 
+pub static mut POINTER_TYPE: CrType = INVALID;
+
+pub fn ptr_ty() -> CrType {
+    unsafe { POINTER_TYPE }
+}
+
 pub struct TParser<'a> {
+    module: Mod,
     state: &'a mut TState,
-    main_state: &'a mut TMainState,
     context: &'a mut TContext,
 }
 
 impl<'a> TParser<'a> {
     pub const MAX_TYPE_INSTANTIATION_DEPTH: usize = 1000;
 
-    pub fn new(state: &'a mut TState, main_state: &'a mut TMainState, context: &'a mut TContext) -> Self {
+    pub fn new(state: &'a mut TState, context: &'a mut TContext) -> Self {
         Self {
+            module: Mod::new(0),
             state,
             context,
-            main_state,
         }
     }
 
     pub fn resolve(&mut self, module: Mod) -> Result {
+        self.module = module;
         self.collect(module)?;
         self.connect(module)?;
+        self.calc_sizes()?;
         Ok(())
     }
 
-    /*pub fn resolve(mut self) -> Result<()> {
-        self.collect()?;
-        self.connect()?;
-        self.materialize()?;
-        Ok(())
-    }
-
-    fn materialize(&mut self) -> Result<()> {
-        for datatype in unsafe { self.program.types.direct_ids() } {
-            if !self.program.types.is_direct_valid(datatype) {
-                continue;
+    fn calc_sizes(&mut self) -> Result {
+        let mut resolved = std::mem::take(&mut self.state.resolved);
+        for ty in resolved.drain(..) {
+            if self.node_len(ty) != 0 {
+                self.calc_size(ty)?;
             }
-            self.materialize_datatype(datatype)?;
         }
-
         Ok(())
     }
 
-    fn materialize_datatype(&mut self, datatype: Type) -> Result<()> {
-        if let Some(idx) = self
-            .context
-            .instance_buffer
-            .iter()
-            .position(|&dt| dt == datatype)
-        {
-            let cycle: Vec<Token> = self.context.instance_buffer[idx..]
-                .iter()
-                .map(|&dt| self.program[dt].token_hint.clone())
-                .chain(std::iter::once(self.program[datatype].token_hint.clone()))
-                .collect();
+    fn calc_size(&mut self, ty: Type) -> Result {
+        // SAFETY: This only avoids memmove of context which would otherwise do
+        // except that context is big
+        let ctx: &mut TContext = unsafe {
+            std::mem::transmute(&mut self.context)
+        };
+
+        if let Some(cycle) = module_tree::detect_cycles(self, ty, &mut ctx.cycle_stack) {
             return Err(TypeError::new(
                 TEKind::InfiniteSize(cycle),
-                &Token::default(),
+                Token::default(),
             ));
         }
 
-        if self.program[datatype].size != u32::MAX {
-            return Ok(());
+        module_tree::create_order(self, ty, &mut ctx.ordering);
+
+        for &ty in ctx.ordering.result() {
+            let ty_ent = &self.state.types[ty]; 
+            
+            match ty_ent.kind {
+                TKind::Structure(id) => {
+                    let mut size = 0;
+                    let structure = &mut self.state.stypes[id];
+                    let mut fields = std::mem::take(&mut structure.fields);
+                    let kind = structure.kind;
+                    let align = fields
+                        .iter()
+                        .map(|field| self.state.types[field.ty].align)
+                        .max()
+                        .unwrap_or(0);
+
+                    if align != 0 {
+                        match kind {
+                            SKind::Struct => {
+                                let calc = move |offset| {
+                                    align * ((offset & (align - 1)) != 0) as u32
+                                        - (offset & (align - 1))
+                                };
+
+                                for field in &mut fields {
+                                    size += calc(size);
+                                    field.offset = size;
+                                    size += self.state.types[field.ty].size;
+                                }
+        
+                                size += calc(size);
+                            }
+                            SKind::Union => {
+                                size = fields
+                                    .iter()
+                                    .map(|field| self.state.types[field.ty].size)
+                                    .max()
+                                    .unwrap();
+                            }
+                        }
+                    }
+
+                    self.state.stypes[id].fields = fields;
+
+                    let ty_ent = &mut self.state.types[ty];
+                    ty_ent.align = align;
+                    ty_ent.size = size;
+                }
+                TKind::Pointer(..) | TKind::Builtin(_) => (),
+                _ => unreachable!("{:?}", ty_ent.kind),
+            }
         }
 
-        self.context.instance_buffer.push(datatype);
-
-        let mut kind = std::mem::take(&mut self.program[datatype].kind);
-        let (size, align) = match &mut kind {
-            TKind::Pointer(..) => {
-                let size = self.program.isa().pointer_bytes() as u32;
-                (size, size)
-            }
-            TKind::Structure(structure) => {
-                let mut size = 0;
-                let mut align = 0;
-                match structure.kind {
-                    SKind::Struct => {
-                        align = structure
-                            .fields
-                            .iter()
-                            .map(|field| self.program[field.datatype].align)
-                            .max()
-                            .unwrap_or(0);
-
-                        if align != 0 {
-                            let calc = move |offset| {
-                                align * ((offset & (align - 1)) != 0) as u32
-                                    - (offset & (align - 1))
-                            };
-
-                            for field in &mut structure.fields {
-                                self.materialize_datatype(field.datatype)?;
-                                size += calc(size);
-                                field.offset = size;
-                                size += self.program[field.datatype].size;
-                            }
-
-                            size += calc(size);
-                        }
-                    }
-                    SKind::Union => {
-                        for field in &mut structure.fields {
-                            self.materialize_datatype(field.datatype)?;
-                            size = std::cmp::max(size, self.program[field.datatype].size);
-                        }
-                    }
-                }
-                (size, align)
-            }
-            _ => unreachable!(),
-        };
-
-        let dt = &mut self.program[datatype];
-        dt.kind = kind;
-        dt.size = size;
-        dt.align = align;
-
-        self.context
-            .instance_buffer
-            .pop()
-            .expect("expected previously pushed datatype");
-
         Ok(())
-    }
-    */
-
-    fn calc_size(&mut self, ty: Type) -> Result {
-         let type_order = vec![];
-
-
     }
     
     fn connect(&mut self, _module: Mod) -> Result {
@@ -147,7 +129,7 @@ impl<'a> TParser<'a> {
             if depth > Self::MAX_TYPE_INSTANTIATION_DEPTH {
                 return Err(TypeError::new(
                     TEKind::InstantiationDepthExceeded,
-                    self[id].hint.clone(),
+                    self.state.types[id].hint.clone(),
                 ));
             }
 
@@ -158,6 +140,8 @@ impl<'a> TParser<'a> {
                 &TKind::Unresolved(ast) => self.connect_type(ty_module, id, ast, depth)?,
                 _ => unreachable!("{:?}", &self.state.types[id].kind),
             }
+
+            self.state.resolved.push(id);
         }
       
         Ok(())
@@ -182,12 +166,23 @@ impl<'a> TParser<'a> {
         let ast = unsafe { std::mem::transmute::<&Ast, &Ast>(
             &self.state.gtypes[ast]) };
         
-        let module_id = self.main_state.mt_state.modules[module].id;
-        let params = std::mem::take(&mut self[id].params);
+        let module_id = self.state.modules[module].id;
+        let params = std::mem::take(&mut self.state.types[id].params);
         let mut shadowed = std::mem::take(&mut self.context.shadowed_types);
 
-        if ast[0].kind == AKind::Instantiation {
-            for (a, &param) in ast[1..].iter().zip(params[1..].iter()) {
+        let header = &ast[0];
+
+        if header.kind == AKind::Instantiation {
+            if params.len() != header.len() {
+                return Err(TypeError::new(
+                    TEKind::WrongInstantiationArgAmount(
+                        params.len() - 1,
+                        header.len() - 1,
+                    ),
+                    self.state.types[id].hint.clone(),
+                ));
+            }
+            for (a, &param) in header[1..].iter().zip(params[1..].iter()) {
                 let id = TYPE_SALT
                     .add(a.token.spam.raw())
                     .combine(module_id);
@@ -197,7 +192,7 @@ impl<'a> TParser<'a> {
             }
         }
 
-        self[id].params = params;
+        self.state.types[id].params = params;
         
         for field_line in ast[1].iter() {
             let (vis, embedded) = match &field_line.kind {
@@ -249,14 +244,15 @@ impl<'a> TParser<'a> {
             AKind::Ident => self.resolve_simple_type(module, ast.token.clone()),
             AKind::ExplicitPackage => self.resolve_explicit_package_type(module, ast),
             AKind::Instantiation => self.resolve_instance(module, ast, depth),
-            AKind::Ref(mutable) => self.resolve_pointer(module, ast, mutable, depth),
+            AKind::Ref(mutable) => self.resolve_pointer(module, ast, mutable, false, depth),
+            AKind::Deref(mutable) => self.resolve_pointer(module, ast, mutable, true, depth),
             _ => unreachable!("{:?}", ast.kind),
         }
     }
 
-    fn resolve_pointer(&mut self, module: Mod, ast: &Ast, mutable: bool, depth: usize) -> Result<(Mod, Type)> {
+    fn resolve_pointer(&mut self, module: Mod, ast: &Ast, mutable: bool, nullable: bool, depth: usize) -> Result<(Mod, Type)> {
         let (module, datatype) = self.resolve_type(module, &ast[0], depth)?;
-        let datatype = self.pointer_of(datatype, mutable);
+        let datatype = self.pointer_of(datatype, mutable, nullable);
 
         Ok((module, datatype))
     }
@@ -268,7 +264,7 @@ impl<'a> TParser<'a> {
             _ => unreachable!("{:?}", ast[0].kind),
         };
         
-        let module_id = self.main_state.mt_state.modules[module].id;
+        let module_id = self.state.modules[module].id;
         
         let mut params = std::mem::take(&mut self.context.instance_buffer);
         params.clear();
@@ -280,7 +276,7 @@ impl<'a> TParser<'a> {
 
         let mut id = TYPE_SALT;
         for &param in params.iter() {
-            id = id.combine(self[param].id);
+            id = id.combine(self.state.types[param].id);
         }
         id = id.combine(module_id);
 
@@ -288,9 +284,9 @@ impl<'a> TParser<'a> {
             return Ok((module, id));
         }
 
-        let ty_ent = &self[ty];
+        let ty_ent = &self.state.types[ty];
 
-        let ast = match ty_ent.kind {
+        let ast_id = match ty_ent.kind {
             TKind::Generic(ast) => ast,
             _ => unreachable!("{:?}", ty_ent.kind),
         };
@@ -300,10 +296,12 @@ impl<'a> TParser<'a> {
             module,
             visibility: ty_ent.visibility,
             params: params.clone(),
-            kind: TKind::Unresolved(ast),
+            kind: TKind::Unresolved(ast_id),
             name: "",
-            hint: ty_ent.hint.clone(),
+            hint: ast.token.clone(),
             attribute_id: ty_ent.attribute_id,
+            size: 0,
+            align: 0,
         };
 
         self.context.instance_buffer = params;
@@ -317,7 +315,7 @@ impl<'a> TParser<'a> {
     }
 
     fn resolve_explicit_package_type(&mut self, module: Mod, ast: &Ast) -> Result<(Mod, Type)> {
-        let module = self.main_state.mt_state.find_dep(module, &ast[0].token)
+        let module = self.state.find_dep(module, &ast[0].token)
             .ok_or_else(|| TypeError::new(TEKind::UnknownPackage, ast.token.clone()))?;
         let result = self.resolve_simple_type(module, ast.token.clone());
         result
@@ -331,7 +329,7 @@ impl<'a> TParser<'a> {
 
     fn find_by_id(&mut self, module: Mod, id: ID) -> Option<(Mod, Type)> {
         let mut buffer = std::mem::take(&mut self.context.scope_buffer);
-        self.main_state.mt_state.collect_scopes(module, &mut buffer);
+        self.state.collect_scopes(module, &mut buffer);
 
         for (module, module_id) in buffer.drain(..) {
             if let Some(ty) = self.type_index(id.combine(module_id)) {
@@ -345,9 +343,9 @@ impl<'a> TParser<'a> {
     }
 
     fn collect(&mut self, module: Mod) -> Result<()> {
-        let mut context = std::mem::take(&mut self.context.mt_context.ast);
+        let mut context = std::mem::take(&mut self.context.ast);
 
-        let module_ent = &mut self.main_state.mt_state.modules[module];
+        let module_ent = &mut self.state.modules[module];
 
         let mut ast = AstParser::new(&mut module_ent.ast, &mut context)
             .parse()
@@ -359,7 +357,7 @@ impl<'a> TParser<'a> {
             let ast = self.state.gtypes.add(ast);
             match a.kind.clone() {
                 AKind::StructDeclaration(visibility) => {
-                    let ident = &self[ast][0];
+                    let ident = &self.state.gtypes[ast][0];
                     let (ident, kind) = if ident.kind == AKind::Ident {
                         (ident, TKind::Unresolved(ast))
                     } else if ident.kind == AKind::Instantiation {
@@ -384,6 +382,8 @@ impl<'a> TParser<'a> {
                         name,
                         attribute_id: i,
                         hint: hint.clone(),
+                        size: 0,
+                        align: 0,
                     };
 
                     let (replaced, id) = self.state.types.insert(id, datatype);
@@ -407,13 +407,13 @@ impl<'a> TParser<'a> {
     
 
 
-    pub fn pointer_of(&mut self, datatype: Type, mutable: bool) -> Type {
-        let module = self[datatype].module;
+    pub fn pointer_of(&mut self, ty: Type, mutable: bool, nullable: bool) -> Type {
+        let module = self.state.types[ty].module;
         let name = if mutable { "&var " } else { "&" };
         let id = TYPE_SALT
             .add(name)
-            .combine(self[datatype].id)
-            .combine(self.main_state.mt_state.modules[module].id);
+            .combine(self.state.types[ty].id)
+            .combine(self.state.modules[module].id);
         
         if let Some(index) = self.type_index(id) {
             return index;
@@ -423,62 +423,56 @@ impl<'a> TParser<'a> {
             visibility: Vis::Public,
             id,
             params: vec![],
-            kind: TKind::Pointer(datatype, mutable),
+            kind: TKind::Pointer(ty, mutable, nullable),
             name,
             hint: Token::default(),
             module,
             attribute_id: 0,
+            size: 8,
+            align: 8,
         };
 
-        let (_, datatype) = self.state.types.insert(id, pointer_type);
+        let (_, ty) = self.state.types.insert(id, pointer_type);
 
-        datatype
+        ty
     }
 
     fn type_index(&self, id: ID) -> Option<Type> {
-        self.state.types.index(id).or_else(|| self.main_state.types.index(id)).map(|&id| id)
+        self.state.types.index(id).cloned()
     } 
 }
 
-impl<'a> Index<ID> for TParser<'a> {
-    type Output = TypeEnt;
+impl<'a> TreeStorage<Type> for TParser<'a> {
+    fn node_dep(&self, id: Type, idx: usize) -> Type {
+        let node = &self.state.types[id];
+        match node.kind {
+            TKind::Structure(id) => {
+                let structure = &self.state.stypes[id];
+                structure.fields[idx].ty
+            }
+            _ => unreachable!("{:?}", node.kind),
+        }
+    }
 
-    fn index(&self, id: ID) -> &Self::Output {
-        self.state.types.get(id).or_else(|| self.main_state.types.get(id)).unwrap()
+    fn node_len(&self, id: Type) -> usize {
+        let node = &self.state.types[id];
+
+        match node.kind {
+            _ if node.module != self.module || node.size != 0 => 0,
+            TKind::Builtin(_) | 
+            TKind::Pointer(..) => 0,
+            TKind::Structure(id) => {
+                self.state.stypes[id].fields.len()
+            },
+            TKind::Generic(_) |
+            TKind::Unresolved(_) => unreachable!(),
+        }
+    }
+
+    fn len(&self) -> usize {
+        self.state.types.len()
     }
 }
-
-impl<'a> IndexMut<ID> for TParser<'a> {
-    fn index_mut(&mut self, id: ID) -> &mut Self::Output {
-        &mut self.state.types[id]
-    }
-}
-
-macro_rules! impl_type_indexing {
-    ($by:ty, $to:ty, $field:ident) => {
-        impl<'a> Index<$by> for TParser<'a> {
-            type Output = $to;
-        
-            fn index(&self, index: $by) -> &Self::Output {
-                if index.raw() > self.main_state.$field.len() {
-                    &self.state.$field[index]
-                } else {
-                    &self.main_state.$field[index]
-                }
-            }
-        }
-        
-        impl<'a> IndexMut<$by> for TParser<'a> {
-            fn index_mut(&mut self, index: $by) -> &mut Self::Output {
-                &mut self.state.$field[index]
-            }
-        }
-    };
-}
-
-impl_type_indexing!(Type, TypeEnt, types);
-impl_type_indexing!(SType, STypeEnt, stypes);
-impl_type_indexing!(GType, Ast, gtypes);
 
 crate::index_pointer!(Type);
 
@@ -492,12 +486,14 @@ pub struct TypeEnt {
     pub name: &'static str,
     pub hint: Token,
     pub attribute_id: usize,
+    pub size: u32,
+    pub align: u32,
 }
 
 #[derive(Debug, Clone)]
 pub enum TKind {
     Builtin(CrType),
-    Pointer(Type, bool),
+    Pointer(Type, bool, bool), // mutable, nullable
     Structure(SType),
     Generic(GType),
     Unresolved(GType),
@@ -537,65 +533,151 @@ pub struct TContext {
     pub shadowed_types: Vec<(ID, Option<Type>)>,
     pub mt_context: MTContext,
     pub struct_field_buffer: Vec<SField>,
+    pub ordering: OrderingContext<Type>,
+    pub cycle_stack: Vec<(Type, usize)>
 }
 
-pub struct TMainState {
+impl TContext {
+    pub fn new(mt_context: MTContext) -> Self {
+        Self {
+            mt_context,
+            ..Default::default()
+        }
+    }
+}
+
+crate::inherit!(TContext, mt_context, MTContext);
+
+pub struct TState {
+    pub builtin_repo: BuiltinRepo,
     pub types: Table<Type, TypeEnt>,
     pub gtypes: List<GType, Ast>,
     pub stypes: List<SType, STypeEnt>,
     pub mt_state: MTState,
-}
-
-#[derive(Debug, Default, Clone)]
-pub struct TState {
     pub unresolved: Vec<(Type, usize)>,
-    pub types: SyncTable<Type, TypeEnt>,
-    pub gtypes: SyncList<GType, Ast>,
-    pub stypes: SyncList<SType, STypeEnt>,
+    pub resolved: Vec<Type>,
 }
 
+impl TState {
+    pub fn new(mt_state: MTState) -> Self {
+        let mut s = Self {
+            builtin_repo: unsafe { std::mem::zeroed() },
+            types: Table::new(),
+            gtypes: List::new(),
+            stypes: List::new(),
+            mt_state,
+            unresolved: vec![],
+            resolved: vec![],
+        };
 
-/*pub struct TypePrinter<'a> {
-    program: &'a Program,
+        s.builtin_repo = BuiltinRepo::new(&mut s);
+        
+        return s;
+    }
 }
 
-impl<'a> TypePrinter<'a> {
-    pub fn new(program: &'a Program) -> Self {
-        Self { program }
-    }
+crate::inherit!(TState, mt_state, MTState);
 
-    pub fn print(&self, datatype: Type) -> String {
-        let mut buffer = String::new();
+macro_rules! define_repo {
+    (
+        $($name:ident, $repr:expr, $size:expr);+
+    ) => {
+        #[derive(Clone, Debug)]
+        pub struct BuiltinRepo {
+            $(pub $name: Type,)+
+        }
 
-        self.print_buff(datatype, &mut buffer);
+        impl BuiltinRepo {
+            pub fn new(state: &mut TState) -> Self {
+                let module = state.builtin_module;
+                let builtin_id = state.modules[module].id;
 
-        buffer
-    }
+                $(
+                    let id = TYPE_SALT.add(stringify!($name)).combine(builtin_id);
+                    let type_ent = TypeEnt {
+                        id,
+                        visibility: Vis::Public,
+                        kind: TKind::Builtin($repr),
+                        size: $size,
+                        align: $size.min(8),
+                        module,
+                        hint: Token::builtin(stringify!($name)),
+                        name: stringify!($name),
+                        params: vec![],
+                        attribute_id: 0,
+                    };
+                    let (_, $name) = state.types.insert(id, type_ent);
+                )+
 
-    pub fn print_buff(&self, datatype: Type, buffer: &mut String) {
-        let dt = &self.program[datatype];
-        match &dt.kind {
-            TKind::Structure(_) if dt.params.len() > 1 => {
-                self.print_buff(dt.params[0], buffer);
-                buffer.push('[');
-                for param in &dt.params[1..] {
-                    self.print_buff(*param, buffer);
-                    buffer.push(',');
+                Self {
+                    $($name,)+
                 }
-                buffer.pop();
-                buffer.push(']');
             }
-            TKind::Structure(_) | TKind::Builtin(_) | TKind::Generic => {
-                buffer.push_str(dt.debug_name)
+
+            pub fn type_list(&self) -> [Type; 14] {
+                [
+                    $(self.$name,)+
+                ]
             }
-            TKind::Pointer(pointed, _) => {
-                buffer.push_str(dt.debug_name);
-                self.print_buff(*pointed, buffer);
-            }
-            TKind::Unresolved => unreachable!(),
+        }
+    };
+}
+
+define_repo!(
+    i8, I8, 1;
+    i16, I16, 2;
+    i32, I32, 4;
+    i64, I64, 8;
+    u8, I8, 1;
+    u16, I16, 2;
+    u32, I32, 4;
+    u64, I64, 8;
+    f32, F32, 4;
+    f64, F64, 8;
+    bool, B1, 1;
+    auto, INVALID, 0;
+    int, ptr_ty(), ptr_ty().bytes() as u32;
+    uint, ptr_ty(), ptr_ty().bytes() as u32
+);
+
+pub struct TypeDisplay<'a> {
+    state: &'a TState,
+    type_id: Type,
+}
+
+impl<'a> TypeDisplay<'a> {
+    pub fn new(state: &'a TState, type_id: Type) -> Self {
+        Self {
+            state,
+            type_id,
         }
     }
-}*/
+}
+
+impl<'a> std::fmt::Display for TypeDisplay<'a> {
+    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+        let ty = &self.state.types[self.type_id];
+        match &ty.kind {
+            TKind::Pointer(id, ..) => {
+                write!(f, "{}", ty.name)?;
+                write!(f, "{}", Self::new(self.state, *id))
+            }
+            TKind::Structure(_) if !ty.params.is_empty() => {
+                write!(f, "{}", Self::new(self.state, ty.params[0]))?;
+                write!(f, "[")?;
+                write!(f, "{}", Self::new(self.state, ty.params[1]))?;
+                for param in ty.params[2..].iter() {
+                    write!(f, ", {}", Self::new(self.state, *param))?;
+                }
+                write!(f, "]")
+            }
+            TKind::Builtin(_) | 
+            TKind::Unresolved(_) | 
+            TKind::Generic(_) |
+            TKind::Structure(_) => write!(f, "{}", ty.name),
+        }
+    }
+}
 
 #[derive(Debug)]
 pub struct TypeError {
@@ -612,7 +694,6 @@ impl TypeError {
     }
 }
 
-
 #[derive(Debug)]
 pub enum TEKind {
     AstError(AstError),
@@ -624,6 +705,10 @@ pub enum TEKind {
     WrongInstantiationArgAmount(usize, usize),
     AccessingExternalPrivateType,
     AccessingFilePrivateType,
-    InfiniteSize(Vec<Token>),
+    InfiniteSize(Vec<Type>),
     Redefinition(Token),
+}
+
+pub fn test() {
+
 }

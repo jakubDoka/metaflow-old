@@ -1,0 +1,9 @@
+struct Bogus
+
+struct Focus:
+    a, b, c: Bogus
+    priv f: *var Focus
+    pub embed gro: Gro
+
+struct Gro:
+    s, t, u: i32
