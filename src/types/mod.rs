@@ -2,7 +2,7 @@ use std::ops::{Deref, DerefMut};
 
 use crate::ast::{Ast, Vis, AstParser, AstError, AKind};
 use crate::lexer::Token;
-use crate::module_tree::{MTState, Mod, MTContext, TreeStorage, OrderingContext, self};
+use crate::module_tree::{MTState, Mod, MTContext, TreeStorage, OrderingContext, self, MTParser};
 use crate::util::sdbm::{ID, SdbmHashState};
 use crate::util::storage::{IndexPointer, Table, List};
 use cranelift_codegen::ir::types::{Type as CrType, INVALID};
@@ -35,7 +35,7 @@ impl<'a> TParser<'a> {
         }
     }
 
-    pub fn resolve(&mut self, module: Mod) -> Result {
+    pub fn parse(&mut self, module: Mod) -> Result {
         self.module = module;
         self.collect(module)?;
         self.connect(module)?;
@@ -56,8 +56,8 @@ impl<'a> TParser<'a> {
     fn calc_size(&mut self, ty: Type) -> Result {
         // SAFETY: This only avoids memmove of context which would otherwise do
         // except that context is big
-        let ctx: &mut TContext = unsafe {
-            std::mem::transmute(&mut self.context)
+        let ctx = unsafe {
+            std::mem::transmute::<&mut TContext, &mut TContext>(self.context)
         };
 
         if let Some(cycle) = module_tree::detect_cycles(self, ty, &mut ctx.cycle_stack) {
@@ -158,13 +158,12 @@ impl<'a> TParser<'a> {
         Ok(())
     }
 
-    fn connect_structure(&mut self, module: Mod, id: Type, ast: GType, kind: SKind, depth: usize) -> Result<SType> {
+    fn connect_structure(&mut self, module: Mod, id: Type, ast_id: GType, kind: SKind, depth: usize) -> Result<SType> {
         let mut fields = std::mem::take(&mut self.context.struct_field_buffer); 
 
         // SAFETY: we can take a reference as we know that 
         // nothing will mutate 'gtypes' since all types are collected
-        let ast = unsafe { std::mem::transmute::<&Ast, &Ast>(
-            &self.state.gtypes[ast]) };
+        let ast = std::mem::take(&mut self.state.gtypes[ast_id]);
         
         let module_id = self.state.modules[module].id;
         let params = std::mem::take(&mut self.state.types[id].params);
@@ -172,7 +171,9 @@ impl<'a> TParser<'a> {
 
         let header = &ast[0];
 
-        if header.kind == AKind::Instantiation {
+        let is_instance = header.kind == AKind::Instantiation;
+
+        if is_instance {
             if params.len() != header.len() {
                 return Err(TypeError::new(
                     TEKind::WrongInstantiationArgAmount(
@@ -219,6 +220,14 @@ impl<'a> TParser<'a> {
             }
         }
 
+        // we ruse ast since this is not a generic type
+        if !is_instance {
+            self.context.recycle(ast);
+            self.state.free_gtypes.push(ast_id);
+        } else {
+            self.state.gtypes[ast_id] = ast;
+        }
+
         for (id, ty) in shadowed.drain(..) {
             self.state.types.remove_link(id, ty);
         }
@@ -232,7 +241,7 @@ impl<'a> TParser<'a> {
         let s_id = self.state.stypes.add(s_ent);
 
         self.state.types[id].kind = TKind::Structure(s_id);
-
+        
         fields.clear();
         self.context.struct_field_buffer = fields;
 
@@ -353,15 +362,19 @@ impl<'a> TParser<'a> {
 
         let module_name = module_ent.id;
         for (i, a) in ast.iter_mut().enumerate() {
-            let ast = std::mem::take(a);
-            let ast = self.state.gtypes.add(ast);
+            
             match a.kind.clone() {
                 AKind::StructDeclaration(visibility) => {
-                    let ident = &self.state.gtypes[ast][0];
+                    let ast = std::mem::take(a);
+                    let ast_id = self.state.gtypes.add(ast);
+                    
+                    let ast = &self.state.gtypes[ast_id];
+
+                    let ident = &self.state.gtypes[ast_id][0];
                     let (ident, kind) = if ident.kind == AKind::Ident {
-                        (ident, TKind::Unresolved(ast))
+                        (ident, TKind::Unresolved(ast_id))
                     } else if ident.kind == AKind::Instantiation {
-                        (&ident[0], TKind::Generic(ast))
+                        (&ident[0], TKind::Generic(ast_id))
                     } else {
                         return Err(TypeError::new(
                             TEKind::UnexpectedAst(String::from("expected struct identifier")),
@@ -370,7 +383,7 @@ impl<'a> TParser<'a> {
                     };
 
                     let name = ident.token.spam.raw();
-                    let hint = a[0].token.clone();
+                    let hint = ast[0].token.clone();
                     let id = TYPE_SALT.add(name).combine(module_name);
 
                     let datatype = TypeEnt {
@@ -401,6 +414,8 @@ impl<'a> TParser<'a> {
                 _ => (),
             }
         }
+
+        self.context.ast = context;
 
         Ok(())
     }
@@ -556,18 +571,20 @@ pub struct TState {
     pub mt_state: MTState,
     pub unresolved: Vec<(Type, usize)>,
     pub resolved: Vec<Type>,
+    pub free_gtypes: Vec<GType>,
 }
 
 impl TState {
     pub fn new(mt_state: MTState) -> Self {
         let mut s = Self {
-            builtin_repo: unsafe { std::mem::zeroed() },
+            builtin_repo: Default::default(),
             types: Table::new(),
             gtypes: List::new(),
             stypes: List::new(),
             mt_state,
             unresolved: vec![],
             resolved: vec![],
+            free_gtypes: vec![],
         };
 
         s.builtin_repo = BuiltinRepo::new(&mut s);
@@ -585,6 +602,16 @@ macro_rules! define_repo {
         #[derive(Clone, Debug)]
         pub struct BuiltinRepo {
             $(pub $name: Type,)+
+        }
+
+        impl Default for BuiltinRepo {
+            fn default() -> Self {
+                Self {
+                    $(
+                        $name: Type::new(0),
+                    )+
+                }
+            }
         }
 
         impl BuiltinRepo {
@@ -710,5 +737,20 @@ pub enum TEKind {
 }
 
 pub fn test() {
+    let mut state = MTState::default();
+    let mut context = MTContext::default();
 
+    MTParser::new(&mut state, &mut context)
+        .parse("src/types/test_project")
+        .unwrap();
+    let mut state = TState::new(state);
+    let mut context = TContext::new(context);
+
+    let order = std::mem::take(&mut state.module_order);
+
+    let mut parser = TParser::new(&mut state, &mut context);
+
+    for &module in order.iter().rev() {
+        parser.parse(module).unwrap();
+    }
 }

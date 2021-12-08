@@ -64,6 +64,7 @@ fn test() {
     lexer::test();
     ast::test();
     module_tree::test();
+    types::test();
     //ir::test();
     //gen::test();
 }

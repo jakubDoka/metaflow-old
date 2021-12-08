@@ -1,4 +1,5 @@
 use std::path::{Path, PathBuf};
+use std::ops::{Deref, DerefMut};
 
 use crate::ast::{AstError, AstParser, AstState, Dep, Import};
 use crate::lexer::Lexer;
@@ -86,9 +87,10 @@ impl<'a> MTParser<'a> {
                 frontier.push(dependency);
                 let nickname = MOD_SALT.add(import.nickname);
                 module.dependency.push((nickname, dependency));
-                self.state.modules[dependency].dependant.push(module_id);
+                module.dependant.push(module_id);
             }
-            self.state.modules[module_id].dependency.push((MOD_SALT.add("builtin"), self.state.builtin_module));
+            module.dependency.push((MOD_SALT.add("builtin"), self.state.builtin_module));
+            self.state.modules[module_id] = module;
         }
 
         let mut stack = vec![];
@@ -135,6 +137,13 @@ impl<'a> MTParser<'a> {
                     .unwrap_or(""),
             )
             .unwrap();
+        
+        if module_path == Path::new("") && manifest.name != root {
+            return Err(MTError::new(
+                MTEKind::DisplacedModule,
+                token,
+            ));
+        }
 
         path_buffer.push(module_path);
         path_buffer.set_extension(SOURCE_EXT);
@@ -142,6 +151,7 @@ impl<'a> MTParser<'a> {
         let id = MOD_SALT.add(path_buffer.to_str().unwrap());
 
         if let Some(module) = self.state.modules.index(id) {
+            path_buffer.clear();
             return Ok(*module);
         }
 
@@ -459,7 +469,6 @@ pub struct ManifestEnt {
     pub name: &'static str,
     pub root_path: &'static str,
     pub deps: Vec<(ID, Manifest)>,
-    pub module_order: Vec<Mod>,
 }
 
 #[derive(Debug, Clone, Default)]
@@ -492,6 +501,8 @@ pub struct MTContext {
     pub ast: AstContext,
     pub import_buffer: Vec<Import>,
 }
+
+crate::inherit!(MTContext, ast, AstContext);
 
 crate::index_pointer!(Mod);
 
@@ -543,6 +554,7 @@ pub enum MTEKind {
     MissingPathStem,
     MissingCache,
     ImportNotFound,
+    DisplacedModule,
     FileReadError(PathBuf, std::io::Error),
     ManifestReadError(PathBuf, std::io::Error),
     AstError(AstError),

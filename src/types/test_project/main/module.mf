@@ -1,0 +1,3 @@
+struct Option[T]:
+  priv present: bool
+  priv value: T

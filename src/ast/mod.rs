@@ -152,8 +152,8 @@ impl<'a> AstParser<'a> {
             return Err(self.unexpected_str("expected string literal as import path"));
         };
 
-        token.to_group(&self.state.token, true);
         self.state.next();
+        token.to_group(&self.state.token, true);
 
         self.state.imports.push(Import {
             external,
@@ -172,9 +172,9 @@ impl<'a> AstParser<'a> {
                 TKind::Fun => ast.push(self.fun()?),
                 TKind::Attr => ast.push(self.attr()?),
                 TKind::Struct => ast.push(self.struct_declaration()?),
-                TKind::Indent(0) => self.state.next(),
+                TKind::Indent(_) => self.state.next(),
                 _ => {
-                    return Err(self.unexpected_str("expected 'fun' or 'attr' or 'struct' or 'use'"))
+                    return Err(self.unexpected_str("expected 'fun' or 'attr' or 'struct'"))
                 }
             }
         }
@@ -908,6 +908,7 @@ impl<'a> AstParser<'a> {
     }
 
     fn unexpected_str(&self, message: &'static str) -> AstError {
+        
         self.unexpected(message.to_string())
     }
 
@@ -952,11 +953,11 @@ impl AstContext {
     }
 }
 
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Clone)]
 pub struct AstState {
     lexer: Lexer,
     peeked: Token,
-    token: Token,
+    pub token: Token,
     is_type_expr: bool,
     level: usize,
     pub imports: Vec<Import>,
@@ -984,6 +985,12 @@ impl AstState {
 
     fn next(&mut self) {
         self.token = self.lexer.next().unwrap_or(Token::eof());
+    }
+}
+
+impl Default for AstState {
+    fn default() -> AstState {
+        AstState::new(Lexer::default())
     }
 }
 

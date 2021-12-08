@@ -22,7 +22,7 @@ impl TokenView {
         }
 
         let mut range = token.spam.range.clone();
-        let string = token.spam.string();
+        let string = token.spam.string;
         if string[range.start..range.end].starts_with("\n") {
             range.start += 1;
         }
@@ -50,7 +50,7 @@ impl TokenView {
                 }
             } else {
                 max = (i + 1).max(max);
-                min = (i - 1).min(min);
+                min = (i).min(min);
             }
             i += 1;
         }
@@ -394,7 +394,10 @@ impl Lexer {
 
 impl Clone for Lexer {
     fn clone(&self) -> Self {
-        unsafe { std::ptr::read(self as *const _) }
+        Lexer {
+            cursor: self.cursor.clone(),
+            file_name: self.file_name,
+        }
     }
 }
 
