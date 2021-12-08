@@ -613,7 +613,7 @@ Group 'fun' "fun":
  StructDeclaration(None) 'struct' "struct":
   Ident ident "Foo"
   Group ':' ":":
-   StructField(false) ident "a, b, c: i64":
+   StructField(None, false) ident "a, b, c: i64":
     Ident ident "a"
     Ident ident "b"
     Ident ident "c"
@@ -621,13 +621,13 @@ Group 'fun' "fun":
  StructDeclaration(None) 'struct' "struct":
   Ident ident "Goo"
   Group ':' ":":
-   StructField(true) ident "foo: Foo":
+   StructField(None, true) ident "foo: Foo":
     Ident ident "foo"
     Ident ident "Foo"
    Attribute 'attr' "attr something":
     AttributeElement ident "something":
      Ident ident "something"
-   StructField(false) ident "gva: i64":
+   StructField(None, false) ident "gva: i64":
     Ident ident "gva"
     Ident ident "i64"
  Fun(None) 'fun' "fun strings -> i64:\r\n  var hello = \"hello\"\r\n  return 0":
