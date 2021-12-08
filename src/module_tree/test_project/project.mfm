@@ -1,5 +1,5 @@
 root = "main.mf"
 
 dependencies:
-  extern dummy "github.com/jakubDoka/metaflow-dummy-dependency@0.1.0"
+  dummy "github.com/jakubDoka/metaflow-dummy-dependency@0.1.0"
   smh "sub_package"

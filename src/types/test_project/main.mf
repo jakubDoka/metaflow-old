@@ -10,4 +10,5 @@ struct Focus:
 struct Gro:
   s, t, u: i32
 
-struct IntOption
+struct IntOption:
+  o: Option[int]

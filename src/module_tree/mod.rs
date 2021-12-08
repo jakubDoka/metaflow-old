@@ -58,25 +58,29 @@ impl<'a> MTParser<'a> {
                 .take_imports()
                 .map_err(Into::into)?;
             for import in module.ast.imports.iter() {
-                let manifest = if import.external {
-                    let head = Path::new(import.path)
-                        .components()
-                        .next()
-                        .unwrap()
-                        .as_os_str()
-                        .to_str()
-                        .unwrap();
-                    let id = ID(0).add(head);
-                    self.state.manifests[module.manifest]
-                        .deps
-                        .iter()
-                        .find(|dep| dep.0 == id)
-                        .map(|dep| dep.1)
-                        .ok_or_else(|| MTError::new(MTEKind::ImportNotFound, import.token.clone()))?
-                        .clone()
-                } else {
-                    module.manifest
-                };
+                let head = Path::new(import.path)
+                    .components()
+                    .next()
+                    .unwrap()
+                    .as_os_str()
+                    .to_str()
+                    .unwrap();
+                let id = ID(0).add(head);
+                let manifest = self.state.manifests[module.manifest]
+                    .deps
+                    .iter()
+                    .find(|dep| dep.0 == id)
+                    .map(|dep| dep.1)
+                    .or_else(|| {
+                        let name = self.state.manifests[module.manifest].name;
+                        if head == name {
+                            Some(module.manifest)
+                        } else {
+                            None
+                        }
+                    })
+                    .ok_or_else(|| MTError::new(MTEKind::ImportNotFound, import.token.clone()))?
+                    .clone();
 
                 let dependency = self.load_module(
                     import.path,

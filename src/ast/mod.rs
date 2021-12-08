@@ -56,13 +56,6 @@ impl<'a> AstParser<'a> {
                         self.walk_block(|s| {
                             let mut token = s.state.token.clone();
 
-                            let external = if s.state.token == TKind::Extern {
-                                s.state.next();
-                                true
-                            } else {
-                                false
-                            };
-
                             s.expect_str(TKind::Ident, "expected dependency name")?;
                             let name = s.state.token.spam.raw();
                             s.state.next();
@@ -80,11 +73,13 @@ impl<'a> AstParser<'a> {
 
                             token.to_group(&s.state.token, true);
 
+                            let external = path.starts_with("github.com");
+
                             let dependency = Dep {
+                                external,
                                 name,
                                 path,
                                 version,
-                                external,
                                 token
                             };
 
@@ -117,24 +112,13 @@ impl<'a> AstParser<'a> {
         if self.state.token == TKind::Use {
             self.state.next();
 
-            self.walk_block(|s| {
-                if s.state.token == TKind::Extern {
-                    s.state.next();
-                    s.walk_block(|s| {
-                        s.import_line(true)?;
-                        Ok(())
-                    })?;
-                } else {
-                    s.import_line(false)?;
-                }
-                Ok(())
-            })?;
+            self.walk_block(|s| s.import_line())?;
         }
 
         Ok(())
     }
 
-    fn import_line(&mut self, external: bool) -> Result {
+    fn import_line(&mut self) -> Result {
         let mut token = self.state.token.clone();
 
         let nickname = if self.state.token == TKind::Ident {
@@ -156,7 +140,6 @@ impl<'a> AstParser<'a> {
         token.to_group(&self.state.token, true);
 
         self.state.imports.push(Import {
-            external,
             nickname,
             path,
             token,
@@ -996,7 +979,6 @@ impl Default for AstState {
 
 #[derive(Clone, Debug, Default)]
 pub struct Import {
-    pub external: bool,
     pub nickname: &'static str,
     pub path: &'static str,
     pub token: Token,
