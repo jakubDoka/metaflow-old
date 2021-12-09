@@ -1,10 +1,11 @@
 use std::ops::{Deref, DerefMut};
 
 use crate::ast::{Ast, Vis, AstParser, AstError, AKind};
+use crate::attributes::Attributes;
 use crate::lexer::Token;
 use crate::module_tree::{MTState, Mod, MTContext, TreeStorage, OrderingContext, self, MTParser};
 use crate::util::sdbm::{ID, SdbmHashState};
-use crate::util::storage::{IndexPointer, Table, List};
+use crate::util::storage::{IndexPointer, Table, List, ReusableList};
 use cranelift_codegen::ir::types::{Type as CrType, INVALID};
 use cranelift_codegen::ir::types::*;
 
@@ -36,11 +37,20 @@ impl<'a> TParser<'a> {
     }
 
     pub fn parse(&mut self, module: Mod) -> Result {
+        self.state.clear();
         self.module = module;
         self.collect(module)?;
         self.connect(module)?;
         self.calc_sizes()?;
         Ok(())
+    }
+
+    pub fn parse_type(&mut self, module: Mod, ast: &Ast) -> Result<(Mod, Type)> {
+        self.module = module;
+        let result = self.resolve_type(module, ast, 0)?;
+        self.connect(module)?;
+        self.calc_sizes()?;
+        Ok(result)
     }
 
     fn calc_sizes(&mut self) -> Result {
@@ -147,7 +157,7 @@ impl<'a> TParser<'a> {
         Ok(())
     }
 
-    fn connect_type(&mut self, module: Mod, id: Type, ast: GType, depth: usize) -> Result {
+    fn connect_type(&mut self, module: Mod, id: Type, ast: GAst, depth: usize) -> Result {
         match self.state.gtypes[ast].kind {
             AKind::StructDeclaration(_) => {
                 self.connect_structure(module, id, ast, SKind::Struct, depth)?;
@@ -158,7 +168,7 @@ impl<'a> TParser<'a> {
         Ok(())
     }
 
-    fn connect_structure(&mut self, module: Mod, id: Type, ast_id: GType, kind: SKind, depth: usize) -> Result<SType> {
+    fn connect_structure(&mut self, module: Mod, id: Type, ast_id: GAst, kind: SKind, depth: usize) -> Result<SType> {
         let mut fields = std::mem::take(&mut self.context.struct_field_buffer); 
 
         // SAFETY: we can take a reference as we know that 
@@ -222,8 +232,8 @@ impl<'a> TParser<'a> {
 
         // we ruse ast since this is not a generic type
         if !is_instance {
+            self.state.gtypes.remove(ast_id);
             self.context.recycle(ast);
-            self.state.free_gtypes.push(ast_id);
         } else {
             self.state.gtypes[ast_id] = ast;
         }
@@ -355,19 +365,20 @@ impl<'a> TParser<'a> {
         let mut context = std::mem::take(&mut self.context.ast);
 
         let module_ent = &mut self.state.modules[module];
+        let module_name = module_ent.id;
 
         let mut ast = AstParser::new(&mut module_ent.ast, &mut context)
             .parse()
             .map_err(|err| TypeError::new(TEKind::AstError(err), Token::default()))?;
-
-        let module_name = module_ent.id;
-        for (i, a) in ast.iter_mut().enumerate() {
             
+        self.state.attributes.resolve(&mut ast);
+
+        for (i, a) in ast.iter_mut().enumerate() {
             match a.kind.clone() {
                 AKind::StructDeclaration(visibility) => {
                     let ast = std::mem::take(a);
                     let ast_id = self.state.gtypes.add(ast);
-                    
+
                     let ast = &self.state.gtypes[ast_id];
 
                     let ident = &self.state.gtypes[ast_id][0];
@@ -510,11 +521,11 @@ pub enum TKind {
     Builtin(CrType),
     Pointer(Type, bool, bool), // mutable, nullable
     Structure(SType),
-    Generic(GType),
-    Unresolved(GType),
+    Generic(GAst),
+    Unresolved(GAst),
 }
 
-crate::index_pointer!(GType);
+crate::index_pointer!(GAst);
 
 crate::index_pointer!(SType);
 
@@ -566,12 +577,12 @@ crate::inherit!(TContext, mt_context, MTContext);
 pub struct TState {
     pub builtin_repo: BuiltinRepo,
     pub types: Table<Type, TypeEnt>,
-    pub gtypes: List<GType, Ast>,
+    pub gtypes: ReusableList<GAst, Ast>,
     pub stypes: List<SType, STypeEnt>,
     pub mt_state: MTState,
     pub unresolved: Vec<(Type, usize)>,
     pub resolved: Vec<Type>,
-    pub free_gtypes: Vec<GType>,
+    pub attributes: Attributes,
 }
 
 impl TState {
@@ -579,17 +590,21 @@ impl TState {
         let mut s = Self {
             builtin_repo: Default::default(),
             types: Table::new(),
-            gtypes: List::new(),
+            gtypes: ReusableList::new(),
             stypes: List::new(),
             mt_state,
             unresolved: vec![],
             resolved: vec![],
-            free_gtypes: vec![],
+            attributes: Attributes::default(),
         };
 
         s.builtin_repo = BuiltinRepo::new(&mut s);
         
         return s;
+    }
+
+    pub fn clear(&mut self) {
+        self.attributes.clear();
     }
 }
 

@@ -670,6 +670,66 @@ impl<I: IndexPointer, T> IndexMut<I> for LockedList<I, T> {
 }
 
 #[derive(Debug)]
+pub struct ReusableList<I: IndexPointer, T> {
+    inner: List<I, T>,
+    free: Vec<I>,
+}
+
+impl<I: IndexPointer, T> ReusableList<I, T> {
+    pub fn new() -> Self {
+        Self {
+            inner: List::new(),
+            free: Vec::new(),
+        }
+    }
+
+    pub fn add(&mut self, data: T) -> I {
+        if let Some(id) = self.free.pop() {
+            self.inner[id] = data;
+            id
+        } else {
+            self.inner.add(data)
+        }
+    }
+
+    pub fn remove(&mut self, id: I) -> T {
+        self.free.push(id);
+        std::mem::replace(&mut self.inner[id], unsafe { std::mem::zeroed() })
+    }
+}
+
+impl<I: IndexPointer, T> Index<I> for ReusableList<I, T> {
+    type Output = T;
+
+    fn index(&self, id: I) -> &Self::Output {
+        debug_assert!(self.free.iter().all(|i| *i != id));
+        &self.inner[id]
+    }
+}
+
+impl<I: IndexPointer, T> IndexMut<I> for ReusableList<I, T> {
+    fn index_mut(&mut self, id: I) -> &mut Self::Output {
+        debug_assert!(self.free.iter().all(|i| *i != id));
+        &mut self.inner[id]
+    }
+}
+
+impl<I: IndexPointer, T: Clone> Clone for ReusableList<I, T> {
+    fn clone(&self) -> Self {
+        Self {
+            inner: self.inner.clone(),
+            free: self.free.clone(),
+        }
+    }
+}
+
+impl<I: IndexPointer, T> Default for ReusableList<I, T> {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+#[derive(Debug)]
 pub struct List<I: IndexPointer, T> {
     data: Vec<T>,
 

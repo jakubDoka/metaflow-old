@@ -12,6 +12,8 @@ pub mod module_tree;
 pub mod testing;
 pub mod types;
 pub mod util;
+pub mod attributes;
+pub mod functions;
 
 pub const FILE_EXTENSION: &str = ".pmt";
 
