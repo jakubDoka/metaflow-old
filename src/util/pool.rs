@@ -1,5 +1,9 @@
 use std::ops::{Deref, DerefMut};
 
+/// Pool offers a simple way to reuse allocations. All you need to do is get() and
+/// you will get a Vec that may have some capacity for free. Vec is wrapped in type that
+/// returns it to the pool when it is dropped. If you attempt to drop pool sooner then
+/// all borrowed Vectors, pool will panic, but only on debug build.
 #[derive(Debug, Clone)]
 pub struct Pool {
     inner: Box<PoolObj>,
@@ -7,7 +11,9 @@ pub struct Pool {
 
 impl Pool {
     pub fn new() -> Pool {
-        Pool { inner: Box::new(PoolObj::new()) }
+        Pool {
+            inner: Box::new(PoolObj::new()),
+        }
     }
 }
 
@@ -56,7 +62,8 @@ impl PoolObj {
     }
 
     pub fn get<T>(&mut self) -> PoolRef<T> {
-        let vec = if let Some((ptr, len, cap)) = self.elements[std::mem::align_of::<T>() - 1].pop() {
+        let vec = if let Some((ptr, len, cap)) = self.elements[std::mem::align_of::<T>() - 1].pop()
+        {
             let cap = cap / std::mem::size_of::<T>();
             let len = len / std::mem::size_of::<T>();
             unsafe {
@@ -111,9 +118,7 @@ impl<T> DerefMut for PoolRef<T> {
 
 impl<T> Drop for PoolRef<T> {
     fn drop(&mut self) {
-        let pool = unsafe {
-            &mut *self.origin
-        };
+        let pool = unsafe { &mut *self.origin };
 
         #[cfg(debug_assertions)]
         {

@@ -1,11 +1,12 @@
 use core::panic;
 use std::fmt::Display;
 use std::ops::{Deref, DerefMut, Index, IndexMut};
+use std::slice::SliceIndex;
 
 use crate::ast::{AKind, Ast, Vis};
 use crate::lexer::TKind as LTKind;
 use crate::lexer::{Token, TokenView};
-use crate::module_tree::*;
+use crate::{module_tree::*, types};
 use crate::types::Type;
 use crate::types::*;
 use crate::util::storage::{LinkedList, LockedList, ReusableList, Table};
@@ -22,6 +23,8 @@ type Result<T = ()> = std::result::Result<T, FunError>;
 type ExprResult = Result<Option<Value>>;
 
 pub const FUN_SALT: ID = ID(0xDEADBEEF);
+pub const GENERIC_FUN_SALT: ID = ID(0xFAEFACBD);
+
 
 pub struct FParser<'a> {
     state: &'a mut FState,
@@ -33,8 +36,8 @@ impl<'a> FParser<'a> {
         Self { state, context }
     }
 
-    /*pub fn resolve(mut self) -> Result {
-        self.collect()?;
+    pub fn resolve(mut self, module: Mod) -> Result {
+        self.collect(module)?;
 
         self.translate()?;
 
@@ -42,112 +45,79 @@ impl<'a> FParser<'a> {
     }
 
     fn translate(&mut self) -> Result {
-        for function in unsafe { self.state.functions.direct_ids() } {
-            if !self.state.functions.is_direct_valid(function) {
-                continue;
-            }
-            if !matches!(self.state.functions[function].kind, FKind::Normal(_)) {
-                continue;
-            }
-            self.function(function)?;
-            self.context.deref_mut().clear();
+        while let Some(fun) = self.state.unresolved.pop() {
+            let module = self.state.funs[fun].module;
+            self.fun(module, fun)?;
         }
 
         Ok(())
     }
 
-    fn function(&mut self, function: Fun) -> Result {
-        let fun = &mut self.state.functions[function];
+    fn fun(&mut self, module: Mod, fun: Fun) -> Result {
+        let fun_ent = &self.state.funs[fun];
+        let nid = fun_ent.kind.unwrap_normal();
+        let n_ent = &self.state.nfuns[nid];
+        let ast = std::mem::take(&mut self.state.asts[n_ent.ast]);
 
-        let signature = match &mut fun.kind {
-            FKind::Normal(signature) => FunSignature {
-                args: std::mem::take(&mut signature.args),
-                return_type: signature.return_type.clone(),
-                struct_return: signature.struct_return,
-            },
-            _ => unreachable!(),
-        };
+        let entry_point = self.new_block();
+        self.make_block_current(entry_point);
 
-        let module = fun.module;
-        {
-            // SAFETY: as long as context lives ast is valid, scope ensures
-            // it does not escape
-            let ast = unsafe { self.context.function_ast.get(self.state[function].ast) };
-            self.function_low(module, ast, &signature)?;
+        let args = std::mem::take(&mut n_ent.signature.args);
+        let mut arg_buffer = self.context.pool.get();
+        for arg in args.iter() {
+            let var = self.state.body.values.add(arg.clone());
+            self.state.variables.push(Some(var));
+            arg_buffer.push(var);
         }
-
-        let fun = &mut self.state.functions[function];
-        fun.kind = FKind::Normal(signature);
-        fun.body = self.context.function_body.clone();
-
-        Ok(())
-    }
-
-    fn function_low(&mut self, module: Mod, ast: &Ast, signature: &FunSignature) -> Result {
-        debug_assert!(self.context.current_block.is_none());
-        self.context.current_module = Some(module);
-        self.context.return_type = signature.return_type;
-        let entry_point = self.context.new_block();
-        self.context.make_block_current(entry_point);
-
-        signature.args.iter().for_each(|param| {
-            let var = self.context.function_body.values.add(param.clone());
-            self.context[entry_point].kind.block_mut().args.push(var);
-            self.context.variables.push(Some(var));
-        });
-
-        if signature.struct_return {
-            self.context.struct_return = Some(self.context.variables.pop().unwrap().unwrap());
-        }
-
+        n_ent.signature.args = args;
+        self.state.body.insts[entry_point].kind.block_mut().args = arg_buffer.clone();
+        
         if ast[1].is_empty() {
             return Ok(());
         }
 
         let value = self.block(&ast[1])?;
 
-        if let (Some(value), Some(_), Some(return_type)) =
-            (value, self.context.current_block, signature.return_type)
+        let n_ent = &self.state.nfuns[nid];
+
+        if let (Some(value), Some(_), Some(ret_ty)) =
+            (value, self.state.block, n_ent.signature.ret_ty)
         {
-            let value_type = self.context[value].ty;
+            let value_ty = self.state.body.values[value].ty;
             let token = &ast[1].last().unwrap().token;
-            if self.is_auto(value_type) {
-                self.infer(value, return_type)?;
+            if self.is_auto(value_ty) {
+                self.infer(value, ret_ty)?;
             } else {
-                self.assert_type(value_type, return_type, token)?;
+                self.assert_type(value_ty, ret_ty, token)?;
             }
             let value = self.return_value(value, token);
-            self.context
-                .add_inst(InstEnt::new(IKind::Return(Some(value)), None, token));
-        } else if let (Some(return_type), Some(_)) =
-            (signature.return_type, self.context.current_block)
+            self.add_inst(InstEnt::new(IKind::Return(Some(value)), None, token));
+        } else if let (Some(ret_ty), Some(_)) =
+            (n_ent.signature.ret_ty, self.state.block)
         {
-            let value = self.new_temp_value(return_type);
+            let value = self.new_temp_value(ret_ty);
             let token = &ast[1].last().unwrap().token;
-            self.context
-                .add_inst(InstEnt::new(IKind::ZeroValue, Some(value), token));
+            self.add_inst(InstEnt::new(IKind::ZeroValue, Some(value), token));
             let value = self.return_value(value, token);
-            self.context
-                .add_inst(InstEnt::new(IKind::Return(Some(value)), None, token));
-        } else if self.context.current_block.is_some() {
-            self.context.add_inst(InstEnt::new(
+            self.add_inst(InstEnt::new(IKind::Return(Some(value)), None, token));
+        } else if self.state.block.is_some() {
+            self.add_inst(InstEnt::new(
                 IKind::Return(None),
                 None,
                 &ast[1].last().unwrap_or(&Ast::none()).token,
             ));
         }
 
-        for value_id in self.context.function_body.values.ids() {
-            let ty = self.context[value_id].ty;
-            let on_stack =
-                self.state.types[ty].size > self.state.isa().pointer_bytes() as u32;
-            self.context[value_id].on_stack = self.context[value_id].on_stack || on_stack;
+        for value_id in self.state.body.values.ids() {
+            let ty = self.state.body.values[value_id].ty;
+            let on_stack = self.state.types[ty].size > types::ptr_ty().bytes() as u32;
+            self.state.body.values[value_id].on_stack = self.state.body.values[value_id].on_stack || on_stack;
         }
 
-        let mut frontier = std::mem::take(&mut self.context.second_graph_frontier);
-        let mut unresolved = std::mem::take(&mut self.context.unresolved_functions);
+        let mut frontier = self.context.pool.get();
+        let mut unresolved = std::mem::take(&mut self.state.unresolved_funs);
         for inst in unresolved.drain(..) {
-            match &self.context[inst].kind {
+            match &self.state.body.insts[inst].kind {
                 IKind::UnresolvedCall(..) => {
                     self.infer_call(inst, &mut frontier)?;
                 }
@@ -158,18 +128,18 @@ impl<'a> FParser<'a> {
                 self.infer(value, ty)?;
             }
         }
-        self.context.second_graph_frontier = frontier;
+        self.state.unresolved_funs = unresolved;
 
-        for (id, dep) in self.context.type_graph.iter() {
+        for (id, dep) in self.context.deps.iter() {
             if dep.len() > 0 {
                 let inst = self
-                    .context
-                    .function_body
+                    .state
+                    .body
                     .insts
                     .iter()
                     .find(|(_, inst)| {
                         inst.value.is_some()
-                            && self.context[inst.value.unwrap()].type_dependency == Some(id)
+                            && self.state.body.values[inst.value.unwrap()].type_dependency == Some(id)
                     })
                     .unwrap()
                     .0
@@ -177,7 +147,7 @@ impl<'a> FParser<'a> {
 
                 return Err(FunError::new(
                     FEKind::UnresolvedType,
-                    &self.context[inst].token_hint,
+                    self.state.body.insts[inst].hint.clone(),
                 ));
             }
         }
@@ -185,8 +155,11 @@ impl<'a> FParser<'a> {
         Ok(())
     }
 
-    fn return_value(&mut self, value: Value, token: &Token) -> Value {
-        if let Some(struct_return) = self.context.struct_return {
+    fn return_value(&mut self, fun: Fun, value: Value, token: &Token) -> Value {
+        let nid = self.state.funs[fun].kind.unwrap_normal();
+        let ty = self.state.nfuns[nid].signature.ret_ty.unwrap();
+        if self.state.types[ty].size > types::ptr_ty().bytes() as u32 {
+            
             let deref = self.new_temp_value(self.context.return_type.unwrap());
             self.context.add_inst(InstEnt::new(
                 IKind::Deref(struct_return),
@@ -209,13 +182,13 @@ impl<'a> FParser<'a> {
         self.context.push_scope();
 
         for statement in ast[..ast.len() - 1].iter() {
-            if self.context.current_block.is_none() {
+            if self.context.state.block.is_none() {
                 break;
             }
             self.statement(statement)?;
         }
 
-        let value = if self.context.current_block.is_some() {
+        let value = if self.context.state.block.is_some() {
             self.statement(ast.last().unwrap())?
         } else {
             None
@@ -356,7 +329,7 @@ impl<'a> FParser<'a> {
 
                     let temp_value = self
                         .context
-                        .function_body
+                        .state.body
                         .values
                         .add(ValueEnt::temp(ty));
 
@@ -615,7 +588,7 @@ impl<'a> FParser<'a> {
             .pop()
             .expect("expected previously pushed header");
 
-        if self.context.current_block.is_some() {
+        if self.context.state.block.is_some() {
             self.context.add_inst(InstEnt::new(
                 IKind::Jump(start_block, vec![]),
                 None,
@@ -672,7 +645,7 @@ impl<'a> FParser<'a> {
         };
 
         /*if let Some((_, loop_block, ..)) = self.loop_headers.last() {
-            if loop_block.to_owned() != builder.current_block().unwrap() {
+            if loop_block.to_owned() != builder.state.block().unwrap() {
                 builder.seal_current_block();
             }
         } else {
@@ -702,7 +675,7 @@ impl<'a> FParser<'a> {
             let value = self.new_temp_value(ty);
             self.context[merge_block].kind.block_mut().args.push(value);
             result = Some(value);
-        } else if self.context.current_block.is_some() {
+        } else if self.context.state.block.is_some() {
             self.context.add_inst(InstEnt::new(
                 IKind::Jump(merge_block, vec![]),
                 None,
@@ -741,7 +714,7 @@ impl<'a> FParser<'a> {
                     return Err(FunError::new(FEKind::UnexpectedValue, &ast.token));
                 }
             } else {
-                if self.context.current_block.is_some() {
+                if self.context.state.block.is_some() {
                     if result.is_some() {
                         return Err(FunError::new(FEKind::ExpectedValue, &ast.token));
                     }
@@ -1014,7 +987,7 @@ impl<'a> FParser<'a> {
                         let field = *field;
 
                         let value = inst.value.unwrap();
-                        self.context.function_body.insts.remove(dep);
+                        self.context.state.body.insts.remove(dep);
                         let ty = self.field_access(header, field, value, &token)?;
                         frontier.push((value, ty));
                     }
@@ -1168,7 +1141,7 @@ impl<'a> FParser<'a> {
         // at the beginning of the entry block
         self.context[value]
             .inst
-            .unwrap_or(self.context.function_body.insts.first().unwrap())
+            .unwrap_or(self.context.state.body.insts.first().unwrap())
     }
 
     pub fn add_variable(&mut self, name: ID, ty: Type, mutable: bool) -> Value {
@@ -1177,25 +1150,7 @@ impl<'a> FParser<'a> {
         val
     }
 
-    #[inline]
-    fn new_temp_value(&mut self, ty: Type) -> Value {
-        self.new_anonymous_value(ty, false)
-    }
-
-    #[inline]
-    fn new_anonymous_value(&mut self, ty: Type, mutable: bool) -> Value {
-        self.new_value(ID(0), ty, mutable)
-    }
-
-    #[inline]
-    fn new_value(&mut self, name: ID, ty: Type, mutable: bool) -> Value {
-        let mut value = ValueEnt::new(name, ty, mutable);
-        if self.is_auto(ty) {
-            let dep = self.context.new_type_dependency();
-            value.type_dependency = Some(dep);
-        }
-        self.context.function_body.values.add(value)
-    }
+    
 
     fn assignment(&mut self, ast: &Ast) -> ExprResult {
         let target = self.expr(&ast[1])?;
@@ -1235,23 +1190,23 @@ impl<'a> FParser<'a> {
         Ok(Some(value))
     }
 
-    fn smart_find_or_instantiate(
+    fn smart_find_or_create(
         &mut self,
+        module: Mod,
         base: ID,
         name: &str,
         args: &mut [Value],
         dot_expr: bool,
         token: &Token,
     ) -> Result<Fun> {
-        let mut types = std::mem::take(&mut self.context.type_buffer);
+        let mut types = self.context.pool.get();
         types.clear();
-        types.extend(args.iter().map(|v| self.context[*v].ty));
+        types.extend(args.iter().map(|&v| self.state.body.values[v].ty));
 
         let result = if dot_expr {
-            let first_mutable = self.context[args[0]].mutable;
-            assert!(self.context.current_module.is_some());
+            let first_mutable = self.state.body.values[args[0]].mutable;
             let (fun, id, kind) =
-                self.dot_find_or_instantiate(base, name, &mut types, first_mutable, &token)?;
+                self.dot_find_or_create(module, base, name, &mut types, first_mutable, &token)?;
             if id.0 != 0 {
                 let value = self.new_anonymous_value(self.state.builtin_repo.bool, first_mutable);
                 self.field_access(args[0], id, value, &token)?;
@@ -1265,25 +1220,99 @@ impl<'a> FParser<'a> {
             }
             Ok(fun)
         } else {
-            self.find_or_instantiate(base, name, &types, &token)
+            self.find_or_create(module, base, name, &types, &token)
         };
-
-        self.context.type_buffer = types;
 
         result
     }
 
-    fn dot_find_or_instantiate(
+    #[inline]
+    fn new_temp_value(&mut self, ty: Type) -> Value {
+        self.new_anonymous_value(ty, false)
+    }
+
+    #[inline]
+    fn new_anonymous_value(&mut self, ty: Type, mutable: bool) -> Value {
+        self.new_value(ID(0), ty, mutable)
+    }
+
+    #[inline]
+    fn new_value(&mut self, name: ID, ty: Type, mutable: bool) -> Value {
+        let mut value = ValueEnt::new(name, ty, mutable);
+        if self.is_auto(ty) {
+            let dep = self.new_type_dependency();
+            value.type_dependency = Some(dep);
+        }
+        self.state.body.values.add(value)
+    }
+
+    fn new_type_dependency(&mut self) -> TypeDep {
+        let mut vec = self.context.dep_pool.pop().unwrap_or_default();
+        vec.push(Inst::new(0));
+        self.context.deps.add(vec)
+    }
+
+    pub fn add_inst(&mut self, inst: InstEnt) -> Inst {
+        debug_assert!(self.state.block.is_some(), "no block to add inst to");
+        let closing = inst.kind.is_closing();
+        let value = inst.value;
+        let inst = self.state.body.insts.push(inst);
+        if let Some(value) = value {
+            self.state.body.values[value].inst = Some(inst);
+        }
+        if closing {
+            self.close_block();
+        }
+        inst
+    }
+
+    pub fn add_inst_under(&mut self, inst: InstEnt, under: Inst) -> Inst {
+        debug_assert!(!inst.kind.is_closing(), "cannot insert closing instruction");
+        let value = inst.value;
+        let inst = self.state.body.insts.insert(under, inst);
+        if let Some(value) = value {
+            self.state.body.values[value].inst = Some(inst);
+        }
+        inst
+    }
+
+    pub fn new_block(&mut self) -> Inst {
+        self.state.body.insts.add_hidden(InstEnt::new(
+            IKind::Block(Default::default()),
+            None,
+            &Token::default(),
+        ))
+    }
+
+    pub fn make_block_current(&mut self, block: Inst) {
+        debug_assert!(self.state.block.is_none(), "current block is not closed");
+        self.state.body.insts.show_as_last(block);
+        self.state.block = Some(block);
+    }
+
+    pub fn close_block(&mut self) {
+        debug_assert!(self.state.block.is_some(), "no block to close");
+        let block = self.state.block.unwrap();
+        let inst = self.state.body.insts.push(InstEnt::new(
+            IKind::BlockEnd(block),
+            None,
+            &Token::default(),
+        ));
+        self.state.body.insts[block].kind.block_mut().end = Some(inst);
+        self.state.block = None;
+    }
+
+    fn dot_find_or_create(
         &mut self,
+        module: Mod,
         base: ID,
         name: &str,
         values: &mut [Type],
         first_mutable: bool,
         token: &Token,
     ) -> Result<(Fun, ID, DotInstr)> {
-        let mut frontier = std::mem::take(&mut self.context.embed_frontier);
-        frontier.clear();
-        frontier.push((values[0], ID(0)));
+        let mut frontier = self.context.pool.get();
+        frontier.push((values[0], ID(0), first_mutable));
 
         let mut final_err = None;
 
@@ -1309,39 +1338,58 @@ impl<'a> FParser<'a> {
 
         let mut i = 0;
         while i < frontier.len() {
-            let (ty, id) = frontier[i];
+            let (ty, id, first_mutable) = frontier[i];
             values[0] = ty;
             unwrap!(
-                self.find_or_instantiate(base, name, values, token),
+                self.find_or_create(module, base, name, values, token),
                 id,
                 None
             );
             if self.is_pointer(ty) {
                 values[0] = self.base_of(ty).unwrap().0;
                 unwrap!(
-                    self.find_or_instantiate(base, name, values, token),
+                    self.find_or_create(module, base, name, values, token),
                     id,
                     Deref
                 );
             } else {
                 if first_mutable {
-                    values[0] = self.pointer_of(ty, true);
+                    values[0] = self.pointer_of(ty, true, false);
                     unwrap!(
-                        self.find_or_instantiate(base, name, values, token),
+                        self.find_or_create(module, base, name, values, token),
+                        id,
+                        MutRef
+                    );
+
+                    values[0] = self.pointer_of(ty, true, true);
+                    unwrap!(
+                        self.find_or_create(module, base, name, values, token),
                         id,
                         MutRef
                     );
                 }
 
-                values[0] = self.pointer_of(ty, false);
-                assert!(self.context.current_module.is_some());
-                unwrap!(self.find_or_instantiate(base, name, values, token), id, Ref);
+                values[0] = self.pointer_of(ty, false, false);
+                unwrap!(self.find_or_create(module, base, name, values, token), id, Ref);
+                
+                values[0] = self.pointer_of(ty, false, true);
+                unwrap!(self.find_or_create(module, base, name, values, token), id, Ref);
             }
 
-            match &self.state[ty].kind {
-                TKind::Structure(structure) => {
-                    for field in structure.fields.iter().filter(|f| f.embedded) {
-                        frontier.push((field.ty, field.name));
+            match &self.state.types[ty].kind {
+                &TKind::Structure(id) => {
+                    for field in self.state.stypes[id].fields.iter().filter(|f| f.embedded) {
+                        frontier.push((field.ty, field.id, first_mutable));
+                    }
+                }
+                &TKind::Pointer(pointed, mutable, _) => {
+                    match &self.state.types[pointed].kind {
+                        &TKind::Structure(id) => {
+                            for field in self.state.stypes[id].fields.iter().filter(|f| f.embedded) {
+                                frontier.push((field.ty, field.id, mutable));
+                            }
+                        }
+                        _ => (),
                     }
                 }
                 _ => (),
@@ -1353,493 +1401,212 @@ impl<'a> FParser<'a> {
         Err(final_err.unwrap())
     }
 
-    fn find_or_instantiate(
+    fn find_or_create(
         &mut self,
+        module: Mod,
         base: ID,
         name: &str,
         values: &[Type],
         token: &Token,
     ) -> Result<Fun> {
         let specific_id = values.iter().fold(base, |base, &val| {
-            base.combine(self.state.types.direct_to_id(val))
+            base.combine(self.state.types[val].id)
         });
-        assert!(self.context.current_module.is_some());
-        if let Some((_, fun)) = self.find_by_name(self.context.current_module.unwrap(), specific_id)
-        {
+
+        let mut buffer = self.context.pool.get();
+        self.state.collect_scopes(module, &mut buffer);
+
+        let (_, module_id) = buffer[0]; 
+
+        if let Some(fun) = self.find_or_create_low(specific_id, module_id, base, module, values, token)? {
             return Ok(fun);
         }
 
-        if let Some((module, functions)) = self.find_generic_by_name(base) {
-            let len = self.state.generic_functions[functions].len();
-            for fun in 0..len {
-                if let Some(fun) = self.instantiate(module, functions, fun, values)? {
-                    return Ok(fun);
+        let mut found = None;
+
+        for (module, module_id) in buffer.drain(1..) {
+            if let Some(fun) = self.find_or_create_low(specific_id, module_id, base, module, values, token)? {
+                if let Some(found) = found {
+                    return Err(FunError::new(FEKind::AmbiguousFunction(fun, found), token.clone()));
                 }
+                found = Some(fun);
             }
         }
 
-        Err(FunError::new(
+        found.ok_or_else(|| FunError::new(
             FEKind::FunctionNotFound(name.to_string(), values.to_vec()),
-            token,
+            token.clone(),
         ))
+    }
+
+    fn find_or_create_low(&mut self, specific_id: ID, module_id: ID, base: ID, module: Mod, values: &[Type], token: &Token) -> Result<Option<Fun>> {
+        if let Some(&fun) = self.state.funs.index(specific_id.combine(module_id)) {
+            return Ok(Some(fun));
+        }
+
+        let mut g_fun = self.state.funs.index(base
+                .combine(GENERIC_FUN_SALT)
+                .combine(module_id))
+            .cloned();
+
+        let mut found = None;
+
+        while let Some(fun) = g_fun {
+            let g = match self.state.funs[fun].kind {
+                FKind::Generic(g) => g,
+                _ => unreachable!("{:?}", self.state.funs[fun].kind),
+            };
+            if let Some(fun) = self.instantiate(module, fun, g, values)? {
+                if let Some(found) = found {
+                    return Err(FunError::new(FEKind::AmbiguousFunction(fun, found), token.clone()));
+                } 
+                found = Some(fun);
+            }
+            g_fun = self.state.gfuns[g].next;
+        }
+
+        Ok(found)
     }
 
     fn instantiate(
         &mut self,
         module: Mod,
-        functions: Fun,
-        index: usize,
+        fun: Fun,
+        g: GFun,
         values: &[Type],
     ) -> Result<Option<Fun>> {
-        let mut generic = std::mem::take(&mut self.context.generic);
+        let fun_ent = &self.state.funs[fun];
+        let g_ent = &self.state.gfuns[g];
 
-        let fun = &self.state.generic_functions[functions][index];
+        let mut arg_buffer = self.context.pool.get();
+        let mut stack = self.context.pool.get();
+        let mut params = self.context.pool.get();
+        params.resize(g_ent.signature.params.len(), None);
 
-        let signature = match &fun.kind {
-            FKind::Generic(signature) => signature,
-            _ => unreachable!("{:?}", fun.kind),
-        };
-
-        if signature.arg_count != values.len() {
-            return Ok(None);
-        }
-
-        generic.inferred.resize(signature.params.len(), None);
-
+        // perform pattern matching
         let mut i = 0;
-        let mut n = 0;
-        while i < signature.return_index {
-            let (count, length) = if let GenericElement::NextArgument(count, length) =
-                signature.elements[i].clone()
-            {
-                (count, length)
-            } else {
-                unreachable!("{:?}", signature.elements[i]);
+        let mut j = 0;
+        while i < g_ent.signature.elements.len() {
+            let (amount, length) = match g_ent.signature.elements[i] {
+                GenericElement::NextArgument(amount, length) => (amount, length),
+                _ => unreachable!("{:?}", g_ent.signature.elements[i]),
             };
 
-            for j in 0..count {
-                let ty = values[n + j];
-                generic.arg_buffer.clear();
-                self.load_arg_from_datatype(ty, &mut generic);
-                let pattern = &signature.elements[i + 1..i + length + 1];
+            let arg = &g_ent.signature.elements[i + 1..i + 1 + length];
 
-                for (real, pat) in generic.arg_buffer.iter().zip(pattern) {
-                    if !real.compare(pat) {
-                        match pat {
-                            GenericElement::Parameter(param) => match real {
-                                GenericElement::Element(_, id) => {
-                                    if let Some(already) = generic.inferred[*param] {
-                                        if Some(already) != *id {
-                                            return Ok(None);
+            for _ in 0..amount {
+                self.load_arg_from_datatype(values[j], &mut arg_buffer, &mut stack);
+                {
+                    let mut i = 0;
+                    let mut j = 0;
+                    while i + j < arg.len() + arg_buffer.len() {
+                        let a = arg[i].clone();
+                        let b = arg_buffer[j].clone();
+                        if a != b {
+                            match a {
+                                GenericElement::Parameter(i) => {
+                                    if let GenericElement::Element(_, Some(ty)) = b {
+                                        if let Some(inferred_ty) = params[i] {
+                                            if ty != inferred_ty {
+                                                return Ok(None);
+                                            }
+                                        } else {
+                                            params[i] = Some(ty);
                                         }
-                                    } else if !self.is_auto(id.unwrap()) {
-                                        generic.inferred[*param] = *id;
+                                        if let Some(&GenericElement::ScopeStart) =
+                                            arg_buffer.get(j + 1)
+                                        {
+                                            loop {
+                                                if let Some(&GenericElement::ScopeEnd) =
+                                                    arg_buffer.get(j)
+                                                {
+                                                    break;
+                                                }
+                                                j += 1;
+                                            }
+                                        }
                                     }
                                 }
                                 _ => return Ok(None),
-                            },
-                            GenericElement::Element(..) => match real {
-                                GenericElement::Element(_, id) => {
-                                    if id.unwrap() != self.state.builtin_repo.auto {
-                                        return Ok(None);
-                                    }
-                                }
-                                _ => return Ok(None),
-                            },
-                            _ => return Ok(None),
+                            }
                         }
+                        i += 1;
                     }
                 }
+                j += 1;
             }
-
             i += length + 1;
-            n += 1;
         }
 
-        generic.param_buffer.clear();
-        generic.param_buffer.extend(&signature.params);
+        let fun_module_id = self.state.modules[fun_ent.module].id;
+        let mut id = FUN_SALT.add(fun_ent.name).combine(fun_module_id);
+        let vis = fun_ent.vis;
+        let name = fun_ent.name;
+        let hint = fun_ent.hint.clone();
+        let attr_id = fun_ent.attr_id;
+        let ast_id = g_ent.ast;
 
-        let module_id = self.state[module].id;
+        let mut shadowed = self.context.pool.get();
 
-        let old_len = self.context.type_resolver_context.shadowed_types.len();
-        let old_id_len = self.context.type_resolver_context.instance_id_buffer.len();
-
-        for (&name, &ty) in generic.param_buffer.iter().zip(generic.inferred.iter()) {
-            let ty = match ty {
-                Some(id) => id,
-                None => return Ok(None),
-            };
-            let id = name.combine(module_id);
-            if let Some(shadowed) = self.state.types.link(id, ty) {
-                self.context
-                    .type_resolver_context
-                    .shadowed_types
-                    .push(shadowed);
+        for i in 0..params.len() {
+            if let Some(ty) = params[i] {
+                let id = self.state.gfuns[g].signature.params[i].combine(fun_module_id);
+                shadowed.push((id, self.state.types.link(id, ty)));
             } else {
-                self.context
-                    .type_resolver_context
-                    .instance_id_buffer
-                    .push(id);
+                return Ok(None);
             }
         }
 
-        generic.inferred.clear();
+        let ast = std::mem::take(&mut self.state.asts[ast_id]);
+        let signature = self.parse_signature(module, &ast, &mut id)?;
+        self.state.asts[ast_id] = ast;
 
-        self.context.generic = generic;
+        for (id, ty) in shadowed.drain(..) {
+            self.state.types.remove_link(id, ty);
+        }
 
-        let old_dependency_len = if Some(module) != self.context.current_module {
-            let current = self.context.current_module.unwrap();
-            // SAFETY: the current module and targeted are not the same at this point
-            let (target_module, source_module) = unsafe {
-                (
-                    std::mem::transmute::<_, &mut ModuleEnt>(&mut self.state[module]),
-                    &self.state[current],
-                )
-            };
-            let len = target_module.dependency.len();
-            target_module
-                .dependency
-                .extend(source_module.dependency.iter());
-            len
-        } else {
-            self.state[module].dependency.len()
+        let n_ent = NFunEnt {
+            signature,
+            ast: ast_id,
         };
 
-        let fun = &self.state.generic_functions[functions][index];
-        let (ast_ref, name, debug_name, vis, attr_id) = (
-            fun.ast,
-            fun.name,
-            fun.debug_name,
-            fun.visibility,
-            fun.attribute_id,
-        );
-        let fun = {
-            // SAFETY: the function_ast has same live-time as self ans scope ensures
-            // the reference does not escape
-            let ast = unsafe { self.context.function_ast.get(ast_ref) };
-            let id = self.id_of_ast_signature(module, name, &ast[0])?;
-            if let Some(fun) = self.state.functions.id_to_direct(id) {
-                fun
-            } else {
-                self.context.dive();
-                let fun = self.collect_normal_function(
-                    module, ast_ref, ast, name, debug_name, vis, attr_id,
-                )?;
-                self.function(fun)?;
-                self.context.bail();
-                fun
-            }
+        let kind = FKind::Normal(self.state.nfuns.add(n_ent));
+
+        let new_fun_ent = FunEnt {
+            vis,
+            id,
+            module,
+            hint,
+            params: params.iter().map(|p| p.unwrap()).collect(),
+            name,
+            attr_id,
+            kind,
         };
-        self.state[module].dependency.truncate(old_dependency_len);
 
-        for i in old_id_len..self.context.type_resolver_context.instance_id_buffer.len() {
-            self.state.types.remove_link(
-                self.context.type_resolver_context.instance_id_buffer[i],
-                None,
-            );
-        }
-        self.context
-            .type_resolver_context
-            .instance_id_buffer
-            .truncate(old_id_len);
+        let (shadowed, id) = self.state.funs.insert(id, new_fun_ent);
+        debug_assert!(shadowed.is_none());
 
-        for i in old_len..self.context.type_resolver_context.shadowed_types.len() {
-            let direct_id = self.context.type_resolver_context.shadowed_types[i];
-            let id = self.state.types.direct_to_id(direct_id);
-            self.state.types.remove_link(id, Some(direct_id));
-        }
-        self.context
-            .type_resolver_context
-            .shadowed_types
-            .truncate(old_len);
-
-        Ok(Some(fun))
-    }
-
-    fn find_by_name(&mut self, module: Mod, name: ID) -> Option<(Mod, Fun)> {
-        self.state.walk_accessible_scopes(module, |id, module| {
-            self.state
-                .functions
-                .id_to_direct(name.combine(id))
-                .map(|fun| (module, fun))
-        })
-    }
-
-    fn find_generic_by_name(&mut self, name: ID) -> Option<(Mod, Fun)> {
-        self.state
-            .walk_accessible_scopes(self.context.current_module.unwrap(), |id, module| {
-                self.state
-                    .generic_functions
-                    .id_to_direct(name.combine(id))
-                    .map(|fun| (module, fun))
-            })
+        self.state.unresolved.push(id);
+        
+        Ok(Some(id))
     }
 
     fn assert_type(&self, actual: Type, expected: Type, token: &Token) -> Result {
         if actual == expected {
             Ok(())
         } else {
-            Err(FunError::new(FEKind::TypeMismatch(actual, expected), token))
+            Err(FunError::new(
+                FEKind::TypeMismatch(actual, expected),
+                token.clone(),
+            ))
         }
     }
 
     fn add_type_dependency(&mut self, value: Value, inst: Inst) {
-        self.context[inst].unresolved += 1;
-        let dependency_id = self.context[value].type_dependency.unwrap();
-        self.context[dependency_id].push(inst);
+        self.state.body.insts[inst].unresolved += 1;
+        let dependency_id = self.state.body.values[value].type_dependency.unwrap();
+        self.context.deps[dependency_id].push(inst);
     }
-
-    fn collect(&mut self) -> Result {
-        let mut collected_ast = List::new();
-
-        for module in unsafe { self.state.modules.direct_ids() } {
-            if !self.state.modules.is_direct_valid(module) {
-                continue;
-            }
-
-            self.context.current_module = Some(module);
-
-            let mut ast = std::mem::take(&mut self.state.modules[module].ast);
-            for (i, a) in ast.iter_mut().enumerate() {
-                match a.kind.clone() {
-                    AKind::Fun(visibility) => {
-                        let a_ref = collected_ast.add(std::mem::take(a));
-                        let a = &collected_ast[a_ref];
-                        let header = &a[0];
-                        match header[0].kind {
-                            AKind::Ident => {
-                                let debug_name = header[0].token.spam.raw();
-                                let name = FUN_SALT.add(debug_name);
-                                self.collect_normal_function(
-                                    module, a_ref, a, name, debug_name, visibility, i,
-                                )?;
-                            }
-                            AKind::Instantiation => {
-                                self.collect_generic_function(module, a_ref, a, visibility, i)?;
-                            }
-                            _ => unreachable!("{}", a),
-                        }
-                    }
-                    _ => (),
-                }
-            }
-            self.state.modules[module].ast = ast;
-        }
-
-        self.context.function_ast = LockedList::new(collected_ast);
-
-        Ok(())
-    }
-
-    fn collect_generic_function(
-        &mut self,
-        module: Mod,
-        a_ref: AstRef,
-        a: &Ast,
-        visibility: Vis,
-        attribute_id: usize,
-    ) -> Result<Fun> {
-        let debug_name = a[0][0][0].token.spam.raw();
-        let name = FUN_SALT.add(debug_name);
-
-        let signature = self.generic_signature(&a[0])?;
-
-        let function = FunEnt {
-            visibility,
-            name,
-            module,
-            token_hint: a[0].token.clone(),
-            kind: FKind::Generic(signature),
-            ast: a_ref,
-            attribute_id,
-            debug_name,
-            import: false,
-            body: Default::default(),
-            final_signature: None,
-            object_id: None,
-        };
-
-        let name = name.combine(self.state.modules.direct_to_id(module));
-
-        self.state
-            .generic_functions
-            .get_mut_or(name, vec![])
-            .push(function);
-
-        Ok(self.state.generic_functions.id_to_direct(name).unwrap())
-    }
-
-    fn id_of_ast_signature(&mut self, module: Mod, base_name: ID, ast: &Ast) -> Result<ID> {
-        let mut name = base_name;
-        for param_line in &ast[1..ast.len() - 1] {
-            let raw_datatype = param_line.last().unwrap();
-            let ty = self.resolve_type_low(module, raw_datatype)?;
-            for _ in 0..param_line.len() - 1 {
-                name = name.combine(self.state.types.direct_to_id(ty));
-            }
-        }
-
-        Ok(name.combine(self.state.modules.direct_to_id(module)))
-    }
-
-    fn collect_normal_function(
-        &mut self,
-        module: Mod,
-        a_ref: AstRef,
-        a: &Ast,
-        mut name: ID,
-        debug_name: &'static str,
-        visibility: Vis,
-        attribute_id: usize,
-    ) -> Result<Fun> {
-        let mut args = vec![];
-        let header = &a[0];
-        for param_line in &header[1..header.len() - 1] {
-            let raw_datatype = param_line.last().unwrap();
-            let ty = self.resolve_type_low(module, raw_datatype)?;
-            if self.is_auto(ty) {
-                return Err(FunError::new(FEKind::UnexpectedAuto, &raw_datatype.token));
-            }
-            for param in param_line[0..param_line.len() - 1].iter() {
-                name = name.combine(self.state.types.direct_to_id(ty));
-                let name = ID(0).add(param.token.spam.deref());
-                let mutable = param_line.kind == AKind::FunArgument(true);
-                args.push(ValueEnt::new(name, ty, mutable));
-            }
-        }
-
-        let raw_return_type = header.last().unwrap();
-        let (return_type, struct_return) = if raw_return_type.kind == AKind::None {
-            (None, false)
-        } else {
-            let return_type = self.resolve_type_low(module, raw_return_type)?;
-            if self.is_auto(return_type) {
-                return Err(FunError::new(
-                    FEKind::UnexpectedAuto,
-                    &raw_return_type.token,
-                ));
-            }
-            let struct_return =
-                self.state[return_type].size > self.state.isa().pointer_bytes() as u32;
-            if struct_return {
-                args.push(ValueEnt::new(
-                    ID(0),
-                    self.pointer_of(return_type, true),
-                    false,
-                ));
-            }
-            (Some(return_type), struct_return)
-        };
-
-        let function_signature = FunSignature {
-            args,
-            return_type,
-            struct_return,
-        };
-
-        let token_hint = header.token.clone();
-
-        let function = FunEnt {
-            visibility,
-            name,
-            module,
-            token_hint: token_hint.clone(),
-            kind: FKind::Normal(function_signature),
-            attribute_id,
-            ast: a_ref,
-            debug_name,
-            import: false,
-            body: Default::default(),
-            final_signature: None,
-            object_id: None,
-        };
-
-        name = name.combine(self.state.modules.direct_to_id(module));
-        let id = match self.state.functions.insert(name, function) {
-            (Some(function), _) => {
-                return Err(FunError::new(
-                    FEKind::Redefinition(function.token_hint),
-                    &token_hint,
-                ));
-            }
-            (_, id) => id,
-        };
-
-        Ok(id)
-    }
-
-    fn generic_signature(&mut self, ast: &Ast) -> Result<GenericSignature> {
-        self.context.generic.param_buffer.clear();
-        for ident in &ast[0][1..] {
-            self.context
-                .generic
-                .param_buffer
-                .push(TYPE_SALT.add(ident.token.spam.deref()))
-        }
-
-        let mut arg_count = 0;
-        self.context.generic.arg_buffer.clear();
-        for args in &ast[1..ast.len() - 1] {
-            let amount = args.len() - 1;
-            let idx = self.context.generic.arg_buffer.len();
-            self.context
-                .generic
-                .arg_buffer
-                .push(GenericElement::NextArgument(amount, 0));
-            self.load_arg(&args[args.len() - 1])?;
-            let additional = self.context.generic.arg_buffer.len() - idx - 1;
-            self.context.generic.arg_buffer[idx] = GenericElement::NextArgument(amount, additional);
-            arg_count += amount;
-        }
-
-        let return_index = self.context.generic.arg_buffer.len();
-
-        let has_return = ast[ast.len() - 1].kind != AKind::None;
-
-        self.context
-            .generic
-            .arg_buffer
-            .push(GenericElement::NextReturn(has_return));
-
-        if has_return {
-            self.load_arg(&ast[ast.len() - 1])?;
-        }
-
-        Ok(GenericSignature {
-            params: self.context.generic.param_buffer.clone(),
-            elements: self.context.generic.arg_buffer.clone(),
-            return_index,
-            arg_count,
-        })
-    }
-
-    fn load_arg_from_datatype(&self, ty: Type, generic: &mut GenericFunContext) {
-        let dt = &self.state[ty];
-
-        if dt.params.is_empty() {
-            if let TKind::Pointer(pointed, mutable) = dt.kind {
-                generic.arg_buffer.push(GenericElement::Pointer(mutable));
-                self.load_arg_from_datatype(pointed, generic);
-            } else {
-                generic
-                    .arg_buffer
-                    .push(GenericElement::Element(ty, Some(ty)));
-            }
-            return;
-        }
-
-        generic
-            .arg_buffer
-            .push(GenericElement::Element(dt.params[0], Some(ty)));
-
-        generic.arg_buffer.push(GenericElement::ScopeStart);
-        for &param in &dt.params[1..] {
-            self.load_arg_from_datatype(param, generic)
-        }
-        generic.arg_buffer.push(GenericElement::ScopeEnd);
-    }
-
-    */
 
     fn collect(&mut self, module: Mod) -> Result {
         let module_id = self.state.modules[module].id;
@@ -1868,58 +1635,76 @@ impl<'a> FParser<'a> {
         let header = &ast[0];
         let hint = header.token.clone();
         let name = &header[0];
-        let (name, mut id, kind) = if name.kind == AKind::Ident {
+        let (name, mut id, kind, unresolved) = if name.kind == AKind::Ident {
             let name = name.token.spam.raw();
             let mut fun_id = FUN_SALT.add(name);
 
-            let mut args = std::mem::take(&mut self.context.arg_buffer);
-            args.clear();
-
-            for arg_section in &ast[1..ast.len() - 1] {
-                let ty = self.parse_type(module, &arg_section[arg_section.len() - 1])?;
-                for arg in arg_section[0..arg_section.len() - 1].iter() {
-                    let id = ID(0).add(arg.token.spam.raw());
-                    fun_id = fun_id.combine(id);
-                    let val_ent = ValueEnt {
-                        id,
-                        ty,
-
-                        ..ValueEnt::default()
-                    };
-                    args.push(val_ent);
-                }
-            }
-
-            let raw_ret_ty = &header[header.len() - 1];
-            let ret_ty = if raw_ret_ty.kind != AKind::None {
-                Some(self.parse_type(module, raw_ret_ty)?)
-            } else {
-                None
-            };
+            let signature = self.parse_signature(module, header, &mut fun_id)?;
 
             let ast = self.state.asts.add(ast);
             let n_ent = NFunEnt {
-                signature: FunSignature {
-                    args: args.clone(),
-                    ret_ty,
-                },
+                signature,
                 ast,
             };
+
             let n = self.state.nfuns.add(n_ent);
-            self.context.arg_buffer = args;
-            (name, fun_id, FKind::Normal(n))
+            (name, fun_id, FKind::Normal(n), true)
         } else if name.kind == AKind::Instantiation {
-            let name = &name[0];
-            if name.kind != AKind::Ident {
+            let nm = &name[0];
+            if nm.kind != AKind::Ident {
                 return Err(FunError::new(
                     FEKind::InvalidFunctionHeader,
-                    name.token.clone(),
+                    nm.token.clone(),
                 ));
             }
-            let name = name.token.spam.raw();
-            
+            let nm = nm.token.spam.raw();
 
-            todo!();
+            let mut params = self.context.pool.get();
+            for param in name[1..].iter() {
+                let ty = TYPE_SALT.add(param.token.spam.raw());
+                params.push(ty);
+            }
+
+            let mut arg_count = 0;
+            let mut args = self.context.pool.get();
+            for arg_section in &header[1..header.len() - 1] {
+                let amount = arg_section.len() - 1;
+                let idx = args.len();
+                args.push(GenericElement::NextArgument(amount, 0));
+                self.load_arg(module, &arg_section[amount], &params, &mut args)?;
+                let additional = args.len() - idx - 1;
+                args[idx] = GenericElement::NextArgument(amount, additional);
+                arg_count += amount;
+            }
+
+            let return_index = args.len();
+
+            let has_return = header[header.len() - 1].kind != AKind::None;
+
+            args.push(GenericElement::NextReturn(has_return));
+
+            if has_return {
+                self.load_arg(module, &header[header.len() - 1], &params, &mut args)?;
+            }
+
+            let signature = GenericSignature {
+                params: params.clone(),
+                elements: args.clone(),
+                return_index,
+                arg_count,
+            };
+
+            let g_ent = GFunEnt {
+                signature,
+                ast: self.state.asts.add(ast),
+                next: None,
+            };
+
+            let g = self.state.gfuns.add(g_ent);
+
+            let id = FUN_SALT.add(nm).combine(GENERIC_FUN_SALT);
+
+            (nm, id, FKind::Generic(g), false)
         } else {
             return Err(FunError::new(
                 FEKind::InvalidFunctionHeader,
@@ -1934,56 +1719,157 @@ impl<'a> FParser<'a> {
             id,
             module,
             hint,
+            params: vec![],
             kind,
             name,
             attr_id,
         };
 
-        self.state.funs.insert(id, fun_ent);
-        Ok(())
-    }
+        let (shadowed, id) = self.state.funs.insert(id, fun_ent);
 
-    /*fn load_arg(&mut self, module: Mod, ast: &Ast, params: &[ID], buffer: &mut Vec<GenericElement>) -> Result {
-        match &ast.kind {
-            AKind::Ident => {
-                let id = TYPE_SALT.add(ast.token.spam.deref());
-                if let Some(index) = params
-                    .iter()
-                    .position(|&p| p == id)
-                {
-                    buffer.push(GenericElement::Parameter(index));
-                } else {
-                    let ty = self.parse_type(module, ast)?;
-                    buffer.push(GenericElement::Element(ty, None));
-                }
+        if let Some(shadowed) = shadowed {
+            if unresolved {
+                return Err(FunError::new(
+                    FEKind::Redefinition(shadowed.hint),
+                    self.state.funs[id].hint.clone(),
+                ));
             }
-            AKind::Instantiation => {
-                self.load_arg(module, &ast[0], params, buffer)?;
-                self.context
-                    .generic
-                    .arg_buffer
-                    .push(GenericElement::ScopeStart);
-                for a in ast[1..].iter() {
-                    self.load_arg(a)?;
-                }
-                self.context
-                    .generic
-                    .arg_buffer
-                    .push(GenericElement::ScopeEnd);
-            }
-            &AKind::Ref(mutable) => {
-                self.context
-                    .generic
-                    .arg_buffer
-                    .push(GenericElement::Pointer(mutable));
 
-                self.load_arg(&ast[0])?;
-            }
-            _ => todo!("{}", ast),
+            // In the end generic funs with same module and name create a linked list
+            // of which head is accessible from table.
+            let gid = self.state.funs[id].kind.unwrap_generic();
+
+            let id = self.state.funs.add_hidden(shadowed);
+            self.state.gfuns[gid].next = Some(id);
+        }
+
+        if unresolved {
+            self.state.unresolved.push(id);
         }
 
         Ok(())
-    }*/
+    }
+
+    fn parse_signature(&mut self, module: Mod, header: &Ast, fun_id: &mut ID) -> Result<FunSignature> {
+        let mut args = self.context.pool.get();
+        args.clear();
+
+        for arg_section in &header[1..header.len() - 1] {
+            let ty = self.parse_type(module, &arg_section[arg_section.len() - 1])?;
+            for arg in arg_section[0..arg_section.len() - 1].iter() {
+                let id = ID(0).add(arg.token.spam.raw());
+                *fun_id = fun_id.combine(self.state.types[ty].id);
+                let val_ent = ValueEnt {
+                    id,
+                    ty,
+
+                    ..ValueEnt::default()
+                };
+                args.push(val_ent);
+            }
+        }
+
+        let raw_ret_ty = &header[header.len() - 1];
+        let ret_ty = if raw_ret_ty.kind != AKind::None {
+            Some(self.parse_type(module, raw_ret_ty)?)
+        } else {
+            None
+        };
+
+        Ok(FunSignature {
+            args: args.clone(),
+            ret_ty,
+        })
+    }
+
+    fn load_arg(
+        &mut self,
+        module: Mod,
+        ast: &Ast,
+        params: &[ID],
+        buffer: &mut Vec<GenericElement>,
+    ) -> Result {
+        let mut stack = self.context.pool.get();
+        stack.push((ast, false));
+
+        while let Some((ast, done)) = stack.last_mut() {
+            if *done {
+                if ast.kind == AKind::Instantiation {
+                    buffer.push(GenericElement::ScopeEnd);
+                }
+                stack.pop();
+                continue;
+            }
+            *done = true;
+            let ast = *ast;
+            match &ast.kind {
+                AKind::Ident => {
+                    let id = TYPE_SALT.add(ast.token.spam.raw());
+                    if let Some(index) = params.iter().position(|&p| p == id) {
+                        buffer.push(GenericElement::Parameter(index));
+                    } else {
+                        let ty = self.parse_type(module, ast)?;
+                        buffer.push(GenericElement::Element(ty, None));
+                    }
+                }
+                AKind::Instantiation => {
+                    self.load_arg(module, &ast[0], params, buffer)?;
+                    buffer.push(GenericElement::ScopeStart);
+                    stack.extend(ast[1..].iter().map(|a| (a, false)));
+                }
+                &AKind::Ref(mutable) | &AKind::Deref(mutable) => {
+                    buffer.push(GenericElement::Pointer(
+                        mutable,
+                        ast.kind == AKind::Deref(mutable),
+                    ));
+
+                    stack.push((&ast[0], false));
+                }
+                _ => todo!("{}", ast),
+            }
+        }
+
+        Ok(())
+    }
+
+    fn load_arg_from_datatype(
+        &self,
+        ty: Type,
+        arg_buffer: &mut Vec<GenericElement>,
+        stack: &mut Vec<(Type, bool)>,
+    ) {
+        stack.push((ty, false));
+
+        while let Some((ty, done)) = stack.last_mut() {
+            let ty = *ty;
+            let ty_ent = &self.state.types[ty];
+
+            if *done {
+                if !ty_ent.params.is_empty() {
+                    arg_buffer.push(GenericElement::ScopeEnd);
+                }
+                stack.pop();
+                continue;
+            }
+
+            *done = true;
+
+            if ty_ent.params.is_empty() {
+                if let TKind::Pointer(pointed, mutable, nullable) = ty_ent.kind {
+                    arg_buffer.push(GenericElement::Pointer(mutable, nullable));
+                    stack.push((pointed, false));
+                } else {
+                    arg_buffer.push(GenericElement::Element(ty, Some(ty)));
+                }
+                continue;
+            }
+
+            arg_buffer.push(GenericElement::Element(ty_ent.params[0], Some(ty)));
+
+            arg_buffer.push(GenericElement::ScopeStart);
+            stack.extend(ty_ent.params[1..].iter().map(|p| (*p, false)));
+        }
+    }
 
     #[inline]
     fn auto(&self) -> Type {
@@ -2044,7 +1930,7 @@ impl<'a> FParser<'a> {
 
     #[inline]
     fn pass_mutability(&mut self, from: Value, to: Value) {
-        self.context.body.values[to].mutable = self.context.body.values[from].mutable;
+        self.state.body.values[to].mutable = self.state.body.values[from].mutable;
     }
 }
 
@@ -2082,6 +1968,7 @@ pub enum FEKind {
     WrongLabel,
     NonPointerDereference,
     InvalidFunctionHeader,
+    AmbiguousFunction(Fun, Fun),
 }
 
 impl Into<FunError> for TypeError {
@@ -2108,6 +1995,7 @@ pub struct FunEnt {
     pub id: ID,
     pub module: Mod,
     pub hint: Token,
+    pub params: Vec<Type>,
     pub kind: FKind,
     pub name: &'static str,
     pub attr_id: usize,
@@ -2135,6 +2023,43 @@ pub enum FKind {
     Compiled(CFun),
 }
 
+impl FKind {
+    pub fn unwrap_builtin(&self) -> BFun {
+        match self {
+            FKind::Builtin(b) => *b,
+            _ => panic!("{:?}", self),
+        }
+    }
+
+    pub fn unwrap_generic(&self) -> GFun {
+        match self {
+            FKind::Generic(g) => *g,
+            _ => panic!("{:?}", self),
+        }
+    }
+
+    pub fn unwrap_normal(&self) -> NFun {
+        match self {
+            FKind::Normal(n) => *n,
+            _ => panic!("{:?}", self),
+        }
+    }
+
+    pub fn unwrap_represented(&self) -> RFun {
+        match self {
+            FKind::Represented(r) => *r,
+            _ => panic!("{:?}", self),
+        }
+    }
+
+    pub fn unwrap_compiled(&self) -> CFun {
+        match self {
+            FKind::Compiled(c) => *c,
+            _ => panic!("{:?}", self),
+        }
+    }
+}
+
 crate::index_pointer!(NFun);
 
 pub struct NFunEnt {
@@ -2153,22 +2078,19 @@ crate::index_pointer!(GFun);
 pub struct GFunEnt {
     pub signature: GenericSignature,
     pub ast: GAst,
+    pub next: Option<Fun>,
 }
 
 crate::index_pointer!(RFun);
 
 pub struct RFunEnt {
     pub signature: FunSignature,
+    pub ir_signature: Signature,
+    pub id: FuncId,
     pub body: FunBody,
 }
 
 crate::index_pointer!(CFun);
-
-pub struct CFunEnt {
-    pub signature: FunSignature,
-    pub ir_signature: Signature,
-    pub id: FuncId,
-}
 
 #[derive(Debug, Clone)]
 pub struct GenericSignature {
@@ -2182,7 +2104,7 @@ pub struct GenericSignature {
 pub enum GenericElement {
     ScopeStart,
     ScopeEnd,
-    Pointer(bool),
+    Pointer(bool, bool),
     Element(Type, Option<Type>),
     Parameter(usize),
     NextArgument(usize, usize),
@@ -2210,7 +2132,7 @@ crate::index_pointer!(Inst);
 pub struct InstEnt {
     pub kind: IKind,
     pub value: Option<Value>,
-    pub token_hint: Token,
+    pub hint: Token,
     pub unresolved: usize,
 }
 
@@ -2219,7 +2141,7 @@ impl InstEnt {
         Self {
             kind,
             value,
-            token_hint: token_hint.clone(),
+            hint: token_hint.clone(),
             unresolved: 0,
         }
     }
@@ -2354,31 +2276,55 @@ pub struct FState {
     pub gfuns: ReusableList<GFun, GFunEnt>,
     pub bfuns: ReusableList<BFun, BFunEnt>,
     pub rfuns: ReusableList<RFun, RFunEnt>,
-    pub cfuns: ReusableList<CFun, CFunEnt>,
 
     pub loops: Vec<Loop>,
+    
+    pub variables: Vec<Option<Value>>,
+    pub body: FunBody,
+    pub block: Option<Inst>,
+    pub unresolved_funs: Vec<Inst>,
+    pub unresolved: Vec<Fun>,
 }
 
 crate::inherit!(FState, t_state, TState);
 
+impl FState {
+    pub fn new(t_state: TState) -> Self {
+        Self {
+            t_state,
+            funs: Table::new(),
+            nfuns: ReusableList::new(),
+            gfuns: ReusableList::new(),
+            bfuns: ReusableList::new(),
+            rfuns: ReusableList::new(),
+            loops: Vec::new(),
+            body: FunBody::default(),
+            block: None,
+            unresolved: Vec::new(),
+            variables: Vec::new(),
+            unresolved_funs: Vec::new(),
+        }
+    }
+}
 pub struct FContext {
     pub t_context: TContext,
-    pub body: FunBody,
-    pub arg_buffer: Vec<ValueEnt>,
+    pub body_pool: Vec<FunBody>,
+    pub deps: List<TypeDep, Vec<Inst>>,
+    pub dep_pool: Vec<Vec<Inst>>,
 }
 
 impl FContext {
     pub fn new(t_context: TContext) -> Self {
         Self {
             t_context,
-            body: FunBody::default(),
-            arg_buffer: Vec::new(),
+            body_pool: Vec::new(),
+            deps: List::new(),
+            dep_pool: Vec::new(),
         }
     }
 }
 
 crate::inherit!(FContext, t_context, TContext);
-
 
 /*pub fn test() {
     let mut state = FState::default();
@@ -2399,14 +2345,14 @@ crate::inherit!(FContext, t_context, TContext);
         })
         .unwrap();
 
-    for fun in unsafe { state.functions.direct_ids() } {
-        if !state.functions.is_direct_valid(fun)
-            || !matches!(state.functions[fun].kind, FKind::Normal(_))
+    for fun in unsafe { state.funs.direct_ids() } {
+        if !state.funs.is_direct_valid(fun)
+            || !matches!(state.funs[fun].kind, FKind::Normal(_))
         {
             continue;
         }
 
-        let fun = &state.functions[fun];
+        let fun = &state.funs[fun];
 
         println!("{}", fun.token_hint.spam.deref());
         println!();

@@ -320,6 +320,10 @@ impl<I: IndexPointer, T> Table<I, T> {
         self.data.clear();
     }
 
+    pub fn add_hidden(&mut self, value: T) -> I {
+        self.data.add(value)
+    }
+
     pub fn insert(&mut self, id: ID, data: T) -> (Option<T>, I) {
         if let Some(&i) = self.map.get(id) {
             (Some(std::mem::replace(&mut self.data[i], data)), i)
@@ -696,7 +700,7 @@ impl<I: IndexPointer, T> ReusableList<I, T> {
 impl<I: IndexPointer, T: Default> ReusableList<I, T> {
     pub fn remove(&mut self, id: I) -> T {
         self.free.push(id);
-        std::mem::take(&mut self.inner[id])    
+        std::mem::take(&mut self.inner[id])
     }
 }
 

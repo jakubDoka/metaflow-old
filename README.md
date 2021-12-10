@@ -4,10 +4,6 @@
 
 This section documents most of the properties of MetaFlow
 
-### Good to know
-
-Ambiguous identifiers are shadowed by first encountered occurrence.
-
 ### Source organization
 
 Compiler considers files as separate modules. Whole project including project manifest is considered a Package. Packages can be imported in manifest (section 'dependencies'). Cyclic dependency either between packages or modules is no allowed. This allows compiler to compile more efficiently and over all makes code easier to traverse as no two files reference each other.

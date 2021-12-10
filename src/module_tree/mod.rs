@@ -113,9 +113,7 @@ impl<'a> MTParser<'a> {
             ));
         }
 
-
         let order = create_order(&self.state.modules, module, &mut self.context.pool);
-
 
         self.state.module_order = order.deref().clone();
 
@@ -353,8 +351,7 @@ pub fn create_order<I: IndexPointer + 'static, S: TreeStorage<I>>(
         let last = frontier.len() - 1;
         let last = frontier[last];
 
-        frontier
-            .extend(iter(storage, node).filter(|module| *module != last));
+        frontier.extend(iter(storage, node).filter(|module| *module != last));
         i += 1;
     }
 

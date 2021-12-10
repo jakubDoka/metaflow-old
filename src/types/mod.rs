@@ -1,13 +1,13 @@
 use std::ops::{Deref, DerefMut};
 
-use crate::ast::{Ast, Vis, AstParser, AstError, AKind};
+use crate::ast::{AKind, Ast, AstError, AstParser, Vis};
 use crate::attributes::Attributes;
 use crate::lexer::Token;
-use crate::module_tree::{MTState, Mod, MTContext, TreeStorage, self, MTParser};
-use crate::util::sdbm::{ID, SdbmHashState};
-use crate::util::storage::{IndexPointer, Table, List, ReusableList};
-use cranelift_codegen::ir::types::{Type as CrType, INVALID};
+use crate::module_tree::{self, MTContext, MTParser, MTState, Mod, TreeStorage};
+use crate::util::sdbm::{SdbmHashState, ID};
+use crate::util::storage::{IndexPointer, List, ReusableList, Table};
 use cranelift_codegen::ir::types::*;
+use cranelift_codegen::ir::types::{Type as CrType, INVALID};
 
 type Result<T = ()> = std::result::Result<T, TypeError>;
 
@@ -80,8 +80,8 @@ impl<'a> TParser<'a> {
         self.context.pool = pool;
 
         for &ty in order.iter() {
-            let ty_ent = &self.state.types[ty]; 
-            
+            let ty_ent = &self.state.types[ty];
+
             match ty_ent.kind {
                 TKind::Structure(id) => {
                     let mut size = 0;
@@ -107,7 +107,7 @@ impl<'a> TParser<'a> {
                                     field.offset = size;
                                     size += self.state.types[field.ty].size;
                                 }
-        
+
                                 size += calc(size);
                             }
                             SKind::Union => {
@@ -133,7 +133,7 @@ impl<'a> TParser<'a> {
 
         Ok(())
     }
-    
+
     fn connect(&mut self, _module: Mod) -> Result {
         while let Some((id, depth)) = self.state.unresolved.pop() {
             if depth > Self::MAX_TYPE_INSTANTIATION_DEPTH {
@@ -153,7 +153,7 @@ impl<'a> TParser<'a> {
 
             self.state.resolved.push(id);
         }
-      
+
         Ok(())
     }
 
@@ -164,17 +164,24 @@ impl<'a> TParser<'a> {
             }
             _ => unreachable!("{:?}", self.state.asts[ast].kind),
         }
-        
+
         Ok(())
     }
 
-    fn connect_structure(&mut self, module: Mod, id: Type, ast_id: GAst, kind: SKind, depth: usize) -> Result<SType> {
-        let mut fields = std::mem::take(&mut self.context.struct_field_buffer); 
+    fn connect_structure(
+        &mut self,
+        module: Mod,
+        id: Type,
+        ast_id: GAst,
+        kind: SKind,
+        depth: usize,
+    ) -> Result<SType> {
+        let mut fields = std::mem::take(&mut self.context.struct_field_buffer);
 
-        // SAFETY: we can take a reference as we know that 
+        // SAFETY: we can take a reference as we know that
         // nothing will mutate 'gtypes' since all types are collected
         let ast = std::mem::take(&mut self.state.asts[ast_id]);
-        
+
         let module_id = self.state.modules[module].id;
         let params = std::mem::take(&mut self.state.types[id].params);
         let mut shadowed = self.context.pool.get();
@@ -186,25 +193,20 @@ impl<'a> TParser<'a> {
         if is_instance {
             if params.len() != header.len() {
                 return Err(TypeError::new(
-                    TEKind::WrongInstantiationArgAmount(
-                        params.len() - 1,
-                        header.len() - 1,
-                    ),
+                    TEKind::WrongInstantiationArgAmount(params.len() - 1, header.len() - 1),
                     self.state.types[id].hint.clone(),
                 ));
             }
             for (a, &param) in header[1..].iter().zip(params[1..].iter()) {
-                let id = TYPE_SALT
-                    .add(a.token.spam.raw())
-                    .combine(module_id);
-                
+                let id = TYPE_SALT.add(a.token.spam.raw()).combine(module_id);
+
                 let sha = self.state.types.link(id, param);
                 shadowed.push((id, sha));
             }
         }
 
         self.state.types[id].params = params;
-        
+
         for field_line in ast[1].iter() {
             let (vis, embedded) = match &field_line.kind {
                 &AKind::StructField(vis, embedded) => (vis, embedded),
@@ -249,7 +251,7 @@ impl<'a> TParser<'a> {
         let s_id = self.state.stypes.add(s_ent);
 
         self.state.types[id].kind = TKind::Structure(s_id);
-        
+
         fields.clear();
         self.context.struct_field_buffer = fields;
 
@@ -258,7 +260,7 @@ impl<'a> TParser<'a> {
 
     fn resolve_type(&mut self, module: Mod, ast: &Ast, depth: usize) -> Result<(Mod, Type)> {
         match ast.kind {
-            AKind::Ident => self.resolve_simple_type(module, ast.token.clone()),
+            AKind::Ident => self.resolve_simple_type(module, &ast.token),
             AKind::ExplicitPackage => self.resolve_explicit_package_type(module, ast),
             AKind::Instantiation => self.resolve_instance(module, ast, depth),
             AKind::Ref(mutable) => self.resolve_pointer(module, ast, mutable, false, depth),
@@ -267,22 +269,34 @@ impl<'a> TParser<'a> {
         }
     }
 
-    fn resolve_pointer(&mut self, module: Mod, ast: &Ast, mutable: bool, nullable: bool, depth: usize) -> Result<(Mod, Type)> {
+    fn resolve_pointer(
+        &mut self,
+        module: Mod,
+        ast: &Ast,
+        mutable: bool,
+        nullable: bool,
+        depth: usize,
+    ) -> Result<(Mod, Type)> {
         let (module, datatype) = self.resolve_type(module, &ast[0], depth)?;
         let datatype = self.pointer_of(datatype, mutable, nullable);
 
         Ok((module, datatype))
     }
 
-    fn resolve_instance(&mut self, source_module: Mod, ast: &Ast, depth: usize) -> Result<(Mod, Type)> {
+    fn resolve_instance(
+        &mut self,
+        source_module: Mod,
+        ast: &Ast,
+        depth: usize,
+    ) -> Result<(Mod, Type)> {
         let (module, ty) = match ast[0].kind {
-            AKind::Ident => self.resolve_simple_type(source_module, ast[0].token.clone())?,
+            AKind::Ident => self.resolve_simple_type(source_module, &ast[0].token)?,
             AKind::ExplicitPackage => self.resolve_explicit_package_type(source_module, &ast[0])?,
             _ => unreachable!("{:?}", ast[0].kind),
         };
-        
+
         let module_id = self.state.modules[module].id;
-        
+
         let mut params = self.context.pool.get();
         params.clear();
         params.push(ty);
@@ -330,29 +344,43 @@ impl<'a> TParser<'a> {
     }
 
     fn resolve_explicit_package_type(&mut self, module: Mod, ast: &Ast) -> Result<(Mod, Type)> {
-        let module = self.state.find_dep(module, &ast[0].token)
+        let module = self
+            .state
+            .find_dep(module, &ast[0].token)
             .ok_or_else(|| TypeError::new(TEKind::UnknownPackage, ast.token.clone()))?;
-        let result = self.resolve_simple_type(module, ast.token.clone());
-        result
+        let module_id = self.state.modules[module].id;
+        let id = TYPE_SALT.add(ast[1].token.spam.raw());
+        self.type_index(id.combine(module_id))
+            .map(|id| (module, id))
+            .ok_or_else(|| TypeError::new(TEKind::UnknownType, ast[0].token.clone()))
     }
 
-    fn resolve_simple_type(&mut self, module: Mod, name: Token) -> Result<(Mod, Type)> {
+    fn resolve_simple_type(&mut self, module: Mod, name: &Token) -> Result<(Mod, Type)> {
         let id = TYPE_SALT.add(name.spam.raw());
-        self.find_by_id(module, id)
-            .ok_or_else(|| TypeError::new(TEKind::UnknownType, name))
-    }
 
-    fn find_by_id(&mut self, module: Mod, id: ID) -> Option<(Mod, Type)> {
         let mut buffer = self.context.pool.get();
         self.state.collect_scopes(module, &mut buffer);
 
-        for (module, module_id) in buffer.drain(..) {
+        let (module, module_id) = buffer[0];
+        if let Some(ty) = self.type_index(id.combine(module_id)) {
+            return Ok((module, ty));
+        }
+
+        let mut found = None;
+
+        for (module, module_id) in buffer.drain(1..) {
             if let Some(ty) = self.type_index(id.combine(module_id)) {
-                return Some((module, ty));
+                if let Some((_, found)) = found {
+                    return Err(TypeError::new(
+                        TEKind::AmbiguousType(ty, found),
+                        name.clone(),
+                    ));
+                }
+                found = Some((module, ty));
             }
         }
-        
-        None
+
+        found.ok_or_else(|| TypeError::new(TEKind::UnknownType, name.clone()))
     }
 
     fn collect(&mut self, module: Mod) -> Result<()> {
@@ -364,7 +392,7 @@ impl<'a> TParser<'a> {
         let mut ast = AstParser::new(&mut module_ent.ast, &mut context)
             .parse()
             .map_err(|err| TypeError::new(TEKind::AstError(err), Token::default()))?;
-            
+
         self.state.attributes.resolve(&mut ast);
 
         for (i, a) in ast.iter_mut().enumerate() {
@@ -426,8 +454,6 @@ impl<'a> TParser<'a> {
 
         Ok(())
     }
-    
-
 
     pub fn pointer_of(&mut self, ty: Type, mutable: bool, nullable: bool) -> Type {
         let module = self.state.types[ty].module;
@@ -436,7 +462,7 @@ impl<'a> TParser<'a> {
             .add(name)
             .combine(self.state.types[ty].id)
             .combine(self.state.modules[module].id);
-        
+
         if let Some(index) = self.type_index(id) {
             return index;
         }
@@ -461,7 +487,7 @@ impl<'a> TParser<'a> {
 
     fn type_index(&self, id: ID) -> Option<Type> {
         self.state.types.index(id).cloned()
-    } 
+    }
 }
 
 impl<'a> TreeStorage<Type> for TParser<'a> {
@@ -481,13 +507,9 @@ impl<'a> TreeStorage<Type> for TParser<'a> {
 
         match node.kind {
             _ if node.module != self.module || node.size != 0 => 0,
-            TKind::Builtin(_) | 
-            TKind::Pointer(..) => 0,
-            TKind::Structure(id) => {
-                self.state.stypes[id].fields.len()
-            },
-            TKind::Generic(_) |
-            TKind::Unresolved(_) => unreachable!(),
+            TKind::Builtin(_) | TKind::Pointer(..) => 0,
+            TKind::Structure(id) => self.state.stypes[id].fields.len(),
+            TKind::Generic(_) | TKind::Unresolved(_) => unreachable!(),
         }
     }
 
@@ -528,7 +550,7 @@ crate::index_pointer!(SType);
 #[derive(Debug, Clone)]
 pub struct STypeEnt {
     pub kind: SKind,
-    pub fields: Vec<SField>
+    pub fields: Vec<SField>,
 }
 
 #[derive(Debug, Clone)]
@@ -593,7 +615,7 @@ impl TState {
         };
 
         s.builtin_repo = BuiltinRepo::new(&mut s);
-        
+
         return s;
     }
 
@@ -681,10 +703,7 @@ pub struct TypeDisplay<'a> {
 
 impl<'a> TypeDisplay<'a> {
     pub fn new(state: &'a TState, type_id: Type) -> Self {
-        Self {
-            state,
-            type_id,
-        }
+        Self { state, type_id }
     }
 }
 
@@ -705,10 +724,9 @@ impl<'a> std::fmt::Display for TypeDisplay<'a> {
                 }
                 write!(f, "]")
             }
-            TKind::Builtin(_) | 
-            TKind::Unresolved(_) | 
-            TKind::Generic(_) |
-            TKind::Structure(_) => write!(f, "{}", ty.name),
+            TKind::Builtin(_) | TKind::Unresolved(_) | TKind::Generic(_) | TKind::Structure(_) => {
+                write!(f, "{}", ty.name)
+            }
         }
     }
 }
@@ -721,10 +739,7 @@ pub struct TypeError {
 
 impl TypeError {
     pub fn new(kind: TEKind, token: Token) -> Self {
-        Self {
-            kind,
-            token,
-        }
+        Self { kind, token }
     }
 }
 
@@ -732,8 +747,9 @@ impl TypeError {
 pub enum TEKind {
     AstError(AstError),
     UnexpectedAst(String),
+    AmbiguousType(Type, Type),
     UnknownType,
-    NotGeneric, 
+    NotGeneric,
     UnknownPackage,
     InstantiationDepthExceeded,
     WrongInstantiationArgAmount(usize, usize),
