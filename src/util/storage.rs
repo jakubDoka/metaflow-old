@@ -1,6 +1,10 @@
 use std::{
     marker::PhantomData,
-    ops::{Index, IndexMut}, sync::{atomic::{AtomicUsize, Ordering}, Arc},
+    ops::{Index, IndexMut},
+    sync::{
+        atomic::{AtomicUsize, Ordering},
+        Arc,
+    },
 };
 
 use super::sdbm::ID;
@@ -339,10 +343,6 @@ impl<I: IndexPointer, T> Table<I, T> {
         self.data.iter_mut().map(|v| v.1)
     }
 
-    pub unsafe fn direct_ids(&self) -> impl Iterator<Item = I> {
-        (0..self.data.len()).map(|i| I::new(i))
-    }
-
     pub fn link(&mut self, id: ID, index: I) -> Option<I> {
         self.map.insert(id, index)
     }
@@ -420,10 +420,10 @@ pub struct LinkedList<I: IndexPointer, T> {
     free: Vec<I>,
 }
 
-impl<I: IndexPointer, T> LinkedList<I, T> {
+impl<I: IndexPointer, T: Default> LinkedList<I, T> {
     pub fn new() -> Self {
         Self {
-            data: vec![unsafe { std::mem::zeroed() }],
+            data: vec![(I::new(0), T::default(), I::new(0))],
             free: vec![],
         }
     }
@@ -504,7 +504,7 @@ impl<I: IndexPointer, T> LinkedList<I, T> {
 
         self.free.push(id);
 
-        std::mem::replace(&mut self.data[id.raw()].1, unsafe { std::mem::zeroed() })
+        std::mem::take(&mut self.data[id.raw()].1)
     }
 
     pub fn iter(&self) -> impl Iterator<Item = (I, &T)> {
@@ -551,7 +551,7 @@ impl<I: IndexPointer, T> LinkedList<I, T> {
     }
 }
 
-impl<I: IndexPointer, T: std::fmt::Debug> std::fmt::Debug for LinkedList<I, T> {
+impl<I: IndexPointer, T: std::fmt::Debug + Default> std::fmt::Debug for LinkedList<I, T> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_list().entries(self.iter().map(|a| a.1)).finish()
     }
@@ -571,7 +571,7 @@ impl<I: IndexPointer, T> IndexMut<I> for LinkedList<I, T> {
     }
 }
 
-impl<I: IndexPointer, T> Default for LinkedList<I, T> {
+impl<I: IndexPointer, T: Default> Default for LinkedList<I, T> {
     fn default() -> Self {
         Self::new()
     }
@@ -691,10 +691,12 @@ impl<I: IndexPointer, T> ReusableList<I, T> {
             self.inner.add(data)
         }
     }
+}
 
+impl<I: IndexPointer, T: Default> ReusableList<I, T> {
     pub fn remove(&mut self, id: I) -> T {
         self.free.push(id);
-        std::mem::replace(&mut self.inner[id], unsafe { std::mem::zeroed() })
+        std::mem::take(&mut self.inner[id])    
     }
 }
 

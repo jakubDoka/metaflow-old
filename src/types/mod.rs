@@ -3,7 +3,7 @@ use std::ops::{Deref, DerefMut};
 use crate::ast::{Ast, Vis, AstParser, AstError, AKind};
 use crate::attributes::Attributes;
 use crate::lexer::Token;
-use crate::module_tree::{MTState, Mod, MTContext, TreeStorage, OrderingContext, self, MTParser};
+use crate::module_tree::{MTState, Mod, MTContext, TreeStorage, self, MTParser};
 use crate::util::sdbm::{ID, SdbmHashState};
 use crate::util::storage::{IndexPointer, Table, List, ReusableList};
 use cranelift_codegen::ir::types::{Type as CrType, INVALID};
@@ -64,22 +64,22 @@ impl<'a> TParser<'a> {
     }
 
     fn calc_size(&mut self, ty: Type) -> Result {
-        // SAFETY: This only avoids memmove of context which would otherwise do
-        // except that context is big
-        let ctx = unsafe {
-            std::mem::transmute::<&mut TContext, &mut TContext>(self.context)
-        };
+        let mut cycle_stack = self.context.pool.get();
 
-        if let Some(cycle) = module_tree::detect_cycles(self, ty, &mut ctx.cycle_stack) {
+        if let Some(cycle) = module_tree::detect_cycles(self, ty, &mut cycle_stack) {
             return Err(TypeError::new(
                 TEKind::InfiniteSize(cycle),
                 Token::default(),
             ));
         }
 
-        module_tree::create_order(self, ty, &mut ctx.ordering);
+        let mut pool = std::mem::take(&mut self.context.pool);
 
-        for &ty in ctx.ordering.result() {
+        let order = module_tree::create_order(self, ty, &mut pool);
+
+        self.context.pool = pool;
+
+        for &ty in order.iter() {
             let ty_ent = &self.state.types[ty]; 
             
             match ty_ent.kind {
@@ -158,11 +158,11 @@ impl<'a> TParser<'a> {
     }
 
     fn connect_type(&mut self, module: Mod, id: Type, ast: GAst, depth: usize) -> Result {
-        match self.state.gtypes[ast].kind {
+        match self.state.asts[ast].kind {
             AKind::StructDeclaration(_) => {
                 self.connect_structure(module, id, ast, SKind::Struct, depth)?;
             }
-            _ => unreachable!("{:?}", self.state.gtypes[ast].kind),
+            _ => unreachable!("{:?}", self.state.asts[ast].kind),
         }
         
         Ok(())
@@ -173,11 +173,11 @@ impl<'a> TParser<'a> {
 
         // SAFETY: we can take a reference as we know that 
         // nothing will mutate 'gtypes' since all types are collected
-        let ast = std::mem::take(&mut self.state.gtypes[ast_id]);
+        let ast = std::mem::take(&mut self.state.asts[ast_id]);
         
         let module_id = self.state.modules[module].id;
         let params = std::mem::take(&mut self.state.types[id].params);
-        let mut shadowed = std::mem::take(&mut self.context.shadowed_types);
+        let mut shadowed = self.context.pool.get();
 
         let header = &ast[0];
 
@@ -232,17 +232,15 @@ impl<'a> TParser<'a> {
 
         // we ruse ast since this is not a generic type
         if !is_instance {
-            self.state.gtypes.remove(ast_id);
+            self.state.asts.remove(ast_id);
             self.context.recycle(ast);
         } else {
-            self.state.gtypes[ast_id] = ast;
+            self.state.asts[ast_id] = ast;
         }
 
         for (id, ty) in shadowed.drain(..) {
             self.state.types.remove_link(id, ty);
         }
-
-        self.context.shadowed_types = shadowed;
 
         let s_ent = STypeEnt {
             kind,
@@ -285,7 +283,7 @@ impl<'a> TParser<'a> {
         
         let module_id = self.state.modules[module].id;
         
-        let mut params = std::mem::take(&mut self.context.instance_buffer);
+        let mut params = self.context.pool.get();
         params.clear();
         params.push(ty);
 
@@ -323,8 +321,6 @@ impl<'a> TParser<'a> {
             align: 0,
         };
 
-        self.context.instance_buffer = params;
-
         let (shadowed, ty) = self.state.types.insert(id, type_ent);
         debug_assert!(shadowed.is_none());
 
@@ -347,7 +343,7 @@ impl<'a> TParser<'a> {
     }
 
     fn find_by_id(&mut self, module: Mod, id: ID) -> Option<(Mod, Type)> {
-        let mut buffer = std::mem::take(&mut self.context.scope_buffer);
+        let mut buffer = self.context.pool.get();
         self.state.collect_scopes(module, &mut buffer);
 
         for (module, module_id) in buffer.drain(..) {
@@ -355,8 +351,6 @@ impl<'a> TParser<'a> {
                 return Some((module, ty));
             }
         }
-
-        self.context.scope_buffer = buffer;
         
         None
     }
@@ -377,11 +371,11 @@ impl<'a> TParser<'a> {
             match a.kind.clone() {
                 AKind::StructDeclaration(visibility) => {
                     let ast = std::mem::take(a);
-                    let ast_id = self.state.gtypes.add(ast);
+                    let ast_id = self.state.asts.add(ast);
 
-                    let ast = &self.state.gtypes[ast_id];
+                    let ast = &self.state.asts[ast_id];
 
-                    let ident = &self.state.gtypes[ast_id][0];
+                    let ident = &self.state.asts[ast_id][0];
                     let (ident, kind) = if ident.kind == AKind::Ident {
                         (ident, TKind::Unresolved(ast_id))
                     } else if ident.kind == AKind::Instantiation {
@@ -425,6 +419,8 @@ impl<'a> TParser<'a> {
                 _ => (),
             }
         }
+
+        self.state.parsed_ast = ast;
 
         self.context.ast = context;
 
@@ -553,14 +549,8 @@ pub enum SKind {
 
 #[derive(Debug, Clone, Default)]
 pub struct TContext {
-    pub scope_buffer: Vec<(Mod, ID)>,
-    pub instance_buffer: Vec<Type>,
-    pub instance_id_buffer: Vec<ID>,
-    pub shadowed_types: Vec<(ID, Option<Type>)>,
     pub mt_context: MTContext,
     pub struct_field_buffer: Vec<SField>,
-    pub ordering: OrderingContext<Type>,
-    pub cycle_stack: Vec<(Type, usize)>
 }
 
 impl TContext {
@@ -577,25 +567,29 @@ crate::inherit!(TContext, mt_context, MTContext);
 pub struct TState {
     pub builtin_repo: BuiltinRepo,
     pub types: Table<Type, TypeEnt>,
-    pub gtypes: ReusableList<GAst, Ast>,
+    pub asts: ReusableList<GAst, Ast>,
     pub stypes: List<SType, STypeEnt>,
     pub mt_state: MTState,
     pub unresolved: Vec<(Type, usize)>,
     pub resolved: Vec<Type>,
     pub attributes: Attributes,
+    pub parsed_ast: Ast,
 }
+
+crate::inherit!(TState, mt_state, MTState);
 
 impl TState {
     pub fn new(mt_state: MTState) -> Self {
         let mut s = Self {
             builtin_repo: Default::default(),
             types: Table::new(),
-            gtypes: ReusableList::new(),
+            asts: ReusableList::new(),
             stypes: List::new(),
             mt_state,
             unresolved: vec![],
             resolved: vec![],
             attributes: Attributes::default(),
+            parsed_ast: Ast::default(),
         };
 
         s.builtin_repo = BuiltinRepo::new(&mut s);
@@ -607,8 +601,6 @@ impl TState {
         self.attributes.clear();
     }
 }
-
-crate::inherit!(TState, mt_state, MTState);
 
 macro_rules! define_repo {
     (

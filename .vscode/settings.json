@@ -8,6 +8,7 @@
         "brnz",
         "bxor",
         "canonicalize",
+        "cfuns",
         "codegen",
         "condcodes",
         "conv",

@@ -3,27 +3,25 @@ use std::fmt::Display;
 use std::ops::{Deref, DerefMut, Index, IndexMut};
 
 use crate::ast::{AKind, Ast, Vis};
+use crate::lexer::TKind as LTKind;
 use crate::lexer::{Token, TokenView};
-use crate::util::storage::{LockedList, LinkedList, ReusableList};
-use crate::util::{
-    sdbm::{SdbmHashState, ID},
-    storage::{List, IndexPointer},
-};
+use crate::module_tree::*;
 use crate::types::Type;
 use crate::types::*;
-use crate::module_tree::*;
-use crate::lexer::TKind as LTKind;
-
-use cranelift_codegen::ir::{
-    Value as CrValue, 
-    Block as CrBlock, 
-    StackSlot, Signature,
+use crate::util::storage::{LinkedList, LockedList, ReusableList, Table};
+use crate::util::{
+    sdbm::{SdbmHashState, ID},
+    storage::{IndexPointer, List},
 };
+
+use cranelift_codegen::ir::{Block as CrBlock, Signature, StackSlot, Value as CrValue};
 use cranelift_frontend::Variable as CrVar;
 use cranelift_module::FuncId;
 
 type Result<T = ()> = std::result::Result<T, FunError>;
 type ExprResult = Result<Option<Value>>;
+
+pub const FUN_SALT: ID = ID(0xDEADBEEF);
 
 pub struct FParser<'a> {
     state: &'a mut FState,
@@ -1841,31 +1839,126 @@ impl<'a> FParser<'a> {
         generic.arg_buffer.push(GenericElement::ScopeEnd);
     }
 
-    fn load_arg(&mut self, ast: &Ast) -> Result {
+    */
+
+    fn collect(&mut self, module: Mod) -> Result {
+        let module_id = self.state.modules[module].id;
+        let mut ast = std::mem::take(&mut self.state.parsed_ast);
+
+        for (attr_id, a) in ast.iter_mut().enumerate() {
+            match &a.kind {
+                &AKind::Fun(vis) => {
+                    self.collect_fun(std::mem::take(a), module, module_id, vis, attr_id)?
+                }
+                _ => (),
+            }
+        }
+
+        Ok(())
+    }
+
+    fn collect_fun(
+        &mut self,
+        ast: Ast,
+        module: Mod,
+        module_id: ID,
+        vis: Vis,
+        attr_id: usize,
+    ) -> Result {
+        let header = &ast[0];
+        let hint = header.token.clone();
+        let name = &header[0];
+        let (name, mut id, kind) = if name.kind == AKind::Ident {
+            let name = name.token.spam.raw();
+            let mut fun_id = FUN_SALT.add(name);
+
+            let mut args = std::mem::take(&mut self.context.arg_buffer);
+            args.clear();
+
+            for arg_section in &ast[1..ast.len() - 1] {
+                let ty = self.parse_type(module, &arg_section[arg_section.len() - 1])?;
+                for arg in arg_section[0..arg_section.len() - 1].iter() {
+                    let id = ID(0).add(arg.token.spam.raw());
+                    fun_id = fun_id.combine(id);
+                    let val_ent = ValueEnt {
+                        id,
+                        ty,
+
+                        ..ValueEnt::default()
+                    };
+                    args.push(val_ent);
+                }
+            }
+
+            let raw_ret_ty = &header[header.len() - 1];
+            let ret_ty = if raw_ret_ty.kind != AKind::None {
+                Some(self.parse_type(module, raw_ret_ty)?)
+            } else {
+                None
+            };
+
+            let ast = self.state.asts.add(ast);
+            let n_ent = NFunEnt {
+                signature: FunSignature {
+                    args: args.clone(),
+                    ret_ty,
+                },
+                ast,
+            };
+            let n = self.state.nfuns.add(n_ent);
+            self.context.arg_buffer = args;
+            (name, fun_id, FKind::Normal(n))
+        } else if name.kind == AKind::Instantiation {
+            let name = &name[0];
+            if name.kind != AKind::Ident {
+                return Err(FunError::new(
+                    FEKind::InvalidFunctionHeader,
+                    name.token.clone(),
+                ));
+            }
+            let name = name.token.spam.raw();
+            
+
+            todo!();
+        } else {
+            return Err(FunError::new(
+                FEKind::InvalidFunctionHeader,
+                name.token.clone(),
+            ));
+        };
+
+        id = id.combine(module_id);
+
+        let fun_ent = FunEnt {
+            vis,
+            id,
+            module,
+            hint,
+            kind,
+            name,
+            attr_id,
+        };
+
+        self.state.funs.insert(id, fun_ent);
+        Ok(())
+    }
+
+    /*fn load_arg(&mut self, module: Mod, ast: &Ast, params: &[ID], buffer: &mut Vec<GenericElement>) -> Result {
         match &ast.kind {
             AKind::Ident => {
                 let id = TYPE_SALT.add(ast.token.spam.deref());
-                if let Some(index) = self
-                    .context
-                    .generic
-                    .param_buffer
+                if let Some(index) = params
                     .iter()
                     .position(|&p| p == id)
                 {
-                    self.context
-                        .generic
-                        .arg_buffer
-                        .push(GenericElement::Parameter(index));
+                    buffer.push(GenericElement::Parameter(index));
                 } else {
-                    let ty = self.find_type(&ast.token)?;
-                    self.context
-                        .generic
-                        .arg_buffer
-                        .push(GenericElement::Element(ty, None));
+                    let ty = self.parse_type(module, ast)?;
+                    buffer.push(GenericElement::Element(ty, None));
                 }
             }
             AKind::Instantiation => {
-                self.load_arg(&ast[0])?;
+                self.load_arg(module, &ast[0], params, buffer)?;
                 self.context
                     .generic
                     .arg_buffer
@@ -1890,10 +1983,8 @@ impl<'a> FParser<'a> {
         }
 
         Ok(())
-    }
+    }*/
 
-    */
-    
     #[inline]
     fn auto(&self) -> Type {
         self.state.builtin_repo.auto
@@ -1913,8 +2004,7 @@ impl<'a> FParser<'a> {
 
         let name = ID(0).add(token.spam.deref());
 
-        self
-            .state
+        self.state
             .loops
             .iter()
             .rev()
@@ -1925,7 +2015,7 @@ impl<'a> FParser<'a> {
 
     fn base_of_err(&mut self, ty: Type, token: &Token) -> Result<(Type, bool, bool)> {
         self.base_of(ty)
-            .ok_or_else(|| FunError::new(FEKind::NonPointerDereference, token))
+            .ok_or_else(|| FunError::new(FEKind::NonPointerDereference, token.clone()))
     }
 
     fn base_of(&mut self, ty: Type) -> Option<(Type, bool, bool)> {
@@ -1962,16 +2052,11 @@ impl<'a> FParser<'a> {
 pub struct FunError {
     pub kind: FEKind,
     pub token: Token,
-    pub message: String,
 }
 
 impl FunError {
-    pub fn new(kind: FEKind, token: &Token) -> Self {
-        FunError {
-            kind,
-            token: token.clone(),
-            message: String::new(),
-        }
+    pub fn new(kind: FEKind, token: Token) -> Self {
+        FunError { kind, token }
     }
 }
 
@@ -1996,6 +2081,7 @@ pub enum FEKind {
     BreakOutsideLoop,
     WrongLabel,
     NonPointerDereference,
+    InvalidFunctionHeader,
 }
 
 impl Into<FunError> for TypeError {
@@ -2003,7 +2089,6 @@ impl Into<FunError> for TypeError {
         FunError {
             kind: FEKind::TypeError(self.kind),
             token: self.token,
-            message: String::new(),
         }
     }
 }
@@ -2019,13 +2104,13 @@ crate::index_pointer!(Fun);
 
 #[derive(Debug, Clone)]
 pub struct FunEnt {
-    pub visibility: Vis,
+    pub vis: Vis,
     pub id: ID,
     pub module: Mod,
     pub hint: Token,
     pub kind: FKind,
     pub name: &'static str,
-    pub attribute_id: usize,
+    pub attr_id: usize,
 }
 
 #[derive(Debug, Default, Clone)]
@@ -2047,6 +2132,7 @@ pub enum FKind {
     Generic(GFun),
     Normal(NFun),
     Represented(RFun),
+    Compiled(CFun),
 }
 
 crate::index_pointer!(NFun);
@@ -2072,10 +2158,17 @@ pub struct GFunEnt {
 crate::index_pointer!(RFun);
 
 pub struct RFunEnt {
-    pub signature: Signature,
-    pub object_id: FuncId,
+    pub signature: FunSignature,
     pub body: FunBody,
-}   
+}
+
+crate::index_pointer!(CFun);
+
+pub struct CFunEnt {
+    pub signature: FunSignature,
+    pub ir_signature: Signature,
+    pub id: FuncId,
+}
 
 #[derive(Debug, Clone)]
 pub struct GenericSignature {
@@ -2108,8 +2201,7 @@ impl GenericElement {
 #[derive(Debug, Default, Clone)]
 pub struct FunSignature {
     pub args: Vec<ValueEnt>,
-    pub return_type: Option<Type>,
-    pub struct_return: bool,
+    pub ret_ty: Option<Type>,
 }
 
 crate::index_pointer!(Inst);
@@ -2196,9 +2288,9 @@ pub struct Loop {
 
 crate::index_pointer!(Value);
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Default)]
 pub struct ValueEnt {
-    pub name: ID,
+    pub id: ID,
     pub ty: Type,
     pub inst: Option<Inst>,
     pub type_dependency: Option<TypeDep>,
@@ -2211,7 +2303,7 @@ pub struct ValueEnt {
 impl ValueEnt {
     pub fn new(name: ID, ty: Type, mutable: bool) -> Self {
         Self {
-            name,
+            id: name,
             ty,
             mutable,
 
@@ -2225,7 +2317,7 @@ impl ValueEnt {
 
     pub fn temp(ty: Type) -> Self {
         Self {
-            name: ID(0),
+            id: ID(0),
             ty,
             inst: None,
             type_dependency: None,
@@ -2247,15 +2339,22 @@ pub enum FinalValue {
     StackSlot(StackSlot),
 }
 
+impl Default for FinalValue {
+    fn default() -> Self {
+        FinalValue::None
+    }
+}
+
 crate::index_pointer!(TypeDep);
 
 pub struct FState {
     pub t_state: TState,
-    pub funs: List<Fun, FunEnt>,
+    pub funs: Table<Fun, FunEnt>,
     pub nfuns: ReusableList<NFun, NFunEnt>,
     pub gfuns: ReusableList<GFun, GFunEnt>,
     pub bfuns: ReusableList<BFun, BFunEnt>,
     pub rfuns: ReusableList<RFun, RFunEnt>,
+    pub cfuns: ReusableList<CFun, CFunEnt>,
 
     pub loops: Vec<Loop>,
 }
@@ -2265,9 +2364,21 @@ crate::inherit!(FState, t_state, TState);
 pub struct FContext {
     pub t_context: TContext,
     pub body: FunBody,
+    pub arg_buffer: Vec<ValueEnt>,
+}
+
+impl FContext {
+    pub fn new(t_context: TContext) -> Self {
+        Self {
+            t_context,
+            body: FunBody::default(),
+            arg_buffer: Vec::new(),
+        }
+    }
 }
 
 crate::inherit!(FContext, t_context, TContext);
+
 
 /*pub fn test() {
     let mut state = FState::default();

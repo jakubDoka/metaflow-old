@@ -1,10 +1,13 @@
 #![allow(dead_code)]
 #![feature(option_result_unwrap_unchecked)]
+#![feature(vec_into_raw_parts)]
 extern crate cranelift_codegen;
 extern crate cranelift_frontend;
 
 pub mod ast;
+pub mod attributes;
 pub mod cli;
+pub mod functions;
 pub mod gen;
 pub mod ir;
 pub mod lexer;
@@ -12,8 +15,6 @@ pub mod module_tree;
 pub mod testing;
 pub mod types;
 pub mod util;
-pub mod attributes;
-pub mod functions;
 
 pub const FILE_EXTENSION: &str = ".pmt";
 

@@ -1,5 +1,6 @@
 pub mod sdbm;
 pub mod storage;
+pub mod pool;
 
 #[macro_export]
 macro_rules! inherit {
@@ -11,17 +12,16 @@ macro_rules! inherit {
                 &self.$field
             }
         }
-        
+
         impl DerefMut for $type {
             fn deref_mut(&mut self) -> &mut Self::Target {
                 &mut self.$field
             }
         }
     };
-
-
 }
 
 pub fn test() {
     storage::test();
+    pool::test();
 }

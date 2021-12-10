@@ -1,8 +1,9 @@
-use std::path::{Path, PathBuf};
 use std::ops::{Deref, DerefMut};
+use std::path::{Path, PathBuf};
 
-use crate::ast::{AstError, AstParser, AstState, Dep, Import};
+use crate::ast::{AstError, AstParser, AstState, Dep};
 use crate::lexer::Lexer;
+use crate::util::pool::{Pool, PoolRef};
 use crate::util::sdbm::{SdbmHashState, ID};
 use crate::util::storage::{IndexPointer, Table};
 use crate::{ast::AstContext, lexer::Token, util::storage::List};
@@ -31,7 +32,7 @@ impl<'a> MTParser<'a> {
         let root_manifest_id = Manifest::new(0);
 
         let root_manifest_hash = self.state.manifests[root_manifest_id].id;
-        
+
         let builtin_module = ModEnt {
             id: MOD_SALT.add("builtin").combine(root_manifest_hash),
             dependency: vec![],
@@ -40,8 +41,12 @@ impl<'a> MTParser<'a> {
             manifest: root_manifest_id,
         };
 
-        self.state.builtin_module = self.state.modules.insert(builtin_module.id, builtin_module).1;
-        
+        self.state.builtin_module = self
+            .state
+            .modules
+            .insert(builtin_module.id, builtin_module)
+            .1;
+
         let root_manifest_name = self.state.manifests[root_manifest_id].name;
 
         let module = self.load_module(
@@ -93,7 +98,9 @@ impl<'a> MTParser<'a> {
                 module.dependency.push((nickname, dependency));
                 module.dependant.push(module_id);
             }
-            module.dependency.push((MOD_SALT.add("builtin"), self.state.builtin_module));
+            module
+                .dependency
+                .push((MOD_SALT.add("builtin"), self.state.builtin_module));
             self.state.modules[module_id] = module;
         }
 
@@ -107,14 +114,10 @@ impl<'a> MTParser<'a> {
         }
 
 
-        let mut module_order = OrderingContext::new();
+        let order = create_order(&self.state.modules, module, &mut self.context.pool);
 
-        create_order(&self.state.modules, module, &mut module_order);
 
-        module_order.result();
-
-        self.state.module_order = module_order.frontier;
-
+        self.state.module_order = order.deref().clone();
 
         Ok(())
     }
@@ -141,12 +144,9 @@ impl<'a> MTParser<'a> {
                     .unwrap_or(""),
             )
             .unwrap();
-        
+
         if module_path == Path::new("") && manifest.name != root {
-            return Err(MTError::new(
-                MTEKind::DisplacedModule,
-                token,
-            ));
+            return Err(MTError::new(MTEKind::DisplacedModule, token));
         }
 
         path_buffer.push(module_path);
@@ -288,7 +288,10 @@ impl<'a> MTParser<'a> {
         let mut stack = vec![];
 
         if let Some(cycle) = detect_cycles(&self.state.manifests, Manifest::new(0), &mut stack) {
-            return Err(MTError::new(MTEKind::CyclicManifests(cycle), Token::default()));
+            return Err(MTError::new(
+                MTEKind::CyclicManifests(cycle),
+                Token::default(),
+            ));
         }
 
         path_buffer.clear();
@@ -327,70 +330,37 @@ impl<'a> MTParser<'a> {
 pub fn create_order<I: IndexPointer + 'static, S: TreeStorage<I>>(
     storage: &S,
     root: I,
-    ctx: &mut OrderingContext<I>,
-) {
-    ctx.clear();
+    pool: &mut Pool,
+) -> PoolRef<I> {
     let len = storage.len();
-    ctx.result.reserve(len * 2);
-    ctx.frontier.reserve(len * 4);
-    ctx.frontier.push(root);
-    ctx.lookup.resize(len, None);
+    let mut result = pool.get();
+    result.reserve(len * 2);
+    let mut frontier = pool.get();
+    frontier.reserve(len * 4);
+    frontier.push(root);
+    let mut lookup = pool.get();
+    lookup.resize(len, None);
 
     let mut i = 0;
 
-    while i < ctx.frontier.len() {
-        let node = ctx.frontier[i];
-        if let Some(seen_at) = ctx.lookup[node.raw()] {
-            ctx.result[seen_at] = None;
-            ctx.lookup[node.raw()] = Some(ctx.result.len());
+    while i < frontier.len() {
+        let node = frontier[i];
+        if let Some(seen_at) = lookup[node.raw()] {
+            result[seen_at] = None;
+            lookup[node.raw()] = Some(result.len());
         }
-        ctx.result.push(Some(node));
-        let last = ctx.frontier.len() - 1;
-        let last = ctx.frontier[last];
+        result.push(Some(node));
+        let last = frontier.len() - 1;
+        let last = frontier[last];
 
-        ctx.frontier.extend(
-            iter(storage, node)
-                .filter(|module| *module != last),
-        );
+        frontier
+            .extend(iter(storage, node).filter(|module| *module != last));
         i += 1;
     }
-}
 
-#[derive(Debug, Clone)]
-pub struct OrderingContext<I> {
-    pub lookup: Vec<Option<usize>>,
-    pub result: Vec<Option<I>>,
-    pub frontier: Vec<I>,
-}
-
-impl<I> OrderingContext<I> {
-    pub fn new() -> Self {
-        Self {
-            lookup: Vec::new(),
-            result: Vec::new(),
-            frontier: Vec::new(),
-        }
-    }
-
-    pub fn result(&mut self) -> &[I] {
-        let mut frontier = std::mem::take(&mut self.frontier);
-        frontier.clear();
-        frontier.extend(self.result.drain(..).filter_map(|node| node));
-        self.frontier = frontier;
-        &self.frontier
-    }
-
-    pub fn clear(&mut self) {
-        self.lookup.clear();
-        self.result.clear();
-        self.frontier.clear();
-    }
-}
-
-impl<I> Default for OrderingContext<I> {
-    fn default() -> Self {
-        Self::new()
-    }
+    let mut final_result = pool.get();
+    final_result.extend(result.iter().filter_map(|node| node.clone()));
+    final_result
 }
 
 pub fn detect_cycles<I: IndexPointer, S: TreeStorage<I>>(
@@ -425,8 +395,10 @@ pub fn detect_cycles<I: IndexPointer, S: TreeStorage<I>>(
     None
 }
 
-
-fn iter<'a, I: 'static + Clone + Copy, T: TreeStorage<I>>(storage: &'a T, id: I) -> impl Iterator<Item = I> + 'a {
+fn iter<'a, I: 'static + Clone + Copy, T: TreeStorage<I>>(
+    storage: &'a T,
+    id: I,
+) -> impl Iterator<Item = I> + 'a {
     (0..storage.node_len(id)).map(move |i| storage.node_dep(id, i))
 }
 
@@ -487,23 +459,28 @@ impl MTState {
     pub fn collect_scopes(&self, module: Mod, buffer: &mut Vec<(Mod, ID)>) {
         let module_ent = &self.modules[module];
         buffer.push((module, module_ent.id));
-        buffer.extend(module_ent.dependency.iter().map(|&(_, id)| (id, self.modules[id].id)));
+        buffer.extend(
+            module_ent
+                .dependency
+                .iter()
+                .map(|&(_, id)| (id, self.modules[id].id)),
+        );
     }
 
     pub fn find_dep(&self, inside: Mod, name: &Token) -> Option<Mod> {
         let id = ID(0).add(name.spam.raw());
-        self
-            .modules[inside]
-            .dependency.iter()
+        self.modules[inside]
+            .dependency
+            .iter()
             .find(|&(m_id, _)| *m_id == id)
             .map(|&(_, id)| id)
-    } 
+    }
 }
 
 #[derive(Debug, Clone, Default)]
 pub struct MTContext {
     pub ast: AstContext,
-    pub import_buffer: Vec<Import>,
+    pub pool: Pool,
 }
 
 crate::inherit!(MTContext, ast, AstContext);

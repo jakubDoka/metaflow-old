@@ -156,9 +156,7 @@ impl<'a> AstParser<'a> {
                 TKind::Attr => ast.push(self.attr()?),
                 TKind::Struct => ast.push(self.struct_declaration()?),
                 TKind::Indent(_) => self.state.next(),
-                _ => {
-                    return Err(self.unexpected_str("expected 'fun' or 'attr' or 'struct'"))
-                }
+                _ => return Err(self.unexpected_str("expected 'fun' or 'attr' or 'struct'")),
             }
         }
         Ok(ast)
@@ -891,7 +889,6 @@ impl<'a> AstParser<'a> {
     }
 
     fn unexpected_str(&self, message: &'static str) -> AstError {
-        
         self.unexpected(message.to_string())
     }
 
