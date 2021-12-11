@@ -672,181 +672,6 @@ Group 'fun' "fun":
      Ident ident "c"
     Lit integer "30"
 
-+ i8
-+ i16
-+ i32
-+ i64
-+ u8
-+ u16
-+ u32
-+ u64
-+ int
-+ uint
-- i8
-- i16
-- i32
-- i64
-- u8
-- u16
-- u32
-- u64
-- int
-- uint
-* i8
-* i16
-* i32
-* i64
-* u8
-* u16
-* u32
-* u64
-* int
-* uint
-/ i8
-/ i16
-/ i32
-/ i64
-/ u8
-/ u16
-/ u32
-/ u64
-/ int
-/ uint
-== i8
-== i16
-== i32
-== i64
-== u8
-== u16
-== u32
-== u64
-== int
-== uint
-!= i8
-!= i16
-!= i32
-!= i64
-!= u8
-!= u16
-!= u32
-!= u64
-!= int
-!= uint
->= i8
->= i16
->= i32
->= i64
->= u8
->= u16
->= u32
->= u64
->= int
->= uint
-<= i8
-<= i16
-<= i32
-<= i64
-<= u8
-<= u16
-<= u32
-<= u64
-<= int
-<= uint
-> i8
-> i16
-> i32
-> i64
-> u8
-> u16
-> u32
-> u64
-> int
-> uint
-< i8
-< i16
-< i32
-< i64
-< u8
-< u16
-< u32
-< u64
-< int
-< uint
-^ i8
-^ i16
-^ i32
-^ i64
-^ u8
-^ u16
-^ u32
-^ u64
-^ int
-^ uint
-| i8
-| i16
-| i32
-| i64
-| u8
-| u16
-| u32
-| u64
-| int
-| uint
-& i8
-& i16
-& i32
-& i64
-& u8
-& u16
-& u32
-& u64
-& int
-& uint
->> i8
->> i16
->> i32
->> i64
->> u8
->> u16
->> u32
->> u64
->> int
->> uint
-<< i8
-<< i16
-<< i32
-<< i64
-<< u8
-<< u16
-<< u32
-<< u64
-<< int
-<< uint
-+ f32
-+ f64
-- f32
-- f64
-* f32
-* f64
-/ f32
-/ f64
-== f32
-== f64
-!= f32
-!= f64
->= f32
->= f64
-<= f32
-<= f64
-> f32
-> f64
-< f32
-< f64
-&& bool
-|| bool
-^ bool
-| bool
-& bool
 fun init -> Fun
 
   Inst1[]
@@ -862,19 +687,21 @@ fun init -> Fun
 
 fun init2 -> Complex
 
-  Inst1[]
-    Value(0): Complex = ZeroValue |cp
-    Value(1): Complex = VarDecl(Value(0)) |cp
-    Value(6): i32 = Offset(Value(1)) |cp.c
-    Value(4): i32 = Offset(Value(1)) |cp.b
-    Value(2): i32 = Offset(Value(1)) |cp.a
-    Value(3): int = Lit(Int(1, 0)) |1
-    Value(3): int = Assign(Value(2)) |cp.a = 1
-    Value(5): int = Lit(Int(2, 0)) |2
-    Value(5): int = Assign(Value(4)) |cp.b = 2
-    Value(7): int = Lit(Int(3, 0)) |3
-    Value(7): int = Assign(Value(6)) |cp.c = 3
-    Return(Some(Value(1))) |cp
+  Inst1[Value(0)]
+    Value(1): Complex = ZeroValue |cp
+    Value(2): Complex = VarDecl(Value(1)) |cp
+    Value(7): i32 = Offset(Value(2)) |cp.c
+    Value(5): i32 = Offset(Value(2)) |cp.b
+    Value(3): i32 = Offset(Value(2)) |cp.a
+    Value(4): int = Lit(Int(1, 0)) |1
+    Value(4): int = Assign(Value(3)) |cp.a = 1
+    Value(6): int = Lit(Int(2, 0)) |2
+    Value(6): int = Assign(Value(5)) |cp.b = 2
+    Value(8): int = Lit(Int(3, 0)) |3
+    Value(8): int = Assign(Value(7)) |cp.c = 3
+    Value(9): Complex = Deref(Value(0)) |cp
+    Value(2): Complex = Assign(Value(9)) |cp
+    Return(Some(Value(0))) |cp
 
 fun deref -> i32
 
@@ -1067,41 +894,43 @@ fun +(a, b: Vec) -> Vec
 
 fun something -> Embedded[i64]
 
-  Inst1[]
-    Value(0): Vec = ZeroValue |a, b: Vec
-    Value(1): Vec = VarDecl(Value(0)) |a, b: Vec
-    Value(6): f32 = Offset(Value(1)) |a.y
-    Value(4): f32 = Offset(Value(1)) |a.x
-    Value(2): Vec = ZeroValue |a, b: Vec
-    Value(3): Vec = VarDecl(Value(2)) |a, b: Vec
-    Value(10): f32 = Offset(Value(3)) |b.y
-    Value(8): f32 = Offset(Value(3)) |b.x
-    Value(5): f32 = Lit(Float(NaN, 32)) |1f32
-    Value(5): f32 = Assign(Value(4)) |a.x = 1f32
-    Value(7): f32 = Lit(Float(NaN, 32)) |4f32
-    Value(7): f32 = Assign(Value(6)) |a.y = 4f32
-    Value(9): f32 = Lit(Float(NaN, 32)) |2f32
-    Value(9): f32 = Assign(Value(8)) |b.x = 2f32
-    Value(11): f32 = Lit(Float(NaN, 32)) |3f32
-    Value(11): f32 = Assign(Value(10)) |b.y = 3f32
-    Value(12): Vec = Call(Fun(407), [Value(1), Value(3)]) |a += b
-    Value(12): Vec = Assign(Value(1)) |a += b
-    Value(13): Seq[int] = ZeroValue |s
-    Value(14): Seq[int] = VarDecl(Value(13)) |s
-    Value(26): &var Seq[int] = Ref(Value(14)) |s.push(10)
-    Value(25): &var Seq[int] = Ref(Value(14)) |s.push(10)
-    Value(15): int = Lit(Int(10, 0)) |10
-    Call(Fun(410), [Value(25), Value(15)]) |s.push(10)
-    Value(17): int = Lit(Int(10, 0)) |10
-    Call(Fun(410), [Value(26), Value(17)]) |s.push(10)
-    Value(19): Embedded[int] = ZeroValue |v: Embedded[int]
-    Value(20): Embedded[int] = VarDecl(Value(19)) |v: Embedded[int]
-    Value(22): Seq[int] = Offset(Value(20)) |v.push(10)
-    Value(23): &var Seq[int] = Ref(Value(22)) |v.push(10)
-    Value(21): int = Lit(Int(10, 0)) |10
-    Call(Fun(410), [Value(23), Value(21)]) |v.push(10)
-    Value(24): Embedded[i64] = ZeroValue |v.push(10)
-    Return(Some(Value(24))) |v.push(10)
+  Inst1[Value(0)]
+    Value(1): Vec = ZeroValue |a, b: Vec
+    Value(2): Vec = VarDecl(Value(1)) |a, b: Vec
+    Value(7): f32 = Offset(Value(2)) |a.y
+    Value(5): f32 = Offset(Value(2)) |a.x
+    Value(3): Vec = ZeroValue |a, b: Vec
+    Value(4): Vec = VarDecl(Value(3)) |a, b: Vec
+    Value(11): f32 = Offset(Value(4)) |b.y
+    Value(9): f32 = Offset(Value(4)) |b.x
+    Value(6): f32 = Lit(Float(NaN, 32)) |1f32
+    Value(6): f32 = Assign(Value(5)) |a.x = 1f32
+    Value(8): f32 = Lit(Float(NaN, 32)) |4f32
+    Value(8): f32 = Assign(Value(7)) |a.y = 4f32
+    Value(10): f32 = Lit(Float(NaN, 32)) |2f32
+    Value(10): f32 = Assign(Value(9)) |b.x = 2f32
+    Value(12): f32 = Lit(Float(NaN, 32)) |3f32
+    Value(12): f32 = Assign(Value(11)) |b.y = 3f32
+    Value(13): Vec = Call(Fun(407), [Value(2), Value(4)]) |a += b
+    Value(13): Vec = Assign(Value(2)) |a += b
+    Value(14): Seq[int] = ZeroValue |s
+    Value(15): Seq[int] = VarDecl(Value(14)) |s
+    Value(28): &var Seq[int] = Ref(Value(15)) |s.push(10)
+    Value(27): &var Seq[int] = Ref(Value(15)) |s.push(10)
+    Value(16): int = Lit(Int(10, 0)) |10
+    Call(Fun(410), [Value(27), Value(16)]) |s.push(10)
+    Value(18): int = Lit(Int(10, 0)) |10
+    Call(Fun(410), [Value(28), Value(18)]) |s.push(10)
+    Value(20): Embedded[int] = ZeroValue |v: Embedded[int]
+    Value(21): Embedded[int] = VarDecl(Value(20)) |v: Embedded[int]
+    Value(23): Seq[int] = Offset(Value(21)) |v.push(10)
+    Value(24): &var Seq[int] = Ref(Value(23)) |v.push(10)
+    Value(22): int = Lit(Int(10, 0)) |10
+    Call(Fun(410), [Value(24), Value(22)]) |v.push(10)
+    Value(25): Embedded[i64] = ZeroValue |v.push(10)
+    Value(26): Embedded[i64] = Deref(Value(0)) |v.push(10)
+    Value(25): Embedded[i64] = Assign(Value(26)) |v.push(10)
+    Return(Some(Value(0))) |v.push(10)
 
 fun push[T](seq: &var Seq[T], x: T)
 
@@ -1125,3 +954,37 @@ fun boo[T](x: &T) -> T
     Value(1): i64 = Deref(Value(0)) |*x
     Return(Some(Value(1))) |*x
 
+[Mod(1), Mod(0)]
+[Ast { kind: Attribute, children: [Ast { kind: AttributeElement, children: [Ast { kind: Ident, children: [], token: Token { kind: Ident, spam: "entry", line_data: LineData { line: 2, column: 5, file_name: "src/gen/test_project\\root.mf" } } }], token: Token { kind: Ident, spam: "entry", line_data: LineData { line: 2, column: 5, file_name: "src/gen/test_project\\root.mf" } } }], token: Token { kind: Attr, spam: "attr entry", line_data: LineData { line: 2, column: 0, file_name: "src/gen/test_project\\root.mf" } } }]
+0
+[Mod(1), Mod(0)]
+[Ast { kind: Attribute, children: [Ast { kind: AttributeElement, children: [Ast { kind: Ident, children: [], token: Token { kind: Ident, spam: "entry", line_data: LineData { line: 2, column: 5, file_name: "src/gen/test_project\\root.mf" } } }], token: Token { kind: Ident, spam: "entry", line_data: LineData { line: 2, column: 5, file_name: "src/gen/test_project\\root.mf" } } }], token: Token { kind: Attr, spam: "attr entry", line_data: LineData { line: 2, column: 0, file_name: "src/gen/test_project\\root.mf" } } }]
+0
+[Mod(1), Mod(0)]
+[Ast { kind: Attribute, children: [Ast { kind: AttributeElement, children: [Ast { kind: Ident, children: [], token: Token { kind: Ident, spam: "entry", line_data: LineData { line: 2, column: 5, file_name: "src/gen/test_project\\root.mf" } } }], token: Token { kind: Ident, spam: "entry", line_data: LineData { line: 2, column: 5, file_name: "src/gen/test_project\\root.mf" } } }], token: Token { kind: Attr, spam: "attr entry", line_data: LineData { line: 2, column: 0, file_name: "src/gen/test_project\\root.mf" } } }]
+0
+[Mod(1), Mod(0)]
+[Ast { kind: Attribute, children: [Ast { kind: AttributeElement, children: [Ast { kind: Ident, children: [], token: Token { kind: Ident, spam: "entry", line_data: LineData { line: 2, column: 5, file_name: "src/gen/test_project\\root.mf" } } }], token: Token { kind: Ident, spam: "entry", line_data: LineData { line: 2, column: 5, file_name: "src/gen/test_project\\root.mf" } } }], token: Token { kind: Attr, spam: "attr entry", line_data: LineData { line: 2, column: 0, file_name: "src/gen/test_project\\root.mf" } } }]
+0
+[Mod(1), Mod(0)]
+[Ast { kind: Attribute, children: [Ast { kind: AttributeElement, children: [Ast { kind: Ident, children: [], token: Token { kind: Ident, spam: "entry", line_data: LineData { line: 21, column: 5, file_name: "src/gen/test_project\\root.mf" } } }], token: Token { kind: Ident, spam: "entry", line_data: LineData { line: 21, column: 5, file_name: "src/gen/test_project\\root.mf" } } }], token: Token { kind: Attr, spam: "attr entry", line_data: LineData { line: 21, column: 0, file_name: "src/gen/test_project\\root.mf" } } }]
+2
+[Mod(1), Mod(0)]
+[Ast { kind: Attribute, children: [Ast { kind: AttributeElement, children: [Ast { kind: Ident, children: [], token: Token { kind: Ident, spam: "entry", line_data: LineData { line: 13, column: 5, file_name: "src/gen/test_project\\root.mf" } } }], token: Token { kind: Ident, spam: "entry", line_data: LineData { line: 13, column: 5, file_name: "src/gen/test_project\\root.mf" } } }], token: Token { kind: Attr, spam: "attr entry", line_data: LineData { line: 13, column: 0, file_name: "src/gen/test_project\\root.mf" } } }]
+3
+[Mod(1), Mod(0)]
+[Ast { kind: Attribute, children: [Ast { kind: AttributeElement, children: [Ast { kind: Ident, children: [], token: Token { kind: Ident, spam: "entry", line_data: LineData { line: 11, column: 5, file_name: "src/gen/test_project\\root.mf" } } }], token: Token { kind: Ident, spam: "entry", line_data: LineData { line: 11, column: 5, file_name: "src/gen/test_project\\root.mf" } } }], token: Token { kind: Attr, spam: "attr entry", line_data: LineData { line: 11, column: 0, file_name: "src/gen/test_project\\root.mf" } } }]
+2
+[Mod(1), Mod(0)]
+[Ast { kind: Attribute, children: [Ast { kind: AttributeElement, children: [Ast { kind: Ident, children: [], token: Token { kind: Ident, spam: "entry", line_data: LineData { line: 2, column: 5, file_name: "src/gen/test_project\\root.mf" } } }], token: Token { kind: Ident, spam: "entry", line_data: LineData { line: 2, column: 5, file_name: "src/gen/test_project\\root.mf" } } }], token: Token { kind: Attr, spam: "attr entry", line_data: LineData { line: 2, column: 0, file_name: "src/gen/test_project\\root.mf" } } }]
+0
+[Mod(1), Mod(0)]
+[Ast { kind: Attribute, children: [Ast { kind: AttributeElement, children: [Ast { kind: Ident, children: [], token: Token { kind: Ident, spam: "entry", line_data: LineData { line: 2, column: 5, file_name: "src/gen/test_project\\root.mf" } } }], token: Token { kind: Ident, spam: "entry", line_data: LineData { line: 2, column: 5, file_name: "src/gen/test_project\\root.mf" } } }], token: Token { kind: Attr, spam: "attr entry", line_data: LineData { line: 2, column: 0, file_name: "src/gen/test_project\\root.mf" } } }]
+0
+[Mod(1), Mod(0)]
+[Ast { kind: Attribute, children: [Ast { kind: AttributeElement, children: [Ast { kind: Ident, children: [], token: Token { kind: Ident, spam: "linkage", line_data: LineData { line: 2, column: 5, file_name: "src/gen/test_project\\root.mf" } } }, Ast { kind: AttributeElement, children: [Ast { kind: Ident, children: [], token: Token { kind: Ident, spam: "import", line_data: LineData { line: 2, column: 13, file_name: "src/gen/test_project\\root.mf" } } }], token: Token { kind: Ident, spam: "import", line_data: LineData { line: 2, column: 13, file_name: "src/gen/test_project\\root.mf" } } }], token: Token { kind: Ident, spam: "linkage(import)", line_data: LineData { line: 2, column: 5, file_name: "src/gen/test_project\\root.mf" } } }, Ast { kind: AttributeElement, children: [Ast { kind: Ident, children: [], token: Token { kind: Ident, spam: "call_conv", line_data: LineData { line: 2, column: 22, file_name: "src/gen/test_project\\root.mf" } } }, Ast { kind: AttributeElement, children: [Ast { kind: Ident, children: [], token: Token { kind: Ident, spam: "platform", line_data: LineData { line: 2, column: 32, file_name: "src/gen/test_project\\root.mf" } } }], token: Token { kind: Ident, spam: "platform", line_data: LineData { line: 2, column: 32, file_name: "src/gen/test_project\\root.mf" } } }], token: Token { kind: Ident, spam: "call_conv(platform)", line_data: LineData { line: 2, column: 22, file_name: "src/gen/test_project\\root.mf" } } }], token: Token { kind: Attr, spam: "attr linkage(import), call_conv(platform)", line_data: LineData { line: 2, column: 0, file_name: "src/gen/test_project\\root.mf" } } }]
+[Ast { kind: Attribute, children: [Ast { kind: AttributeElement, children: [Ast { kind: Ident, children: [], token: Token { kind: Ident, spam: "entry", line_data: LineData { line: 5, column: 5, file_name: "src/gen/test_project\\root.mf" } } }], token: Token { kind: Ident, spam: "entry", line_data: LineData { line: 5, column: 5, file_name: "src/gen/test_project\\root.mf" } } }], token: Token { kind: Attr, spam: "attr entry", line_data: LineData { line: 5, column: 0, file_name: "src/gen/test_project\\root.mf" } } }]
+1
+[Mod(1), Mod(0)]
+[Ast { kind: Attribute, children: [Ast { kind: AttributeElement, children: [Ast { kind: Ident, children: [], token: Token { kind: Ident, spam: "entry", line_data: LineData { line: 10, column: 5, file_name: "src/gen/test_project\\root.mf" } } }], token: Token { kind: Ident, spam: "entry", line_data: LineData { line: 10, column: 5, file_name: "src/gen/test_project\\root.mf" } } }], token: Token { kind: Attr, spam: "attr entry", line_data: LineData { line: 10, column: 0, file_name: "src/gen/test_project\\root.mf" } } }]
+2
