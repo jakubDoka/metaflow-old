@@ -53,13 +53,15 @@ impl<'a> FParser<'a> {
 
     fn translate(&mut self) -> Result {
         while let Some(fun) = self.state.unresolved.pop() {
+            self.state.body = self.context.body_pool.pop().unwrap_or_default();
             self.fun(fun)?;
+            self.declare_fun(fun)?;
         }
 
         Ok(())
     }
 
-    fn fun(&mut self, fun: Fun) -> Result {        
+    fn fun(&mut self, fun: Fun) -> Result {      
         let fun_ent = &self.state.funs[fun];
         let param_len = fun_ent.params.len();
 
@@ -295,8 +297,7 @@ impl<'a> FParser<'a> {
     }
 
     fn return_value(&mut self, fun: Fun, value: Value, token: &Token) -> Value {
-        let nid = self.state.funs[fun].kind.unwrap_normal();
-        let ty = self.state.nfuns[nid].sig.ret_ty.unwrap();
+        let ty = self.return_type_of(fun).unwrap();
         if self.state.types[ty].on_stack() {
             let entry = self.state.body.insts.first().unwrap();
             let return_value = self.state.body.insts[entry].kind.block().args.last().unwrap().clone();
@@ -415,8 +416,7 @@ impl<'a> FParser<'a> {
     }
 
     fn return_statement(&mut self, fun: Fun, ast: &Ast) -> Result {
-        let nid = self.state.funs[fun].kind.unwrap_normal();
-        let ty = self.state.nfuns[nid].sig.ret_ty;
+        let ty = self.return_type_of(fun);
 
         let value = if ast[0].kind == AKind::None {
             if let Some(ty) = ty {
@@ -934,8 +934,7 @@ impl<'a> FParser<'a> {
         } else {
             let fun =
                 self.smart_find_or_create(module, base_name, name, &mut values, dot_call, token)?;
-            let nid = self.state.funs[fun].kind.unwrap_normal();
-            let return_type = self.state.nfuns[nid].sig.ret_ty;
+            let return_type = self.return_type_of(fun);
 
             let value = return_type.map(|t| {
                 let on_stack = self.state.types[t].on_stack();
@@ -951,6 +950,14 @@ impl<'a> FParser<'a> {
         };
 
         Ok(value)
+    }
+
+    fn return_type_of(&self, fun: Fun) -> Option<Type> {
+        match &self.state.funs[fun].kind {
+            &FKind::Normal(nid) => self.state.nfuns[nid].sig.ret_ty,
+            &FKind::Builtin(ret_ty) => ret_ty,
+            i => unreachable!("{:?}", i),
+        } 
     }
 
     fn ident(&mut self, ast: &Ast) -> ExprResult {
@@ -1136,7 +1143,7 @@ impl<'a> FParser<'a> {
                         let val = inst.value.unwrap();
                         let value = *value;
                         let value_datatype = self.state.body.values[value].ty;
-                        let (_, mutable, nullable) = self.base_of(value_datatype).unwrap();
+                        let (_, mutable, nullable) = self.base_of(self.state.body.values[val].ty).unwrap();
                         let ty = self.pointer_of(value_datatype, mutable, nullable);
                         frontier.push((val, ty));
                     }
@@ -1169,10 +1176,11 @@ impl<'a> FParser<'a> {
         let token = self.state.body.insts[inst].hint.clone();
 
         let fun = self.smart_find_or_create(module, base_id, name, &mut args, dot_expr, &token)?;
-        let nid = self.state.funs[fun].kind.unwrap_normal();
+        
 
         if self.state.body.insts[inst].unresolved != 0 {
             let mut types = self.context.pool.get();    
+            let nid = self.state.funs[fun].kind.unwrap_normal();
             types.extend(
                 self
                     .state
@@ -1190,7 +1198,7 @@ impl<'a> FParser<'a> {
         }
 
         let value = self.state.body.insts[inst].value;
-        let ty = self.state.nfuns[nid].sig.ret_ty;
+        let ty = self.return_type_of(fun);
 
         if let (Some(value), Some(ty)) = (value, ty) {
             if self.state.types[ty].on_stack() {
@@ -1622,6 +1630,7 @@ impl<'a> FParser<'a> {
         while i < g_ent.signature.elements.len() {
             let (amount, length) = match g_ent.signature.elements[i] {
                 GenericElement::NextArgument(amount, length) => (amount, length),
+                GenericElement::NextReturn(_) => break,
                 _ => unreachable!("{:?}", g_ent.signature.elements[i]),
             };
 
@@ -1635,7 +1644,7 @@ impl<'a> FParser<'a> {
                     while i + j < arg.len() + arg_buffer.len() {
                         let a = arg[i].clone();
                         let b = arg_buffer[j].clone();
-                        if a != b {
+                        if !a.compare(&b) {
                             match a {
                                 GenericElement::Parameter(i) => {
                                     if let GenericElement::Element(_, Some(ty)) = b {
@@ -1660,19 +1669,42 @@ impl<'a> FParser<'a> {
                                         }
                                     }
                                 }
+                                GenericElement::Element(..) => {
+                                    if let GenericElement::Element(_, Some(ty)) = b {
+                                        if !self.is_auto(ty) {
+                                            return Ok(None);
+                                        }
+                                        if let Some(&GenericElement::ScopeStart) =
+                                            arg.get(i + 1)
+                                        {
+                                            loop {
+                                                if let Some(&GenericElement::ScopeEnd) =
+                                                    arg.get(i)
+                                                {
+                                                    break;
+                                                }
+                                                i += 1;
+                                            }
+                                        }
+                                    } else {
+                                        return Ok(None)
+                                    }
+                                },
                                 _ => return Ok(None),
                             }
                         }
+                        j += 1;
                         i += 1;
                     }
                 }
+                arg_buffer.clear();
                 j += 1;
             }
             i += length + 1;
         }
 
         let fun_module_id = self.state.modules[fun_ent.module].id;
-        let mut id = FUN_SALT.add(fun_ent.name).combine(fun_module_id);
+        let mut id = FUN_SALT.add(fun_ent.name);
         let vis = fun_ent.vis;
         let name = fun_ent.name;
         let hint = fun_ent.hint.clone();
@@ -1693,11 +1725,16 @@ impl<'a> FParser<'a> {
         }
 
         let ast = std::mem::take(&mut self.state.asts[ast_id]);
-        let signature = self.parse_signature(module, &ast, &mut id)?;
+        let signature = self.parse_signature(module, &ast[0], &mut id)?;
+        id = id.combine(self.state.modules[module].id);
         self.state.asts[ast_id] = ast;
 
         for (id, ty) in shadowed.drain(..) {
             self.state.types.remove_link(id, ty);
+        }
+
+        if let Some(&fun) = self.state.funs.index(id) {
+            return Ok(Some(fun));
         }
 
         let n_ent = NFunEnt {
@@ -2171,7 +2208,7 @@ impl FunBody {
 
 #[derive(Debug, Clone)]
 pub enum FKind {
-    Builtin(BFun),
+    Builtin(Option<Type>),
     Generic(GFun),
     Normal(NFun),
     Represented(RFun),
@@ -2179,13 +2216,6 @@ pub enum FKind {
 }
 
 impl FKind {
-    pub fn unwrap_builtin(&self) -> BFun {
-        match self {
-            FKind::Builtin(b) => *b,
-            _ => panic!("{:?}", self),
-        }
-    }
-
     pub fn unwrap_generic(&self) -> GFun {
         match self {
             FKind::Generic(g) => *g,
@@ -2221,12 +2251,6 @@ crate::index_pointer!(NFun);
 pub struct NFunEnt {
     pub sig: FunSignature,
     pub ast: GAst,
-}
-
-crate::index_pointer!(BFun);
-
-pub struct BFunEnt {
-    pub signature: FunSignature,
 }
 
 crate::index_pointer!(GFun);
@@ -2453,7 +2477,6 @@ pub struct FState {
     pub funs: Table<Fun, FunEnt>,
     pub nfuns: ReusableList<NFun, NFunEnt>,
     pub gfuns: List<GFun, GFunEnt>,
-    pub bfuns: List<BFun, BFunEnt>,
     pub rfuns: List<RFun, RFunEnt>,
 
     pub loops: Vec<Loop>,
@@ -2470,12 +2493,11 @@ crate::inherit!(FState, t_state, TState);
 
 impl FState {
     pub fn new(t_state: TState) -> Self {
-        Self {
+        let mut state = Self {
             t_state,
             funs: Table::new(),
             nfuns: ReusableList::new(),
             gfuns: List::new(),
-            bfuns: List::new(),
             rfuns: List::new(),
             loops: Vec::new(),
             body: FunBody::default(),
@@ -2484,7 +2506,125 @@ impl FState {
             vars: Vec::new(),
             unresolved_funs: Vec::new(),
             entry_point: None,
+        };
+
+        let module_id = state.modules[state.builtin_module].id;
+
+        let types = state.builtin_repo.type_list();
+
+        fn create_builtin_fun(state: &mut FState, module: ID, name: &'static str, args: &[Type], ret_ty: Option<Type>) {
+            let mut id = FUN_SALT.add(name);
+            for &arg in args {
+                id = id.combine(state.types[arg].id);
+            }
+            id = id.combine(module);
+            let fun_ent = FunEnt {
+                id,
+                name,
+                vis: Vis::Public,
+                module: state.builtin_module,
+                hint: Token::builtin(name),
+                params: vec![],
+                kind: FKind::Builtin(ret_ty),
+                attr_id: 0,
+            };
+            assert!(state
+                .funs
+                .insert(id, fun_ent)
+                .0
+                .is_none());
         }
+
+        for i in types {
+            for j in types {
+                if i == state.builtin_repo.auto || j == state.builtin_repo.auto {
+                    continue;
+                }
+                let name = state.types[i].name;
+                create_builtin_fun(
+                    &mut state,
+                    module_id,
+                    name,
+                    &[j],
+                    Some(i),
+                );
+            }
+        }
+
+        let integer_types = &[
+            state.builtin_repo.i8,
+            state.builtin_repo.i16,
+            state.builtin_repo.i32,
+            state.builtin_repo.i64,
+            state.builtin_repo.u8,
+            state.builtin_repo.u16,
+            state.builtin_repo.u32,
+            state.builtin_repo.u64,
+            state.builtin_repo.int,
+            state.builtin_repo.uint,
+        ][..];
+
+        let builtin_unary_ops = [
+            ("~ + ++ --", integer_types),
+            (
+                "- abs",
+                &[
+                    state.builtin_repo.i8,
+                    state.builtin_repo.i16,
+                    state.builtin_repo.i32,
+                    state.builtin_repo.i64,
+                    state.builtin_repo.f32,
+                    state.builtin_repo.f64,
+                    state.builtin_repo.int,
+                ][..],
+            ),
+            ("!", &[state.builtin_repo.bool][..]),
+        ];
+
+        for &(operators, types) in builtin_unary_ops.iter() {
+            for op in operators.split(' ') {
+                for &datatype in types.iter() {
+                    create_builtin_fun(
+                        &mut state,
+                        module_id,
+                        op,
+                        &[datatype],
+                        Some(datatype),
+                    );
+                }
+            }
+        }
+
+        let builtin_bin_ops = [
+            ("+ - * / == != >= <= > < ^ | & >> <<", integer_types),
+            (
+                "+ - * / == != >= <= > <",
+                &[state.builtin_repo.f32, state.builtin_repo.f64][..],
+            ),
+            ("&& || ^ | &", &[state.builtin_repo.bool][..]),
+        ];
+
+        for &(operators, types) in builtin_bin_ops.iter() {
+            for op in operators.split(' ') {
+                for &ty in types.iter() {
+                    let return_type = if matches!(op, "==" | "!=" | ">" | "<" | ">=" | "<=") {
+                        state.builtin_repo.bool
+                    } else {
+                        ty
+                    };
+
+                    create_builtin_fun(
+                        &mut state,
+                        module_id,
+                        op,
+                        &[ty, ty],
+                        Some(return_type),
+                    );
+                }
+            }
+        }
+
+        state
     }
 }
 pub struct FContext {

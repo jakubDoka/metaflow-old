@@ -672,3 +672,456 @@ Group 'fun' "fun":
      Ident ident "c"
     Lit integer "30"
 
++ i8
++ i16
++ i32
++ i64
++ u8
++ u16
++ u32
++ u64
++ int
++ uint
+- i8
+- i16
+- i32
+- i64
+- u8
+- u16
+- u32
+- u64
+- int
+- uint
+* i8
+* i16
+* i32
+* i64
+* u8
+* u16
+* u32
+* u64
+* int
+* uint
+/ i8
+/ i16
+/ i32
+/ i64
+/ u8
+/ u16
+/ u32
+/ u64
+/ int
+/ uint
+== i8
+== i16
+== i32
+== i64
+== u8
+== u16
+== u32
+== u64
+== int
+== uint
+!= i8
+!= i16
+!= i32
+!= i64
+!= u8
+!= u16
+!= u32
+!= u64
+!= int
+!= uint
+>= i8
+>= i16
+>= i32
+>= i64
+>= u8
+>= u16
+>= u32
+>= u64
+>= int
+>= uint
+<= i8
+<= i16
+<= i32
+<= i64
+<= u8
+<= u16
+<= u32
+<= u64
+<= int
+<= uint
+> i8
+> i16
+> i32
+> i64
+> u8
+> u16
+> u32
+> u64
+> int
+> uint
+< i8
+< i16
+< i32
+< i64
+< u8
+< u16
+< u32
+< u64
+< int
+< uint
+^ i8
+^ i16
+^ i32
+^ i64
+^ u8
+^ u16
+^ u32
+^ u64
+^ int
+^ uint
+| i8
+| i16
+| i32
+| i64
+| u8
+| u16
+| u32
+| u64
+| int
+| uint
+& i8
+& i16
+& i32
+& i64
+& u8
+& u16
+& u32
+& u64
+& int
+& uint
+>> i8
+>> i16
+>> i32
+>> i64
+>> u8
+>> u16
+>> u32
+>> u64
+>> int
+>> uint
+<< i8
+<< i16
+<< i32
+<< i64
+<< u8
+<< u16
+<< u32
+<< u64
+<< int
+<< uint
++ f32
++ f64
+- f32
+- f64
+* f32
+* f64
+/ f32
+/ f64
+== f32
+== f64
+!= f32
+!= f64
+>= f32
+>= f64
+<= f32
+<= f64
+> f32
+> f64
+< f32
+< f64
+&& bool
+|| bool
+^ bool
+| bool
+& bool
+fun init -> Fun
+
+  Inst1[]
+    Value(0): Fun = ZeroValue |fn
+    Value(1): Fun = VarDecl(Value(0)) |fn
+    Value(4): i32 = Offset(Value(1)) |fn.b
+    Value(2): i32 = Offset(Value(1)) |fn.a
+    Value(3): int = Lit(Int(1, 0)) |1
+    Value(3): int = Assign(Value(2)) |fn.a = 1
+    Value(5): int = Lit(Int(2, 0)) |2
+    Value(5): int = Assign(Value(4)) |fn.b = 2
+    Return(Some(Value(1))) |fn
+
+fun init2 -> Complex
+
+  Inst1[]
+    Value(0): Complex = ZeroValue |cp
+    Value(1): Complex = VarDecl(Value(0)) |cp
+    Value(6): i32 = Offset(Value(1)) |cp.c
+    Value(4): i32 = Offset(Value(1)) |cp.b
+    Value(2): i32 = Offset(Value(1)) |cp.a
+    Value(3): int = Lit(Int(1, 0)) |1
+    Value(3): int = Assign(Value(2)) |cp.a = 1
+    Value(5): int = Lit(Int(2, 0)) |2
+    Value(5): int = Assign(Value(4)) |cp.b = 2
+    Value(7): int = Lit(Int(3, 0)) |3
+    Value(7): int = Assign(Value(6)) |cp.c = 3
+    Return(Some(Value(1))) |cp
+
+fun deref -> i32
+
+  Inst1[]
+    Value(0): i32 = ZeroValue |x
+    Value(1): i32 = VarDecl(Value(0)) |x
+    Value(2): &i32 = Ref(Value(1)) |&x
+    Value(3): &i32 = VarDecl(Value(2)) |y = &x
+    Value(4): i32 = Deref(Value(3)) |*y
+    Return(Some(Value(4))) |*y
+
+fun moo
+
+  Inst1[]
+    Value(0): i64 = ZeroValue |a
+    Value(1): i64 = VarDecl(Value(0)) |a
+    Value(2): &i64 = Ref(Value(1)) |&a
+    Value(3): &i64 = VarDecl(Value(2)) |b = &a
+    Value(4): i64 = Call(Fun(413), [Value(3)]) |boo(b)
+    Value(4): i64 = Assign(Value(1)) |a = boo(b)
+    Value(5): i64 = VarDecl(Value(1)) |c: i64 = a
+    Return(None) |let c: i64 = a
+
+fun main -> int
+
+  Inst1[]
+    Value(0): int = ZeroValue |val
+    Value(1): int = VarDecl(Value(0)) |val
+    Value(2): int = VarDecl(Value(1)) |val2 = val
+    Value(3): int = Lit(Int(10, 0)) |10
+    Value(4): int = Call(Fun(411), [Value(1), Value(3)]) |val ++= 10
+    Value(4): int = Assign(Value(1)) |val ++= 10
+    Value(5): int = Call(Fun(412), [Value(1)]) |goo(val)
+    Value(6): int = VarDecl(Value(5)) |foo = goo(val)
+    Value(7): int = VarDecl(Value(6)) |foo = foo
+    Value(8): int = Lit(Int(10, 0)) |10
+    Value(9): bool = Call(Fun(272), [Value(7), Value(8)]) |foo == 10
+    JumpIfTrue(Value(9), Inst(13), []) |foo == 10
+    Jump(Inst(16), []) |:
+
+  Inst13[]
+    Value(10): int = Lit(Int(1, 0)) |1
+    Jump(Inst(15), [Value(10)]) |if foo == 10: 1 else: 1
+
+  Inst16[]
+    Value(12): int = Lit(Int(1, 0)) |1
+    Jump(Inst(15), [Value(12)]) |1
+
+  Inst15[Value(11)]
+    Value(13): int = Call(Fun(232), [Value(7), Value(11)]) |foo += if foo == 10: 1 else: 1
+    Value(13): int = Assign(Value(7)) |foo += if foo == 10: 1 else: 1
+    Value(14): int = Lit(Int(10, 0)) |10
+    Value(15): bool = Call(Fun(272), [Value(7), Value(14)]) |foo == 10
+    JumpIfTrue(Value(15), Inst(29), []) |foo == 10
+    Jump(Inst(32), []) |:
+
+  Inst29[]
+    Return(Some(Value(7))) |return foo
+
+  Inst32[]
+    Value(16): int = Lit(Int(1, 0)) |1
+    Value(17): int = Call(Fun(232), [Value(7), Value(16)]) |foo += 1
+    Value(17): int = Assign(Value(7)) |foo += 1
+    Jump(Inst(31), [Value(17)]) |foo += 1
+
+  Inst31[Value(18)]
+    Value(19): int = Lit(Int(30, 0)) |30
+    Value(20): bool = Call(Fun(302), [Value(7), Value(19)]) |foo <= 30
+    JumpIfTrue(Value(20), Inst(44), []) |foo <= 30
+    Jump(Inst(47), []) |:
+
+  Inst44[]
+    Value(21): int = Lit(Int(10, 0)) |10
+    Value(21): int = Assign(Value(7)) |foo = 10
+    Jump(Inst(46), [Value(21)]) |if foo <= 30:
+    foo = 10
+  else:
+    return foo
+    foo = 10
+
+  Inst47[]
+    Return(Some(Value(7))) |return foo
+
+  Inst46[Value(22)]
+    Value(23): int = Lit(Int(10, 0)) |10
+    Value(24): bool = Call(Fun(312), [Value(7), Value(23)]) |foo > 10
+    JumpIfTrue(Value(24), Inst(58), []) |foo > 10
+    Jump(Inst(61), []) |:
+
+  Inst58[]
+    Value(25): int = Lit(Int(20, 0)) |20
+    Value(25): int = Assign(Value(7)) |foo = 20
+    Jump(Inst(60), [Value(25)]) |if foo > 10:
+    foo = 20
+  else:
+    foo = 30 | 6
+
+  Inst61[]
+    Value(27): int = Lit(Int(30, 0)) |30
+    Value(28): int = Lit(Int(6, 0)) |6
+    Value(29): int = Call(Fun(342), [Value(27), Value(28)]) |30 | 6
+    Value(29): int = Assign(Value(7)) |foo = 30 | 6
+    Jump(Inst(60), [Value(29)]) |foo = 30 | 6
+
+  Inst60[Value(26)]
+    Value(30): int = Lit(Int(0, 0)) |0
+    Value(31): int = VarDecl(Value(30)) |i = 0
+    Jump(Inst(76), []) |loop:
+    if i >= 10:
+      break
+    i += 1
+
+  Inst76[]
+    Value(32): int = Lit(Int(10, 0)) |10
+    Value(33): bool = Call(Fun(292), [Value(31), Value(32)]) |i >= 10
+    JumpIfTrue(Value(33), Inst(82), []) |i >= 10
+    Jump(Inst(84), []) |
+
+  Inst82[]
+    Jump(Inst(77), []) |break
+
+  Inst84[]
+    Value(34): int = Lit(Int(1, 0)) |1
+    Value(35): int = Call(Fun(232), [Value(31), Value(34)]) |i += 1
+    Value(35): int = Assign(Value(31)) |i += 1
+    Jump(Inst(76), []) |loop:
+    if i >= 10:
+      break
+    i += 1
+
+  Inst77[]
+    Value(36): int = Lit(Int(0, 0)) |0
+    Value(37): int = VarDecl(Value(36)) |i = 0
+    Jump(Inst(96), []) |loop:
+    i += 1
+    if i < 10:
+      continue
+    break
+
+  Inst96[]
+    Value(38): int = Lit(Int(1, 0)) |1
+    Value(39): int = Call(Fun(232), [Value(37), Value(38)]) |i += 1
+    Value(39): int = Assign(Value(37)) |i += 1
+    Value(40): int = Lit(Int(10, 0)) |10
+    Value(41): bool = Call(Fun(322), [Value(37), Value(40)]) |i < 10
+    JumpIfTrue(Value(41), Inst(105), []) |i < 10
+    Jump(Inst(107), []) |
+
+  Inst105[]
+    Jump(Inst(96), []) |continue
+
+  Inst107[]
+    Jump(Inst(97), []) |break
+
+  Inst97[]
+    Jump(Inst(114), []) |loop: 
+    loop: 
+      break
+    break
+
+  Inst114[]
+    Jump(Inst(118), []) |loop: 
+      break
+
+  Inst118[]
+    Jump(Inst(119), []) |break
+
+  Inst119[]
+    Jump(Inst(115), []) |break
+
+  Inst115[]
+    Return(Some(Value(1))) |return val
+
+fun +(a, b: Vec) -> Vec
+
+  Inst1[Value(0), Value(1)]
+    Value(10): f32 = Offset(Value(1)) |b.y
+    Value(9): f32 = Offset(Value(0)) |a.y
+    Value(6): f32 = Offset(Value(1)) |b.x
+    Value(5): f32 = Offset(Value(0)) |a.x
+    Value(2): Vec = ZeroValue |v
+    Value(3): Vec = VarDecl(Value(2)) |v
+    Value(8): f32 = Offset(Value(3)) |v.y
+    Value(4): f32 = Offset(Value(3)) |v.x
+    Value(7): f32 = Call(Fun(374), [Value(5), Value(6)]) |a.x + b.x
+    Value(7): f32 = Assign(Value(4)) |v.x = a.x + b.x
+    Value(11): f32 = Call(Fun(374), [Value(9), Value(10)]) |a.y + b.y
+    Value(11): f32 = Assign(Value(8)) |v.y = a.y + b.y
+    Return(Some(Value(3))) |v
+
+fun something -> Embedded[i64]
+
+  Inst1[]
+    Value(0): Vec = ZeroValue |a, b: Vec
+    Value(1): Vec = VarDecl(Value(0)) |a, b: Vec
+    Value(6): f32 = Offset(Value(1)) |a.y
+    Value(4): f32 = Offset(Value(1)) |a.x
+    Value(2): Vec = ZeroValue |a, b: Vec
+    Value(3): Vec = VarDecl(Value(2)) |a, b: Vec
+    Value(10): f32 = Offset(Value(3)) |b.y
+    Value(8): f32 = Offset(Value(3)) |b.x
+    Value(5): f32 = Lit(Float(NaN, 32)) |1f32
+    Value(5): f32 = Assign(Value(4)) |a.x = 1f32
+    Value(7): f32 = Lit(Float(NaN, 32)) |4f32
+    Value(7): f32 = Assign(Value(6)) |a.y = 4f32
+    Value(9): f32 = Lit(Float(NaN, 32)) |2f32
+    Value(9): f32 = Assign(Value(8)) |b.x = 2f32
+    Value(11): f32 = Lit(Float(NaN, 32)) |3f32
+    Value(11): f32 = Assign(Value(10)) |b.y = 3f32
+    Value(12): Vec = Call(Fun(407), [Value(1), Value(3)]) |a += b
+    Value(12): Vec = Assign(Value(1)) |a += b
+    Value(13): Seq[int] = ZeroValue |s
+    Value(14): Seq[int] = VarDecl(Value(13)) |s
+    Value(26): &var Seq[int] = Ref(Value(14)) |s.push(10)
+    Value(25): &var Seq[int] = Ref(Value(14)) |s.push(10)
+    Value(15): int = Lit(Int(10, 0)) |10
+    Call(Fun(410), [Value(25), Value(15)]) |s.push(10)
+    Value(17): int = Lit(Int(10, 0)) |10
+    Call(Fun(410), [Value(26), Value(17)]) |s.push(10)
+    Value(19): Embedded[int] = ZeroValue |v: Embedded[int]
+    Value(20): Embedded[int] = VarDecl(Value(19)) |v: Embedded[int]
+    Value(22): Seq[int] = Offset(Value(20)) |v.push(10)
+    Value(23): &var Seq[int] = Ref(Value(22)) |v.push(10)
+    Value(21): int = Lit(Int(10, 0)) |10
+    Call(Fun(410), [Value(23), Value(21)]) |v.push(10)
+    Value(24): Embedded[i64] = ZeroValue |v.push(10)
+    Return(Some(Value(24))) |v.push(10)
+
+fun push[T](seq: &var Seq[T], x: T)
+
+  Inst1[Value(0), Value(1)]
+    Return(None) |pass
+
+fun ++[T](a, b: T) -> T
+
+  Inst1[Value(0), Value(1)]
+    Value(2): int = Call(Fun(232), [Value(0), Value(1)]) |a + b
+    Return(Some(Value(2))) |a + b
+
+fun goo[T](x: T) -> T
+
+  Inst1[Value(0)]
+    Return(Some(Value(0))) |x
+
+fun boo[T](x: &T) -> T
+
+  Inst1[Value(0)]
+    Value(1): i64 = Deref(Value(0)) |*x
+    Return(Some(Value(1))) |*x
+

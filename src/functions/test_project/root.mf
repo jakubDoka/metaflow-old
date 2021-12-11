@@ -1,14 +1,3 @@
-use "some"
-use "folder/a"
-
-attr push(god, devil, human)
-
-attr absolute, madness, because, why, not
-struct GUA:
-  moo: G[O]
-
-attr pop
-
 fun goo[T](x: T) -> T: x
 
 fun ++[T](a, b: T) -> T: a + b

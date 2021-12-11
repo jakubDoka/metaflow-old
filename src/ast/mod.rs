@@ -544,7 +544,9 @@ impl<'a> AstParser<'a> {
                         self.state.next();
                         let mutable = self.state.token.kind == TKind::Var;
                         ast.kind = AKind::Deref(mutable);
-                        self.state.next();
+                        if mutable {
+                            self.state.next();
+                        }
                     }
                     _ => {
                         ast.push(self.ast(AKind::Ident));

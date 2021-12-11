@@ -97,6 +97,7 @@ impl Drop for PoolObj {
     }
 }
 
+#[derive(Debug)]
 pub struct PoolRef<T> {
     origin: *mut PoolObj,
     value: Vec<T>,
