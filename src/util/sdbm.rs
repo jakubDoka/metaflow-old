@@ -6,7 +6,7 @@ pub struct ID(pub u64);
 impl ID {
     #[inline]
     pub fn combine(self, id: Self) -> Self {
-        ID((id.0 >> 1) ^ (self.0 << 1))
+        ID((id.0) ^ (self.0 << 32) ^ (self.0 >> 32))	
     }
 }
 

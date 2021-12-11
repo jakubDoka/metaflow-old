@@ -1,4 +1,4 @@
-/*pub mod generator;
+pub mod generator;
 
 use generator::*;
 
@@ -12,13 +12,7 @@ use std::{fmt::Display, process::Command};
 
 use crate::{
     cli::Arguments,
-    ir::{
-        functions::{FunError, FunErrorDisplay, FunResolver, FunResolverContext},
-        module_tree::{ModuleTreeBuilder, ModuleTreeError},
-        types::{TypeError, TypeResolver, TypeResolverContext},
-        Program,
-    },
-    lexer::{Token, TokenView},
+    lexer::{Token, TokenView}, functions::{Program, FState, FContext, FError}, module_tree::{MTParser, MTContext, MTState, MTError}, types::{TState, TContext, TError},
 };
 
 use super::*;
@@ -119,25 +113,27 @@ pub fn generate_obj_file(args: &Arguments) -> Result<Vec<u8>> {
     let mut program = Program::new(ObjectModule::new(builder));
 
     let mut compile = || -> Result<()> {
-        ModuleTreeBuilder::new(&mut program)
-            .build(&args[0])
+        let mut state = MTState::default();
+        let mut context = MTContext::default();
+        
+        MTParser::new(&mut state, &mut context)
+            .parse(&args[0])
             .map_err(|e| GEKind::ModuleTreeError(e).into())?;
 
-        let mut ctx = TypeResolverContext::default();
+        let state = TState::new(state);
+        let context = TContext::new(context);
+        let state = FState::new(state);
+        let context = FContext::new(context);
+        let mut state = GState::new(state);
+        let mut context = GContext::new(context);
+        
+        println!("{:?}", state.module_order);
 
-        TypeResolver::new(&mut program, &mut ctx)
-            .resolve()
-            .map_err(|e| GEKind::TypeError(e).into())?;
-
-        let mut ctx = FunResolverContext::default();
-
-        FunResolver::new(&mut program, &mut ctx)
-            .resolve()
-            .map_err(|e| GEKind::FunError(e).into())?;
-
-        let mut ctx = GeneratorContext::default();
-
-        Generator::new(&mut program, &mut ctx).generate()?;
+        for i in (0..state.module_order.len()).rev() {
+            let module = state.module_order[i];
+            Generator::new(&mut program, &mut state, &mut context)
+                .generate(module)?;
+        }
 
         Ok(())
     };
@@ -147,7 +143,7 @@ pub fn generate_obj_file(args: &Arguments) -> Result<Vec<u8>> {
         e
     })?;
 
-    Ok(program.object_module.finish().emit().unwrap())
+    Ok(program.module.finish().emit().unwrap())
 }
 
 pub struct GenErrorDisplay<'a> {
@@ -211,16 +207,19 @@ impl<'a> Display for GenErrorDisplay<'a> {
                 Ok(())
             }
             GEKind::TypeError(error) => {
-                writeln!(f, "{}", error)?;
-                Ok(())
+                todo!("{:?}", error);
+                //writeln!(f, "{}", error)?;
+                //Ok(())
             }
             GEKind::FunError(error) => {
-                writeln!(f, "{}", FunErrorDisplay::new(self.program, &error))?;
-                Ok(())
+                todo!("{:?}", error);
+                //writeln!(f, "{}", FunErrorDisplay::new(self.program, &error))?;
+                //Ok(())
             }
             GEKind::ModuleTreeError(error) => {
-                writeln!(f, "{}", error)?;
-                Ok(())
+                todo!("{:?}", error);
+                //writeln!(f, "{}", error)?;
+                //Ok(())
             }
             GEKind::IoError(err) => {
                 writeln!(f, "{}", err)?;
@@ -246,10 +245,10 @@ pub struct GenError {
 }
 
 impl GenError {
-    pub fn new(kind: GEKind, token: &Token) -> GenError {
+    pub fn new(kind: GEKind, token: Token) -> GenError {
         GenError {
             kind,
-            token: token.clone(),
+            token,
         }
     }
 }
@@ -260,9 +259,9 @@ pub enum GEKind {
     InvalidCallConv,
     InvalidLinkage,
     DuplicateEntrypoint(Token),
-    TypeError(TypeError),
-    ModuleTreeError(ModuleTreeError),
-    FunError(FunError),
+    TypeError(TError),
+    ModuleTreeError(MTError),
+    FunError(FError),
     IoError(std::io::Error),
     InvalidTriplet(LookupError),
     CompilationFlagError(SetError),
@@ -452,17 +451,16 @@ fun main -> int:
 }
 
 pub fn test_sippet(sippet: &str, exit_code: i32) {
-    std::fs::write("test_case.pmt", sippet).unwrap();
+    std::fs::write("src/gen/test_project/root.mf", sippet).unwrap();
 
-    let args = Arguments::from_str("root test_case.pmt").unwrap();
+    let args = Arguments::from_str("root src/gen/test_project").unwrap();
 
     compile(args).unwrap();
 
-    let output = Command::new("test_case.exe").output().unwrap();
+    let output = Command::new("test_project.exe").output().unwrap();
 
     assert_eq!(output.status.code().unwrap(), exit_code);
 
-    std::fs::remove_file("test_case.pmt").unwrap_or(());
-    std::fs::remove_file("test_case.exe").unwrap_or(());
+    std::fs::remove_file("src/gen/test_project/root.mf").unwrap_or(());
+    std::fs::remove_file("test_project.exe").unwrap_or(());
 }
-*/

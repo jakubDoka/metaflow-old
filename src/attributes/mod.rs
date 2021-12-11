@@ -1,5 +1,3 @@
-use std::ops::Deref;
-
 use crate::{
     ast::{AKind, Ast},
     util::{
@@ -17,7 +15,7 @@ pub struct Attributes {
 }
 
 impl Attributes {
-    pub fn resolve(&mut self, ast: &mut Ast) -> Attributes {
+    pub fn parse(&mut self, ast: &mut Ast) {
         let mut marker = 0;
         let mut i = 0;
         while i < ast.len() {
@@ -31,13 +29,14 @@ impl Attributes {
                     }
                 }
                 if marker < i {
+                    println!("{:?}", &ast[marker..i]);
                     ast.drain(marker..i).for_each(|mut attr| {
                         attr.drain(..).for_each(|ast| {
                             let id = ID(0)
-                                .add(ast[0].token.spam.deref())
+                                .add(ast[0].token.spam.raw())
                                 .combine(ID(marker as u64));
                             let (_, id) = self.map.insert(id, ast);
-                            match self.map[id][0].token.spam.deref() {
+                            match self.map[id][0].token.spam.raw() {
                                 "push" => {
                                     self.stack.push(id);
                                 }
@@ -55,11 +54,6 @@ impl Attributes {
             }
             i += 1;
         }
-
-        self.stack.clear();
-        let clone = self.clone();
-        self.map.clear();
-        clone
     }
 
     pub fn enabled(&self, idx: usize, name: &str) -> bool {

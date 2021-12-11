@@ -9,7 +9,7 @@ use crate::util::storage::{IndexPointer, List, ReusableList, Table};
 use cranelift_codegen::ir::types::*;
 use cranelift_codegen::ir::types::{Type as CrType, INVALID};
 
-type Result<T = ()> = std::result::Result<T, TypeError>;
+type Result<T = ()> = std::result::Result<T, TError>;
 
 pub const TYPE_SALT: ID = ID(0x9e3779b97f4a7c15);
 
@@ -37,7 +37,6 @@ impl<'a> TParser<'a> {
     }
 
     pub fn parse(&mut self, module: Mod) -> Result {
-        self.state.clear();
         self.module = module;
         self.collect(module)?;
         self.connect(module)?;
@@ -48,6 +47,8 @@ impl<'a> TParser<'a> {
     pub fn parse_type(&mut self, module: Mod, ast: &Ast) -> Result<(Mod, Type)> {
         self.module = module;
         let result = self.resolve_type(module, ast, 0)?;
+        
+        
         self.connect(module)?;
         self.calc_sizes()?;
         Ok(result)
@@ -60,6 +61,7 @@ impl<'a> TParser<'a> {
                 self.calc_size(ty)?;
             }
         }
+        self.state.resolved = resolved;
         Ok(())
     }
 
@@ -67,7 +69,7 @@ impl<'a> TParser<'a> {
         let mut cycle_stack = self.context.pool.get();
 
         if let Some(cycle) = module_tree::detect_cycles(self, ty, &mut cycle_stack) {
-            return Err(TypeError::new(
+            return Err(TError::new(
                 TEKind::InfiniteSize(cycle),
                 Token::default(),
             ));
@@ -79,7 +81,7 @@ impl<'a> TParser<'a> {
 
         self.context.pool = pool;
 
-        for &ty in order.iter() {
+        for &ty in order.iter().rev() {
             let ty_ent = &self.state.types[ty];
 
             match ty_ent.kind {
@@ -137,7 +139,7 @@ impl<'a> TParser<'a> {
     fn connect(&mut self, _module: Mod) -> Result {
         while let Some((id, depth)) = self.state.unresolved.pop() {
             if depth > Self::MAX_TYPE_INSTANTIATION_DEPTH {
-                return Err(TypeError::new(
+                return Err(TError::new(
                     TEKind::InstantiationDepthExceeded,
                     self.state.types[id].hint.clone(),
                 ));
@@ -192,7 +194,7 @@ impl<'a> TParser<'a> {
 
         if is_instance {
             if params.len() != header.len() {
-                return Err(TypeError::new(
+                return Err(TError::new(
                     TEKind::WrongInstantiationArgAmount(params.len() - 1, header.len() - 1),
                     self.state.types[id].hint.clone(),
                 ));
@@ -328,7 +330,7 @@ impl<'a> TParser<'a> {
             visibility: ty_ent.visibility,
             params: params.clone(),
             kind: TKind::Unresolved(ast_id),
-            name: "",
+            name: ty_ent.name,
             hint: ast.token.clone(),
             attribute_id: ty_ent.attribute_id,
             size: 0,
@@ -347,12 +349,12 @@ impl<'a> TParser<'a> {
         let module = self
             .state
             .find_dep(module, &ast[0].token)
-            .ok_or_else(|| TypeError::new(TEKind::UnknownPackage, ast.token.clone()))?;
+            .ok_or_else(|| TError::new(TEKind::UnknownPackage, ast.token.clone()))?;
         let module_id = self.state.modules[module].id;
         let id = TYPE_SALT.add(ast[1].token.spam.raw());
         self.type_index(id.combine(module_id))
             .map(|id| (module, id))
-            .ok_or_else(|| TypeError::new(TEKind::UnknownType, ast[0].token.clone()))
+            .ok_or_else(|| TError::new(TEKind::UnknownType, ast[0].token.clone()))
     }
 
     fn resolve_simple_type(&mut self, module: Mod, name: &Token) -> Result<(Mod, Type)> {
@@ -371,7 +373,7 @@ impl<'a> TParser<'a> {
         for (module, module_id) in buffer.drain(1..) {
             if let Some(ty) = self.type_index(id.combine(module_id)) {
                 if let Some((_, found)) = found {
-                    return Err(TypeError::new(
+                    return Err(TError::new(
                         TEKind::AmbiguousType(ty, found),
                         name.clone(),
                     ));
@@ -380,7 +382,7 @@ impl<'a> TParser<'a> {
             }
         }
 
-        found.ok_or_else(|| TypeError::new(TEKind::UnknownType, name.clone()))
+        found.ok_or_else(|| TError::new(TEKind::UnknownType, name.clone()))
     }
 
     fn collect(&mut self, module: Mod) -> Result<()> {
@@ -391,10 +393,10 @@ impl<'a> TParser<'a> {
 
         let mut ast = AstParser::new(&mut module_ent.ast, &mut context)
             .parse()
-            .map_err(|err| TypeError::new(TEKind::AstError(err), Token::default()))?;
+            .map_err(|err| TError::new(TEKind::AstError(err), Token::default()))?;
 
         self.state.attributes.clear();
-        self.state.attributes.resolve(&mut ast);
+        self.state.attributes.parse(&mut ast);
 
         for (i, a) in ast.iter_mut().enumerate() {
             match a.kind.clone() {
@@ -410,7 +412,7 @@ impl<'a> TParser<'a> {
                     } else if ident.kind == AKind::Instantiation {
                         (&ident[0], TKind::Generic(ast_id))
                     } else {
-                        return Err(TypeError::new(
+                        return Err(TError::new(
                             TEKind::UnexpectedAst(String::from("expected struct identifier")),
                             ident.token.clone(),
                         ));
@@ -435,7 +437,7 @@ impl<'a> TParser<'a> {
 
                     let (replaced, id) = self.state.types.insert(id, datatype);
                     if let Some(other) = replaced {
-                        return Err(TypeError::new(
+                        return Err(TError::new(
                             TEKind::Redefinition(other.hint),
                             hint.clone(),
                         ));
@@ -635,10 +637,6 @@ impl TState {
 
         return s;
     }
-
-    pub fn clear(&mut self) {
-        self.attributes.clear();
-    }
 }
 
 macro_rules! define_repo {
@@ -749,12 +747,12 @@ impl<'a> std::fmt::Display for TypeDisplay<'a> {
 }
 
 #[derive(Debug)]
-pub struct TypeError {
+pub struct TError {
     pub kind: TEKind,
     pub token: Token,
 }
 
-impl TypeError {
+impl TError {
     pub fn new(kind: TEKind, token: Token) -> Self {
         Self { kind, token }
     }

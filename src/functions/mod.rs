@@ -21,7 +21,7 @@ use cranelift_frontend::Variable as CrVar;
 use cranelift_module::{FuncId, Module, Linkage};
 use cranelift_object::{ObjectModule, ObjectBuilder};
 
-type Result<T = ()> = std::result::Result<T, FunError>;
+type Result<T = ()> = std::result::Result<T, FError>;
 type ExprResult = Result<Option<Value>>;
 
 pub const FUN_SALT: ID = ID(0xDEADBEEF);
@@ -42,7 +42,7 @@ impl<'a> FParser<'a> {
     pub fn parse(mut self, module: Mod) -> Result {
         TParser::new(&mut self.state.t_state, &mut self.context.t_context)
             .parse(module)
-            .map_err(|err| FunError::new(FEKind::TypeError(err), Token::default()))?;
+            .map_err(|err| FError::new(FEKind::TypeError(err), Token::default()))?;
 
         self.collect(module)?;
 
@@ -172,7 +172,7 @@ impl<'a> FParser<'a> {
                     .0
                     .clone();
 
-                return Err(FunError::new(
+                return Err(FError::new(
                     FEKind::UnresolvedType,
                     self.state.body.insts[inst].hint.clone(),
                 ));
@@ -213,7 +213,7 @@ impl<'a> FParser<'a> {
                 "export" => Linkage::Export,
                 "preemptible" => Linkage::Preemptible,
                 "hidden" => Linkage::Hidden,
-                _ => return Err(FunError::new(FEKind::InvalidLinkage, attr.token.clone())),
+                _ => return Err(FError::new(FEKind::InvalidLinkage, attr.token.clone())),
             };
 
             if attr.len() > 2 {
@@ -235,7 +235,7 @@ impl<'a> FParser<'a> {
                 CallConv::triple_default(triple)
             } else {
                 CallConv::from_str(conv)
-                    .map_err(|_| FunError::new(FEKind::InvalidCallConv, attr.token.clone()))?
+                    .map_err(|_| FError::new(FEKind::InvalidCallConv, attr.token.clone()))?
             }
         } else {
             CallConv::Fast
@@ -243,8 +243,6 @@ impl<'a> FParser<'a> {
 
         let mut signature = std::mem::replace(&mut self.context.signature, Signature::new(CallConv::Fast));
         signature.clear(call_conv);
-
-        
 
         for arg in n_ent.sig.args.iter() {
             let repr = self.state.types[arg.ty].repr();
@@ -265,12 +263,16 @@ impl<'a> FParser<'a> {
             signature.returns.push(AbiParam::special(repr, purpose));
         }
 
+        
         let alias = if let Some(attr) = self.state.attributes.get_attr(attr_id, "entry") {
+            println!("{}", attr_id);
             if let Some(entry) = self.state.entry_point {
-                return Err(FunError::new(
+                return Err(FError::new(
                     FEKind::DuplicateEntrypoint(entry),
                     attr.token.clone(),
                 ));
+            } else {
+                self.state.entry_point = Some(fun);
             }
             "main"
         } else {
@@ -292,6 +294,8 @@ impl<'a> FParser<'a> {
 
         let f = self.state.rfuns.add(r_ent);
         self.state.funs[fun].kind = FKind::Represented(f);
+
+        self.state.represented.push(fun);
 
         Ok(())
     }
@@ -355,9 +359,9 @@ impl<'a> FParser<'a> {
     fn continue_statement(&mut self, ast: &Ast) -> Result {
         let loop_header = self.find_loop(&ast[0].token).map_err(|outside| {
             if outside {
-                FunError::new(FEKind::ContinueOutsideLoop, ast.token.clone())
+                FError::new(FEKind::ContinueOutsideLoop, ast.token.clone())
             } else {
-                FunError::new(FEKind::WrongLabel, ast.token.clone())
+                FError::new(FEKind::WrongLabel, ast.token.clone())
             }
         })?;
 
@@ -373,9 +377,9 @@ impl<'a> FParser<'a> {
     fn break_statement(&mut self, fun: Fun, ast: &Ast) -> Result {
         let loop_header = self.find_loop(&ast[0].token).map_err(|outside| {
             if outside {
-                FunError::new(FEKind::BreakOutsideLoop, ast.token.clone())
+                FError::new(FEKind::BreakOutsideLoop, ast.token.clone())
             } else {
-                FunError::new(FEKind::WrongLabel, ast.token.clone())
+                FError::new(FEKind::WrongLabel, ast.token.clone())
             }
         })?;
 
@@ -428,7 +432,7 @@ impl<'a> FParser<'a> {
             }
         } else {
             let ty = ty
-                .ok_or_else(|| FunError::new(FEKind::UnexpectedReturnValue, ast[0].token.clone()))?;
+                .ok_or_else(|| FError::new(FEKind::UnexpectedReturnValue, ast[0].token.clone()))?;
             let value = self.expr(fun, &ast[0])?;
             let actual_type = self.state.body.values[value].ty;
             if self.is_auto(actual_type) {
@@ -455,9 +459,9 @@ impl<'a> FParser<'a> {
             } else {
                 match self.parse_type(module, &var_line[1]) {
                     Ok(ty) => ty,
-                    Err(FunError {
+                    Err(FError {
                         kind: FEKind::TypeError(
-                            TypeError {
+                            TError {
                                 kind: TEKind::WrongInstantiationArgAmount(0, _),
                                 ..
                             }
@@ -533,7 +537,7 @@ impl<'a> FParser<'a> {
     }
 
     fn expr(&mut self, fun: Fun, ast: &Ast) -> Result<Value> {
-        self.expr_low(fun, ast)?.ok_or_else(|| FunError::new(FEKind::ExpectedValue, ast.token.clone()))
+        self.expr_low(fun, ast)?.ok_or_else(|| FError::new(FEKind::ExpectedValue, ast.token.clone()))
     }
 
     fn expr_low(&mut self, fun: Fun, ast: &Ast) -> ExprResult {
@@ -558,7 +562,7 @@ impl<'a> FParser<'a> {
         let value = self.expr(fun, &ast[0])?;
 
         if !self.state.body.values[value].mutable && mutable {
-            return Err(FunError::new(FEKind::MutableRefOfImmutable, ast.token.clone()));
+            return Err(FError::new(FEKind::MutableRefOfImmutable, ast.token.clone()));
         }
 
         let reference = self.ref_expr_low(value, mutable, &ast.token);
@@ -803,7 +807,7 @@ impl<'a> FParser<'a> {
         let mut then_filled = false;
         if let Some(val) = then_result {
             if else_block.is_none() {
-                return Err(FunError::new(FEKind::MissingElseBranch, ast.token.clone()));
+                return Err(FError::new(FEKind::MissingElseBranch, ast.token.clone()));
             }
 
             self.add_inst(InstEnt::new(
@@ -852,12 +856,12 @@ impl<'a> FParser<'a> {
                     self.state.body.insts[merge_block].kind.block_mut().args.push(value);
                     result = Some(value);
                 } else {
-                    return Err(FunError::new(FEKind::UnexpectedValue, ast.token.clone()));
+                    return Err(FError::new(FEKind::UnexpectedValue, ast.token.clone()));
                 }
             } else {
                 if self.state.block.is_some() {
                     if result.is_some() {
-                        return Err(FunError::new(FEKind::ExpectedValue, ast.token.clone()));
+                        return Err(FError::new(FEKind::ExpectedValue, ast.token.clone()));
                     }
                     self.add_inst(InstEnt::new(
                         IKind::Jump(merge_block, vec![]),
@@ -963,7 +967,7 @@ impl<'a> FParser<'a> {
     fn ident(&mut self, ast: &Ast) -> ExprResult {
         let name = ID(0).add(ast.token.spam.deref());
         self.find_variable(name)
-            .ok_or_else(|| FunError::new(FEKind::UndefinedVariable, ast.token.clone()))
+            .ok_or_else(|| FError::new(FEKind::UndefinedVariable, ast.token.clone()))
             .map(|var| Some(var))
     }
 
@@ -1032,7 +1036,7 @@ impl<'a> FParser<'a> {
         let datatype_size = self.state.types[ty].size;
 
         if original_size != datatype_size {
-            return Err(FunError::new(
+            return Err(FError::new(
                 FEKind::InvalidBitCast(original_size, datatype_size),
                 ast.token.clone(),
             ));
@@ -1208,7 +1212,7 @@ impl<'a> FParser<'a> {
             frontier.push((value, ty));
         } else if let Some(dependency) = self.state.body.values[value.unwrap()].type_dependency {
             if self.context.deps[dependency].len() > 1 {
-                return Err(FunError::new(FEKind::ExpectedValue, token.clone()));
+                return Err(FError::new(FEKind::ExpectedValue, token.clone()));
             }
             self.context.deps[dependency].clear();
             self.state.body.insts[inst].value = None;
@@ -1230,7 +1234,7 @@ impl<'a> FParser<'a> {
         let header_datatype = self.state.body.values[header].ty;
         let mut path = vec![];
         if !self.find_field(header_datatype, field, &mut path) {
-            return Err(FunError::new(FEKind::UnknownField(header_datatype), token.clone()));
+            return Err(FError::new(FEKind::UnknownField(header_datatype), token.clone()));
         }
 
         let mut offset = 0;
@@ -1301,7 +1305,7 @@ impl<'a> FParser<'a> {
         let value_datatype = self.state.body.values[value].ty;
 
         if !self.state.body.values[target].mutable {
-            return Err(FunError::new(FEKind::AssignToImmutable, ast.token.clone()));
+            return Err(FError::new(FEKind::AssignToImmutable, ast.token.clone()));
         }
 
         let unresolved = if self.is_auto(target_datatype) {
@@ -1463,7 +1467,7 @@ impl<'a> FParser<'a> {
                     Ok(expr) => return Ok((expr, $id, DotInstr::$type)),
                     #[allow(unused_assignments)]
                     Err(err) => {
-                        if let FunError {
+                        if let FError {
                             kind: FEKind::FunctionNotFound(..),
                             ..
                         } = err
@@ -1568,13 +1572,13 @@ impl<'a> FParser<'a> {
         for (module, module_id) in buffer.drain(1..) {
             if let Some(fun) = self.find_or_create_low(specific_id, module_id, base, module, values, token)? {
                 if let Some(found) = found {
-                    return Err(FunError::new(FEKind::AmbiguousFunction(fun, found), token.clone()));
+                    return Err(FError::new(FEKind::AmbiguousFunction(fun, found), token.clone()));
                 }
                 found = Some(fun);
             }
         }
 
-        found.ok_or_else(|| FunError::new(
+        found.ok_or_else(|| FError::new(
             FEKind::FunctionNotFound(name.to_string(), values.to_vec()),
             token.clone(),
         ))
@@ -1599,7 +1603,7 @@ impl<'a> FParser<'a> {
             };
             if let Some(fun) = self.create(module, fun, g, values)? {
                 if let Some(found) = found {
-                    return Err(FunError::new(FEKind::AmbiguousFunction(fun, found), token.clone()));
+                    return Err(FError::new(FEKind::AmbiguousFunction(fun, found), token.clone()));
                 } 
                 found = Some(fun);
             }
@@ -1767,7 +1771,7 @@ impl<'a> FParser<'a> {
         if actual == expected {
             Ok(())
         } else {
-            Err(FunError::new(
+            Err(FError::new(
                 FEKind::TypeMismatch(actual, expected),
                 token.clone(),
             ))
@@ -1824,7 +1828,7 @@ impl<'a> FParser<'a> {
         } else if name.kind == AKind::Instantiation {
             let nm = &name[0];
             if nm.kind != AKind::Ident {
-                return Err(FunError::new(
+                return Err(FError::new(
                     FEKind::InvalidFunctionHeader,
                     nm.token.clone(),
                 ));
@@ -1878,7 +1882,7 @@ impl<'a> FParser<'a> {
 
             (nm, id, FKind::Generic(g), false)
         } else {
-            return Err(FunError::new(
+            return Err(FError::new(
                 FEKind::InvalidFunctionHeader,
                 name.token.clone(),
             ));
@@ -1901,7 +1905,7 @@ impl<'a> FParser<'a> {
 
         if let Some(shadowed) = shadowed {
             if unresolved {
-                return Err(FunError::new(
+                return Err(FError::new(
                     FEKind::Redefinition(shadowed.hint),
                     self.state.funs[id].hint.clone(),
                 ));
@@ -2073,7 +2077,7 @@ impl<'a> FParser<'a> {
 
     fn base_of_err(&mut self, ty: Type, token: &Token) -> Result<(Type, bool, bool)> {
         self.base_of(ty)
-            .ok_or_else(|| FunError::new(FEKind::NonPointerDereference, token.clone()))
+            .ok_or_else(|| FError::new(FEKind::NonPointerDereference, token.clone()))
     }
 
     fn base_of(&mut self, ty: Type) -> Option<(Type, bool, bool)> {
@@ -2087,7 +2091,7 @@ impl<'a> FParser<'a> {
         TParser::new(&mut self.state.t_state, &mut self.context.t_context)
             .parse_type(module, ast)
             .map(|t| t.1)
-            .map_err(|err| FunError::new(FEKind::TypeError(err), Token::default()))
+            .map_err(|err| FError::new(FEKind::TypeError(err), Token::default()))
     }
 
     fn pointer_of(&mut self, ty: Type, mutable: bool, nullable: bool) -> Type {
@@ -2132,14 +2136,14 @@ impl<'a> FParser<'a> {
 }
 
 #[derive(Debug)]
-pub struct FunError {
+pub struct FError {
     pub kind: FEKind,
     pub token: Token,
 }
 
-impl FunError {
+impl FError {
     pub fn new(kind: FEKind, token: Token) -> Self {
-        FunError { kind, token }
+        FError { kind, token }
     }
 }
 
@@ -2149,7 +2153,7 @@ pub enum FEKind {
     TooShortAttribute(usize, usize),
     InvalidLinkage,
     InvalidCallConv,
-    TypeError(TypeError),
+    TypeError(TError),
     Redefinition(Token),
     InvalidBitCast(u32, u32),
     AssignToImmutable,
@@ -2487,6 +2491,8 @@ pub struct FState {
     pub block: Option<Inst>,
     pub unresolved_funs: Vec<Inst>,
     pub unresolved: Vec<Fun>,
+
+    pub represented: Vec<Fun>,
 }
 
 crate::inherit!(FState, t_state, TState);
@@ -2506,6 +2512,7 @@ impl FState {
             vars: Vec::new(),
             unresolved_funs: Vec::new(),
             entry_point: None,
+            represented: Vec::new(),
         };
 
         let module_id = state.modules[state.builtin_module].id;
@@ -2649,7 +2656,7 @@ impl FContext {
 
 crate::inherit!(FContext, t_context, TContext);
 
-fn write_base36(mut number: u64, buffer: &mut Vec<u8>) {
+pub fn write_base36(mut number: u64, buffer: &mut Vec<u8>) {
     while number > 0 {
         let mut digit = (number % 36) as u8;
         digit += (digit < 10) as u8 * b'0' + (digit >= 10) as u8 * (b'a' - 10);
@@ -2660,7 +2667,7 @@ fn write_base36(mut number: u64, buffer: &mut Vec<u8>) {
 
 pub fn assert_attr_len(attr: &Ast, len: usize) -> Result {
     if attr.len() - 1 < len {
-        Err(FunError::new(
+        Err(FError::new(
             FEKind::TooShortAttribute(attr.len(), len),
             attr.token.clone(),
         ))
