@@ -393,6 +393,7 @@ impl<'a> TParser<'a> {
             .parse()
             .map_err(|err| TypeError::new(TEKind::AstError(err), Token::default()))?;
 
+        self.state.attributes.clear();
         self.state.attributes.resolve(&mut ast);
 
         for (i, a) in ast.iter_mut().enumerate() {
@@ -537,6 +538,16 @@ pub struct TypeEnt {
 impl TypeEnt {
     pub fn on_stack(&self) -> bool {
         self.size > ptr_ty().bytes() as u32
+    }
+
+    pub fn repr(&self) -> CrType {
+        match self.kind {
+            TKind::Builtin(ty) => ty,
+            TKind::Structure(_) |
+            TKind::Pointer(_, _, _) => ptr_ty(),
+            TKind::Generic(_) |
+            TKind::Unresolved(_) => unreachable!(),
+        }
     }
 }
 

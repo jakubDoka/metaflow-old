@@ -1,6 +1,0 @@
-struct G[T]:
-  p: P[T]
-
-struct P[T]
-
-struct E

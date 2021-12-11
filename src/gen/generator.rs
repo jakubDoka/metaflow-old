@@ -1073,11 +1073,4 @@ fn walk_mem<F: FnMut(CrType, u32)>(size: u32, mut fun: F) {
     }
 }
 
-fn write_base36(mut number: u64, buffer: &mut String) {
-    while number > 0 {
-        let mut digit = (number % 36) as u8;
-        digit += (digit < 10) as u8 * b'0' + (digit >= 10) as u8 * (b'a' - 10);
-        buffer.push(digit as char);
-        number /= 36;
-    }
-}
+
