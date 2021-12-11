@@ -534,6 +534,12 @@ pub struct TypeEnt {
     pub align: u32,
 }
 
+impl TypeEnt {
+    pub fn on_stack(&self) -> bool {
+        self.size > ptr_ty().bytes() as u32
+    }
+}
+
 #[derive(Debug, Clone)]
 pub enum TKind {
     Builtin(CrType),
