@@ -406,6 +406,27 @@ fun main -> int:
         "#,
         0,
     );
+    test_sippet(
+        r#"
+struct EightBytes:
+  a, b, c, d, e, f, g, h: i8
+  
+attr entry
+fun main -> int:
+  var eb: EightBytes
+  eb.a = 1i8
+  eb.b = 2i8
+  eb.c = 3i8
+  eb.d = 4i8
+  eb.e = 5i8
+  eb.f = 6i8
+  eb.g = 7i8
+  eb.h = 8i8
+
+  return int(eb.a + eb.h + eb.g + eb.f + eb.e + eb.d + eb.c + eb.b - 4i8 * 9i8)
+  "#,
+        0,
+    );
 }
 
 pub fn test_sippet(sippet: &str, exit_code: i32) {

@@ -643,7 +643,23 @@ impl<'a> Generator<'a> {
                 }
             }
             FinalValue::Var(var) => {
-                let value = self.unwrap_val(fun, source, builder);
+                let mut value = self.unwrap_val(fun, source, builder);
+                let value_type = builder.func.dfg.value_type(value);
+                let val = builder.use_var(var);
+                let var_type = builder.func.dfg.value_type(val);
+                if value_type != var_type {
+                    let mut mask = 0;
+                    for i in 0..value_type.bytes() {
+                        mask |= 0xFF << (i * 8);
+                    }
+                    mask <<= target.offset * 8;
+                    mask = !mask;
+                    let mask_value = builder.ins().iconst(var_type, mask);
+                    let target_val = builder.ins().band(val, mask_value);
+                    let source_value = builder.ins().uextend(var_type, value);
+                    let source_value = builder.ins().ishl_imm(source_value, target.offset as i64 * 8);
+                    value = builder.ins().bor(target_val, source_value);
+                }
                 builder.def_var(var, value);
             }
             FinalValue::Pointer(pointer) => {
@@ -743,7 +759,16 @@ impl<'a> Generator<'a> {
                 }
             }
             FinalValue::Value(value) => value,
-            FinalValue::Var(var) => builder.use_var(var),
+            FinalValue::Var(var) => {
+                let repr = self.repr(ty);
+                let mut val = builder.use_var(var);
+                let value_type = builder.func.dfg.value_type(val);
+                if repr != value_type {
+                    val = builder.ins().ushr_imm(val, value.offset as i64 * 8);
+                    val = builder.ins().ireduce(repr, val);
+                }
+                val
+            }
             FinalValue::Pointer(pointer) => {
                 let wrapped_type = match self.state.types[ty].kind {
                     TKind::Pointer(inner, ..) => inner,
