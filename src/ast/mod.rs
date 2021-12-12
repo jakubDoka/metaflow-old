@@ -396,6 +396,10 @@ impl<'a> AstParser<'a> {
             Ast::none()
         };
 
+        if datatype.kind == AKind::None && values.kind == AKind::None {
+            return Err(self.unexpected_str("expected '=' or ':' type"));
+        }
+
         ast.children = vec![ident_group, datatype, values];
 
         ast.token.to_group(&self.state.token, true);
@@ -534,11 +538,7 @@ impl<'a> AstParser<'a> {
                 match self.state.token.spam.deref() {
                     "&" => {
                         self.state.next();
-                        let mutable = self.state.token.kind == TKind::Var;
-                        ast.kind = AKind::Ref(mutable);
-                        if mutable {
-                            self.state.next();
-                        }
+                        ast.kind = AKind::Ref;
                     }
                     "*" => {
                         self.state.next();
@@ -1120,7 +1120,7 @@ pub enum AKind {
     UnaryOp,
     IfExpr,
     DotExpr,
-    Ref(bool),
+    Ref,
     Deref,
 
     Loop,

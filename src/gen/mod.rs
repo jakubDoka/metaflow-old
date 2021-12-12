@@ -371,7 +371,7 @@ fun main -> int:
 struct Point:
   x, y: int
 
-fun init(v: &var Point, x: int, y: int) -> Point:
+fun init(v: &Point, x: int, y: int) -> Point:
   (*v).x = x
   (*v).y = y
   pass
@@ -390,14 +390,14 @@ struct Point:
   x, y: int
 
 struct Cell[T]:
-  priv embed p: &var T
+  priv embed p: &T
 
 attr entry
 fun main -> int:
   var 
     p: Point
     c: Cell[Point]
-  c.p = &var p
+  c.p = &p
   
   c.x = 1
   c.y = 2

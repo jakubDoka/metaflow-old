@@ -7,10 +7,10 @@ struct Fun:
   b: i32
 
 fun init -> Fun:
-  var fn
+  var fn: Fun
   
-  fn.a = 1
-  fn.b = 2
+  fn.a = 1i32
+  fn.b = 2i32
   
   fn
 
@@ -19,27 +19,27 @@ struct Complex:
   c: i32
 
 fun init2 -> Complex:
-  var cp
+  var cp: Complex
   
-  cp.a = 1
-  cp.b = 2
-  cp.c = 3
+  cp.a = 1i32
+  cp.b = 2i32
+  cp.c = 3i32
   
   cp
 
 struct Complex2:
-  embed fn: &var Fun
+  embed fn: &Fun
   c: &i32
 
 fun boo[T](x: &T) -> T: *x
 
 fun deref -> i32:
-  var x
+  var x: i32
   var y = &x
   *y
 
 fun moo:
-  var a
+  var a: i64
   let b = &a
 
   a = boo(b)
@@ -48,7 +48,7 @@ fun moo:
 
 fun main -> int:
   var 
-    val
+    val: int
     val2 = val
 
   val ++= 10
@@ -99,19 +99,19 @@ struct Vec:
   x, y: f32
 
 fun +(a, b: Vec) -> Vec:
-  var v
+  var v: Vec
   v.x = a.x + b.x
   v.y = a.y + b.y
   v
 
 struct Seq[T]:
   len, cap: i32
-  data: &var T
+  data: &T
 
 struct Embedded[T]:
   embed vec: Seq[T]
 
-fun push[T](seq: &var Seq[T], x: T): pass
+fun push[T](seq: &Seq[T], x: T): pass
 
 fun something -> Embedded[i64]:
   var a, b: Vec
@@ -124,7 +124,7 @@ fun something -> Embedded[i64]:
   
   a += b
 
-  var s
+  var s: Seq[int]
 
   s.push(10)
 

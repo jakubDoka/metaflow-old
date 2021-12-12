@@ -261,7 +261,7 @@ impl<'a> TParser<'a> {
             AKind::Ident => self.resolve_simple_type(module, &ast.token),
             AKind::ExplicitPackage => self.resolve_explicit_package_type(module, ast),
             AKind::Instantiation => self.resolve_instance(module, ast, depth),
-            AKind::Ref(mutable) => self.resolve_pointer(module, ast, mutable, depth),
+            AKind::Ref => self.resolve_pointer(module, ast, depth),
             _ => unreachable!("{:?}", ast.kind),
         }
     }
@@ -270,11 +270,10 @@ impl<'a> TParser<'a> {
         &mut self,
         module: Mod,
         ast: &Ast,
-        mutable: bool,
         depth: usize,
     ) -> Result<(Mod, Type)> {
         let (module, datatype) = self.resolve_type(module, &ast[0], depth)?;
-        let datatype = self.pointer_of(datatype, mutable);
+        let datatype = self.pointer_of(datatype);
 
         Ok((module, datatype))
     }
@@ -315,7 +314,10 @@ impl<'a> TParser<'a> {
 
         let ast_id = match ty_ent.kind {
             TKind::Generic(ast) => ast,
-            _ => unreachable!("{:?}", ty_ent.kind),
+            _ => return Err(TError::new(
+                TEKind::InstancingNonGeneric(ty_ent.hint.clone()),
+                ast.token.clone(),
+            )),
         };
 
         let type_ent = TypeEnt {
@@ -446,9 +448,9 @@ impl<'a> TParser<'a> {
         Ok(())
     }
 
-    pub fn pointer_of(&mut self, ty: Type, mutable: bool) -> Type {
+    pub fn pointer_of(&mut self, ty: Type) -> Type {
         let module = self.state.types[ty].module;
-        let name = if mutable { "&var " } else { "&" };
+        let name = "&";
         let id = TYPE_SALT
             .add(name)
             .combine(self.state.types[ty].id)
@@ -462,7 +464,7 @@ impl<'a> TParser<'a> {
             visibility: Vis::Public,
             id,
             params: vec![],
-            kind: TKind::Pointer(ty, mutable),
+            kind: TKind::Pointer(ty),
             name,
             hint: Token::default(),
             module,
@@ -542,7 +544,7 @@ impl TypeEnt {
 #[derive(Debug, Clone)]
 pub enum TKind {
     Builtin(CrType),
-    Pointer(Type, bool), // mutable
+    Pointer(Type),
     Structure(SType),
     Generic(GAst),
     Unresolved(GAst),
@@ -671,7 +673,7 @@ macro_rules! define_repo {
                 }
             }
 
-            pub fn type_list(&self) -> [Type; 14] {
+            pub fn type_list(&self) -> [Type; 13] {
                 [
                     $(self.$name,)+
                 ]
@@ -692,7 +694,6 @@ define_repo!(
     f32, F32, 4;
     f64, F64, 8;
     bool, B1, 1;
-    auto, INVALID, 0;
     int, ptr_ty(), ptr_ty().bytes() as u32;
     uint, ptr_ty(), ptr_ty().bytes() as u32
 );
@@ -750,6 +751,9 @@ impl std::fmt::Display for TEDisplay<'_> {
         }
 
         match &self.error.kind {
+            TEKind::InstancingNonGeneric(origin) => {
+                writeln!(f, "instancing non-generic type, defined here:\n {}", TokenView::new(&origin))?;
+            }
             TEKind::AstError(error) => {
                 writeln!(f, "{}", error)?;
             }
@@ -820,6 +824,7 @@ impl TError {
 
 #[derive(Debug)]
 pub enum TEKind {
+    InstancingNonGeneric(Token),
     AstError(AstError),
     UnexpectedAst(String),
     AmbiguousType(Type, Type),

@@ -25,7 +25,7 @@ fn main() {
 }
 
 fn run() {
-    /*let args = match cli::Arguments::new(std::env::args()) {
+    let args = match cli::Arguments::new(std::env::args()) {
         Ok(args) => args,
         Err(e) => {
             println!("{:?}", e);
@@ -37,10 +37,7 @@ fn run() {
         Ok(_) => println!("Successfully compiled"),
         Err(err) => println!("Failed to compile: {:?}", err),
     };
-
-    #[cfg(debug_assertions)]
-    assert!(util::cell::report_cell_state() == 0);
-    */
+    
 }
 
 #[repr(C)]

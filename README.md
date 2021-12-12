@@ -14,7 +14,7 @@ Metaflow is not object oriented and it does not support reflection as a default 
 struct Counter:
   count: int
 
-fun inc(c: &var Counter):
+fun inc(c: &Counter):
   ++c.count
 
 struct Something:
@@ -32,7 +32,7 @@ fun main -> int:
     if s.count < 0:
       break
     // increment 3
-    inc(&var s.counter)
+    inc(&s.counter)
     s.counter.inc()
     s.inc()
 
@@ -116,7 +116,7 @@ mf .
 
 ### Syntax
 
-The syntax is expressed by yet another syntax. Words between `'` are keywords or tokens, things between `[]` are optional and things between `{}` are required. `|` denotes variant chain, `=` denotes alias and `:` optional indented block, thing between `"` is regex. Lets start.
+The syntax is expressed by yet another syntax. Words between `'` are keywords or punctuation, things between `[]` are optional, things between `{}` are required, `|` denotes choice, `=` denotes alias and `:` optional indented block, thing between `"` is regex. Lets start.
 
 ```txt
 file = [ use '\n' ] { item '\n' }
@@ -125,11 +125,11 @@ use = 'use' : [ ident ] string
 item = 
   function | 
   struct
-function = 'fun' [ vis ] ident [ generics ] [ args ] [ '->' type ] [ ':' : statement ]
+function = 'fun' [ vis ] ident | op [ generics ] [ args ] [ '->' type ] [ ':' : statement ]
 struct = 'struct' [ vis ] ident [ generics ] [ ':' : field ]
 field = [ vis ] [ 'embed' ] ident { ',' ident } ':' type
 
-statement = 
+statement =
   if_stmt | 
   loop_stmt | 
   break_stmt | 
@@ -160,7 +160,7 @@ assign = expr '=' expr
 binary = expr op expr
 unary = op expr
 cast = expr 'as' type
-ref_expr = '&' [ var ] expr
+ref_expr = ref expr
 deref_expr = '*' expr
 
 literal =
@@ -173,14 +173,14 @@ string = "\"[\s\S]*\""
 bool = 'true' | 'false'
 char = "'\p{L}|\p{N}|\\\d{3}|\\x[0-9a-fA-F]{2}|\\u[0-9a-fA-F]{4}|\\U[0-9a-fA-F]{8}'"
 
-type = [ ref | deref ] ident [ '[' type { ',' type } ']' ]
-label = "'[a-zA-Z0-9_]*"
+type = [ ref ] ident [ '[' type { ',' type } ']' ]
 ref = '&' [ var ]
-deref = '*' [ var ]
 generics = '[' ident { ',' ident } ']'
 args = '(' { [ 'var' ] ident { ',' ident } ':' type } ')'
 vis = 'pub' | 'priv'
-ident = "[a-zA-Z_][a-zA-Z0-9_]*"
+label = "'[a-zA-Z0-9_]+"
+op = "[\+\-\*/%\^=<>!&|\?:~]+|min|max|abs"
+ident = "[a-zA-Z_][a-zA-Z0-9_]+"
 
 ```
 
@@ -192,6 +192,14 @@ This section merely describes how compiler works as a reference for me. Things y
 
 ### Memory management and access
 
-Almost all the data compiler uses during compilation is stored in constructs contained in `crate::util::storage`. Each ordered container has an accessor type that implements `crate::util::storage::IndexPointer`. Every entity has its Index type that has a descriptive name and data it self is in `<name>Ent` struct. This is safe and convenient way of creating complex structures like graphs without ref count and over all makes borrow checker happy.
+Almost all the data compiler uses during compilation is stored in constructs contained in `crate::util::storage`. Each ordered container has an accessor type that implements `crate::util::storage::IndexPointer`. Every entity has its Index type that has a descriptive name and data itself is in `<name>Ent` struct. This is safe and convenient way of creating complex structures like graphs without ref count and over all makes borrow checker happy.
 
 Exception to this rule is `crate::ast::Ast` which does not use this kind of storage for sanity reasons, it also does not need to as its only used as immutable structure.
+
+What you will see a lot is `self.context.pool.get()` whenever temporary Vec is needed. Pool saves used Vec-s and only allocate if there is not vec to reuse. What pool returns is PoolRef that will send it self to pool upon drop.
+
+Important decision was leaking the memory of source files. This makes them static and allows tokens capture whole file without lifetime. The file contents has to live whole duration of program anyway. Though, if this approach causes issues in a future, rework will be inevitable. With nowadays RAM sizes it should be fine though.
+
+### Compilation steps
+
+Compiler divides compilation into several steps to make logic manageable for human being. FIrst is a lexer which is an iterator that yields tokens lazily. Tokens then pass trough AstParser that constructs the ast which is then passed to Type parser. Type parser collects all declarations of types and passes remaining ast to function parser. This parser creates simple intermediate representations. At the end, th representation is passed to code generator that translates ir to Cranelift ir. Cranelift does the rest. To lower peak memory and reuse allocations, this is performed per module. Modules are sorted so that no module precedes its dependencies.

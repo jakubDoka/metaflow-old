@@ -86,6 +86,9 @@ impl<'a> Generator<'a> {
 
             self.body(rid, &mut builder)?;
 
+            self.state.rfuns[rid].body.clear();
+            self.context.body_pool.push(std::mem::take(&mut self.state.rfuns[rid].body));
+
             builder.finalize();
 
             //println!("{}", ctx.func.display());
@@ -994,8 +997,8 @@ pub enum BTKind {
 impl BTKind {
     pub fn of(tp: Type) -> Self {
         match IndexPointer::raw(&tp) {
-            0..=3 | 12 => Self::Int,
-            4..=7 | 13 => Self::Uint,
+            0..=3 | 11 => Self::Int,
+            4..=7 | 12 => Self::Uint,
             8 => Self::Float(32),
             9 => Self::Float(64),
             10 => Self::Bool,

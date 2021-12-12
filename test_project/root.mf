@@ -1,0 +1,13 @@
+attr linkage(import), call_conv(platform)
+fun printf(str: &u8)
+
+attr entry, call_conv(platform)
+fun main(count: uint, args: & &u8) -> int:
+  var i = 0u
+  loop:
+    if i >= uint(count):
+      break 
+    printf(*((args as uint + i * 8u) as & &u8))
+    printf("\n")
+    ++i
+  return 0

@@ -58,7 +58,7 @@ fun strings -> i64:
   var hello = "hello"
   return 0
 
-fun mutable_ref(a: &var Foo):
+fun mutable_ref(a: &Foo):
   a.a = 10
   a.b = 20
   a.c = 30

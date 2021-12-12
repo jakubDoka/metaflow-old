@@ -4,7 +4,7 @@ struct Bogus
 
 struct Focus:
   a, b, c: Bogus
-  priv f: &var Focus
+  priv f: &Focus
   pub embed gro: Gro
 
 struct Gro:
