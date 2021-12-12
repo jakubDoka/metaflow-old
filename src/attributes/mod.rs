@@ -29,7 +29,6 @@ impl Attributes {
                     }
                 }
                 if marker < i {
-                    println!("{:?}", &ast[marker..i]);
                     ast.drain(marker..i).for_each(|mut attr| {
                         attr.drain(..).for_each(|ast| {
                             let id = ID(0)

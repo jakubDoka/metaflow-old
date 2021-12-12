@@ -542,11 +542,7 @@ impl<'a> AstParser<'a> {
                     }
                     "*" => {
                         self.state.next();
-                        let mutable = self.state.token.kind == TKind::Var;
-                        ast.kind = AKind::Deref(mutable);
-                        if mutable {
-                            self.state.next();
-                        }
+                        ast.kind = AKind::Deref;
                     }
                     _ => {
                         ast.push(self.ast(AKind::Ident));
@@ -1125,7 +1121,7 @@ pub enum AKind {
     IfExpr,
     DotExpr,
     Ref(bool),
-    Deref(bool),
+    Deref,
 
     Loop,
     Break,

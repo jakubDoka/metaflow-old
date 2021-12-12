@@ -424,7 +424,7 @@ pub struct LinkedList<I: IndexPointer, T> {
     free: Vec<I>,
 }
 
-impl<I: IndexPointer, T: Default> LinkedList<I, T> {
+impl<I: IndexPointer + std::fmt::Debug, T: Default> LinkedList<I, T> {
     pub fn new() -> Self {
         Self {
             data: vec![(I::new(0), T::default(), I::new(0))],
@@ -446,6 +446,18 @@ impl<I: IndexPointer, T: Default> LinkedList<I, T> {
     pub fn insert(&mut self, id: I, data: T) -> I {
         let previous = id;
         let after = self.data[previous.raw()].2;
+
+        let id = self.allocate(previous, data, after);
+
+        self.data[previous.raw()].2 = id;
+        self.data[after.raw()].0 = id;
+
+        id
+    }
+
+    pub fn insert_before(&mut self, id: I, data: T) -> I {
+        let previous = self.data[id.raw()].0;
+        let after = id;
 
         let id = self.allocate(previous, data, after);
 
@@ -555,7 +567,9 @@ impl<I: IndexPointer, T: Default> LinkedList<I, T> {
     }
 }
 
-impl<I: IndexPointer, T: std::fmt::Debug + Default> std::fmt::Debug for LinkedList<I, T> {
+impl<I: IndexPointer + std::fmt::Debug, T: std::fmt::Debug + Default> std::fmt::Debug
+    for LinkedList<I, T>
+{
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_list().entries(self.iter().map(|a| a.1)).finish()
     }
@@ -575,7 +589,7 @@ impl<I: IndexPointer, T> IndexMut<I> for LinkedList<I, T> {
     }
 }
 
-impl<I: IndexPointer, T: Default> Default for LinkedList<I, T> {
+impl<I: IndexPointer + std::fmt::Debug, T: Default> Default for LinkedList<I, T> {
     fn default() -> Self {
         Self::new()
     }

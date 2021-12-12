@@ -9,7 +9,6 @@ pub mod attributes;
 pub mod cli;
 pub mod functions;
 pub mod gen;
-pub mod ir;
 pub mod lexer;
 pub mod module_tree;
 pub mod testing;

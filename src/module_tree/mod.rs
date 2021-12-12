@@ -2,7 +2,7 @@ use std::ops::{Deref, DerefMut};
 use std::path::{Path, PathBuf};
 
 use crate::ast::{AstError, AstParser, AstState, Dep};
-use crate::lexer::Lexer;
+use crate::lexer::{Lexer, TKind, TokenView};
 use crate::util::pool::{Pool, PoolRef};
 use crate::util::sdbm::{SdbmHashState, ID};
 use crate::util::storage::{IndexPointer, Table};
@@ -10,6 +10,7 @@ use crate::{ast::AstContext, lexer::Token, util::storage::List};
 
 type Result<T = ()> = std::result::Result<T, MTError>;
 
+pub const CACHE_VAR: &str = "METAFLOW_CACHE";
 pub const MOD_SALT: ID = ID(0x64739273646);
 pub const SOURCE_EXT: &str = "mf";
 pub const MANIFEST_EXT: &str = "mfm";
@@ -35,10 +36,9 @@ impl<'a> MTParser<'a> {
 
         let builtin_module = ModEnt {
             id: MOD_SALT.add("builtin").combine(root_manifest_hash),
-            dependency: vec![],
-            dependant: vec![],
-            ast: AstState::default(),
             manifest: root_manifest_id,
+
+            ..Default::default()
         };
 
         self.state.builtin_module = self
@@ -161,6 +161,7 @@ impl<'a> MTParser<'a> {
             .map_err(|err| MTError::new(MTEKind::FileReadError(path_buffer.clone(), err), token))?;
 
         let lexer = Lexer::new(path_buffer.to_str().unwrap().to_string(), content);
+        let path = lexer.file_name();
         path_buffer.clear();
         let ast = AstState::new(lexer);
 
@@ -170,6 +171,7 @@ impl<'a> MTParser<'a> {
             dependant: vec![],
             ast,
             manifest: manifest_id,
+            path,
         };
 
         let (_, module) = self.state.modules.insert(id, ent);
@@ -178,7 +180,7 @@ impl<'a> MTParser<'a> {
     }
 
     fn load_manifests(&mut self, base_path: &str, path_buffer: &mut PathBuf) -> Result {
-        let cache_root = std::env::var("METAFLOW_CACHE")
+        let cache_root = std::env::var(CACHE_VAR)
             .map_err(|_| MTError::new(MTEKind::MissingCache, Token::default()))?;
 
         let manifest_id = self.state.manifests.add(ManifestEnt {
@@ -239,7 +241,11 @@ impl<'a> MTParser<'a> {
 
             let parent = Path::new(root_file).parent().unwrap().to_str().unwrap();
 
-            let name = Path::new(root_file).file_stem().unwrap().to_str().unwrap();
+            let name = Path::new(root_file)
+                .file_stem()
+                .ok_or_else(|| MTError::new(MTEKind::MissingPathStem, token.clone()))?
+                .to_str()
+                .unwrap();
 
             let manifest_ent = &mut self.state.manifests[manifest_id];
             manifest_ent.name = name;
@@ -491,6 +497,7 @@ pub struct ModEnt {
     pub dependant: Vec<Mod>,
     pub ast: AstState,
     pub manifest: Manifest,
+    pub path: &'static str,
 }
 
 impl Default for ModEnt {
@@ -501,7 +508,89 @@ impl Default for ModEnt {
             dependant: vec![],
             ast: Default::default(),
             manifest: Manifest::new(0),
+            path: "",
         }
+    }
+}
+
+pub struct MTEDisplay<'a> {
+    pub state: &'a MTState,
+    pub error: &'a MTError,
+}
+
+impl<'a> MTEDisplay<'a> {
+    pub fn new(state: &'a MTState, error: &'a MTError) -> Self {
+        Self { state, error }
+    }
+}
+
+impl std::fmt::Display for MTEDisplay<'_> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        if self.error.token.kind != TKind::None {
+            writeln!(f, "{}", TokenView::new(&self.error.token))?;
+        }
+
+        match &self.error.kind {
+            MTEKind::InvalidPathEncoding => {
+                writeln!(f, "invalid path encoding")?;
+            }
+            MTEKind::MissingPathStem => {
+                writeln!(f, "root attribute of the manifest if missing path stem (simply is not pointing to file)")?;
+            }
+            MTEKind::MissingCache => {
+                writeln!(f, "missing dependency cache, the environment variable 'METAFLOW_CACHE' has to be set")?;
+            }
+            MTEKind::ImportNotFound => {
+                writeln!(
+                    f,
+                    "root of import not found inside manifest, nor it is root of current project"
+                )?;
+            }
+            MTEKind::DisplacedModule => {
+                writeln!(f, "module violates project structure, all submodules have to be placed in directory with the name of root module that are in same directory as root module")?;
+            }
+            MTEKind::FileReadError(path, error) => {
+                writeln!(f, "error reading module '{}', this may be due to invalid project structure, original error: {}", path.as_os_str().to_str().unwrap(), error)?;
+            }
+            MTEKind::ManifestReadError(path, error) => {
+                writeln!(
+                    f,
+                    "error reading manifest '{}', original error: {}",
+                    path.as_os_str().to_str().unwrap(),
+                    error
+                )?;
+            }
+            MTEKind::AstError(error) => {
+                writeln!(f, "{}", error)?;
+            }
+            MTEKind::CyclicDependency(cycle) => {
+                writeln!(f, "cyclic module dependency detected:")?;
+                for &id in cycle.iter() {
+                    writeln!(f, "  {}", self.state.modules[id].path)?;
+                }
+            }
+            MTEKind::CyclicManifests(cycle) => {
+                writeln!(f, "cyclic package dependency detected:")?;
+                for &id in cycle.iter() {
+                    writeln!(f, "  {}", self.state.manifests[id].name)?;
+                }
+            }
+            MTEKind::MissingDependency(path) => {
+                writeln!(
+                    f,
+                    "missing dependency '{}'",
+                    path.as_os_str().to_str().unwrap()
+                )?;
+            }
+            MTEKind::DownloadError(error) => {
+                writeln!(f, "error downloading dependency, original error: {}", error)?;
+            }
+            MTEKind::DownloadFailed => {
+                writeln!(f, "failed to download dependency")?;
+            }
+        }
+
+        Ok(())
     }
 }
 

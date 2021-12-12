@@ -1,27 +1,28 @@
-use std::ops::{Deref, DerefMut};
 use cranelift_codegen::{
     binemit::{NullStackMapSink, NullTrapSink},
     entity::EntityRef,
     ir::{
         condcodes::{FloatCC, IntCC},
         types::*,
-        InstBuilder, MemFlags, Signature, StackSlot, StackSlotData,
-        StackSlotKind,
-        Value as CrValue,
-        Type as CrType,
-        Block as CrBlock,
+        Block as CrBlock, InstBuilder, MemFlags, Signature, StackSlot, StackSlotData,
+        StackSlotKind, Type as CrType, Value as CrValue,
     },
     isa::CallConv,
     Context,
 };
 use cranelift_frontend::{FunctionBuilder, FunctionBuilderContext, Variable as CrVar};
 use cranelift_module::{DataContext, FuncOrDataId, Linkage, Module};
+use std::ops::{Deref, DerefMut};
 
 use crate::{
+    functions::{
+        self, FContext, FKind, FParser, FState, FinalValue, IKind, Inst, Program, RFun,
+        Value,
+    },
     lexer::{TKind as LTKind, Token},
-    util::{sdbm::SdbmHash, storage::IndexPointer}, 
-    functions::{Program, FContext, FState, Value, IKind, RFun, FinalValue, Inst, FKind, FParser, self},
-    types::{Type, self, TKind, TypeDisplay}, module_tree::Mod,
+    module_tree::Mod,
+    types::{self, TKind, Type, TypeDisplay},
+    util::{sdbm::SdbmHash, storage::IndexPointer},
 };
 
 use super::{GEKind, GenError};
@@ -38,7 +39,11 @@ pub struct Generator<'a> {
 
 impl<'a> Generator<'a> {
     pub fn new(program: &'a mut Program, state: &'a mut GState, context: &'a mut GContext) -> Self {
-        Self { program, state, context }
+        Self {
+            program,
+            state,
+            context,
+        }
     }
 
     pub fn generate(&mut self, module: Mod) -> Result {
@@ -58,13 +63,25 @@ impl<'a> Generator<'a> {
         let mut represented = std::mem::take(&mut self.state.represented);
 
         for fun in represented.drain(..) {
+            //println!("{}", FunDisplay::new(&self.state, fun));
+
             let rid = self.state.funs[fun].kind.unwrap_represented();
             let fun_id = self.state.rfuns[rid].id;
-            if self.program.module.declarations().get_function_decl(fun_id).linkage == Linkage::Import {
+            if self
+                .program
+                .module
+                .declarations()
+                .get_function_decl(fun_id)
+                .linkage
+                == Linkage::Import
+            {
                 continue;
             }
 
-            ctx.func.signature = std::mem::replace(&mut self.state.rfuns[rid].ir_signature, Signature::new(CallConv::Fast));
+            ctx.func.signature = std::mem::replace(
+                &mut self.state.rfuns[rid].ir_signature,
+                Signature::new(CallConv::Fast),
+            );
             let mut builder = FunctionBuilder::new(&mut ctx.func, &mut fun_ctx);
 
             self.body(rid, &mut builder)?;
@@ -89,6 +106,8 @@ impl<'a> Generator<'a> {
 
             ctx.clear();
         }
+
+        self.state.represented = represented;
 
         Ok(())
     }
@@ -115,7 +134,10 @@ impl<'a> Generator<'a> {
             buffer.push((next, cr_block));
 
             debug_assert!(
-                matches!(self.state.rfuns[fun].body.insts[inst].kind, IKind::BlockEnd(_)),
+                matches!(
+                    self.state.rfuns[fun].body.insts[inst].kind,
+                    IKind::BlockEnd(_)
+                ),
                 "next block is not a block"
             );
 
@@ -139,7 +161,7 @@ impl<'a> Generator<'a> {
     fn block(&mut self, fun: RFun, mut current: Inst, builder: &mut FunctionBuilder) -> Result {
         let mut call_buffer = self.context.pool.get();
         let mut arg_buffer = self.context.pool.get();
-        
+
         loop {
             let inst = &self.state.rfuns[fun].body.insts[current];
             let value = inst.value;
@@ -169,7 +191,8 @@ impl<'a> Generator<'a> {
                                 let last = arg_buffer[arg_buffer.len() - 1];
                                 let data = StackSlotData::new(StackSlotKind::ExplicitSlot, size);
                                 let slot = builder.create_stack_slot(data);
-                                self.state.rfuns[fun].body.values[last].value = FinalValue::StackSlot(slot);
+                                self.state.rfuns[fun].body.values[last].value =
+                                    FinalValue::StackSlot(slot);
                                 self.state.rfuns[fun].body.values[value.unwrap()].value =
                                     FinalValue::StackSlot(slot);
                                 struct_return = true;
@@ -258,10 +281,7 @@ impl<'a> Generator<'a> {
                                     )
                                 };
                                 context.define(data.deref().to_owned().into_boxed_slice());
-                                self.program
-                                    .module
-                                    .define_data(data_id, context)
-                                    .unwrap();
+                                self.program.module.define_data(data_id, context).unwrap();
                                 context.clear();
                                 data_id
                             };
@@ -270,9 +290,7 @@ impl<'a> Generator<'a> {
                                 .program
                                 .module
                                 .declare_data_in_func(data_id, builder.func);
-                            builder
-                                .ins()
-                                .global_value(types::ptr_ty(), value)
+                            builder.ins().global_value(types::ptr_ty(), value)
                         }
                         lit => todo!("{}", lit),
                     };
@@ -712,12 +730,16 @@ impl<'a> Generator<'a> {
             FinalValue::None => unreachable!(),
             FinalValue::Zero => {
                 let repr = self.repr(ty);
-                match BTKind::of(ty) {
-                    BTKind::Int | BTKind::Uint => builder.ins().iconst(repr, 0),
-                    BTKind::Float(32) => builder.ins().f32const(0.0),
-                    BTKind::Float(64) => builder.ins().f64const(0.0),
-                    BTKind::Bool => builder.ins().bconst(B1, false),
-                    _ => unreachable!("{}", ty),
+                match self.state.types[ty].kind {
+                    TKind::Pointer(..) => builder.ins().null(repr),
+                    TKind::Structure(..) => builder.ins().iconst(repr, 0),
+                    _ => match BTKind::of(ty) {
+                        BTKind::Int | BTKind::Uint => builder.ins().iconst(repr, 0),
+                        BTKind::Float(32) => builder.ins().f32const(0.0),
+                        BTKind::Float(64) => builder.ins().f64const(0.0),
+                        BTKind::Bool => builder.ins().bconst(B1, false),
+                        _ => unreachable!("{}", ty),
+                    },
                 }
             }
             FinalValue::Value(value) => value,
@@ -745,17 +767,13 @@ impl<'a> Generator<'a> {
             }
             FinalValue::StackSlot(slot) => {
                 if self.on_stack(value.ty) {
-                    builder.ins().stack_addr(
-                        types::ptr_ty(),
-                        slot,
-                        value.offset as i32,
-                    )
+                    builder
+                        .ins()
+                        .stack_addr(types::ptr_ty(), slot, value.offset as i32)
                 } else {
-                    builder.ins().stack_load(
-                        self.repr(value.ty),
-                        slot,
-                        value.offset as i32,
-                    )
+                    builder
+                        .ins()
+                        .stack_load(self.repr(value.ty), slot, value.offset as i32)
                 }
             }
         }

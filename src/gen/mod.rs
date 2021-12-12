@@ -12,7 +12,10 @@ use std::{fmt::Display, process::Command};
 
 use crate::{
     cli::Arguments,
-    lexer::{Token, TokenView}, functions::{Program, FState, FContext, FError}, module_tree::{MTParser, MTContext, MTState, MTError}, types::{TState, TContext, TError},
+    functions::{FContext, FEDisplay, FError, FState, Program},
+    lexer::{TKind as LTKind, Token, TokenView},
+    module_tree::{MTContext, MTEDisplay, MTError, MTParser, MTState},
+    types::{TContext, TState},
 };
 
 use super::*;
@@ -112,114 +115,55 @@ pub fn generate_obj_file(args: &Arguments) -> Result<Vec<u8>> {
 
     let mut program = Program::new(ObjectModule::new(builder));
 
-    let mut compile = || -> Result<()> {
-        let mut state = MTState::default();
-        let mut context = MTContext::default();
-        
-        MTParser::new(&mut state, &mut context)
-            .parse(&args[0])
-            .map_err(|e| GEKind::ModuleTreeError(e).into())?;
+    let mut state = MTState::default();
+    let mut context = MTContext::default();
 
-        let state = TState::new(state);
-        let context = TContext::new(context);
-        let state = FState::new(state);
-        let context = FContext::new(context);
-        let mut state = GState::new(state);
-        let mut context = GContext::new(context);
-        
-        println!("{:?}", state.module_order);
+    if let Err(error) = MTParser::new(&mut state, &mut context).parse(&args[0]) {
+        eprintln!("{}", MTEDisplay::new(&state, &error));
+        return Err(GEKind::ModuleTreeError(error).into());
+    }
 
-        for i in (0..state.module_order.len()).rev() {
-            let module = state.module_order[i];
-            Generator::new(&mut program, &mut state, &mut context)
-                .generate(module)?;
+    let state = TState::new(state);
+    let context = TContext::new(context);
+    let state = FState::new(state);
+    let context = FContext::new(context);
+    let mut state = GState::new(state);
+    let mut context = GContext::new(context);
+
+    for i in (0..state.module_order.len()).rev() {
+        let module = state.module_order[i];
+        if let Err(error) = Generator::new(&mut program, &mut state, &mut context).generate(module)
+        {
+            eprintln!("{}", GEDisplay::new(&state, &error));
+            return Err(error);
         }
-
-        Ok(())
-    };
-
-    compile().map_err(|e| {
-        eprintln!("{}", GenErrorDisplay::new(&program, &e));
-        e
-    })?;
+    }
 
     Ok(program.module.finish().emit().unwrap())
 }
 
-pub struct GenErrorDisplay<'a> {
-    program: &'a Program,
+pub struct GEDisplay<'a> {
+    state: &'a GState,
     error: &'a GenError,
 }
 
-impl<'a> GenErrorDisplay<'a> {
-    pub fn new(program: &'a Program, error: &'a GenError) -> Self {
-        Self { program, error }
+impl<'a> GEDisplay<'a> {
+    pub fn new(state: &'a GState, error: &'a GenError) -> Self {
+        Self { state, error }
     }
 }
 
-impl<'a> Display for GenErrorDisplay<'a> {
+impl<'a> Display for GEDisplay<'a> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        if self.error.token.kind != LTKind::None {
+            writeln!(f, "{}", TokenView::new(&self.error.token))?;
+        }
         match &self.error.kind {
-            GEKind::TooShortAttribute(actual, supposed) => {
-                writeln!(f, "{}", TokenView::new(&self.error.token))?;
-                writeln!(f, "Too short attribute: {} instead of {}", actual, supposed)
-            }
-            GEKind::InvalidCallConv => {
-                writeln!(f, "{}", TokenView::new(&self.error.token))?;
-                writeln!(
-                    f,
-                    "Invalid call convention, list of valid call conventions:"
-                )?;
-                for cc in [
-                    "platform - picks call convention based of target platform",
-                    "fast",
-                    "cold - then its unlikely this gets called",
-                    "system_v",
-                    "windows_fastcall",
-                    "apple_aarch64",
-                    "baldrdash_system_v",
-                    "baldrdash_windows",
-                    "baldrdash_2020",
-                    "probestack",
-                    "wasmtime_system_v",
-                    "wasmtime_fastcall",
-                    "wasmtime_apple_aarch64",
-                ] {
-                    writeln!(f, "  {}", cc)?;
-                }
-
-                Ok(())
-            }
-            GEKind::InvalidLinkage => {
-                writeln!(f, "{}", TokenView::new(&self.error.token))?;
-                writeln!(f, "Invalid linkage, valid linkages are:")?;
-                for cc in ["import", "local", "export", "preemptible", "hidden"] {
-                    writeln!(f, "  {}", cc)?;
-                }
-
-                Ok(())
-            }
-            GEKind::DuplicateEntrypoint(other) => {
-                writeln!(f, "{}", TokenView::new(&self.error.token))?;
-                writeln!(f, "and other entrypoint here")?;
-                writeln!(f, "{}", TokenView::new(&other))?;
-                writeln!(f, "only one entrypoint is allowed")?;
-                Ok(())
-            }
-            GEKind::TypeError(error) => {
-                todo!("{:?}", error);
-                //writeln!(f, "{}", error)?;
-                //Ok(())
-            }
             GEKind::FunError(error) => {
-                todo!("{:?}", error);
-                //writeln!(f, "{}", FunErrorDisplay::new(self.program, &error))?;
-                //Ok(())
+                write!(f, "{}", FEDisplay::new(&self.state, error))
             }
             GEKind::ModuleTreeError(error) => {
-                todo!("{:?}", error);
-                //writeln!(f, "{}", error)?;
-                //Ok(())
+                write!(f, "{}", MTEDisplay::new(&self.state, error))
             }
             GEKind::IoError(err) => {
                 writeln!(f, "{}", err)?;
@@ -246,20 +190,12 @@ pub struct GenError {
 
 impl GenError {
     pub fn new(kind: GEKind, token: Token) -> GenError {
-        GenError {
-            kind,
-            token,
-        }
+        GenError { kind, token }
     }
 }
 
 #[derive(Debug)]
 pub enum GEKind {
-    TooShortAttribute(usize, usize),
-    InvalidCallConv,
-    InvalidLinkage,
-    DuplicateEntrypoint(Token),
-    TypeError(TError),
     ModuleTreeError(MTError),
     FunError(FError),
     IoError(std::io::Error),
@@ -445,6 +381,28 @@ fun main -> int:
   var p: Point
   p.init(2, 2)
   return p.x - p.y
+        "#,
+        0,
+    );
+    test_sippet(
+        r#"
+struct Point:
+  x, y: int
+
+struct Cell[T]:
+  priv embed p: &var T
+
+attr entry
+fun main -> int:
+  var 
+    p: Point
+    c: Cell[Point]
+  c.p = &var p
+  
+  c.x = 1
+  c.y = 2
+
+  return 0
         "#,
         0,
     );

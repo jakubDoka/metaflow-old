@@ -2,7 +2,7 @@ use std::ops::{Deref, DerefMut};
 
 use crate::ast::{AKind, Ast, AstError, AstParser, Vis};
 use crate::attributes::Attributes;
-use crate::lexer::Token;
+use crate::lexer::{TKind as LTKind, Token, TokenView};
 use crate::module_tree::{self, MTContext, MTParser, MTState, Mod, TreeStorage};
 use crate::util::sdbm::{SdbmHashState, ID};
 use crate::util::storage::{IndexPointer, List, ReusableList, Table};
@@ -47,8 +47,7 @@ impl<'a> TParser<'a> {
     pub fn parse_type(&mut self, module: Mod, ast: &Ast) -> Result<(Mod, Type)> {
         self.module = module;
         let result = self.resolve_type(module, ast, 0)?;
-        
-        
+
         self.connect(module)?;
         self.calc_sizes()?;
         Ok(result)
@@ -69,10 +68,7 @@ impl<'a> TParser<'a> {
         let mut cycle_stack = self.context.pool.get();
 
         if let Some(cycle) = module_tree::detect_cycles(self, ty, &mut cycle_stack) {
-            return Err(TError::new(
-                TEKind::InfiniteSize(cycle),
-                Token::default(),
-            ));
+            return Err(TError::new(TEKind::InfiniteSize(cycle), Token::default()));
         }
 
         let mut pool = std::mem::take(&mut self.context.pool);
@@ -265,8 +261,7 @@ impl<'a> TParser<'a> {
             AKind::Ident => self.resolve_simple_type(module, &ast.token),
             AKind::ExplicitPackage => self.resolve_explicit_package_type(module, ast),
             AKind::Instantiation => self.resolve_instance(module, ast, depth),
-            AKind::Ref(mutable) => self.resolve_pointer(module, ast, mutable, false, depth),
-            AKind::Deref(mutable) => self.resolve_pointer(module, ast, mutable, true, depth),
+            AKind::Ref(mutable) => self.resolve_pointer(module, ast, mutable, depth),
             _ => unreachable!("{:?}", ast.kind),
         }
     }
@@ -276,11 +271,10 @@ impl<'a> TParser<'a> {
         module: Mod,
         ast: &Ast,
         mutable: bool,
-        nullable: bool,
         depth: usize,
     ) -> Result<(Mod, Type)> {
         let (module, datatype) = self.resolve_type(module, &ast[0], depth)?;
-        let datatype = self.pointer_of(datatype, mutable, nullable);
+        let datatype = self.pointer_of(datatype, mutable);
 
         Ok((module, datatype))
     }
@@ -349,7 +343,7 @@ impl<'a> TParser<'a> {
         let module = self
             .state
             .find_dep(module, &ast[0].token)
-            .ok_or_else(|| TError::new(TEKind::UnknownPackage, ast.token.clone()))?;
+            .ok_or_else(|| TError::new(TEKind::UnknownModule, ast.token.clone()))?;
         let module_id = self.state.modules[module].id;
         let id = TYPE_SALT.add(ast[1].token.spam.raw());
         self.type_index(id.combine(module_id))
@@ -373,10 +367,7 @@ impl<'a> TParser<'a> {
         for (module, module_id) in buffer.drain(1..) {
             if let Some(ty) = self.type_index(id.combine(module_id)) {
                 if let Some((_, found)) = found {
-                    return Err(TError::new(
-                        TEKind::AmbiguousType(ty, found),
-                        name.clone(),
-                    ));
+                    return Err(TError::new(TEKind::AmbiguousType(ty, found), name.clone()));
                 }
                 found = Some((module, ty));
             }
@@ -437,10 +428,7 @@ impl<'a> TParser<'a> {
 
                     let (replaced, id) = self.state.types.insert(id, datatype);
                     if let Some(other) = replaced {
-                        return Err(TError::new(
-                            TEKind::Redefinition(other.hint),
-                            hint.clone(),
-                        ));
+                        return Err(TError::new(TEKind::Redefinition(other.hint), hint.clone()));
                     }
 
                     if let TKind::Unresolved(_) = &self.state.types[id].kind {
@@ -458,7 +446,7 @@ impl<'a> TParser<'a> {
         Ok(())
     }
 
-    pub fn pointer_of(&mut self, ty: Type, mutable: bool, nullable: bool) -> Type {
+    pub fn pointer_of(&mut self, ty: Type, mutable: bool) -> Type {
         let module = self.state.types[ty].module;
         let name = if mutable { "&var " } else { "&" };
         let id = TYPE_SALT
@@ -474,7 +462,7 @@ impl<'a> TParser<'a> {
             visibility: Vis::Public,
             id,
             params: vec![],
-            kind: TKind::Pointer(ty, mutable, nullable),
+            kind: TKind::Pointer(ty, mutable),
             name,
             hint: Token::default(),
             module,
@@ -545,10 +533,8 @@ impl TypeEnt {
     pub fn repr(&self) -> CrType {
         match self.kind {
             TKind::Builtin(ty) => ty,
-            TKind::Structure(_) |
-            TKind::Pointer(_, _, _) => ptr_ty(),
-            TKind::Generic(_) |
-            TKind::Unresolved(_) => unreachable!(),
+            TKind::Structure(_) | TKind::Pointer(..) => ptr_ty(),
+            TKind::Generic(_) | TKind::Unresolved(_) => unreachable!(),
         }
     }
 }
@@ -556,7 +542,7 @@ impl TypeEnt {
 #[derive(Debug, Clone)]
 pub enum TKind {
     Builtin(CrType),
-    Pointer(Type, bool, bool), // mutable, nullable
+    Pointer(Type, bool), // mutable
     Structure(SType),
     Generic(GAst),
     Unresolved(GAst),
@@ -746,6 +732,80 @@ impl<'a> std::fmt::Display for TypeDisplay<'a> {
     }
 }
 
+pub struct TEDisplay<'a> {
+    state: &'a TState,
+    error: &'a TError,
+}
+
+impl<'a> TEDisplay<'a> {
+    pub fn new(state: &'a TState, error: &'a TError) -> Self {
+        Self { state, error }
+    }
+}
+
+impl std::fmt::Display for TEDisplay<'_> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        if self.error.token.kind != LTKind::None {
+            writeln!(f, "{}", TokenView::new(&self.error.token))?;
+        }
+
+        match &self.error.kind {
+            TEKind::AstError(error) => {
+                writeln!(f, "{}", error)?;
+            }
+            TEKind::UnexpectedAst(token) => {
+                writeln!(f, "{}", token)?;
+            }
+            &TEKind::AmbiguousType(a, b) => {
+                let a = self.state.types[a].hint.clone();
+                let b = self.state.types[b].hint.clone();
+                writeln!(
+                    f,
+                    "matches\n{}\nand\n{}",
+                    TokenView::new(&a),
+                    TokenView::new(&b)
+                )?;
+            }
+            TEKind::UnknownType => {
+                writeln!(f, "type not defined in current scope")?;
+            }
+            TEKind::NotGeneric => {
+                writeln!(f, "type is not generic thus cannot be instantiated")?;
+            }
+            TEKind::UnknownModule => {
+                writeln!(f, "module not defined in current scope")?;
+            }
+            TEKind::InstantiationDepthExceeded => {
+                writeln!(
+                    f,
+                    "instantiation depth exceeded, max is {}",
+                    TParser::MAX_TYPE_INSTANTIATION_DEPTH
+                )?;
+            }
+            TEKind::WrongInstantiationArgAmount(actual, expected) => {
+                writeln!(
+                    f,
+                    "wrong amount of arguments for type instantiation, expected {} but got {}",
+                    expected, actual
+                )?;
+            }
+            TEKind::AccessingExternalPrivateType => todo!(),
+            TEKind::AccessingFilePrivateType => todo!(),
+            TEKind::InfiniteSize(cycle) => {
+                writeln!(f, "infinite size detected, cycle:")?;
+                for ty in cycle.iter() {
+                    writeln!(f, "  {}", TypeDisplay::new(self.state, *ty))?;
+                }
+            }
+            TEKind::Redefinition(other) => {
+                writeln!(f, "is redefinition of\n {}", TokenView::new(&other))?;
+            }
+        }
+
+        Ok(())
+    }
+}
+
 #[derive(Debug)]
 pub struct TError {
     pub kind: TEKind,
@@ -765,7 +825,7 @@ pub enum TEKind {
     AmbiguousType(Type, Type),
     UnknownType,
     NotGeneric,
-    UnknownPackage,
+    UnknownModule,
     InstantiationDepthExceeded,
     WrongInstantiationArgAmount(usize, usize),
     AccessingExternalPrivateType,
