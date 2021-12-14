@@ -558,6 +558,11 @@ impl<'a> AstParser<'a> {
                 self.state.next();
                 return Ok(ast);
             }
+            TKind::LBra => {
+                let mut ast = self.ast(AKind::Array);
+                self.list(&mut ast, TKind::LBra, TKind::Comma, TKind::RBra, Self::expr)?;
+                return Ok(ast);
+            }
             _ => todo!("unmatched simple expr pattern {:?}", self.state.token),
         };
 
@@ -1122,6 +1127,8 @@ pub enum AKind {
     DotExpr,
     Ref,
     Deref,
+    Array,
+    ExprColonExpr,
 
     Loop,
     Break,
@@ -1204,8 +1211,8 @@ impl Into<AstError> for AEKind {
 
 pub fn test() {
     let lexer = Lexer::new(
-        "test_code.pmh".to_string(),
-        crate::testing::TEST_CODE.to_string(),
+        "test_code.pmh",
+        crate::testing::TEST_CODE,
     );
 
     let mut state = AstState::new(lexer);

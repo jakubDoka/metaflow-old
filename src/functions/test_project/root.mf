@@ -133,3 +133,18 @@ fun something -> Embedded[i64]:
   var v: Embedded[int]
 
   v.push(10)
+
+fun something[T](x: [T, 10])
+
+fun arrays -> int:
+  var 
+    a: [int, 3]
+    b = [1, 2, 3]
+  
+  var i = 0
+  loop:
+    if i >= a.len():
+      break
+    a[i] = b[i]
+    i += 1
+  return 0

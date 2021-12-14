@@ -12,3 +12,6 @@ struct Gro:
 
 struct IntOption:
   o: Option[int]
+
+struct SomeArray:
+  a: [int, 8]

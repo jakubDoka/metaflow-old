@@ -2,6 +2,7 @@ use std::ops::{Deref, DerefMut};
 use std::path::{Path, PathBuf};
 
 use crate::ast::{AstError, AstParser, AstState, Dep};
+use crate::attributes::Attributes;
 use crate::lexer::{Lexer, TKind, TokenView};
 use crate::util::pool::{Pool, PoolRef};
 use crate::util::sdbm::{SdbmHashState, ID};
@@ -32,12 +33,12 @@ impl<'a> MTParser<'a> {
 
         let root_manifest_id = Manifest::new(0);
 
-        let root_manifest_hash = self.state.manifests[root_manifest_id].id;
+        let builtin_ast = AstState::new(Lexer::new("builtin.mf", include_str!("builtin.mf")));
 
         let builtin_module = ModEnt {
-            id: MOD_SALT.add("builtin").combine(root_manifest_hash),
+            id: MOD_SALT.add("builtin"),
             manifest: root_manifest_id,
-
+            ast: builtin_ast,
             ..Default::default()
         };
 
@@ -152,15 +153,15 @@ impl<'a> MTParser<'a> {
 
         let id = MOD_SALT.add(path_buffer.to_str().unwrap());
 
-        if let Some(module) = self.state.modules.index(id) {
+        if let Some(&module) = self.state.modules.index(id) {
             path_buffer.clear();
-            return Ok(*module);
+            return Ok(module);
         }
 
         let content = std::fs::read_to_string(&path_buffer)
             .map_err(|err| MTError::new(MTEKind::FileReadError(path_buffer.clone(), err), token))?;
 
-        let lexer = Lexer::new(path_buffer.to_str().unwrap().to_string(), content);
+        let lexer = Lexer::leaked(path_buffer.to_str().unwrap().to_string(), content);
         let path = lexer.file_name();
         path_buffer.clear();
         let ast = AstState::new(lexer);
@@ -172,6 +173,8 @@ impl<'a> MTParser<'a> {
             ast,
             manifest: manifest_id,
             path,
+
+            attributes: Default::default(),
         };
 
         let (_, module) = self.state.modules.insert(id, ent);
@@ -226,7 +229,7 @@ impl<'a> MTParser<'a> {
                 .ok_or_else(|| MTError::new(MTEKind::InvalidPathEncoding, token.clone()))?
                 .to_string();
 
-            let lexer = Lexer::new(full_path, content);
+            let lexer = Lexer::leaked(full_path, content);
             let mut state = AstState::new(lexer);
             let manifest = AstParser::new(&mut state, &mut self.context.ast)
                 .parse_manifest()
@@ -496,6 +499,7 @@ pub struct ModEnt {
     pub dependency: Vec<(ID, Mod)>,
     pub dependant: Vec<Mod>,
     pub ast: AstState,
+    pub attributes: Attributes,
     pub manifest: Manifest,
     pub path: &'static str,
 }
@@ -507,6 +511,7 @@ impl Default for ModEnt {
             dependency: vec![],
             dependant: vec![],
             ast: Default::default(),
+            attributes: Default::default(),
             manifest: Manifest::new(0),
             path: "",
         }

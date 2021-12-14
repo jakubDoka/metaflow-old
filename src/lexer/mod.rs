@@ -78,12 +78,17 @@ pub struct Lexer {
 }
 
 impl Lexer {
-    pub fn new(file_name: String, file: String) -> Lexer {
-        let file_name = Box::leak(file_name.into_boxed_str());
+    pub fn new(file_name: &'static str, file: &'static str) -> Lexer {
         Lexer {
             cursor: Cursor::new(file),
             file_name,
         }
+    }
+
+    pub fn leaked(file_name: String, file: String) -> Lexer {
+        let file_name = Box::leak(file_name.into_boxed_str());
+        let file = Box::leak(file.into_boxed_str());
+        Self::new(file_name, file)
     }
 
     fn ident(&mut self) -> Option<Token> {
@@ -465,8 +470,8 @@ pub trait IsOperator {
 //#[cfg(feature = "testing")]
 pub fn test() {
     let lexer = Lexer::new(
-        "test_code.pmh".to_string(),
-        crate::testing::TEST_CODE.to_string(),
+        "test_code.pmh",
+        crate::testing::TEST_CODE,
     );
 
     lexer.for_each(|token| println!("{:?}", token));
@@ -492,8 +497,7 @@ impl Default for Cursor {
 }
 
 impl Cursor {
-    pub fn new(data: String) -> Self {
-        let data = Box::leak(data.into_boxed_str());
+    pub fn new(data: &'static str) -> Self {
         Cursor {
             //SAFETY: cursor disposes data only upon drop
             chars: data.chars(),

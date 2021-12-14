@@ -1,7 +1,8 @@
 use std::ops::{Deref, DerefMut};
+use std::rc::Rc;
+use std::fmt::Write;
 
 use crate::ast::{AKind, Ast, AstError, AstParser, Vis};
-use crate::attributes::Attributes;
 use crate::lexer::{TKind as LTKind, Token, TokenView};
 use crate::module_tree::{self, MTContext, MTParser, MTState, Mod, TreeStorage};
 use crate::util::sdbm::{SdbmHashState, ID};
@@ -123,6 +124,9 @@ impl<'a> TParser<'a> {
                     let ty_ent = &mut self.state.types[ty];
                     ty_ent.align = align;
                     ty_ent.size = size;
+                }
+                TKind::Array(element, size) => {
+                    self.state.types[ty].size = size * self.state.types[element].size;
                 }
                 TKind::Pointer(..) | TKind::Builtin(_) => (),
                 _ => unreachable!("{:?}", ty_ent.kind),
@@ -262,8 +266,43 @@ impl<'a> TParser<'a> {
             AKind::ExplicitPackage => self.resolve_explicit_package_type(module, ast),
             AKind::Instantiation => self.resolve_instance(module, ast, depth),
             AKind::Ref => self.resolve_pointer(module, ast, depth),
+            AKind::Array => self.resolve_array(module, ast, depth),
+            AKind::Lit => self.resolve_constant(module, &ast.token),
             _ => unreachable!("{:?}", ast.kind),
         }
+    }
+
+    fn resolve_array(&mut self, module: Mod, ast: &Ast, depth: usize) -> Result<(Mod, Type)> {
+        let element = &ast[0];
+        let length = &ast[1];
+
+        let (_, element) = self.resolve_type(module, element, depth)?;
+        let (_, length) = self.resolve_type(module, length, depth)?;        
+        let length = match self.state.types[length].kind {
+            TKind::Const(TypeConst::Int(i)) => i,
+            _ => return Err(TError::new(
+                TEKind::ExpectedIntConstant,
+                ast[1].token.clone(),
+            )),
+        };
+
+        Ok((module, self.array_of(element, length as usize)))
+    }
+
+    fn resolve_constant(&mut self, module: Mod, token: &Token) -> Result<(Mod, Type)> {
+        let constant = match token.kind.clone() {
+            LTKind::Int(val, _) => TypeConst::Int(val),
+            LTKind::Uint(val, _) => TypeConst::Int(val as i64),
+            LTKind::Float(val, _) => TypeConst::Float(val),
+            LTKind::Bool(val) => TypeConst::Bool(val),
+            LTKind::Char(val) => TypeConst::Char(val),
+            LTKind::String(val) => TypeConst::String(val),
+            _ => unreachable!("{:?}", token.kind),
+        };
+
+        let ty = self.constant_of(constant);
+
+        Ok((module, ty))
     }
 
     fn resolve_pointer(
@@ -387,9 +426,8 @@ impl<'a> TParser<'a> {
         let mut ast = AstParser::new(&mut module_ent.ast, &mut context)
             .parse()
             .map_err(|err| TError::new(TEKind::AstError(err), Token::default()))?;
-
-        self.state.attributes.clear();
-        self.state.attributes.parse(&mut ast);
+        
+        module_ent.attributes.parse(&mut ast);
 
         for (i, a) in ast.iter_mut().enumerate() {
             match a.kind.clone() {
@@ -478,6 +516,59 @@ impl<'a> TParser<'a> {
         ty
     }
 
+    pub fn array_of(&mut self, element: Type, length: usize) -> Type {
+        let element_id = self.state.types[element].id;
+
+        let id = TYPE_SALT
+            .add("[]")
+            .combine(element_id)
+            .combine(ID(length as u64));
+        
+        if let Some(&index) = self.state.types.index(id) {
+            return index;
+        }
+
+        let ty_ent = TypeEnt {
+            id,
+            visibility: Vis::Public,
+            kind: TKind::Array(element, length as u32),
+
+            size: self.state.types[element].size * length as u32,
+            align: self.state.types[element].align,
+
+            ..Default::default()
+        };
+
+        let (shadow, ty_id) = self.state.types.insert(id, ty_ent);
+        debug_assert!(shadow.is_none());
+
+        ty_id
+    }
+
+    pub fn constant_of(&mut self, constant: TypeConst) -> Type {
+        self.context.constant_buffer.clear();
+        write!(self.context.constant_buffer, "{}", constant).unwrap();
+
+        let id = TYPE_SALT.add(&self.context.constant_buffer);
+        
+        if let Some(&tp) = self.state.types.index(id) {
+            return tp;
+        }
+
+        let ty_ent = TypeEnt {
+            id,
+            visibility: Vis::Public,
+            kind: TKind::Const(constant),
+            
+            ..Default::default()
+        };
+
+        let (shadow, ty) = self.state.types.insert(id, ty_ent);
+        debug_assert!(shadow.is_none());
+        
+        ty
+    }
+
     fn type_index(&self, id: ID) -> Option<Type> {
         self.state.types.index(id).cloned()
     }
@@ -491,6 +582,7 @@ impl<'a> TreeStorage<Type> for TParser<'a> {
                 let structure = &self.state.stypes[id];
                 structure.fields[idx].ty
             }
+            TKind::Array(ty, _) => ty,
             _ => unreachable!("{:?}", node.kind),
         }
     }
@@ -501,8 +593,9 @@ impl<'a> TreeStorage<Type> for TParser<'a> {
         match node.kind {
             _ if node.module != self.module || node.size != 0 => 0,
             TKind::Builtin(_) | TKind::Pointer(..) => 0,
+            TKind::Array(..) => 1,
             TKind::Structure(id) => self.state.stypes[id].fields.len(),
-            TKind::Generic(_) | TKind::Unresolved(_) => unreachable!(),
+            TKind::Generic(_) | TKind::Unresolved(_) | TKind::Const(_) => unreachable!(),
         }
     }
 
@@ -513,7 +606,7 @@ impl<'a> TreeStorage<Type> for TParser<'a> {
 
 crate::index_pointer!(Type);
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Default)]
 pub struct TypeEnt {
     pub id: ID,
     pub module: Mod,
@@ -535,8 +628,8 @@ impl TypeEnt {
     pub fn repr(&self) -> CrType {
         match self.kind {
             TKind::Builtin(ty) => ty,
-            TKind::Structure(_) | TKind::Pointer(..) => ptr_ty(),
-            TKind::Generic(_) | TKind::Unresolved(_) => unreachable!(),
+            TKind::Structure(..) | TKind::Pointer(..) | TKind::Array(..) => ptr_ty(),
+            TKind::Generic(..) | TKind::Unresolved(..) | TKind::Const(..) => unreachable!(),
         }
     }
 }
@@ -545,9 +638,38 @@ impl TypeEnt {
 pub enum TKind {
     Builtin(CrType),
     Pointer(Type),
+    Array(Type, u32),
+    Const(TypeConst),
     Structure(SType),
     Generic(GAst),
     Unresolved(GAst),
+}
+
+impl Default for TKind {
+    fn default() -> Self {
+        TKind::Builtin(ptr_ty())
+    }
+}
+
+#[derive(Debug, Clone)]
+pub enum TypeConst {
+    Bool(bool),
+    Int(i64),
+    Float(f64),
+    Char(char),
+    String(Rc<Vec<u8>>),
+}
+
+impl std::fmt::Display for TypeConst {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            TypeConst::Bool(b) => write!(f, "{}", b),
+            TypeConst::Int(i) => write!(f, "{}", i),
+            TypeConst::Float(float) => write!(f, "{}", float),
+            TypeConst::Char(c) => write!(f, "'{}'", c),
+            TypeConst::String(s) => write!(f, "\"{}\"", unsafe { std::str::from_utf8_unchecked(s) }),
+        }
+    }
 }
 
 crate::index_pointer!(GAst);
@@ -580,6 +702,7 @@ pub enum SKind {
 pub struct TContext {
     pub mt_context: MTContext,
     pub struct_field_buffer: Vec<SField>,
+    pub constant_buffer: String,
 }
 
 impl TContext {
@@ -601,7 +724,6 @@ pub struct TState {
     pub mt_state: MTState,
     pub unresolved: Vec<(Type, usize)>,
     pub resolved: Vec<Type>,
-    pub attributes: Attributes,
     pub parsed_ast: Ast,
 }
 
@@ -617,7 +739,6 @@ impl TState {
             mt_state,
             unresolved: vec![],
             resolved: vec![],
-            attributes: Attributes::default(),
             parsed_ast: Ast::default(),
         };
 
@@ -729,6 +850,12 @@ impl<'a> std::fmt::Display for TypeDisplay<'a> {
             TKind::Builtin(_) | TKind::Unresolved(_) | TKind::Generic(_) | TKind::Structure(_) => {
                 write!(f, "{}", ty.name)
             }
+            TKind::Const(value) => {
+                write!(f, "{}", value)
+            }
+            TKind::Array(id, len) => {
+                write!(f, "[{}, {}]", Self::new(self.state, *id), len)
+            }
         }
     }
 }
@@ -804,6 +931,10 @@ impl std::fmt::Display for TEDisplay<'_> {
             TEKind::Redefinition(other) => {
                 writeln!(f, "is redefinition of\n {}", TokenView::new(&other))?;
             }
+
+            TEKind::ExpectedIntConstant => {
+                writeln!(f, "expected positive integer constant")?;
+            }
         }
 
         Ok(())
@@ -837,6 +968,7 @@ pub enum TEKind {
     AccessingFilePrivateType,
     InfiniteSize(Vec<Type>),
     Redefinition(Token),
+    ExpectedIntConstant,
 }
 
 pub fn test() {

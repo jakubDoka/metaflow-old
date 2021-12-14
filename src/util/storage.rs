@@ -432,6 +432,10 @@ impl<I: IndexPointer + std::fmt::Debug, T: Default> LinkedList<I, T> {
         }
     }
 
+    pub fn len(&self) -> usize {
+        self.data.len() - self.free.len() - 1
+    }
+
     pub fn push(&mut self, data: T) -> I {
         let last = self.data[0].0;
 

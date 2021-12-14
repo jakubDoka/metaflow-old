@@ -427,6 +427,25 @@ fun main -> int:
   "#,
         0,
     );
+    test_sippet(
+        r#"
+attr entry
+fun main -> int:
+  let array = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]
+  var 
+    i = 0
+    sum = 0
+  
+  loop:
+    if i >= array.len():
+      break
+    sum += array[i]
+    i += 1
+
+  return sum - 11 * 5
+        "#,
+        0
+    );
 }
 
 pub fn test_sippet(sippet: &str, exit_code: i32) {

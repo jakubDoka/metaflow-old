@@ -6,6 +6,12 @@ fun goo(a: i8, b: i8): pass
 
 fun loo:
   noo::loo::[i8]()
+
+  let array = [1, 2, 3]
+  array[0] = 3
+  array[2] = always[1]
+  array[1] = 1
+
   pass
 
 fun main -> i64:
@@ -47,12 +53,11 @@ fun unary_operators(a: i64) -> i64:
   return -a + ~a + !a + ++a + --a
 
 struct Foo:
-  a, b, c: i64
+  a, b, c: int
 
 struct Goo:
   embed foo: Foo
-  attr something
-  gva: i64
+  gva: int
 
 fun strings -> i64:
   var hello = "hello"
@@ -62,5 +67,3 @@ fun mutable_ref(a: &Foo):
   a.a = 10
   a.b = 20
   a.c = 30
-
-

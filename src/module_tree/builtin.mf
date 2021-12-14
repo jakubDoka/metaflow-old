@@ -1,0 +1,8 @@
+
+fun sizeof[T] -> int
+
+fun __index__[T, L](p: &[T, L], index: int) -> &T:
+  (p as int + index * sizeof::[T]()) as &T
+
+fun len[T, L](array: [T, L]) -> int:
+  L
