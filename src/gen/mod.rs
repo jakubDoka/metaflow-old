@@ -444,7 +444,7 @@ fun main -> int:
 
   return sum - 11 * 5
         "#,
-        0
+        0,
     );
 }
 

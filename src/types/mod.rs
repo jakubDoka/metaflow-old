@@ -1,6 +1,6 @@
+use std::fmt::Write;
 use std::ops::{Deref, DerefMut};
 use std::rc::Rc;
-use std::fmt::Write;
 
 use crate::ast::{AKind, Ast, AstError, AstParser, Vis};
 use crate::lexer::{TKind as LTKind, Token, TokenView};
@@ -277,13 +277,15 @@ impl<'a> TParser<'a> {
         let length = &ast[1];
 
         let (_, element) = self.resolve_type(module, element, depth)?;
-        let (_, length) = self.resolve_type(module, length, depth)?;        
+        let (_, length) = self.resolve_type(module, length, depth)?;
         let length = match self.state.types[length].kind {
             TKind::Const(TypeConst::Int(i)) => i,
-            _ => return Err(TError::new(
-                TEKind::ExpectedIntConstant,
-                ast[1].token.clone(),
-            )),
+            _ => {
+                return Err(TError::new(
+                    TEKind::ExpectedIntConstant,
+                    ast[1].token.clone(),
+                ))
+            }
         };
 
         Ok((module, self.array_of(element, length as usize)))
@@ -305,12 +307,7 @@ impl<'a> TParser<'a> {
         Ok((module, ty))
     }
 
-    fn resolve_pointer(
-        &mut self,
-        module: Mod,
-        ast: &Ast,
-        depth: usize,
-    ) -> Result<(Mod, Type)> {
+    fn resolve_pointer(&mut self, module: Mod, ast: &Ast, depth: usize) -> Result<(Mod, Type)> {
         let (module, datatype) = self.resolve_type(module, &ast[0], depth)?;
         let datatype = self.pointer_of(datatype);
 
@@ -353,10 +350,12 @@ impl<'a> TParser<'a> {
 
         let ast_id = match ty_ent.kind {
             TKind::Generic(ast) => ast,
-            _ => return Err(TError::new(
-                TEKind::InstancingNonGeneric(ty_ent.hint.clone()),
-                ast.token.clone(),
-            )),
+            _ => {
+                return Err(TError::new(
+                    TEKind::InstancingNonGeneric(ty_ent.hint.clone()),
+                    ast.token.clone(),
+                ))
+            }
         };
 
         let type_ent = TypeEnt {
@@ -426,7 +425,7 @@ impl<'a> TParser<'a> {
         let mut ast = AstParser::new(&mut module_ent.ast, &mut context)
             .parse()
             .map_err(|err| TError::new(TEKind::AstError(err), Token::default()))?;
-        
+
         module_ent.attributes.parse(&mut ast);
 
         for (i, a) in ast.iter_mut().enumerate() {
@@ -523,7 +522,7 @@ impl<'a> TParser<'a> {
             .add("[]")
             .combine(element_id)
             .combine(ID(length as u64));
-        
+
         if let Some(&index) = self.state.types.index(id) {
             return index;
         }
@@ -550,7 +549,7 @@ impl<'a> TParser<'a> {
         write!(self.context.constant_buffer, "{}", constant).unwrap();
 
         let id = TYPE_SALT.add(&self.context.constant_buffer);
-        
+
         if let Some(&tp) = self.state.types.index(id) {
             return tp;
         }
@@ -559,13 +558,13 @@ impl<'a> TParser<'a> {
             id,
             visibility: Vis::Public,
             kind: TKind::Const(constant),
-            
+
             ..Default::default()
         };
 
         let (shadow, ty) = self.state.types.insert(id, ty_ent);
         debug_assert!(shadow.is_none());
-        
+
         ty
     }
 
@@ -667,7 +666,9 @@ impl std::fmt::Display for TypeConst {
             TypeConst::Int(i) => write!(f, "{}", i),
             TypeConst::Float(float) => write!(f, "{}", float),
             TypeConst::Char(c) => write!(f, "'{}'", c),
-            TypeConst::String(s) => write!(f, "\"{}\"", unsafe { std::str::from_utf8_unchecked(s) }),
+            TypeConst::String(s) => {
+                write!(f, "\"{}\"", unsafe { std::str::from_utf8_unchecked(s) })
+            }
         }
     }
 }
@@ -879,7 +880,11 @@ impl std::fmt::Display for TEDisplay<'_> {
 
         match &self.error.kind {
             TEKind::InstancingNonGeneric(origin) => {
-                writeln!(f, "instancing non-generic type, defined here:\n {}", TokenView::new(&origin))?;
+                writeln!(
+                    f,
+                    "instancing non-generic type, defined here:\n {}",
+                    TokenView::new(&origin)
+                )?;
             }
             TEKind::AstError(error) => {
                 writeln!(f, "{}", error)?;

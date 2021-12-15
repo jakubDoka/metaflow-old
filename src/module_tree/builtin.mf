@@ -1,4 +1,25 @@
 
+attr push(linkage(import), call_conv(platform))
+
+attr linkage(import, malloc)
+fun alloc(size: int) -> &u8
+
+fun realloc(ptr: &u8, size: int) -> &u8
+
+fun free(ptr: &u8)
+
+fun memset(ptr: &u8, value: u8, size: int)
+
+attr linkage(import, printf)
+fun print(str: &u8)
+
+attr pop()
+
+fun new[T] -> &T:
+  let new = alloc(sizeof::[T]())
+  memset(new, 0, sizeof::[T]())
+  new as &T
+
 fun sizeof[T] -> int
 
 fun __index__[T, L](p: &[T, L], index: int) -> &T:
@@ -6,3 +27,56 @@ fun __index__[T, L](p: &[T, L], index: int) -> &T:
 
 fun len[T, L](array: [T, L]) -> int:
   L
+
+struct Option[T]:
+  priv value: T
+  priv is_some: bool
+
+fun some[T](value: T) -> Option[T]:
+  var option: Option[T]
+  option.value = value
+  option.is_some = true
+  option
+
+fun is_some(option: Option[T]) -> bool:
+  option.is_some
+
+fun is_none(option: Option[T]) -> bool:
+  !option.is_some
+
+struct Seq[T]:
+  data: &T
+  len: int
+  cap: int
+
+fun get[T](s: &Seq[T], index: int) -> Option[&T]:
+  if index < 0 || index >= seq.len:
+    return
+  some(s[index])
+
+fun __index__[T](seq: &Seq[T], index: int) -> &T:
+  (seq.data as int + index * sizeof::[T]()) as &T
+
+fun reserve[T](s: &Seq[T], new_cap: int):
+  if s.cap > new_cap:
+    return
+  s.data = realloc(s.data, new_cap * sizeof::[T]())
+  s.cap = new_cap
+
+fun add[T](s: &Seq[T], value: T):
+  let new_len = s.len + 1
+  if new_len > s.cap:
+    s.data = realloc(s.data, s.len * 2 * sizeof::[T]())
+  s[s.len] = value
+  s.len = new_len
+
+fun extend[T, L](s: &Seq[T], array: &[T, L]):
+  let new_len = s.len + L
+  if new_len > s.cap:
+    s.reserve(new_len)
+  var i = s.len
+  loop:
+    if i == new_len:
+      break
+    s[i] = array[i - s.len]
+  s.len = new_len

@@ -171,7 +171,7 @@ literal =
 number = "\d+\.?\d*[iuf]\d{0, 2}"
 string = "\"[\s\S]*\""
 bool = 'true' | 'false'
-char = "'\p{L}|\p{N}|\\\d{3}|\\x[0-9a-fA-F]{2}|\\u[0-9a-fA-F]{4}|\\U[0-9a-fA-F]{8}'"
+char = todo
 
 type = [ ref ] ident [ '[' type { ',' type } ']' ]
 ref = '&' [ var ]
@@ -179,7 +179,7 @@ generics = '[' ident { ',' ident } ']'
 args = '(' { [ 'var' ] ident { ',' ident } ':' type } ')'
 vis = 'pub' | 'priv'
 label = "'[a-zA-Z0-9_]+"
-op = "[\+\-\*/%\^=<>!&|\?:~]+|min|max|abs"
+op = "([\+\-\*/%\^=<>!&\|\?:~]+|min|max|abs)"
 ident = "[a-zA-Z_][a-zA-Z0-9_]+"
 
 ```

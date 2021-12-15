@@ -57,7 +57,6 @@ impl<'a> FParser<'a> {
     }
 
     fn translate(&mut self) -> Result {
-        
         while let Some(fun) = self.state.unresolved.pop() {
             self.state.body = self.context.body_pool.pop().unwrap_or_default();
             self.fun(fun)?;
@@ -161,35 +160,34 @@ impl<'a> FParser<'a> {
         }
 
         let mut name_buffer = self.context.pool.get();
-        
+
         write_base36(fun_id.0, &mut name_buffer);
-        
+
         let name = unsafe { std::str::from_utf8_unchecked(&name_buffer[..]) };
         let attributes = &self.state.modules[self.state.funs[fun].module].attributes;
 
-        let (linkage, alias) =
-            if let Some(attr) = attributes.get_attr(attr_id, "linkage") {
-                assert_attr_len(attr, 1)?;
+        let (linkage, alias) = if let Some(attr) = attributes.get_attr(attr_id, "linkage") {
+            assert_attr_len(attr, 1)?;
 
-                let linkage = match attr[1].token.spam.raw() {
-                    "import" => Linkage::Import,
-                    "local" => Linkage::Local,
-                    "export" => Linkage::Export,
-                    "preemptible" => Linkage::Preemptible,
-                    "hidden" => Linkage::Hidden,
-                    _ => return Err(FError::new(FEKind::InvalidLinkage, attr.token.clone())),
-                };
-
-                if attr.len() > 2 {
-                    (linkage, attr[2].token.spam.raw())
-                } else if linkage == Linkage::Import {
-                    (linkage, self.state.funs[fun].name)
-                } else {
-                    (linkage, name)
-                }
-            } else {
-                (Linkage::Export, name)
+            let linkage = match attr[1].token.spam.raw() {
+                "import" => Linkage::Import,
+                "local" => Linkage::Local,
+                "export" => Linkage::Export,
+                "preemptible" => Linkage::Preemptible,
+                "hidden" => Linkage::Hidden,
+                _ => return Err(FError::new(FEKind::InvalidLinkage, attr.token.clone())),
             };
+
+            if attr.len() > 2 {
+                (linkage, attr[2].token.spam.raw())
+            } else if linkage == Linkage::Import {
+                (linkage, self.state.funs[fun].name)
+            } else {
+                (linkage, name)
+            }
+        } else {
+            (Linkage::Export, name)
+        };
 
         let call_conv = if let Some(attr) = attributes.get_attr(attr_id, "call_conv") {
             assert_attr_len(attr, 1)?;
@@ -498,10 +496,11 @@ impl<'a> FParser<'a> {
         let index = self.expr(fun, &ast[1])?;
         let id = FUN_SALT.add("__index__");
         let args = &[target, index];
-        let result = self.call_low(fun, id, "__index__", true, &[], args, &ast.token)?
+        let result = self
+            .call_low(fun, id, "__index__", true, &[], args, &ast.token)?
             .ok_or_else(|| FError::new(FEKind::ExpectedValue, ast.token.clone()))?;
-        
-        let result = self.deref_expr_low(result, &ast.token)?; 
+
+        let result = self.deref_expr_low(result, &ast.token)?;
 
         Ok(Some(result))
     }
@@ -532,11 +531,7 @@ impl<'a> FParser<'a> {
         let ty = self.array_of(element_ty, length);
 
         let result = self.new_anonymous_value(ty, true);
-        self.add_inst(InstEnt::new(
-            IKind::Uninitialized,
-            Some(result),
-            &ast.token,
-        ));
+        self.add_inst(InstEnt::new(IKind::Uninitialized, Some(result), &ast.token));
 
         for (i, &value) in values.iter().enumerate() {
             let offset = self.new_anonymous_value(element_ty, false);
@@ -546,11 +541,7 @@ impl<'a> FParser<'a> {
                 Some(offset),
                 &ast.token,
             ));
-            self.add_inst(InstEnt::new(
-                IKind::Assign(offset),
-                Some(value),
-                &ast.token,
-            ));
+            self.add_inst(InstEnt::new(IKind::Assign(offset), Some(value), &ast.token));
         }
 
         Ok(Some(result))
@@ -568,9 +559,7 @@ impl<'a> FParser<'a> {
         let ty = self.state.body.values[value].ty;
         let ty = self.pointer_of(ty);
         let reference = self.new_temp_value(ty);
-        self.add_inst(
-            InstEnt::new(IKind::Ref(value), Some(reference), token),
-        );
+        self.add_inst(InstEnt::new(IKind::Ref(value), Some(reference), token));
 
         // we need to allocate it since register cannot be referenced
         let mut current = reference;
@@ -748,7 +737,7 @@ impl<'a> FParser<'a> {
             None,
             &cond_expr.token,
         ));
-        
+
         self.assert_type(cond_type, self.state.builtin_repo.bool, &cond_expr.token)?;
 
         let merge_block = self.new_block();
@@ -908,9 +897,16 @@ impl<'a> FParser<'a> {
     ) -> ExprResult {
         let mut values = values.to_vec();
         let module = self.state.funs[fun].module;
-        
-        let fun =
-            self.smart_find_or_create(module, base_name, name, params, &mut values, dot_call, token)?;
+
+        let fun = self.smart_find_or_create(
+            module,
+            base_name,
+            name,
+            params,
+            &mut values,
+            dot_call,
+            token,
+        )?;
         let return_type = self.return_type_of(fun);
 
         let value = return_type.map(|t| {
@@ -942,9 +938,7 @@ impl<'a> FParser<'a> {
                 let name = TYPE_SALT
                     .add(ast.token.spam.raw())
                     .combine(self.state.modules[self.state.funs[fun].module].id);
-                if let Some(&(_, ty)) = self
-                    .state
-                    .funs[fun]
+                if let Some(&(_, ty)) = self.state.funs[fun]
                     .params
                     .iter()
                     .find(|&(p, _)| *p == name)
@@ -953,19 +947,26 @@ impl<'a> FParser<'a> {
                     match ty {
                         TKind::Const(t) => {
                             let (kind, ty) = match t.clone() {
-                                TypeConst::Bool(val) => (LTKind::Bool(val), self.state.builtin_repo.bool),
-                                TypeConst::Int(val) => (LTKind::Int(val, 0), self.state.builtin_repo.int),
-                                TypeConst::Float(val) => (LTKind::Float(val, 64), self.state.builtin_repo.f64),
-                                TypeConst::Char(val) => (LTKind::Char(val), self.state.builtin_repo.u32),
-                                TypeConst::String(val) => (LTKind::String(val), self.pointer_of(self.state.builtin_repo.u8)),
+                                TypeConst::Bool(val) => {
+                                    (LTKind::Bool(val), self.state.builtin_repo.bool)
+                                }
+                                TypeConst::Int(val) => {
+                                    (LTKind::Int(val, 0), self.state.builtin_repo.int)
+                                }
+                                TypeConst::Float(val) => {
+                                    (LTKind::Float(val, 64), self.state.builtin_repo.f64)
+                                }
+                                TypeConst::Char(val) => {
+                                    (LTKind::Char(val), self.state.builtin_repo.u32)
+                                }
+                                TypeConst::String(val) => (
+                                    LTKind::String(val),
+                                    self.pointer_of(self.state.builtin_repo.u8),
+                                ),
                             };
-                            
+
                             let value = self.new_temp_value(ty);
-                            self.add_inst(InstEnt::new(
-                                IKind::Lit(kind),
-                                Some(value),
-                                &ast.token,
-                            ));
+                            self.add_inst(InstEnt::new(IKind::Lit(kind), Some(value), &ast.token));
                             Some(value)
                         }
                         _ => None,
@@ -1093,7 +1094,6 @@ impl<'a> FParser<'a> {
                     let value = self.new_anonymous_value(current_type, mutable);
                     self.state.body.values[value].offset = offset;
                     self.add_inst(InstEnt::new(IKind::Offset(header), Some(value), &token));
-                    
 
                     match &self.state.types[pointed].kind {
                         &TKind::Structure(sid) => {
@@ -1146,7 +1146,6 @@ impl<'a> FParser<'a> {
             return Err(FError::new(FEKind::AssignToImmutable, ast.token.clone()));
         }
 
-        
         self.assert_type(value_datatype, target_datatype, &ast.token)?;
 
         self.add_inst(InstEnt::new(IKind::Assign(target), Some(value), &ast.token));
@@ -1350,7 +1349,7 @@ impl<'a> FParser<'a> {
         let mut specific_id = values
             .iter()
             .fold(base, |base, &val| base.combine(self.state.types[val].id));
-        
+
         if values.len() == 0 {
             for &ty in params {
                 specific_id = specific_id.combine(self.state.types[ty].id);
@@ -1371,9 +1370,15 @@ impl<'a> FParser<'a> {
         let mut found = None;
 
         for (module, module_id) in buffer.drain(1..) {
-            if let Some(fun) =
-                self.find_or_create_low(specific_id, module_id, base, module, params, values, token)?
-            {
+            if let Some(fun) = self.find_or_create_low(
+                specific_id,
+                module_id,
+                base,
+                module,
+                params,
+                values,
+                token,
+            )? {
                 if let Some(found) = found {
                     return Err(FError::new(
                         FEKind::AmbiguousFunction(fun, found),
@@ -1434,7 +1439,14 @@ impl<'a> FParser<'a> {
         Ok(found)
     }
 
-    fn create(&mut self, module: Mod, fun: Fun, g: GFun, explicit_params: &[Type], values: &[Type]) -> Result<Option<Fun>> {
+    fn create(
+        &mut self,
+        module: Mod,
+        fun: Fun,
+        g: GFun,
+        explicit_params: &[Type],
+        values: &[Type],
+    ) -> Result<Option<Fun>> {
         let g_ent = &self.state.gfuns[g];
         let g_ent_len = g_ent.signature.elements.len();
 
@@ -1449,14 +1461,13 @@ impl<'a> FParser<'a> {
         // perform pattern matching
         let mut i = 0;
         let mut j = 0;
-        while i <  g_ent_len {
+        while i < g_ent_len {
             let g_ent = &self.state.gfuns[g];
             let (amount, length) = match g_ent.signature.elements[i] {
                 GenericElement::NextArgument(amount, length) => (amount, length),
                 _ => unreachable!("{:?}", g_ent.signature.elements[i]),
             };
 
-            
             for _ in 0..amount {
                 self.load_arg_from_datatype(values[j], &mut arg_buffer, &mut stack);
                 let g_ent = &self.state.gfuns[g];
@@ -1469,34 +1480,33 @@ impl<'a> FParser<'a> {
                         let b = arg_buffer[j].clone();
                         if !a.compare(&b) {
                             match a {
-                                GenericElement::Parameter(i) => {
-                                    match b {
-                                        GenericElement::Element(_, Some(ty)) | GenericElement::Array(Some(ty)) => {
-                                            if let Some(inferred_ty) = params[i] {
-                                                if ty != inferred_ty {
-                                                    return Ok(None);
-                                                }
-                                            } else {
-                                                params[i] = Some(ty);
+                                GenericElement::Parameter(i) => match b {
+                                    GenericElement::Element(_, Some(ty))
+                                    | GenericElement::Array(Some(ty)) => {
+                                        if let Some(inferred_ty) = params[i] {
+                                            if ty != inferred_ty {
+                                                return Ok(None);
                                             }
-                                            if let GenericElement::Array(_) = b {
-                                                j += 2;  
-                                            } else if let Some(&GenericElement::ScopeStart) =
-                                                arg_buffer.get(j + 1)
-                                            {
-                                                loop {
-                                                    if let Some(&GenericElement::ScopeEnd) =
-                                                        arg_buffer.get(j)
-                                                    {
-                                                        break;
-                                                    }
-                                                    j += 1;
+                                        } else {
+                                            params[i] = Some(ty);
+                                        }
+                                        if let GenericElement::Array(_) = b {
+                                            j += 2;
+                                        } else if let Some(&GenericElement::ScopeStart) =
+                                            arg_buffer.get(j + 1)
+                                        {
+                                            loop {
+                                                if let Some(&GenericElement::ScopeEnd) =
+                                                    arg_buffer.get(j)
+                                                {
+                                                    break;
                                                 }
+                                                j += 1;
                                             }
                                         }
-                                        _ => return Ok(None),
                                     }
-                                }
+                                    _ => return Ok(None),
+                                },
                                 _ => return Ok(None),
                             }
                         }
@@ -1894,8 +1904,7 @@ impl<'a> FParser<'a> {
     }
 
     fn constant_of(&mut self, constant: TypeConst) -> Type {
-        TParser::new(&mut self.state.t_state, &mut self.context.t_context)
-            .constant_of(constant)
+        TParser::new(&mut self.state.t_state, &mut self.context.t_context).constant_of(constant)
     }
 
     #[inline]
@@ -1927,8 +1936,7 @@ impl<'a> FParser<'a> {
     }
 
     fn array_of(&mut self, ty: Type, length: usize) -> Type {
-        TParser::new(&mut self.state.t_state, &mut self.context.t_context)
-            .array_of(ty, length)
+        TParser::new(&mut self.state.t_state, &mut self.context.t_context).array_of(ty, length)
     }
 }
 
@@ -2116,8 +2124,11 @@ impl<'a> std::fmt::Display for FEDisplay<'a> {
                 )?;
             }
             FEKind::EmptyArray => {
-                writeln!(f, "cannot create empty array from '[]' syntax as type of element is unknown")?;
-            },
+                writeln!(
+                    f,
+                    "cannot create empty array from '[]' syntax as type of element is unknown"
+                )?;
+            }
         }
 
         Ok(())

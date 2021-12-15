@@ -1,0 +1,88 @@
+{
+	"$schema": "https://raw.githubusercontent.com/martinring/tmlanguage/master/tmlanguage.json",
+	"name": "metaflow",
+	"patterns": [
+		{
+			"include": "#keywords"
+		},
+		{
+			"include": "#literals"
+		},
+		{
+			"include": "#operators"
+		},
+		{
+			"include": "#other"
+		},
+		{
+			"include": "#types"
+		}
+	],
+	"repository": {
+		"types": {
+			"name": "entity.name.type",
+			"match": "\\b([A-Z][a-zA-Z0-9]*|(u|i)(8|16|32|64)|f(32|64)|int|uint|bool)\\b"
+		},
+		"operators": {
+			"name": "keyword.operator",
+			"match": "([\\+\\-\\*/%\\^=<>!&\\|\\?:~]+|\\b(min|max|abs|as)\\b)"
+		},
+		"other": {
+			"patterns": [
+				{
+					"name": "entity.name.function",
+					"match": "\\b[a-z_][a-z0-9_]*(?=(((::)?\\[.*\\]{1})?\\())"
+				},
+				{
+					"name": "constant",
+					"match": "\\b[A-Z][A-Z0-9_]*\\b"
+				}
+			]
+
+		},
+		"keywords": {
+			"patterns": [
+				{
+					"name": "keyword.control.metaflow",
+					"match": "\\b(return|if|elif|else|loop|break|continue)\\b"
+				},
+				{
+					"name": "keyword.other",
+					"match": "\\b(pub|priv|use|fun|attr|pass|var|let|struct|embed)\\b"
+				}
+			]
+		},
+		"literals": {
+			"patterns": [
+				{
+					"name": "string.quoted.double.metaflow",
+					"begin": "\"",
+					"end": "\"",
+					"patterns": [
+						{
+							"name": "constant.character.escape.metaflow",
+							"match": "\\\\(\\\\|'|\"|a|b|e|f|v|n|r|t|[0-7]{3}|x[0-9a-fA-F]{2}|u[0-9a-fA-F]{4}|U[0-9a-fA-F]{8})"
+						}
+					]
+				},
+				{
+					"name": "constant.boolean",			
+					"match": "\\b(true|false)\\b"
+				},
+				{
+					"name": "constant.character",
+					"match": "'([^\\\\']|\\\\(\\\\|'|a|b|e|f|v|n|r|t|[0-7]{3}|x[0-9a-fA-F]{2}|u[0-9a-fA-F]{4}|U[0-9a-fA-F]{8}))'"
+				},
+				{
+					"label": "label",
+					"match": "'[a-zA-Z_][a-zA-Z0-9_]*\\b"
+				},
+				{
+					"name": "constant.numeric",
+					"match": "\\b(0x[0-9A-Fa-f_]+|0b[01_]+|0o[0-7_]+|[0-9_]+(\\.[0-9_]+)?)(u(8|16|32|64|)|i(|8|16|32|64|)|f(32|64|)|)\\b"
+				}
+			]
+		}
+	},
+	"scopeName": "source.mf"
+}

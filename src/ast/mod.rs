@@ -1,31 +1,38 @@
 use crate::lexer::*;
 
 use std::{
-    fmt::{Display, Write},
+    fmt::Write,
     ops::{Deref, DerefMut},
 };
 
-pub type Result<T = ()> = std::result::Result<T, AstError>;
+pub type Result<T = ()> = std::result::Result<T, AError>;
 
 pub struct AstParser<'a> {
-    state: &'a mut AstState,
-    context: &'a mut AstContext,
+    main_state: &'a mut AMainState,
+    state: &'a mut AState,
+    context: &'a mut AContext,
 }
 
 impl<'a> AstParser<'a> {
-    pub fn new(state: &'a mut AstState, context: &'a mut AstContext) -> Self {
-        Self { state, context }
+    pub fn new(
+        main_state: &'a mut AMainState,
+        state: &'a mut AState,
+        context: &'a mut AContext,
+    ) -> Self {
+        Self {
+            main_state,
+            state,
+            context,
+        }
     }
 
     pub fn parse_manifest(&mut self) -> Result<Manifest> {
-        let mut manifest = std::mem::take(&mut self.context.temp_manifest);
-        manifest.clear();
-
+        let mut manifest = Manifest::default();
         loop {
             match self.state.token.kind {
                 TKind::Eof => break,
                 TKind::Indent(_) => {
-                    self.state.next();
+                    self.next()?;
                     continue;
                 }
                 TKind::Ident => (),
@@ -33,47 +40,61 @@ impl<'a> AstParser<'a> {
                     return Err(self.unexpected_str("every item in manifest starts with identifier"))
                 }
             }
-            let name = self.state.token.spam.raw();
-            self.state.next();
+            let name = self.state.token.spam.clone();
+            self.next()?;
             match self.state.token.kind {
-                TKind::Op if self.state.token.spam.raw() == "=" => {
-                    self.state.next();
+                TKind::Op if self.main_state.display(&self.state.token.spam.clone()) == "=" => {
+                    self.next()?;
 
                     if !matches!(self.state.token.kind, TKind::String(_)) {
                         return Err(self.unexpected_str("expected string literal"));
                     }
 
-                    let value = self.state.token.spam.raw();
-                    let value = &value[1..value.len() - 1];
+                    let mut value = self.state.token.spam.clone();
+                    value.range.start += 1;
+                    value.range.end -= 1;
 
                     manifest.attrs.push((name, value));
 
-                    self.state.next();
+                    self.next()?;
                 }
-                TKind::Colon => match name {
+                TKind::Colon => match self.main_state.display(&name) {
                     "dependencies" => {
-                        self.state.next();
+                        self.next()?;
                         self.walk_block(|s| {
                             let mut token = s.state.token.clone();
 
                             s.expect_str(TKind::Ident, "expected dependency name")?;
-                            let name = s.state.token.spam.raw();
-                            s.state.next();
+                            let name = s.state.token.spam.clone();
+                            s.next()?;
 
                             if !matches!(s.state.token.kind, TKind::String(_)) {
                                 return Err(s.unexpected_str("expected string literal as repository link with version or local path"));
                             }
-                            let path_and_version = s.state.token.spam.raw();
-                            let path_and_version = &path_and_version[1..path_and_version.len() - 1];
-                            s.state.next();
+                            let mut path_and_version = s.state.token.spam.clone();
+                            path_and_version.range.start += 1;
+                            path_and_version.range.end -= 1;
+                            s.next()?;
 
-                            let mut parts = path_and_version.splitn(2, '@');
-                            let path = parts.next().unwrap_or("");
-                            let version = parts.next().unwrap_or("main");
+                            let split_at = s
+                                .main_state
+                                .display(&path_and_version)
+                                .find('@')
+                                .unwrap_or(path_and_version.range.len());
 
-                            token.to_group(&s.state.token, true);
+                            let path = Spam::new(
+                                path_and_version.source, 
+                                path_and_version.range.start..path_and_version.range.start + split_at
+                            );
 
-                            let external = path.starts_with("github.com");
+                            let version = Spam::new(
+                                path_and_version.source, 
+                                path_and_version.range.start + split_at + 1..path_and_version.range.end
+                            );
+
+                            s.join_token(&mut token, true);
+
+                            let external = s.main_state.display(&path).starts_with("github.com");
 
                             let dependency = Dep {
                                 external,
@@ -89,14 +110,17 @@ impl<'a> AstParser<'a> {
                     }
                     _ => {
                         return Err(
-                            self.unexpected(format!("unexpected item in manifest '{}'", name))
-                        )
+                            self.unexpected(format!(
+                                "unexpected item in manifest '{}'", 
+                                self.main_state.display(&name)
+                            ))
+                        );
                     }
                 },
                 _ => {
                     return Err(
                         self.unexpected_str("expected '=' or ':' after identifier in manifest")
-                    )
+                    );
                 }
             }
         }
@@ -104,42 +128,43 @@ impl<'a> AstParser<'a> {
         Ok(manifest)
     }
 
-    pub fn take_imports(&mut self) -> Result {
+    pub fn take_imports(&mut self, imports: &mut Vec<Import>) -> Result {
         while let TKind::Indent(_) = self.state.token.kind {
-            self.state.next();
+            self.next()?;
         }
 
         if self.state.token == TKind::Use {
-            self.state.next();
-
-            self.walk_block(|s| s.import_line())?;
+            self.next()?;
+            self.walk_block(|s| s.import_line(imports))?;
         }
 
         Ok(())
     }
 
-    fn import_line(&mut self) -> Result {
+    fn import_line(&mut self, imports: &mut Vec<Import>) -> Result {
         let mut token = self.state.token.clone();
 
         let nickname = if self.state.token == TKind::Ident {
-            let nickname = self.state.token.spam.raw();
-            self.state.next();
-            nickname
+            let nickname = self.state.token.spam.clone();
+            self.next()?;
+            Some(nickname)
         } else {
-            ""
+            None
         };
 
         let path = if let TKind::String(_) = self.state.token.kind {
-            let path = self.state.token.spam.raw();
-            &path[1..path.len() - 1]
+            let mut path = self.state.token.spam.clone();
+            path.range.start += 1;
+            path.range.end -= 1;
+            path
         } else {
             return Err(self.unexpected_str("expected string literal as import path"));
         };
 
-        self.state.next();
-        token.to_group(&self.state.token, true);
+        self.next()?;
+        self.join_token(&mut token, true);
 
-        self.state.imports.push(Import {
+        imports.push(Import {
             nickname,
             path,
             token,
@@ -155,7 +180,7 @@ impl<'a> AstParser<'a> {
                 TKind::Fun => ast.push(self.fun()?),
                 TKind::Attr => ast.push(self.attr()?),
                 TKind::Struct => ast.push(self.struct_declaration()?),
-                TKind::Indent(_) => self.state.next(),
+                TKind::Indent(_) => self.next()?,
                 _ => return Err(self.unexpected_str("expected 'fun' or 'attr' or 'struct'")),
             }
         }
@@ -164,9 +189,9 @@ impl<'a> AstParser<'a> {
 
     fn struct_declaration(&mut self) -> Result<Ast> {
         let mut ast = self.ast(AKind::None);
-        self.state.next();
+        self.next()?;
 
-        ast.kind = AKind::StructDeclaration(self.visibility());
+        ast.kind = AKind::StructDeclaration(self.visibility()?);
 
         ast.push(self.type_expr()?);
 
@@ -184,10 +209,10 @@ impl<'a> AstParser<'a> {
             return self.attr();
         }
 
-        let vis = self.visibility();
+        let vis = self.visibility()?;
 
         let embedded = if self.state.token == TKind::Embed {
-            self.state.next();
+            self.next()?;
             true
         } else {
             false
@@ -205,14 +230,14 @@ impl<'a> AstParser<'a> {
 
         ast.push(self.type_expr()?);
 
-        ast.token.to_group(&self.state.token, true);
+        self.join_token(&mut ast.token, true);
 
         Ok(ast)
     }
 
     fn attr(&mut self) -> Result<Ast> {
         let mut ast = self.ast(AKind::Attribute);
-        self.state.next();
+        self.next()?;
 
         self.list(
             &mut ast,
@@ -222,7 +247,7 @@ impl<'a> AstParser<'a> {
             Self::attr_element,
         )?;
 
-        ast.token.to_group(&self.state.token, true);
+        self.join_token(&mut ast.token, true);
 
         Ok(ast)
     }
@@ -239,10 +264,10 @@ impl<'a> AstParser<'a> {
                 TKind::RPar,
                 Self::attr_element,
             )?,
-            TKind::Op => match self.state.token.spam.deref() {
+            TKind::Op => match self.main_state.display(&self.state.token.spam) {
                 "=" => {
                     ast.kind = AKind::AttributeAssign;
-                    self.state.next();
+                    self.next()?;
                     ast.push(self.expr()?);
                 }
                 _ => return Err(self.unexpected_str("expected '=' or '('")),
@@ -250,7 +275,7 @@ impl<'a> AstParser<'a> {
             _ => (),
         }
 
-        ast.token.to_group(&self.state.token, true);
+        self.join_token(&mut ast.token, true);
 
         Ok(ast)
     }
@@ -266,16 +291,16 @@ impl<'a> AstParser<'a> {
             Ast::none()
         });
 
-        ast.token.to_group(&self.state.token, true);
+        self.join_token(&mut ast.token, true);
 
         Ok(ast)
     }
 
     fn fun_header(&mut self) -> Result<(Ast, Vis)> {
         let mut ast = self.ast(AKind::FunHeader);
-        self.state.next();
+        self.next()?;
 
-        let visibility = self.visibility();
+        let visibility = self.visibility()?;
 
         self.state.is_type_expr = true;
         ast.push(match self.state.token.kind {
@@ -295,20 +320,20 @@ impl<'a> AstParser<'a> {
         }
 
         ast.push(if self.state.token == TKind::RArrow {
-            self.state.next();
+            self.next()?;
             self.type_expr()?
         } else {
             Ast::none()
         });
 
-        ast.token.to_group(&self.state.token, true);
+        self.join_token(&mut ast.token, true);
 
         Ok((ast, visibility))
     }
 
     fn fun_argument(&mut self) -> Result<Ast> {
         let mutable = if self.state.token.kind == TKind::Var {
-            self.state.next();
+            self.next()?;
             true
         } else {
             false
@@ -317,12 +342,12 @@ impl<'a> AstParser<'a> {
         self.list(&mut ast, TKind::None, TKind::Comma, TKind::Colon, |s| {
             s.expect_str(TKind::Ident, "expected ident")?;
             let ident = s.ast(AKind::Ident);
-            s.state.next();
+            s.next()?;
             Ok(ident)
         })?;
         ast.push(self.type_expr()?);
 
-        ast.token.to_group(&self.state.token, true);
+        self.join_token(&mut ast.token, true);
 
         Ok(ast)
     }
@@ -343,13 +368,13 @@ impl<'a> AstParser<'a> {
 
     fn var_statement(&mut self) -> Result<Ast> {
         let mut ast = self.ast(AKind::VarStatement(self.state.token.kind == TKind::Var));
-        self.state.next();
+        self.next()?;
         self.walk_block(|s| {
             ast.push(s.var_statement_line()?);
             Ok(())
         })?;
 
-        ast.token.to_group(&self.state.token, true);
+        self.join_token(&mut ast.token, true);
 
         Ok(ast)
     }
@@ -366,15 +391,15 @@ impl<'a> AstParser<'a> {
         )?;
 
         let datatype = if self.state.token == TKind::Colon {
-            self.state.next();
+            self.next()?;
             self.type_expr()?
         } else {
             Ast::none()
         };
 
-        let values = if self.state.token.spam.deref() == "=" {
+        let values = if self.main_state.display(&self.state.token.spam) == "=" {
             let mut values = self.ast(AKind::Group);
-            self.state.next();
+            self.next()?;
             self.list(
                 &mut values,
                 TKind::None,
@@ -402,7 +427,7 @@ impl<'a> AstParser<'a> {
 
         ast.children = vec![ident_group, datatype, values];
 
-        ast.token.to_group(&self.state.token, true);
+        self.join_token(&mut ast.token, true);
 
         Ok(ast)
     }
@@ -410,13 +435,13 @@ impl<'a> AstParser<'a> {
     fn ident(&mut self) -> Result<Ast> {
         self.expect_str(TKind::Ident, "expected ident")?;
         let ast = self.ast(AKind::Ident);
-        self.state.next();
+        self.next()?;
         Ok(ast)
     }
 
     fn return_statement(&mut self) -> Result<Ast> {
         let mut ast = self.ast(AKind::ReturnStatement);
-        self.state.next();
+        self.next()?;
         let ret_val = if let TKind::Indent(_) | TKind::Eof = self.state.token.kind {
             Ast::none()
         } else {
@@ -424,7 +449,7 @@ impl<'a> AstParser<'a> {
         };
         ast.push(ret_val);
 
-        ast.token.to_group(&self.state.token, true);
+        self.join_token(&mut ast.token, true);
 
         Ok(ast)
     }
@@ -448,36 +473,35 @@ impl<'a> AstParser<'a> {
         let mut result = previous;
         while self.state.token == TKind::Op {
             let op = self.state.token.clone();
-            let pre = precedence(op.spam.deref());
+            let pre = precedence(self.main_state.display(&op.spam));
 
-            self.state.next();
-            self.ignore_newlines();
+            self.next()?;
+            self.ignore_newlines()?;
 
             let mut next = self.simple_expr()?;
 
             if self.state.token == TKind::Op {
-                let dif = pre - precedence(self.state.token.spam.deref());
-                let is_or_or_and =
-                    self.state.token.spam.deref() == "or" || self.state.token.spam.deref() == "and";
+                let dif = pre - precedence(self.main_state.display(&self.state.token.spam));
 
-                if dif > 0 || is_or_or_and {
+                if dif > 0 {
                     next = self.expr_low(next)?;
                 }
             }
 
             let mut token = result.token.clone();
-            token.to_group(&next.token, false);
+            
+            self.join_token_with(&mut token, &next.token, false);
 
             // this handles the '{op}=' sugar
             result = if pre == ASSIGN_PRECEDENCE
-                && op.spam.len() != 1
-                && op.spam.as_bytes().last().unwrap() == &b'='
+                && op.spam.range.len() != 1
+                && self.main_state.display(&op.spam).chars().last().unwrap() == '='
             {
                 let operator = Ast::new(
                     AKind::Ident,
                     Token::new(
                         TKind::Op,
-                        op.spam.sub(0..op.spam.len() - 1),
+                        Spam::new(op.spam.source, op.spam.range.start..op.spam.range.end - 1),
                         op.line_data.clone(),
                     ),
                 );
@@ -485,7 +509,7 @@ impl<'a> AstParser<'a> {
                     AKind::Ident,
                     Token::new(
                         TKind::Op,
-                        op.spam.sub(op.spam.len() - 1..op.spam.len()),
+                        Spam::new(op.spam.source, op.spam.range.end - 1..op.spam.range.end),
                         op.line_data.clone(),
                     ),
                 );
@@ -525,37 +549,37 @@ impl<'a> AstParser<'a> {
             | TKind::Float(..)
             | TKind::String(..) => self.ast(AKind::Lit),
             TKind::LPar => {
-                self.state.next();
+                self.next()?;
                 let expr = self.expr()?;
                 self.expect_str(TKind::RPar, "expected ')'")?;
-                self.state.next();
+                self.next()?;
                 expr
             }
             TKind::If => return self.if_expr(),
             TKind::Loop => return self.loop_expr(),
             TKind::Op => {
                 let mut ast = self.ast(AKind::UnaryOp);
-                match self.state.token.spam.deref() {
+                match self.main_state.display(&self.state.token.spam) {
                     "&" => {
-                        self.state.next();
+                        self.next()?;
                         ast.kind = AKind::Ref;
                     }
                     "*" => {
-                        self.state.next();
+                        self.next()?;
                         ast.kind = AKind::Deref;
                     }
                     _ => {
                         ast.push(self.ast(AKind::Ident));
-                        self.state.next();
+                        self.next()?;
                     }
                 }
                 ast.push(self.simple_expr()?);
-                ast.token.to_group(&self.state.token, true);
+                self.join_token(&mut ast.token, true);
                 return Ok(ast);
             }
             TKind::Pass => {
                 let ast = self.ast(AKind::Pass);
-                self.state.next();
+                self.next()?;
                 return Ok(ast);
             }
             TKind::LBra => {
@@ -567,7 +591,7 @@ impl<'a> AstParser<'a> {
         };
 
         if ast.kind == AKind::Lit {
-            self.state.next();
+            self.next()?;
         }
 
         if !nested && !self.state.is_type_expr {
@@ -576,7 +600,7 @@ impl<'a> AstParser<'a> {
                     TKind::Dot => {
                         let mut new_ast = Ast::new(AKind::DotExpr, ast.token.clone());
                         new_ast.push(ast);
-                        self.state.next();
+                        self.next()?;
                         new_ast.push(self.simple_expr_low(true)?);
                         ast = new_ast;
                     }
@@ -603,12 +627,12 @@ impl<'a> AstParser<'a> {
                     TKind::LBra => {
                         let mut new_ast = Ast::new(AKind::Index, ast.token.clone());
                         new_ast.push(ast);
-                        self.state.next();
-                        self.ignore_newlines();
+                        self.next()?;
+                        self.ignore_newlines()?;
                         new_ast.push(self.expr()?);
-                        self.ignore_newlines();
+                        self.ignore_newlines()?;
                         self.expect_str(TKind::RBra, "expected ']'")?;
-                        self.state.next();
+                        self.next()?;
 
                         ast = new_ast;
                     }
@@ -619,7 +643,7 @@ impl<'a> AstParser<'a> {
         }
 
         if ast.kind != AKind::Ident {
-            ast.token.to_group(&self.state.token, true);
+            self.join_token(&mut ast.token, true);
         }
 
         Ok(ast)
@@ -627,20 +651,20 @@ impl<'a> AstParser<'a> {
 
     fn continue_statement(&mut self) -> Result<Ast> {
         let mut ast = self.ast(AKind::Continue);
-        self.state.next();
+        self.next()?;
 
-        ast.push(self.optional_label());
+        ast.push(self.optional_label()?);
 
-        ast.token.to_group(&self.state.token, true);
+        self.join_token(&mut ast.token, true);
 
         Ok(ast)
     }
 
     fn break_statement(&mut self) -> Result<Ast> {
         let mut ast = self.ast(AKind::Break);
-        self.state.next();
+        self.next()?;
 
-        ast.push(self.optional_label());
+        ast.push(self.optional_label()?);
 
         ast.push(if let TKind::Indent(_) = self.state.token.kind {
             Ast::none()
@@ -648,46 +672,46 @@ impl<'a> AstParser<'a> {
             self.expr()?
         });
 
-        ast.token.to_group(&self.state.token, true);
+        self.join_token(&mut ast.token, true);
 
         Ok(ast)
     }
 
     fn loop_expr(&mut self) -> Result<Ast> {
         let mut ast = self.ast(AKind::Loop);
-        self.state.next();
+        self.next()?;
 
-        ast.push(self.optional_label());
+        ast.push(self.optional_label()?);
 
         ast.push(self.stmt_block()?);
 
-        ast.token.to_group(&self.state.token, true);
+        self.join_token(&mut ast.token, true);
 
         Ok(ast)
     }
 
-    fn optional_label(&mut self) -> Ast {
-        if self.state.token == TKind::Label {
+    fn optional_label(&mut self) -> Result<Ast> {
+        Ok(if self.state.token == TKind::Label {
             let ast = self.ast(AKind::Ident);
-            self.state.next();
+            self.next()?;
             ast
         } else {
             Ast::none()
-        }
+        })
     }
 
     fn ident_expr(&mut self) -> Result<Ast> {
         let mut ast = self.ast(AKind::Ident);
-        self.state.next();
+        self.next()?;
 
-        self.state.peek();
+        self.peek()?;
         if self.state.token == TKind::DoubleColon && self.state.peeked == TKind::Ident {
             let mut temp_ast = Ast::new(AKind::ExplicitPackage, ast.token.clone());
             temp_ast.push(ast);
-            self.state.next();
+            self.next()?;
             temp_ast.push(self.ident()?);
             ast = temp_ast;
-            ast.token.to_group(&self.state.token, true);
+            self.join_token(&mut ast.token, true);
         }
 
         let is_instantiation = self.state.is_type_expr && self.state.token == TKind::LBra
@@ -695,7 +719,7 @@ impl<'a> AstParser<'a> {
 
         if is_instantiation {
             if self.state.token == TKind::DoubleColon {
-                self.state.next();
+                self.next()?;
             }
             self.expect_str(
                 TKind::LBra,
@@ -706,7 +730,7 @@ impl<'a> AstParser<'a> {
             ast = temp_ast;
             self.list(&mut ast, TKind::LBra, TKind::Comma, TKind::RBra, Self::expr)?;
 
-            ast.token.to_group(&self.state.token, true);
+            self.join_token(&mut ast.token, true);
         }
 
         Ok(ast)
@@ -714,13 +738,13 @@ impl<'a> AstParser<'a> {
 
     fn if_expr(&mut self) -> Result<Ast> {
         let mut ast = self.ast(AKind::IfExpr);
-        self.state.next();
+        self.next()?;
         let condition = self.expr()?;
         let then_block = self.stmt_block()?;
 
         let else_block = match self.state.token.kind {
             TKind::Else => {
-                self.state.next();
+                self.next()?;
                 self.stmt_block()?
             }
             TKind::Elif => {
@@ -730,16 +754,16 @@ impl<'a> AstParser<'a> {
                 ast
             }
             TKind::Indent(_) => {
-                self.state.peek();
+                self.peek()?;
                 match self.state.peeked.kind {
                     TKind::Else => {
-                        self.state.next();
-                        self.state.next();
+                        self.next()?;
+                        self.next()?;
                         let val = self.stmt_block()?;
                         val
                     }
                     TKind::Elif => {
-                        self.state.next();
+                        self.next()?;
                         // simplify later parsing
                         let mut ast = self.ast(AKind::Group);
                         ast.push(self.if_expr()?);
@@ -753,23 +777,23 @@ impl<'a> AstParser<'a> {
 
         ast.children = vec![condition, then_block, else_block];
 
-        ast.token.to_group(&self.state.token, true);
+        self.join_token(&mut ast.token, true);
 
         Ok(ast)
     }
 
-    fn visibility(&mut self) -> Vis {
-        match self.state.token.kind {
+    fn visibility(&mut self) -> Result<Vis> {
+        Ok(match self.state.token.kind {
             TKind::Pub => {
-                self.state.next();
+                self.next()?;
                 Vis::Public
             }
             TKind::Priv => {
-                self.state.next();
+                self.next()?;
                 Vis::Private
             }
             _ => Vis::None,
-        }
+        })
     }
 
     fn walk_block<F: FnMut(&mut Self) -> Result<()>>(&mut self, mut parser: F) -> Result<()> {
@@ -792,7 +816,7 @@ impl<'a> AstParser<'a> {
     fn block<F: FnMut(&mut Self) -> Result<Ast>>(&mut self, mut parser: F) -> Result<Ast> {
         self.expect_str(TKind::Colon, "expected ':' as a start of block")?;
         let mut ast = self.ast(AKind::Group);
-        self.state.next();
+        self.next()?;
         self.walk_block(|s| {
             ast.push(parser(s)?);
             Ok(())
@@ -801,22 +825,16 @@ impl<'a> AstParser<'a> {
         Ok(ast)
     }
 
-    fn ignore_newlines(&mut self) {
-        while let TKind::Indent(_) = self.state.token.kind {
-            self.state.next();
-        }
-    }
-
     fn level_continues(&mut self) -> Result<bool> {
         if !matches!(self.state.token.kind, TKind::Indent(_) | TKind::Eof) {
             return Err(self.unexpected_str("expected indentation"));
         }
 
         loop {
-            self.state.peek();
+            self.peek()?;
             match self.state.peeked.kind {
                 TKind::Indent(_) => {
-                    self.state.next();
+                    self.next()?;
                 }
                 TKind::Eof => return Ok(false),
                 _ => break,
@@ -826,7 +844,7 @@ impl<'a> AstParser<'a> {
         match self.state.token.kind {
             TKind::Indent(level) => {
                 if level == self.state.level {
-                    self.state.next();
+                    self.next()?;
                     Ok(true)
                 } else if level < self.state.level {
                     self.state.level -= 1;
@@ -849,29 +867,58 @@ impl<'a> AstParser<'a> {
     ) -> Result<()> {
         if start != TKind::None {
             self.expect(start.clone(), format!("expected {}", start))?;
-            self.state.next();
-            self.ignore_newlines();
+            self.next()?;
+            self.ignore_newlines()?;
         }
 
         if end != TKind::None && self.state.token == end {
-            self.state.next();
+            self.next()?;
             return Ok(());
         }
 
         ast.push(parser(self)?);
 
         while self.state.token == separator {
-            self.state.next();
-            self.ignore_newlines();
+            self.next()?;
+            self.ignore_newlines()?;
             ast.push(parser(self)?);
         }
 
         if end != TKind::None {
-            self.ignore_newlines();
+            self.ignore_newlines()?;
             self.expect(end.clone(), format!("expected {}", end))?;
-            self.state.next();
+            self.next()?;
         }
 
+        Ok(())
+    }
+
+    fn ignore_newlines(&mut self) -> Result {
+        while let TKind::Indent(_) = self.state.token.kind {
+            self.next()?;
+        }
+
+        Ok(())
+    }
+
+    fn peek(&mut self) -> Result {
+        let mut state = self.state.l_state.clone();
+        let token = self
+            .main_state
+            .lexer_for(&mut state)
+            .next()
+            .map_err(|err| AError::new(AEKind::LError(err), Token::default()))?;
+        self.state.peeked = token;
+        Ok(())
+    }
+
+    fn next(&mut self) -> Result {
+        let token = self
+            .main_state
+            .lexer_for(&mut self.state.l_state)
+            .next()
+            .map_err(|err| AError::new(AEKind::LError(err), Token::default()))?;
+        self.state.token = token;
         Ok(())
     }
 
@@ -891,26 +938,34 @@ impl<'a> AstParser<'a> {
         }
     }
 
-    fn unexpected_str(&self, message: &'static str) -> AstError {
+    fn unexpected_str(&self, message: &'static str) -> AError {
         self.unexpected(message.to_string())
     }
 
-    fn unexpected(&self, message: String) -> AstError {
-        AstError::new(AEKind::UnexpectedToken(message), self.state.token.clone())
+    fn unexpected(&self, message: String) -> AError {
+        AError::new(AEKind::UnexpectedToken(message), self.state.token.clone())
+    }
+
+    fn join_token(&self, token: &mut Token, trim: bool) {
+        self.join_token_with(token, &self.state.token, trim);
+    }
+
+    fn join_token_with(&self, token: &mut Token, other: &Token, trim: bool) {
+        self.main_state.join_spams_low(&mut token.spam, &other.spam, trim);
     }
 }
 
 #[derive(Debug, Clone, Default)]
-pub struct AstContext {
+pub struct AContext {
     pub ast_pool: Vec<Ast>,
-    pub temp_manifest: Manifest,
+    pub imports: Vec<Import>,
 }
 
-impl AstContext {
-    pub fn new() -> AstContext {
-        AstContext {
+impl AContext {
+    pub fn new() -> Self {
+        Self {
             ast_pool: Vec::new(),
-            temp_manifest: Manifest::default(),
+            imports: Vec::new(),
         }
     }
 
@@ -936,57 +991,51 @@ impl AstContext {
     }
 }
 
+pub struct AMainState {
+    pub l_main_state: LMainState,
+}
+
+crate::inherit!(AMainState, l_main_state, LMainState);
+
+impl AMainState {
+    pub fn new(l_main_state: LMainState) -> Self {
+        Self { l_main_state }
+    }
+
+    pub fn a_state_for(&self, source: Source) -> AState {
+        let mut l_state = LState::new(source);
+        let mut lexer = self.lexer_for(&mut l_state);
+        let token = lexer.next().unwrap();
+
+        AState {
+            l_state,
+            peeked: token.clone(),
+            token,
+            is_type_expr: false,
+            level: 0,
+        }
+    }
+}
+
 #[derive(Debug, Clone)]
-pub struct AstState {
-    lexer: Lexer,
+pub struct AState {
+    l_state: LState,
     peeked: Token,
     pub token: Token,
     is_type_expr: bool,
     level: usize,
-    pub imports: Vec<Import>,
-}
-
-impl AstState {
-    pub fn new(mut lexer: Lexer) -> AstState {
-        AstState {
-            token: lexer.next().unwrap_or(Token::eof()),
-            peeked: lexer.clone().next().unwrap_or(Token::eof()),
-            lexer,
-            is_type_expr: false,
-            level: 0,
-            imports: vec![],
-        }
-    }
-
-    pub fn file_name(&self) -> &'static str {
-        self.lexer.file_name()
-    }
-
-    fn peek(&mut self) {
-        self.peeked = self.lexer.clone().next().unwrap_or(Token::eof());
-    }
-
-    fn next(&mut self) {
-        self.token = self.lexer.next().unwrap_or(Token::eof());
-    }
-}
-
-impl Default for AstState {
-    fn default() -> AstState {
-        AstState::new(Lexer::default())
-    }
 }
 
 #[derive(Clone, Debug, Default)]
 pub struct Import {
-    pub nickname: &'static str,
-    pub path: &'static str,
+    pub nickname: Option<Spam>,
+    pub path: Spam,
     pub token: Token,
 }
 
 #[derive(Clone, Debug, Default)]
 pub struct Manifest {
-    pub attrs: Vec<(&'static str, &'static str)>,
+    pub attrs: Vec<(Spam, Spam)>,
     pub deps: Vec<Dep>,
 }
 
@@ -999,9 +1048,9 @@ impl Manifest {
 
 #[derive(Clone, Debug, Default)]
 pub struct Dep {
-    pub path: &'static str,
-    pub name: &'static str,
-    pub version: &'static str,
+    pub path: Spam,
+    pub name: Spam,
+    pub version: Spam,
     pub external: bool,
     pub token: Token,
 }
@@ -1165,64 +1214,33 @@ impl Default for Vis {
 }
 
 #[derive(Debug)]
-pub struct AstError {
+pub struct AError {
     pub kind: AEKind,
     pub token: Token,
 }
 
-impl AstError {
-    pub fn new(kind: AEKind, token: Token) -> AstError {
-        AstError { kind, token }
+impl AError {
+    pub fn new(kind: AEKind, token: Token) -> AError {
+        AError { kind, token }
     }
 }
 
-impl Display for AstError {
-    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
-        writeln!(f, "{}", TokenView::new(&self.token))?;
-        match &self.kind {
-            AEKind::UnexpectedToken(expected) => writeln!(f, "{}\n", expected),
-            AEKind::UnexpectedEof => writeln!(f, "unexpected end of file\n"),
-            AEKind::InvalidAttribute(name, hint) => {
-                writeln!(f, "invalid attribute `{}`, hint: {}", name, hint)
-            }
-            AEKind::MissingAttribute(name, hint) => {
-                writeln!(f, "missing attribute `{}`, hint: {}", name, hint)
-            }
-        }
-    }
-}
-
-#[derive(Debug, Clone)]
+#[derive(Debug)]
 pub enum AEKind {
+    LError(LError),
     UnexpectedToken(String),
     UnexpectedEof,
-    MissingAttribute(&'static str, &'static str),
-    InvalidAttribute(&'static str, &'static str),
+    MissingAttribute(Spam, Spam),
+    InvalidAttribute(Spam, Spam),
 }
 
-impl Into<AstError> for AEKind {
-    fn into(self) -> AstError {
-        AstError {
+impl Into<AError> for AEKind {
+    fn into(self) -> AError {
+        AError {
             kind: self,
             token: Token::default(),
         }
     }
 }
 
-pub fn test() {
-    let lexer = Lexer::new(
-        "test_code.pmh",
-        crate::testing::TEST_CODE,
-    );
-
-    let mut state = AstState::new(lexer);
-    let mut context = AstContext::new();
-
-    let mut parser = AstParser::new(&mut state, &mut context);
-
-    let ast = parser.parse().unwrap();
-
-    println!("{}", ast);
-
-    context.recycle(ast);
-}
+pub fn test() {}

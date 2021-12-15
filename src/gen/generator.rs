@@ -16,12 +16,11 @@ use std::ops::{Deref, DerefMut};
 
 use crate::{
     functions::{
-        self, FContext, FKind, FParser, FState, FinalValue, IKind, Inst, Program, RFun,
-        Value, Fun, FunDisplay,
+        self, FContext, FKind, FParser, FState, FinalValue, Fun, IKind, Inst, Program, RFun, Value,
     },
     lexer::{TKind as LTKind, Token},
     module_tree::Mod,
-    types::{self, TKind, Type, TypeDisplay, ptr_ty},
+    types::{self, ptr_ty, TKind, Type, TypeDisplay},
     util::{sdbm::SdbmHash, storage::IndexPointer},
 };
 
@@ -91,7 +90,9 @@ impl<'a> Generator<'a> {
             self.body(rid, &mut builder)?;
 
             self.state.rfuns[rid].body.clear();
-            self.context.body_pool.push(std::mem::take(&mut self.state.rfuns[rid].body));
+            self.context
+                .body_pool
+                .push(std::mem::take(&mut self.state.rfuns[rid].body));
 
             builder.finalize();
 
@@ -258,7 +259,8 @@ impl<'a> Generator<'a> {
                         let size = self.state.types[val.ty].size;
                         let data = StackSlotData::new(StackSlotKind::ExplicitSlot, size);
                         let slot = builder.create_stack_slot(data);
-                        self.state.rfuns[fun].body.values[value.unwrap()].value = FinalValue::StackSlot(slot);
+                        self.state.rfuns[fun].body.values[value.unwrap()].value =
+                            FinalValue::StackSlot(slot);
                     } else {
                         self.state.rfuns[fun].body.values[value.unwrap()].value = FinalValue::Zero;
                     }
@@ -697,7 +699,9 @@ impl<'a> Generator<'a> {
                     let mask_value = builder.ins().iconst(var_type, mask);
                     let target_val = builder.ins().band(val, mask_value);
                     let source_value = builder.ins().uextend(var_type, value);
-                    let source_value = builder.ins().ishl_imm(source_value, target.offset as i64 * 8);
+                    let source_value = builder
+                        .ins()
+                        .ishl_imm(source_value, target.offset as i64 * 8);
                     value = builder.ins().bor(target_val, source_value);
                 }
                 builder.def_var(var, value);

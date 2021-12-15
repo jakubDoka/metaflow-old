@@ -1,0 +1,27 @@
+{
+    "name": "metaflow",
+    "displayName": "metaflow",
+    "description": "syntax highlighting for metaflow",
+    "version": "0.0.3",
+    "publisher": "JakubDka",
+    "repository": "github.com/jakubDoka/metaflow",
+    "engines": {
+        "vscode": "^1.46.0"
+    },
+    "categories": [
+        "Programming Languages"
+    ],
+    "contributes": {
+        "languages": [{
+            "id": "metaflow",
+            "aliases": ["metaflow", "metaflow"],
+            "extensions": [".mf"],
+            "configuration": "./language-configuration.json"
+        }],
+        "grammars": [{
+            "language": "metaflow",
+            "scopeName": "source.mf",
+            "path": "./syntaxes/metaflow.tmLanguage.json"
+        }]
+    }
+}

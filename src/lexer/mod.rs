@@ -1,116 +1,44 @@
-pub mod spam;
-
-pub use spam::*;
-
+use crate::util::storage::IndexPointer;
 use std::{
     fmt::{Debug, Display},
-    ops::{Deref, Range},
+    ops::Range,
     rc::Rc,
-    str::Chars,
 };
 
-pub struct TokenView {
-    repr: String,
+use crate::util::storage::List;
+
+type Result<T = Token> = std::result::Result<T, LError>;
+
+#[derive(Debug)]
+pub struct Lexer<'a> {
+    source: &'a str,
+    state: &'a mut LState,
 }
 
-impl TokenView {
-    pub fn new(token: &Token) -> Self {
-        if token.kind == TKind::None {
-            return Self {
-                repr: String::from("|> no line information"),
-            };
-        }
-
-        let mut range = token.spam.range.clone();
-        let string = token.spam.string;
-        if string[range.start..range.end].starts_with("\n") {
-            range.start += 1;
-        }
-        let mut repr = String::new();
-        repr.push_str(format!("|> {}\n", token.line_data).as_str());
-        repr.push_str("|");
-
-        let end = string[range.end..]
-            .find('\n')
-            .map(|i| i + range.end)
-            .unwrap_or(string.len());
-        let start = string[..range.start].rfind('\n').unwrap_or(0) + 1;
-
-        let mut new_string = String::with_capacity(range.end - range.start);
-        new_string.push_str(&string[start..range.start]);
-        let mut max = 0;
-        let mut min = range.start - start;
-        let mut i = min;
-        for ch in string[range.start..range.end].chars() {
-            new_string.push(ch);
-            if ch.is_whitespace() {
-                if ch == '\n' {
-                    new_string.push_str("|");
-                    i = 0;
-                }
-            } else {
-                max = (i + 1).max(max);
-                min = (i).min(min);
-            }
-            i += 1;
-        }
-
-        repr.push_str(&new_string);
-        repr.push_str(&string[range.end..end]);
-        repr.push_str("\n|");
-        repr.extend(std::iter::repeat(' ').take(min));
-        repr.extend(std::iter::repeat('^').take(max - min));
-
-        Self { repr }
-    }
-}
-
-impl Display for TokenView {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{}", self.repr)
-    }
-}
-
-#[derive(Debug, Default)]
-pub struct Lexer {
-    cursor: Cursor,
-    file_name: &'static str,
-}
-
-impl Lexer {
-    pub fn new(file_name: &'static str, file: &'static str) -> Lexer {
-        Lexer {
-            cursor: Cursor::new(file),
-            file_name,
-        }
+impl<'a> Lexer<'a> {
+    pub fn new(source: &'a str, state: &'a mut LState) -> Self {
+        Lexer { source, state }
     }
 
-    pub fn leaked(file_name: String, file: String) -> Lexer {
-        let file_name = Box::leak(file_name.into_boxed_str());
-        let file = Box::leak(file.into_boxed_str());
-        Self::new(file_name, file)
-    }
-
-    fn ident(&mut self) -> Option<Token> {
+    fn ident(&mut self) -> Result<Token> {
         let line_data = self.line_data();
-        let start = self.cursor.progress();
+        let start = self.state.progress;
         loop {
-            let char = self.cursor.peek().unwrap_or('\0');
+            let char = self.peek().unwrap_or('\0');
             if !char.is_alphanumeric() && char != '_' {
                 break;
             }
-            self.cursor.advance();
+            self.advance();
         }
-        let end = self.cursor.progress();
-        let value = self.cursor.sub(start..end);
-        let kind = match value.deref() {
+        let end = self.state.progress;
+        let value = self.sub(start..end);
+        let kind = match &self.source[start..end] {
             "priv" => TKind::Priv,
             "pub" => TKind::Pub,
             "use" => TKind::Use,
             "fun" => TKind::Fun,
             "attr" => TKind::Attr,
             "pass" => TKind::Pass,
-            "mut" => TKind::Mut,
             "return" => TKind::Return,
             "if" => TKind::If,
             "elif" => TKind::Elif,
@@ -127,77 +55,67 @@ impl Lexer {
             "false" => TKind::Bool(false),
             _ => TKind::Ident,
         };
-        Some(Token::new(kind, value, line_data))
+        Ok(Token::new(kind, value, line_data))
     }
 
-    fn op(&mut self) -> Option<Token> {
+    fn op(&mut self) -> Result<Token> {
         let line_data = self.line_data();
-        let start = self.cursor.progress();
-        while self.cursor.peek().unwrap_or('\0').is_operator() {
-            self.cursor.advance();
+        let start = self.state.progress;
+        while self.peek().unwrap_or('\0').is_operator() {
+            self.advance();
         }
-        let end = self.cursor.progress();
-        let value = self.cursor.sub(start..end);
-        let kind = match value.deref() {
+        let end = self.state.progress;
+        let value = self.sub(start..end);
+        let kind = match &self.source[start..end] {
             ":" => TKind::Colon,
             "::" => TKind::DoubleColon,
             "->" => TKind::RArrow,
             _ => TKind::Op,
         };
-        Some(Token::new(kind, value, line_data))
+        Ok(Token::new(kind, value, line_data))
     }
 
-    fn indent(&mut self) -> Option<Token> {
+    fn indent(&mut self) -> Result<Token> {
         let line_data = self.line_data();
-        let start = self.cursor.progress();
-        self.cursor.advance();
+        let start = self.state.progress;
+        self.advance();
         let mut indentation = 0;
         loop {
-            match self.cursor.peek()? {
-                ' ' => {
-                    self.cursor.advance();
-                    indentation += 1;
+            match self.peek() {
+                Some(' ') => {
+                    self.advance();
                 }
-                '\t' => {
-                    self.cursor.advance();
+                Some('\t') => {
+                    self.advance();
                     indentation += 2;
                 }
-                '\r' => {
-                    self.cursor.advance();
+                Some('\r') => {
+                    self.advance();
                 }
                 _ => break,
             }
         }
-        let end = self.cursor.progress();
-        let value = self.cursor.sub(start..end);
-        Some(Token::new(TKind::Indent(indentation / 2), value, line_data))
+        let end = self.state.progress;
+        let value = self.sub(start..end);
+        Ok(Token::new(TKind::Indent(indentation / 2), value, line_data))
     }
 
-    fn number(&mut self) -> Option<Token> {
-        let start = self.cursor.progress();
+    fn number(&mut self) -> Result {
+        let start = self.state.progress;
         let line_data = self.line_data();
-        let number = match self.parse_number_err(10) {
-            Ok((number, _)) => number,
-            Err(token) => return Some(token),
-        };
-        let is_float = self.cursor.peek()? == '.';
+        let number = self.parse_number_err(10)?.0;
+        let is_float = self.peek() == Some('.');
         let (fraction, exponent) = if is_float {
-            self.cursor.advance();
-            match self.parse_number_err(10) {
-                Ok(number) => number,
-                Err(token) => return Some(token),
-            }
+            self.advance();
+            self.parse_number_err(10)?
         } else {
             (0, 0)
         };
-        let next_char = self.cursor.peek().unwrap_or('\0');
+        let next_char = self.peek().unwrap_or('\0');
         let kind = match next_char {
             'i' | 'u' | 'f' => {
-                self.cursor.advance();
-                let base = match self.parse_number_err(10) {
-                    Ok((number, _)) => number as u16,
-                    Err(token) => return Some(token),
-                };
+                self.advance();
+                let base = self.parse_number_err(10)?.0 as u16;
                 match next_char {
                     'i' => TKind::Int(number as i64, base),
                     'u' => TKind::Uint(number, base),
@@ -213,18 +131,18 @@ impl Lexer {
                 }
             }
         };
-        let end = self.cursor.progress();
-        let value = self.cursor.sub(start..end);
-        Some(Token::new(kind, value, line_data))
+        let end = self.state.progress;
+        let value = self.sub(start..end);
+        Ok(Token::new(kind, value, line_data))
     }
 
-    fn parse_number_err(&mut self, base: u64) -> Result<(u64, u64), Token> {
-        let start = self.cursor.progress();
+    fn parse_number_err(&mut self, base: u64) -> Result<(u64, u64)> {
+        let start = self.state.progress;
         self.parse_number(base).ok_or_else(|| {
             let line_data = self.line_data();
-            let end = self.cursor.progress();
-            let value = self.cursor.sub(start..end);
-            Token::new(TKind::InvalidChar, value, line_data)
+            let end = self.state.progress;
+            let value = self.sub(start..end);
+            LError::new(LEKind::InvalidCharacter, value, line_data)
         })
     }
 
@@ -233,36 +151,36 @@ impl Lexer {
         let mut exponent = 1u64;
         let base32 = base as u32;
         loop {
-            let ch = self.cursor.peek().unwrap_or('\0');
+            let ch = self.peek().unwrap_or('\0');
             if ch == '_' {
-                self.cursor.advance();
+                self.advance();
                 continue;
             }
             if !ch.is_numeric() {
                 break Some((number, exponent));
             }
-            number = number * base + self.cursor.advance().unwrap().to_digit(base32)? as u64;
+            number = number * base + self.advance().unwrap().to_digit(base32)? as u64;
             exponent *= base;
         }
     }
 
-    fn char_or_label(&mut self) -> Option<Token> {
+    fn char_or_label(&mut self) -> Result {
         let line_data = self.line_data();
-        let start = self.cursor.progress();
-        self.cursor.advance()?;
-        let current = self.cursor.advance()?;
+        let start = self.state.progress;
+        self.advance();
+        let current = self.advance().unwrap_or('\0');
 
         let (char, may_be_label) = if current == '\\' {
-            let start = self.cursor.progress();
+            let start = self.state.progress;
             (
                 match self.char_escape() {
                     Some(c) => c,
                     None => {
-                        let end = self.cursor.progress();
-                        return Some(Token::new(
-                            TKind::InvalidChar,
-                            self.cursor.sub(start..end),
-                            self.line_data(),
+                        let end = self.state.progress;
+                        return Err(LError::new(
+                            LEKind::InvalidCharacter,
+                            self.sub(start..end),
+                            line_data,
                         ));
                     }
                 },
@@ -272,36 +190,40 @@ impl Lexer {
             (current, true)
         };
 
-        let next = self.cursor.peek().unwrap_or('\0');
+        let next = self.peek().unwrap_or('\0');
 
         if !may_be_label && next != '\'' {
-            return None;
+            return Err(LError::new(
+                LEKind::UnclosedCharacter,
+                self.sub(start..self.state.progress),
+                line_data,
+            ));
         }
 
         if next == '\'' {
-            self.cursor.advance();
-            let end = self.cursor.progress();
-            let value = self.cursor.sub(start..end);
-            Some(Token::new(TKind::Char(char), value, line_data))
+            self.advance();
+            let end = self.state.progress;
+            let value = self.sub(start..end);
+            Ok(Token::new(TKind::Char(char), value, line_data))
         } else {
-            while self.cursor.peek().unwrap_or('\0').is_alphanumeric() {
-                self.cursor.advance();
+            while self.peek().unwrap_or('\0').is_alphanumeric() {
+                self.advance();
             }
-            let end = self.cursor.progress();
-            let value = self.cursor.sub(start..end);
-            Some(Token::new(TKind::Label, value, line_data))
+            let end = self.state.progress;
+            let value = self.sub(start..end);
+            Ok(Token::new(TKind::Label, value, line_data))
         }
     }
 
-    fn string(&mut self) -> Option<Token> {
+    fn string(&mut self) -> Result<Token> {
         let line_data = self.line_data();
-        let start = self.cursor.progress();
-        self.cursor.advance()?;
+        let start = self.state.progress;
+        self.advance();
         let mut string_data = vec![];
         loop {
-            match self.cursor.peek()? {
-                '\\' => {
-                    let start = self.cursor.progress();
+            match self.peek() {
+                Some('\\') => {
+                    let start = self.state.progress;
                     match self.char_escape() {
                         Some(ch) => {
                             let len = string_data.len();
@@ -309,24 +231,31 @@ impl Lexer {
                             ch.encode_utf8(&mut string_data[len..]);
                         }
                         None => {
-                            let end = self.cursor.progress();
-                            return Some(Token::new(
-                                TKind::InvalidChar,
-                                self.cursor.sub(start..end),
-                                self.line_data(),
+                            let end = self.state.progress;
+                            return Err(LError::new(
+                                LEKind::InvalidCharacter,
+                                self.sub(start..end),
+                                line_data,
                             ));
                         }
                     }
                 }
-                '"' => {
-                    self.cursor.advance();
+                Some('"') => {
+                    self.advance();
                     break;
                 }
-                _ => {
-                    let ch = self.cursor.advance()?;
+                Some(_) => {
+                    let ch = self.advance().unwrap();
                     let len = string_data.len();
                     string_data.resize(len + ch.len_utf8(), 0);
                     ch.encode_utf8(&mut string_data[len..]);
+                }
+                None => {
+                    return Err(LError::new(
+                        LEKind::UnclosedString,
+                        self.sub(start..self.state.progress),
+                        line_data,
+                    ));
                 }
             }
         }
@@ -334,9 +263,9 @@ impl Lexer {
         string_data.push(0);
 
         // note: we don't care if string has incorrect encoding
-        let end = self.cursor.progress();
-        let value = self.cursor.sub(start..end);
-        Some(Token::new(
+        let end = self.state.progress;
+        let value = self.sub(start..end);
+        Ok(Token::new(
             TKind::String(Rc::new(string_data)),
             value,
             line_data,
@@ -344,8 +273,8 @@ impl Lexer {
     }
 
     fn char_escape(&mut self) -> Option<char> {
-        self.cursor.advance();
-        let current = self.cursor.advance().unwrap_or('\0');
+        self.advance();
+        let current = self.advance().unwrap_or('\0');
         Some(match current {
             'a' | 'b' | 'e' | 'f' | 'n' | 'r' | 't' | 'v' | '\\' | '\'' | '"' => match current {
                 'a' => '\x07',
@@ -361,7 +290,7 @@ impl Lexer {
             '0'..='7' => {
                 let mut res = 0u8 + current as u8 - '0' as u8;
                 for _ in 0..2 {
-                    res = res * 8 + self.cursor.advance()?.to_digit(8)? as u8;
+                    res = res * 8 + self.advance()?.to_digit(8)? as u8;
                 }
                 res as char
             }
@@ -375,7 +304,7 @@ impl Lexer {
 
                 let mut res = 0u32;
                 for _ in 0..len {
-                    res = res * 16 + self.cursor.advance()?.to_digit(16)?;
+                    res = res * 16 + self.advance()?.to_digit(16)?;
                 }
                 return char::from_u32(res);
             }
@@ -384,32 +313,42 @@ impl Lexer {
     }
 
     fn line_data(&self) -> LineData {
-        LineData::new(
-            self.cursor.line,
-            self.cursor.column(),
-            Spam::whole(&self.file_name),
-        )
+        LineData::new(self.state.line, self.column(), self.state.source)
     }
 
-    pub fn file_name(&self) -> &'static str {
-        self.file_name
+    pub fn peek(&self) -> Option<char> {
+        self.source[self.state.progress..].chars().next()
     }
-}
 
-impl Clone for Lexer {
-    fn clone(&self) -> Self {
-        Lexer {
-            cursor: self.cursor.clone(),
-            file_name: self.file_name,
+    pub fn peek_n(&self, n: usize) -> Option<char> {
+        self.source[self.state.progress..].chars().nth(n)
+    }
+
+    #[inline]
+    pub fn advance(&mut self) -> Option<char> {
+        let char = self.peek();
+
+        if let Some(ch) = char {
+            if ch == '\n' {
+                self.state.line += 1;
+                self.state.last_n_line = self.state.progress;
+            }
+            self.state.progress += ch.len_utf8();
         }
+
+        char
     }
-}
 
-impl Iterator for Lexer {
-    type Item = Token;
+    pub fn sub(&self, range: Range<usize>) -> Spam {
+        Spam::new(self.state.source, range)
+    }
 
-    fn next(&mut self) -> Option<Self::Item> {
-        let char = self.cursor.peek()?;
+    pub fn column(&self) -> usize {
+        self.state.progress - self.state.last_n_line
+    }
+
+    pub fn next(&mut self) -> Result {
+        let char = self.peek().unwrap_or('\0');
         if char.is_alphabetic() || char == '_' {
             return self.ident();
         }
@@ -420,11 +359,14 @@ impl Iterator for Lexer {
             return self.number();
         }
 
+        let line_data = self.line_data();
+        let start = self.state.progress;
+
         let kind = match char {
             '\n' => return self.indent(),
             ' ' | '\r' | '\t' => {
-                while matches!(self.cursor.peek()?, ' ' | '\t' | '\r') {
-                    self.cursor.advance();
+                while matches!(self.peek(), Some(' ' | '\t' | '\r')) {
+                    self.advance();
                 }
                 return self.next();
             }
@@ -439,18 +381,18 @@ impl Iterator for Lexer {
             '[' => TKind::LBra,
             ']' => TKind::RBra,
             '.' => TKind::Dot,
-
-            _ => TKind::UnknownCharacter(char),
+            '\0' => TKind::Eof,
+            _ => {
+                return Err(LError::new(
+                    LEKind::UnknownCharacter,
+                    self.sub(start..start + 1),
+                    line_data,
+                ))
+            }
         };
 
-        let line_data = self.line_data();
-        let start = self.cursor.progress();
-        self.cursor.advance();
-        Some(Token::new(
-            kind,
-            self.cursor.sub(start..start + 1),
-            line_data,
-        ))
+        self.advance();
+        Ok(Token::new(kind, self.sub(start..start + 1), line_data))
     }
 }
 
@@ -467,75 +409,77 @@ pub trait IsOperator {
     fn is_operator(&self) -> bool;
 }
 
-//#[cfg(feature = "testing")]
-pub fn test() {
-    let lexer = Lexer::new(
-        "test_code.pmh",
-        crate::testing::TEST_CODE,
-    );
-
-    lexer.for_each(|token| println!("{:?}", token));
+#[derive(Default, Debug, Clone)]
+pub struct LState {
+    pub source: Source,
+    pub progress: usize,
+    pub line: usize,
+    pub last_n_line: usize,
 }
 
-#[derive(Debug, Clone)]
-pub struct Cursor {
-    data: &'static str,
-    chars: Chars<'static>,
-    line: usize,
-    last_n_line: usize,
-}
-
-impl Default for Cursor {
-    fn default() -> Self {
+impl LState {
+    pub fn new(source: Source) -> Self {
         Self {
-            data: "",
-            chars: "".chars(),
-            line: 1,
-            last_n_line: 1,
-        }
-    }
-}
-
-impl Cursor {
-    pub fn new(data: &'static str) -> Self {
-        Cursor {
-            //SAFETY: cursor disposes data only upon drop
-            chars: data.chars(),
-            data,
+            source,
+            progress: 0,
             line: 1,
             last_n_line: 0,
         }
     }
+}
 
-    pub fn peek(&self) -> Option<char> {
-        self.chars.clone().next()
-    }
+pub struct LMainState {
+    sources: List<Source, SourceEnt>,
+    builtin_source: Source,
+}
 
-    pub fn peek_n(&self, n: usize) -> Option<char> {
-        self.chars.clone().nth(n)
-    }
+impl LMainState {
+    pub fn new() -> Self {
+        let mut sources = List::new();
+        let builtin_source = sources.add(SourceEnt {
+            name: String::from("builtin_spams.mf"),
+            content: String::new(),
+        });
 
-    pub fn progress(&self) -> usize {
-        self.data.len() - self.chars.as_str().len()
-    }
-
-    #[inline]
-    pub fn advance(&mut self) -> Option<char> {
-        let char = self.chars.next();
-        if char == Some('\n') {
-            self.line += 1;
-            self.last_n_line = self.progress();
+        LMainState {
+            sources,
+            builtin_source,
         }
-        char
     }
 
-    pub fn sub(&self, range: Range<usize>) -> Spam {
-        Spam::new(self.data, range)
+    pub fn display(&self, spam: &Spam) -> &str {
+        &self.sources[spam.source].content[spam.range.clone()]
     }
 
-    pub fn column(&self) -> usize {
-        self.progress() - self.last_n_line
+    pub fn join_spams_low(&self, spam: &mut Spam, other: &Spam, trim: bool) {
+        debug_assert!(spam.source == other.source && spam.range.end <= other.range.start);
+
+        spam.range.end = if trim {
+            other.range.start
+        } else {
+            other.range.end
+        };
     }
+
+    pub fn builtin_spam(&mut self, name: &str) -> Spam {
+        let builtin = &mut self.sources[self.builtin_source].content;
+        let start = builtin.len();
+        builtin.push_str(name);
+        let end = builtin.len();
+        Spam::new(self.builtin_source, start..end)
+    }
+
+    pub fn lexer_for<'a>(&'a self, state: &'a mut LState) -> Lexer<'a> {
+        Lexer::new(self.sources[state.source].content.as_str(), state)
+    }
+}
+
+crate::index_pointer!(Source);
+
+#[derive(Debug, Clone, Default)]
+pub struct SourceEnt {
+    name: String,
+    content: String,
 }
 
 #[derive(Debug, Clone, Default)]
@@ -546,14 +490,6 @@ pub struct Token {
 }
 
 impl Token {
-    pub fn builtin(spam: &'static str) -> Self {
-        Token {
-            kind: TKind::Ident,
-            spam: Spam::whole(spam),
-            line_data: LineData::default(),
-        }
-    }
-
     pub fn new(kind: TKind, spam: Spam, line_data: LineData) -> Self {
         Token {
             kind,
@@ -568,10 +504,6 @@ impl Token {
             spam: Spam::default(),
             line_data: LineData::default(),
         }
-    }
-
-    pub fn to_group(&mut self, end: &Token, trim: bool) {
-        self.spam = self.spam.join(&end.spam, trim);
     }
 }
 
@@ -602,7 +534,6 @@ pub enum TKind {
     Fun,
     Attr,
     Pass,
-    Mut,
     Return,
     If,
     Elif,
@@ -637,14 +568,12 @@ pub enum TKind {
     Float(f64, u16),
     Bool(bool),
     Char(char),
-    InvalidChar,
     String(Rc<Vec<u8>>),
 
     Indent(usize),
 
     Group,
 
-    UnknownCharacter(char),
     Eof,
     None,
 }
@@ -658,7 +587,6 @@ impl std::fmt::Display for TKind {
             TKind::Fun => "'fun'",
             TKind::Attr => "'attr'",
             TKind::Pass => "'pass'",
-            TKind::Mut => "'mut'",
             TKind::Return => "'return'",
             TKind::If => "'if'",
             TKind::Elif => "'elif'",
@@ -691,10 +619,8 @@ impl std::fmt::Display for TKind {
             TKind::Float(..) => "float",
             TKind::Bool(_) => "boolean",
             TKind::Char(_) => "character",
-            TKind::InvalidChar => "invalid character",
             TKind::String(_) => "string",
             TKind::Group => "group",
-            TKind::UnknownCharacter(_) => "unknown character",
             TKind::Eof => "end of file",
             TKind::None => "nothing",
         })
@@ -707,29 +633,172 @@ impl Default for TKind {
     }
 }
 
+pub struct TokenDisplay<'a> {
+    pub state: &'a LMainState,
+    pub token: &'a Token,
+}
+
+impl<'a> TokenDisplay<'a> {
+    pub fn new(state: &'a LMainState, token: &'a Token) -> Self {
+        TokenDisplay { state, token }
+    }
+}
+
+impl std::fmt::Display for TokenDisplay<'_> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        if self.token.kind == TKind::None {
+            write!(f, "|> no line information available")?;
+            return Ok(());
+        }
+
+        let mut range = self.token.spam.range.clone();
+        let string = &self.state.sources[self.token.spam.source].content;
+        if string[range.start..range.end].starts_with("\n") {
+            range.start += 1;
+        }
+
+        writeln!(
+            f,
+            "|> {}",
+            LineDataDisplay::new(self.state, &self.token.line_data)
+        )?;
+
+        let end = string[range.end..]
+            .find('\n')
+            .map(|i| i + range.end)
+            .unwrap_or(string.len());
+        let start = string[..range.start]
+            .rfind('\n')
+            .map(|i| i + 1)
+            .unwrap_or(0);
+
+        for i in string[start..end].split('\n') {
+            writeln!(f, "| {}", i)?;
+        }
+
+        let mut max = 0;
+        let mut min = range.start - start;
+
+        if let TKind::Indent(_) = self.token.kind {
+            min = range.start - start;
+            max = range.end - start - 1 * (range.end - start != 0) as usize;
+        } else {
+            let mut i = min;
+            for ch in string[range.start..range.end].chars() {
+                if ch.is_whitespace() {
+                    if ch == '\n' {
+                        i = 0;
+                    }
+                } else {
+                    max = i.max(max);
+                    min = i.min(min);
+                }
+                i += 1;
+            }
+        }
+
+        write!(f, "| ")?;
+        for _ in 0..min {
+            write!(f, " ")?;
+        }
+        for _ in min..=max {
+            write!(f, "^")?;
+        }
+
+        Ok(())
+    }
+}
+
+#[derive(Debug)]
+pub struct LError {
+    pub kind: LEKind,
+    pub spam: Spam,
+    pub line_data: LineData,
+}
+
+impl LError {
+    pub fn new(kind: LEKind, spam: Spam, line_data: LineData) -> Self {
+        LError {
+            kind,
+            spam,
+            line_data,
+        }
+    }
+}
+
+#[derive(Debug)]
+pub enum LEKind {
+    InvalidCharacter,
+    UnknownCharacter,
+    UnclosedCharacter,
+    UnclosedString,
+}
+
+pub struct LineDataDisplay<'a> {
+    state: &'a LMainState,
+    data: &'a LineData,
+}
+
+impl<'a> LineDataDisplay<'a> {
+    pub fn new(state: &'a LMainState, data: &'a LineData) -> Self {
+        Self { state, data }
+    }
+}
+
+impl Display for LineDataDisplay<'_> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(
+            f,
+            "{}:{}:{}",
+            self.data.line, self.data.column, self.state.sources[self.data.source].name
+        )
+    }
+}
+
 #[derive(Debug, Clone, Default)]
 pub struct LineData {
     pub line: usize,
     pub column: usize,
-    pub file_name: Spam,
+    pub source: Source,
 }
 
 impl LineData {
-    pub fn new(line: usize, column: usize, file_name: Spam) -> Self {
+    pub fn new(line: usize, column: usize, source: Source) -> Self {
         Self {
             line,
             column,
-            file_name,
+            source,
         }
-    }
-
-    pub fn file_name(&self) -> &Spam {
-        &self.file_name
     }
 }
 
-impl Display for LineData {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{}:{}:{}", self.line, self.column, self.file_name.raw())
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct Spam {
+    pub source: Source,
+    pub range: Range<usize>,
+}
+
+impl Spam {
+    pub fn new(source: Source, range: Range<usize>) -> Self {
+        Self { source, range }
+    }
+}
+
+//#[cfg(feature = "testing")]
+pub fn test() {
+    let mut main_state = LMainState::new();
+    let source_ent = SourceEnt {
+        name: "text_code.mf".to_string(),
+        content: crate::testing::TEST_CODE.to_string(),
+    };
+    let source = main_state.sources.add(source_ent);
+    let mut state = LState::new(source);
+
+    loop {
+        let token = main_state.lexer_for(&mut state).next().unwrap();
+        if token.kind == TKind::Eof {
+            break;
+        }
+        println!("{}", TokenDisplay::new(&main_state, &token));
     }
 }

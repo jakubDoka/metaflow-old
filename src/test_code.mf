@@ -67,3 +67,8 @@ fun mutable_ref(a: &Foo):
   a.a = 10
   a.b = 20
   a.c = 30
+
+fun some_string -> &u8:
+  "
+hello there
+  "
