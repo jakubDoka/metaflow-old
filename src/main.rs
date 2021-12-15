@@ -58,8 +58,8 @@ enum Foo {
 fn test() {
     util::test();
     lexer::test();
-    /*cli::test();
     ast::test();
+    /*cli::test();
     module_tree::test();
     types::test();
     functions::test();

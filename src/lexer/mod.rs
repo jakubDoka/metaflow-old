@@ -84,6 +84,7 @@ impl<'a> Lexer<'a> {
             match self.peek() {
                 Some(' ') => {
                     self.advance();
+                    indentation += 1;
                 }
                 Some('\t') => {
                     self.advance();
@@ -392,7 +393,8 @@ impl<'a> Lexer<'a> {
         };
 
         self.advance();
-        Ok(Token::new(kind, self.sub(start..start + 1), line_data))
+        let end = self.state.progress;
+        Ok(Token::new(kind, self.sub(start..end), line_data))
     }
 }
 
@@ -429,8 +431,8 @@ impl LState {
 }
 
 pub struct LMainState {
-    sources: List<Source, SourceEnt>,
-    builtin_source: Source,
+    pub sources: List<Source, SourceEnt>,
+    pub builtin_source: Source,
 }
 
 impl LMainState {
@@ -451,14 +453,11 @@ impl LMainState {
         &self.sources[spam.source].content[spam.range.clone()]
     }
 
-    pub fn join_spams_low(&self, spam: &mut Spam, other: &Spam, trim: bool) {
+    pub fn join_spams(&self, spam: &mut Spam, other: &Spam) {
         debug_assert!(spam.source == other.source && spam.range.end <= other.range.start);
 
-        spam.range.end = if trim {
-            other.range.start
-        } else {
-            other.range.end
-        };
+        spam.range.end = spam.range.start + 
+            self.sources[spam.source].content[spam.range.start..other.range.end].trim_end().len();
     }
 
     pub fn builtin_spam(&mut self, name: &str) -> Spam {
@@ -478,8 +477,8 @@ crate::index_pointer!(Source);
 
 #[derive(Debug, Clone, Default)]
 pub struct SourceEnt {
-    name: String,
-    content: String,
+    pub name: String,
+    pub content: String,
 }
 
 #[derive(Debug, Clone, Default)]
@@ -680,7 +679,6 @@ impl std::fmt::Display for TokenDisplay<'_> {
         let mut min = range.start - start;
 
         if let TKind::Indent(_) = self.token.kind {
-            min = range.start - start;
             max = range.end - start - 1 * (range.end - start != 0) as usize;
         } else {
             let mut i = min;
@@ -689,10 +687,13 @@ impl std::fmt::Display for TokenDisplay<'_> {
                     if ch == '\n' {
                         i = 0;
                     }
-                } else {
-                    max = i.max(max);
-                    min = i.min(min);
+                    if ch != ' ' {
+                        continue;    
+                    }
                 }
+
+                max = i.max(max);
+                min = i.min(min);
                 i += 1;
             }
         }

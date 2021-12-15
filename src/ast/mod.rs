@@ -7,13 +7,13 @@ use std::{
 
 pub type Result<T = ()> = std::result::Result<T, AError>;
 
-pub struct AstParser<'a> {
+pub struct AParser<'a> {
     main_state: &'a mut AMainState,
     state: &'a mut AState,
     context: &'a mut AContext,
 }
 
-impl<'a> AstParser<'a> {
+impl<'a> AParser<'a> {
     pub fn new(
         main_state: &'a mut AMainState,
         state: &'a mut AState,
@@ -92,7 +92,7 @@ impl<'a> AstParser<'a> {
                                 path_and_version.range.start + split_at + 1..path_and_version.range.end
                             );
 
-                            s.join_token(&mut token, true);
+                            s.join_token(&mut token);
 
                             let external = s.main_state.display(&path).starts_with("github.com");
 
@@ -162,7 +162,7 @@ impl<'a> AstParser<'a> {
         };
 
         self.next()?;
-        self.join_token(&mut token, true);
+        self.join_token(&mut token);
 
         imports.push(Import {
             nickname,
@@ -230,7 +230,7 @@ impl<'a> AstParser<'a> {
 
         ast.push(self.type_expr()?);
 
-        self.join_token(&mut ast.token, true);
+        self.join_token(&mut ast.token);
 
         Ok(ast)
     }
@@ -247,7 +247,7 @@ impl<'a> AstParser<'a> {
             Self::attr_element,
         )?;
 
-        self.join_token(&mut ast.token, true);
+        self.join_token(&mut ast.token);
 
         Ok(ast)
     }
@@ -275,7 +275,7 @@ impl<'a> AstParser<'a> {
             _ => (),
         }
 
-        self.join_token(&mut ast.token, true);
+        self.join_token(&mut ast.token);
 
         Ok(ast)
     }
@@ -291,7 +291,7 @@ impl<'a> AstParser<'a> {
             Ast::none()
         });
 
-        self.join_token(&mut ast.token, true);
+        self.join_token(&mut ast.token);
 
         Ok(ast)
     }
@@ -326,7 +326,7 @@ impl<'a> AstParser<'a> {
             Ast::none()
         });
 
-        self.join_token(&mut ast.token, true);
+        self.join_token(&mut ast.token);
 
         Ok((ast, visibility))
     }
@@ -347,7 +347,7 @@ impl<'a> AstParser<'a> {
         })?;
         ast.push(self.type_expr()?);
 
-        self.join_token(&mut ast.token, true);
+        self.join_token(&mut ast.token);
 
         Ok(ast)
     }
@@ -374,7 +374,7 @@ impl<'a> AstParser<'a> {
             Ok(())
         })?;
 
-        self.join_token(&mut ast.token, true);
+        self.join_token(&mut ast.token);
 
         Ok(ast)
     }
@@ -427,7 +427,7 @@ impl<'a> AstParser<'a> {
 
         ast.children = vec![ident_group, datatype, values];
 
-        self.join_token(&mut ast.token, true);
+        self.join_token(&mut ast.token);
 
         Ok(ast)
     }
@@ -449,7 +449,7 @@ impl<'a> AstParser<'a> {
         };
         ast.push(ret_val);
 
-        self.join_token(&mut ast.token, true);
+        self.join_token(&mut ast.token);
 
         Ok(ast)
     }
@@ -490,7 +490,7 @@ impl<'a> AstParser<'a> {
 
             let mut token = result.token.clone();
             
-            self.join_token_with(&mut token, &next.token, false);
+            self.join_token_with(&mut token, &next.token);
 
             // this handles the '{op}=' sugar
             result = if pre == ASSIGN_PRECEDENCE
@@ -574,7 +574,7 @@ impl<'a> AstParser<'a> {
                     }
                 }
                 ast.push(self.simple_expr()?);
-                self.join_token(&mut ast.token, true);
+                self.join_token(&mut ast.token);
                 return Ok(ast);
             }
             TKind::Pass => {
@@ -643,7 +643,7 @@ impl<'a> AstParser<'a> {
         }
 
         if ast.kind != AKind::Ident {
-            self.join_token(&mut ast.token, true);
+            self.join_token(&mut ast.token);
         }
 
         Ok(ast)
@@ -655,7 +655,7 @@ impl<'a> AstParser<'a> {
 
         ast.push(self.optional_label()?);
 
-        self.join_token(&mut ast.token, true);
+        self.join_token(&mut ast.token);
 
         Ok(ast)
     }
@@ -672,7 +672,7 @@ impl<'a> AstParser<'a> {
             self.expr()?
         });
 
-        self.join_token(&mut ast.token, true);
+        self.join_token(&mut ast.token);
 
         Ok(ast)
     }
@@ -685,7 +685,7 @@ impl<'a> AstParser<'a> {
 
         ast.push(self.stmt_block()?);
 
-        self.join_token(&mut ast.token, true);
+        self.join_token(&mut ast.token);
 
         Ok(ast)
     }
@@ -711,7 +711,7 @@ impl<'a> AstParser<'a> {
             self.next()?;
             temp_ast.push(self.ident()?);
             ast = temp_ast;
-            self.join_token(&mut ast.token, true);
+            self.join_token(&mut ast.token);
         }
 
         let is_instantiation = self.state.is_type_expr && self.state.token == TKind::LBra
@@ -730,7 +730,7 @@ impl<'a> AstParser<'a> {
             ast = temp_ast;
             self.list(&mut ast, TKind::LBra, TKind::Comma, TKind::RBra, Self::expr)?;
 
-            self.join_token(&mut ast.token, true);
+            self.join_token(&mut ast.token);
         }
 
         Ok(ast)
@@ -777,7 +777,7 @@ impl<'a> AstParser<'a> {
 
         ast.children = vec![condition, then_block, else_block];
 
-        self.join_token(&mut ast.token, true);
+        self.join_token(&mut ast.token);
 
         Ok(ast)
     }
@@ -946,12 +946,12 @@ impl<'a> AstParser<'a> {
         AError::new(AEKind::UnexpectedToken(message), self.state.token.clone())
     }
 
-    fn join_token(&self, token: &mut Token, trim: bool) {
-        self.join_token_with(token, &self.state.token, trim);
+    fn join_token(&self, token: &mut Token) {
+        self.join_token_with(token, &self.state.token);
     }
 
-    fn join_token_with(&self, token: &mut Token, other: &Token, trim: bool) {
-        self.main_state.join_spams_low(&mut token.spam, &other.spam, trim);
+    fn join_token_with(&self, token: &mut Token, other: &Token) {
+        self.main_state.join_spams(&mut token.spam, &other.spam);
     }
 }
 
@@ -998,8 +998,10 @@ pub struct AMainState {
 crate::inherit!(AMainState, l_main_state, LMainState);
 
 impl AMainState {
-    pub fn new(l_main_state: LMainState) -> Self {
-        Self { l_main_state }
+    pub fn new() -> Self {
+        Self {
+            l_main_state: LMainState::new(),
+        }
     }
 
     pub fn a_state_for(&self, source: Source) -> AState {
@@ -1108,15 +1110,30 @@ impl Ast {
         self.children.push(ast);
     }
 
-    fn log(&self, level: usize, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+    
+}
+
+crate::inherit!(Ast, children, Vec<Ast>);
+
+pub struct AstDiyplay<'a> {
+    state: &'a AMainState,
+    ast: &'a Ast,
+}
+
+impl<'a> AstDiyplay<'a> {
+    pub fn new(state: &'a AMainState, ast: &'a Ast) -> Self {
+        Self { state, ast }
+    }
+
+    fn log(&self, ast: &Ast, level: usize, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         std::iter::repeat(())
             .take(level)
             .for_each(|_| f.write_char(' ').unwrap());
-        write!(f, "{:?} {}", self.kind, self.token)?;
-        if self.children.len() > 0 {
+        write!(f, "{:?} {:?}", ast.kind, self.state.display(&ast.token.spam))?;
+        if ast.children.len() > 0 {
             write!(f, ":\n")?;
-            for child in &self.children {
-                child.log(level + 1, f)?;
+            for child in &ast.children {
+                self.log(child, level + 1, f)?;
             }
         } else {
             write!(f, "\n")?;
@@ -1126,23 +1143,9 @@ impl Ast {
     }
 }
 
-impl std::fmt::Display for Ast {
+impl std::fmt::Display for AstDiyplay<'_> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        self.log(0, f)
-    }
-}
-
-impl DerefMut for Ast {
-    fn deref_mut(&mut self) -> &mut Vec<Ast> {
-        &mut self.children
-    }
-}
-
-impl Deref for Ast {
-    type Target = Vec<Ast>;
-
-    fn deref(&self) -> &Self::Target {
-        &self.children
+        self.log(self.ast, 0, f)
     }
 }
 
@@ -1243,4 +1246,18 @@ impl Into<AError> for AEKind {
     }
 }
 
-pub fn test() {}
+pub fn test() {
+    let mut a_main_state = AMainState::new();
+    let source = SourceEnt {
+        name: "text_code.mf".to_string(),
+        content: crate::testing::TEST_CODE.to_string(),
+    };
+    let source = a_main_state.sources.add(source);
+    let mut a_state = a_main_state.a_state_for(source);
+    let mut context = AContext::new();
+
+    let mut a_parser = AParser::new(&mut a_main_state, &mut a_state, &mut context);
+    let ast = a_parser.parse().unwrap();
+
+    println!("{}", AstDiyplay::new(&a_main_state, &ast));
+}
