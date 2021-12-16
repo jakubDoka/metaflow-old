@@ -1,3 +1,7 @@
+
+var something = [1, 2, 3]
+let hello = "hello"
+
 fun flo: pass
 
 fun foo(): pass

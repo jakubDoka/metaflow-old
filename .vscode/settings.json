@@ -6,6 +6,7 @@
         "bint",
         "bnot",
         "brnz",
+        "bstate",
         "bxor",
         "canonicalize",
         "cfuns",

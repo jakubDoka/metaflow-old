@@ -11,16 +11,16 @@ use cranelift_codegen::{
     Context,
 };
 use cranelift_frontend::{FunctionBuilder, FunctionBuilderContext, Variable as CrVar};
-use cranelift_module::{DataContext, FuncOrDataId, Linkage, Module};
+use cranelift_module::{DataContext, FuncOrDataId, Linkage, Module, DataId};
 use std::ops::{Deref, DerefMut};
 
 use crate::{
     functions::{
-        self, FContext, FKind, FParser, FState, FinalValue, Fun, IKind, Inst, Program, RFun, Value,
+        self, FContext, FKind, FParser, FState, FinalValue, Fun, IKind, Inst, Program, RFun, Value, InstEnt, ValueEnt,
     },
     lexer::{TKind as LTKind, Token, Spam},
     module_tree::Mod,
-    types::{self, ptr_ty, TKind, Type, TypeDisplay},
+    types::{self, ptr_ty, TKind, Type, TypeDisplay, TypeEnt},
     util::{sdbm::SdbmHash, storage::IndexPointer},
 };
 
@@ -128,7 +128,7 @@ impl<'a> Generator<'a> {
 
         loop {
             let cr_block = builder.create_block();
-            let block = self.state.rfuns[fun].body.insts[current].kind.block_mut();
+            let block = self.inst_mut(fun, current).kind.block_mut();
             block.block = Some(cr_block);
             let inst = block.end.unwrap();
             let args = std::mem::take(&mut block.args);
@@ -143,7 +143,7 @@ impl<'a> Generator<'a> {
 
             debug_assert!(
                 matches!(
-                    self.state.rfuns[fun].body.insts[inst].kind,
+                    self.inst(fun, inst).kind,
                     IKind::BlockEnd(_)
                 ),
                 "next block is not a block"
@@ -171,7 +171,7 @@ impl<'a> Generator<'a> {
         let mut arg_buffer = self.context.pool.get();
 
         loop {
-            let inst = &self.state.rfuns[fun].body.insts[current];
+            let inst = &self.inst(fun, current);
             let value = inst.value;
 
             match &inst.kind {
@@ -197,13 +197,13 @@ impl<'a> Generator<'a> {
 
                         if let Some(ret_ty) = r_ent.signature.ret_ty {
                             if self.on_stack(ret_ty) {
-                                let size = self.state.types[ret_ty].size;
+                                let size = self.ty(ret_ty).size;
                                 let last = arg_buffer[arg_buffer.len() - 1];
                                 let data = StackSlotData::new(StackSlotKind::ExplicitSlot, size);
                                 let slot = builder.create_stack_slot(data);
-                                self.state.rfuns[fun].body.values[last].value =
+                                self.value_mut(fun, last).value =
                                     FinalValue::StackSlot(slot);
-                                self.state.rfuns[fun].body.values[value.unwrap()].value =
+                                self.value_mut(fun, value.unwrap()).value =
                                     FinalValue::StackSlot(slot);
                                 struct_return = true;
                             }
@@ -231,10 +231,10 @@ impl<'a> Generator<'a> {
                 IKind::VarDecl(init) => {
                     let init = *init;
                     let value = value.unwrap();
-                    let ty = self.state.rfuns[fun].body.values[value].ty;
-                    let size = self.state.types[ty].size;
+                    let ty = self.value(fun, value).ty;
+                    let size = self.ty(ty).size;
                     let size = size + 8 * ((size & 7) != 0) as u32 - (size & 7); // align
-                    let val = &mut self.state.rfuns[fun].body.values[value];
+                    let val = self.value_mut(fun, value);
                     if val.on_stack {
                         let data = StackSlotData::new(StackSlotKind::ExplicitSlot, size);
                         let slot = builder.create_stack_slot(data);
@@ -247,27 +247,27 @@ impl<'a> Generator<'a> {
                         self.assign_val(fun, value, init, builder)
                     } else {
                         let val = self.unwrap_val(fun, init, builder);
-                        self.state.rfuns[fun].body.values[value].value = FinalValue::Value(val);
+                        self.value_mut(fun, value).value = FinalValue::Value(val);
                     }
                 }
                 IKind::Zeroed => {
-                    self.state.rfuns[fun].body.values[value.unwrap()].value = FinalValue::Zero;
+                    self.value_mut(fun, value.unwrap()).value = FinalValue::Zero;
                 }
                 IKind::Uninitialized => {
-                    let val = &self.state.rfuns[fun].body.values[value.unwrap()];
+                    let val = &self.value(fun, value.unwrap());
                     if self.on_stack(val.ty) {
-                        let size = self.state.types[val.ty].size;
+                        let size = self.ty(val.ty).size;
                         let data = StackSlotData::new(StackSlotKind::ExplicitSlot, size);
                         let slot = builder.create_stack_slot(data);
-                        self.state.rfuns[fun].body.values[value.unwrap()].value =
+                        self.value_mut(fun, value.unwrap()).value =
                             FinalValue::StackSlot(slot);
                     } else {
-                        self.state.rfuns[fun].body.values[value.unwrap()].value = FinalValue::Zero;
+                        self.value_mut(fun, value.unwrap()).value = FinalValue::Zero;
                     }
                 }
                 IKind::Lit(lit) => {
                     let value = value.unwrap();
-                    let ty = self.state.rfuns[fun].body.values[value].ty;
+                    let ty = self.value(fun, value).ty;
                     let repr = self.repr(ty);
                     let lit = match lit {
                         LTKind::Int(val, _) => builder.ins().iconst(repr, *val),
@@ -283,40 +283,13 @@ impl<'a> Generator<'a> {
                         LTKind::Char(val) => builder.ins().iconst(I32, *val as i64),
                         LTKind::String(data) => {
                             let data = data.clone();
-                            let id = data.deref().sdbm_hash().wrapping_add(STRING_SALT);
-                            let mut name_buffer = self.context.pool.get();
-                            functions::write_base36(id, &mut name_buffer);
-                            let name = unsafe { std::str::from_utf8_unchecked(&name_buffer) };
-                            let data_id = if let Some(FuncOrDataId::Data(data_id)) =
-                                self.program.module.get_name(name)
-                            {
-                                data_id
-                            } else {
-                                let data_id = self
-                                    .program
-                                    .module
-                                    .declare_data(name, Linkage::Export, false, false)
-                                    .unwrap();
-                                let context = unsafe {
-                                    std::mem::transmute::<_, &mut DataContext>(
-                                        &mut self.context.data_context,
-                                    )
-                                };
-                                context.define(data.deref().to_owned().into_boxed_slice());
-                                self.program.module.define_data(data_id, context).unwrap();
-                                context.clear();
-                                data_id
-                            };
-
-                            let value = self
-                                .program
-                                .module
-                                .declare_data_in_func(data_id, builder.func);
-                            builder.ins().global_value(types::ptr_ty(), value)
+                            let data = self.make_static_data(&data, false, false);
+                            let value = self.program.module.declare_data_in_func(data, builder.func);
+                            builder.ins().global_value(repr, value)
                         }
                         lit => todo!("{}", lit),
                     };
-                    self.state.rfuns[fun].body.values[value].value = FinalValue::Value(lit);
+                    self.value_mut(fun, value).value = FinalValue::Value(lit);
                 }
                 IKind::Return(value) => {
                     if let Some(value) = value {
@@ -355,12 +328,12 @@ impl<'a> Generator<'a> {
                     let value = value.unwrap();
                     let other = *other;
                     let val = self.unwrap_val(fun, other, builder);
-                    if self.state.rfuns[fun].body.values[value].on_stack {
-                        self.state.rfuns[fun].body.values[value].value = FinalValue::Pointer(val);
+                    if self.value(fun, value).on_stack {
+                        self.value_mut(fun, value).value = FinalValue::Pointer(val);
                     } else {
                         let repr = self.repr_of_val(fun, value);
                         let val = builder.ins().load(repr, MemFlags::new(), val, 0);
-                        self.state.rfuns[fun].body.values[value].value = FinalValue::Value(val);
+                        self.value_mut(fun, value).value = FinalValue::Value(val);
                     }
                 }
                 IKind::Ref(val) => {
@@ -370,7 +343,7 @@ impl<'a> Generator<'a> {
                 IKind::Cast(other) => {
                     let other = *other;
                     let value = value.unwrap();
-                    if self.state.rfuns[fun].body.values[value].on_stack {
+                    if self.value(fun, value).on_stack {
                         self.pass(fun, other, value);
                     } else {
                         let target = self.repr_of_val(fun, value);
@@ -405,7 +378,7 @@ impl<'a> Generator<'a> {
         match self.state.display(&fun_ent.name) {
             "sizeof" => {
                 let value = target.unwrap();
-                let size = self.state.types[fun_ent.params[0].1].size;
+                let size = self.ty(fun_ent.params[0].1).size;
                 let size = builder.ins().iconst(ptr_ty(), size as i64);
                 self.wrap_val(fun, value, size);
             }
@@ -425,7 +398,7 @@ impl<'a> Generator<'a> {
         let name = self.state.display(&name);
         match args.len() {
             1 => {
-                let val = &self.state.rfuns[fun].body.values[args[0]];
+                let val = &self.value(fun, args[0]);
                 let ty = val.ty;
                 let a = self.unwrap_val(fun, args[0], builder);
                 let kind = BTKind::of(ty);
@@ -534,7 +507,7 @@ impl<'a> Generator<'a> {
                 self.wrap_val(fun, target.unwrap(), value)
             }
             2 => {
-                let ty = self.state.rfuns[fun].body.values[args[0]].ty;
+                let ty = self.value(fun, args[0]).ty;
                 let a = self.unwrap_val(fun, args[0], builder);
                 let b = self.unwrap_val(fun, args[1], builder);
                 let kind = BTKind::of(ty);
@@ -637,8 +610,8 @@ impl<'a> Generator<'a> {
         source: Value,
         builder: &mut FunctionBuilder,
     ) {
-        let target = &self.state.rfuns[fun].body.values[target];
-        let source_v = &self.state.rfuns[fun].body.values[source];
+        let target = &self.value(fun, target);
+        let source_v = &self.value(fun, source);
         let ty = source_v.ty;
 
         debug_assert!(
@@ -647,12 +620,12 @@ impl<'a> Generator<'a> {
             TypeDisplay::new(&self.state, ty),
             TypeDisplay::new(&self.state, target.ty),
             target,
-            self.state.rfuns[fun].body.insts[source_v.inst.unwrap()].kind
+            self.inst(fun, source_v.inst.unwrap()).kind
         );
 
         match target.value.clone() {
             FinalValue::StackSlot(slot) => {
-                let size = self.state.types[ty].size;
+                let size = self.ty(ty).size;
                 match source_v.value {
                     FinalValue::Zero => static_stack_memset(slot, target.offset, 0, size, builder),
                     FinalValue::Value(value) => {
@@ -713,7 +686,7 @@ impl<'a> Generator<'a> {
                         pointer,
                         target.offset,
                         0,
-                        self.state.types[ty].size,
+                        self.ty(ty).size,
                         builder,
                     );
                 } else {
@@ -724,7 +697,7 @@ impl<'a> Generator<'a> {
                             target.offset,
                             value,
                             source_v.offset,
-                            self.state.types[ty].size,
+                            self.ty(ty).size,
                             builder,
                         );
                     } else {
@@ -745,7 +718,7 @@ impl<'a> Generator<'a> {
         source: CrValue,
         builder: &mut FunctionBuilder,
     ) {
-        let target = &self.state.rfuns[fun].body.values[target];
+        let target = &self.value(fun, target);
 
         match target.value {
             FinalValue::StackSlot(slot) => {
@@ -766,7 +739,7 @@ impl<'a> Generator<'a> {
     }
 
     fn unwrap_block(&mut self, fun: RFun, block: Inst) -> CrBlock {
-        self.state.rfuns[fun].body.insts[block]
+        self.inst(fun, block)
             .kind
             .block()
             .block
@@ -775,23 +748,23 @@ impl<'a> Generator<'a> {
 
     #[inline]
     fn wrap_val(&mut self, fun: RFun, target: Value, value: CrValue) {
-        self.state.rfuns[fun].body.values[target].value = FinalValue::Value(value);
+        self.value_mut(fun, target).value = FinalValue::Value(value);
     }
 
     #[inline]
     fn wrap_slot(&mut self, fun: RFun, target: Value, value: StackSlot) {
-        self.state.rfuns[fun].body.values[target].value = FinalValue::StackSlot(value);
+        self.value_mut(fun, target).value = FinalValue::StackSlot(value);
     }
 
     #[inline]
     fn unwrap_val(&self, fun: RFun, value: Value, builder: &mut FunctionBuilder) -> CrValue {
-        let value = &self.state.rfuns[fun].body.values[value];
+        let value = &self.value(fun, value);
         let ty = value.ty;
         match value.value {
             FinalValue::None => unreachable!(),
             FinalValue::Zero => {
                 let repr = self.repr(ty);
-                match self.state.types[ty].kind {
+                match self.ty(ty).kind {
                     TKind::Pointer(..) => builder.ins().null(repr),
                     TKind::Structure(..) => builder.ins().iconst(repr, 0),
                     _ => match BTKind::of(ty) {
@@ -815,7 +788,7 @@ impl<'a> Generator<'a> {
                 val
             }
             FinalValue::Pointer(pointer) => {
-                let wrapped_type = match self.state.types[ty].kind {
+                let wrapped_type = match self.ty(ty).kind {
                     TKind::Pointer(inner, ..) => inner,
                     _ => unreachable!(),
                 };
@@ -850,31 +823,84 @@ impl<'a> Generator<'a> {
     }
 
     fn pass(&mut self, fun: RFun, from: Value, to: Value) {
-        let other_value = self.state.rfuns[fun].body.values[from].value.clone();
-        self.state.rfuns[fun].body.values[to].value = other_value;
+        let other_value = self.value(fun, from).value.clone();
+        self.value_mut(fun, to).value = other_value;
     }
 
     #[inline]
     fn repr_of_val(&self, fun: RFun, value: Value) -> CrType {
-        self.repr(self.state.rfuns[fun].body.values[value].ty)
+        self.repr(self.value(fun, value).ty)
     }
 
     fn on_stack(&self, ty: Type) -> bool {
-        self.state.types[ty].on_stack()
+        self.ty(ty).on_stack()
     }
 
     fn repr(&self, ty: Type) -> CrType {
-        self.state.types[ty].repr()
+        self.ty(ty).repr()
     }
 
     pub fn is_zero(&self, fun: RFun, value: Value) -> bool {
-        let inst = self.state.rfuns[fun].body.values[value].inst;
+        let inst = self.value(fun, value).inst;
         if let Some(inst) = inst {
-            let inst = &self.state.rfuns[fun].body.insts[inst];
+            let inst = &self.inst(fun, inst);
             matches!(inst.kind, IKind::Zeroed)
         } else {
             false
         }
+    }
+
+    pub fn make_static_data(&mut self, data: &[u8], mutable: bool, tls: bool) -> DataId {
+        let id = data.sdbm_hash().wrapping_add(STRING_SALT);
+        let mut name_buffer = self.context.pool.get();
+        functions::write_base36(id, &mut name_buffer);
+        let name = unsafe { std::str::from_utf8_unchecked(&name_buffer) };
+        if let Some(FuncOrDataId::Data(data_id)) =
+            self.program.module.get_name(name)
+        {
+            data_id
+        } else {
+            let data_id = self
+                .program
+                .module
+                .declare_data(name, Linkage::Export, mutable, tls)
+                .unwrap();
+            let context = unsafe {
+                std::mem::transmute::<_, &mut DataContext>(
+                    &mut self.context.data_context,
+                )
+            };
+            context.define(data.deref().to_owned().into_boxed_slice());
+            self.program.module.define_data(data_id, context).unwrap();
+            context.clear();
+            data_id
+        }
+    }
+
+    pub fn ty(&self, ty: Type) -> &TypeEnt {
+        &self.state.types[ty]
+    }
+
+    pub fn inst(&self, fun: RFun, inst: Inst) -> &InstEnt {
+        &self.state.rfuns[fun].body.insts[inst]
+    }
+
+    pub fn inst_mut(&mut self, fun: RFun, inst: Inst) -> &mut InstEnt {
+        &mut self.state.rfuns[fun].body.insts[inst]
+    }
+
+    pub fn value(&self, fun: RFun, value: Value) -> &ValueEnt {
+        &self.state.rfuns[fun].body.values[value]
+    }
+
+    pub fn value_mut(&mut self, fun: RFun, value: Value) -> &mut ValueEnt {
+        &mut self.state.rfuns[fun].body.values[value]
+    }
+}
+
+impl SdbmHash for &[u8] {
+    fn bytes(&self) -> &[u8] {
+        self
     }
 }
 

@@ -20,13 +20,15 @@ use cranelift_codegen::ir::{
 use cranelift_codegen::isa::CallConv;
 use cranelift_codegen::settings;
 use cranelift_frontend::Variable as CrVar;
-use cranelift_module::{FuncId, Linkage, Module};
+use cranelift_module::{FuncId, Linkage, Module, DataId};
 use cranelift_object::{ObjectBuilder, ObjectModule};
 
 type Result<T = ()> = std::result::Result<T, FError>;
 type ExprResult = Result<Option<Value>>;
 
+// wales i made up btw
 pub const FUN_SALT: ID = ID(0xDEADBEEF);
+pub const GLOBAL_SALT: ID = ID(0x2849437252);
 pub const GENERIC_FUN_SALT: ID = ID(0xFAEFACBD);
 
 pub struct FParser<'a> {
@@ -58,7 +60,7 @@ impl<'a> FParser<'a> {
 
     fn translate(&mut self) -> Result {
         while let Some(fun) = self.state.unresolved.pop() {
-            self.state.body = self.context.body_pool.pop().unwrap_or_default();
+            self.state.bstate.body = self.context.body_pool.pop().unwrap_or_default();
             self.fun(fun)?;
             self.declare_fun(fun)?;
         }
@@ -91,39 +93,39 @@ impl<'a> FParser<'a> {
         let args = std::mem::take(&mut sig.args);
         let ret_ty = sig.ret_ty;
         let mut arg_buffer = self.context.pool.get();
-        self.state.vars.clear();
+        self.clear_vars();
         for arg in args.iter() {
-            let var = self.state.body.values.add(arg.clone());
-            self.state.vars.push(var);
+            let var = self.state.bstate.body.values.add(arg.clone());
+            self.state.bstate.vars.push(var);
             arg_buffer.push(var);
         }
         if let Some(ret_ty) = ret_ty {
-            if self.state.types[ret_ty].on_stack() {
+            if self.ty(ret_ty).on_stack() {
                 let ty = self.pointer_of(ret_ty);
                 let value = self.new_anonymous_value(ty, false);
                 arg_buffer.push(value);
             }
         }
         self.state.nfuns[nid].sig.args = args;
-        self.state.body.insts[entry_point].kind.block_mut().args = arg_buffer.clone();
+        self.inst_mut(entry_point).kind.block_mut().args = arg_buffer.clone();
 
         let value = self.block(fun, &ast[1])?;
 
         let n_ent = &self.state.nfuns[nid];
 
-        if let (Some(value), Some(_), Some(ret_ty)) = (value, self.state.block, n_ent.sig.ret_ty) {
-            let value_ty = self.state.body.values[value].ty;
+        if let (Some(value), Some(_), Some(ret_ty)) = (value, self.state.bstate.block, n_ent.sig.ret_ty) {
+            let value_ty = self.value(value).ty;
             let token = &ast[1].last().unwrap().token;
             self.assert_type(value_ty, ret_ty, token)?;
             let value = self.return_value(fun, value, token);
             self.add_inst(InstEnt::new(IKind::Return(Some(value)), None, token));
-        } else if let (Some(ret_ty), Some(_)) = (n_ent.sig.ret_ty, self.state.block) {
+        } else if let (Some(ret_ty), Some(_)) = (n_ent.sig.ret_ty, self.state.bstate.block) {
             let value = self.new_temp_value(ret_ty);
             let token = &ast[1].last().unwrap().token;
             self.add_inst(InstEnt::new(IKind::Zeroed, Some(value), token));
             let value = self.return_value(fun, value, token);
             self.add_inst(InstEnt::new(IKind::Return(Some(value)), None, token));
-        } else if self.state.block.is_some() {
+        } else if self.state.bstate.block.is_some() {
             self.add_inst(InstEnt::new(
                 IKind::Return(None),
                 None,
@@ -133,11 +135,11 @@ impl<'a> FParser<'a> {
 
         self.state.asts[n_ent_ast] = ast;
 
-        for value_id in self.state.body.values.ids() {
-            let ty = self.state.body.values[value_id].ty;
-            let on_stack = self.state.types[ty].on_stack();
-            self.state.body.values[value_id].on_stack =
-                self.state.body.values[value_id].on_stack || on_stack;
+        for value_id in self.state.bstate.body.values.ids() {
+            let ty = self.value(value_id).ty;
+            let on_stack = self.ty(ty).on_stack();
+            self.value_mut(value_id).on_stack =
+                self.value(value_id).on_stack || on_stack;
         }
 
         for (id, shadow) in shadowed.drain(..) {
@@ -208,12 +210,12 @@ impl<'a> FParser<'a> {
         signature.clear(call_conv);
 
         for arg in n_ent.sig.args.iter() {
-            let repr = self.state.types[arg.ty].repr();
+            let repr = self.ty(arg.ty).repr();
             signature.params.push(AbiParam::new(repr));
         }
 
         if let Some(ret_ty) = n_ent.sig.ret_ty {
-            let ret_ty = &self.state.types[ret_ty];
+            let ret_ty = &self.ty(ret_ty);
             let repr = ret_ty.repr();
 
             let purpose = if ret_ty.on_stack() {
@@ -252,7 +254,7 @@ impl<'a> FParser<'a> {
             signature: n_ent.sig,
             ir_signature: signature.clone(),
             id,
-            body: std::mem::take(&mut self.state.body),
+            body: std::mem::take(&mut self.state.bstate.body),
         };
 
         let f = self.state.rfuns.add(r_ent);
@@ -265,9 +267,9 @@ impl<'a> FParser<'a> {
 
     fn return_value(&mut self, fun: Fun, value: Value, token: &Token) -> Value {
         let ty = self.return_type_of(fun).unwrap();
-        if self.state.types[ty].on_stack() {
-            let entry = self.state.body.insts.first().unwrap();
-            let return_value = self.state.body.insts[entry]
+        if self.ty(ty).on_stack() {
+            let entry = self.state.bstate.body.insts.first().unwrap();
+            let return_value = self.inst(entry)
                 .kind
                 .block()
                 .args
@@ -296,13 +298,13 @@ impl<'a> FParser<'a> {
         self.push_scope();
 
         for statement in ast[..ast.len() - 1].iter() {
-            if self.state.block.is_none() {
+            if self.state.bstate.block.is_none() {
                 break;
             }
             self.statement(fun, statement)?;
         }
 
-        let value = if self.state.block.is_some() {
+        let value = if self.state.bstate.block.is_some() {
             self.statement(fun, ast.last().unwrap())?
         } else {
             None
@@ -315,7 +317,7 @@ impl<'a> FParser<'a> {
 
     fn statement(&mut self, fun: Fun, statement: &Ast) -> ExprResult {
         match statement.kind {
-            AKind::VarStatement(_) => self.var_statement(fun, statement)?,
+            AKind::VarStatement(..) => self.var_statement(fun, statement)?,
             AKind::ReturnStatement => self.return_statement(fun, statement)?,
             AKind::Break => self.break_statement(fun, statement)?,
             AKind::Continue => self.continue_statement(statement)?,
@@ -354,16 +356,16 @@ impl<'a> FParser<'a> {
 
         if ast[1].kind != AKind::None {
             let return_value = self.expr(fun, &ast[1])?;
-            let current_value = self.state.body.insts[loop_header.end_block]
+            let current_value = self.inst(loop_header.end_block)
                 .kind
                 .block()
                 .args
                 .first()
                 .cloned();
             if current_value.is_none() {
-                let ty = self.state.body.values[return_value].ty;
+                let ty = self.value(return_value).ty;
                 let value = self.new_temp_value(ty);
-                self.state.body.insts[loop_header.end_block]
+                self.inst_mut(loop_header.end_block)
                     .kind
                     .block_mut()
                     .args
@@ -401,7 +403,7 @@ impl<'a> FParser<'a> {
             let ty =
                 ty.ok_or_else(|| FError::new(FEKind::UnexpectedReturnValue, ast[0].token.clone()))?;
             let value = self.expr(fun, &ast[0])?;
-            let actual_type = self.state.body.values[value].ty;
+            let actual_type = self.value(value).ty;
             self.assert_type(actual_type, ty, &ast[0].token)?;
             Some(self.return_value(fun, value, &ast.token))
         };
@@ -412,7 +414,7 @@ impl<'a> FParser<'a> {
     }
 
     fn var_statement(&mut self, fun: Fun, statement: &Ast) -> Result {
-        let mutable = statement.kind == AKind::VarStatement(true);
+        let mutable = statement.kind == AKind::VarStatement(Vis::None, true);
         let module = self.state.funs[fun].module;
 
         for var_line in statement.iter() {
@@ -427,7 +429,7 @@ impl<'a> FParser<'a> {
                     let ty = ty.unwrap();
                     let name = name.token.spam.hash;
 
-                    let temp_value = self.state.body.values.add(ValueEnt::temp(ty));
+                    let temp_value = self.state.bstate.body.values.add(ValueEnt::temp(ty));
 
                     self.add_inst(InstEnt::new(
                         IKind::Zeroed,
@@ -447,7 +449,7 @@ impl<'a> FParser<'a> {
                 for (name, raw_value) in var_line[0].iter().zip(var_line[2].iter()) {
                     let name = name.token.spam.hash;
                     let value = self.expr(fun, raw_value)?;
-                    let actual_datatype = self.state.body.values[value].ty;
+                    let actual_datatype = self.value(value).ty;
 
                     if let Some(ty) = ty {
                         self.assert_type(actual_datatype, ty, &raw_value.token)?;
@@ -515,9 +517,9 @@ impl<'a> FParser<'a> {
         for raw_value in ast.iter() {
             let value = self.expr(fun, raw_value)?;
             if let Some(ty) = element_ty {
-                self.assert_type(self.state.body.values[value].ty, ty, &raw_value.token)?;
+                self.assert_type(self.value(value).ty, ty, &raw_value.token)?;
             } else {
-                element_ty = Some(self.state.body.values[value].ty);
+                element_ty = Some(self.value(value).ty);
             }
             values.push(value);
         }
@@ -527,7 +529,7 @@ impl<'a> FParser<'a> {
         }
 
         let element_ty = element_ty.unwrap();
-        let element_size = self.state.types[element_ty].size;
+        let element_size = self.ty(element_ty).size;
 
         let ty = self.array_of(element_ty, length);
 
@@ -536,7 +538,7 @@ impl<'a> FParser<'a> {
 
         for (i, &value) in values.iter().enumerate() {
             let offset = self.new_anonymous_value(element_ty, false);
-            self.state.body.values[offset].offset = i as u32 * element_size;
+            self.value_mut(offset).offset = i as u32 * element_size;
             self.add_inst(InstEnt::new(
                 IKind::Offset(result),
                 Some(offset),
@@ -557,7 +559,7 @@ impl<'a> FParser<'a> {
     }
 
     fn ref_expr_low(&mut self, value: Value, token: &Token) -> Value {
-        let ty = self.state.body.values[value].ty;
+        let ty = self.value(value).ty;
         let ty = self.pointer_of(ty);
         let reference = self.new_temp_value(ty);
         self.add_inst(InstEnt::new(IKind::Ref(value), Some(reference), token));
@@ -565,14 +567,14 @@ impl<'a> FParser<'a> {
         // we need to allocate it since register cannot be referenced
         let mut current = reference;
         loop {
-            let value = &mut self.state.body.values[current];
+            let value = self.value_mut(current);
             if value.on_stack {
                 break;
             }
             value.on_stack = true;
 
             if let Some(inst) = value.inst {
-                match &self.state.body.insts[inst].kind {
+                match &self.inst(inst).kind {
                     IKind::Offset(value) => {
                         current = *value;
                         continue;
@@ -600,7 +602,7 @@ impl<'a> FParser<'a> {
     }
 
     fn deref_expr_low(&mut self, value: Value, token: &Token) -> Result<Value> {
-        let ty = self.state.body.values[value].ty;
+        let ty = self.value(value).ty;
         let pointed = self.base_of_err(ty, token)?;
 
         let val = self.new_anonymous_value(pointed, true);
@@ -628,15 +630,15 @@ impl<'a> FParser<'a> {
 
     fn dot_expr(&mut self, fun: Fun, ast: &Ast) -> ExprResult {
         let header = self.expr(fun, &ast[0])?;
-        let mutable = self.state.body.values[header].mutable;
+        let mutable = self.value(header).mutable;
         let field = ast[1].token.spam.hash;
 
         let inst = self.add_inst(InstEnt::new(IKind::NoOp, None, &Token::default()));
         let value = self.new_anonymous_value(self.state.builtin_repo.bool, mutable);
-        self.state.body.values[value].inst = Some(inst);
+        self.value_mut(value).inst = Some(inst);
         let ty = self.field_access(header, field, value, &ast.token)?;
-        self.state.body.insts.remove(inst);
-        self.state.body.values[value].ty = ty;
+        self.state.bstate.body.insts.remove(inst);
+        self.value_mut(value).ty = ty;
         Ok(Some(value))
     }
 
@@ -646,9 +648,9 @@ impl<'a> FParser<'a> {
 
         let mut i = 0;
         while i < frontier.len() {
-            let sid = match &self.state.types[frontier[i].2].kind {
+            let sid = match &self.ty(frontier[i].2).kind {
                 &TKind::Structure(sid) => sid,
-                &TKind::Pointer(pointed) => match &self.state.types[pointed].kind {
+                &TKind::Pointer(pointed) => match &self.ty(pointed).kind {
                     &TKind::Structure(sid) => sid,
                     _ => continue,
                 },
@@ -696,15 +698,17 @@ impl<'a> FParser<'a> {
             &ast.token,
         ));
 
-        self.state.loops.push(header);
+        self.state.bstate.loops.push(header);
         self.make_block_current(start_block);
         self.block(fun, &ast[1])?;
-        self.state
+        self
+            .state
+            .bstate
             .loops
             .pop()
             .expect("expected previously pushed header");
 
-        if self.state.block.is_some() {
+        if self.state.bstate.block.is_some() {
             self.add_inst(InstEnt::new(
                 IKind::Jump(start_block, vec![]),
                 None,
@@ -713,7 +717,7 @@ impl<'a> FParser<'a> {
         }
         self.make_block_current(end_block);
 
-        let value = if self.state.body.insts[end_block]
+        let value = if self.inst(end_block)
             .kind
             .block()
             .args
@@ -721,7 +725,7 @@ impl<'a> FParser<'a> {
         {
             None
         } else {
-            Some(self.state.body.insts[end_block].kind.block().args[0])
+            Some(self.inst(end_block).kind.block().args[0])
         };
 
         Ok(value)
@@ -730,7 +734,7 @@ impl<'a> FParser<'a> {
     fn if_expr(&mut self, fun: Fun, ast: &Ast) -> ExprResult {
         let cond_expr = &ast[0];
         let cond_val = self.expr(fun, cond_expr)?;
-        let cond_type = self.state.body.values[cond_val].ty;
+        let cond_type = self.value(cond_val).ty;
 
         let then_block = self.new_block();
         self.add_inst(InstEnt::new(
@@ -780,15 +784,15 @@ impl<'a> FParser<'a> {
                 &ast.token,
             ));
 
-            let ty = self.state.body.values[val].ty;
+            let ty = self.value(val).ty;
             let value = self.new_temp_value(ty);
-            self.state.body.insts[merge_block]
+            self.inst_mut(merge_block)
                 .kind
                 .block_mut()
                 .args
                 .push(value);
             result = Some(value);
-        } else if self.state.block.is_some() {
+        } else if self.state.bstate.block.is_some() {
             self.add_inst(InstEnt::new(
                 IKind::Jump(merge_block, vec![]),
                 None,
@@ -818,9 +822,9 @@ impl<'a> FParser<'a> {
                         value_token,
                     ));
 
-                    let ty = self.state.body.values[val].ty;
+                    let ty = self.value(val).ty;
                     let value = self.new_temp_value(ty);
-                    self.state.body.insts[merge_block]
+                    self.inst_mut(merge_block)
                         .kind
                         .block_mut()
                         .args
@@ -830,7 +834,7 @@ impl<'a> FParser<'a> {
                     return Err(FError::new(FEKind::UnexpectedValue, ast.token.clone()));
                 }
             } else {
-                if self.state.block.is_some() {
+                if self.state.bstate.block.is_some() {
                     if result.is_some() {
                         return Err(FError::new(FEKind::ExpectedValue, ast.token.clone()));
                     }
@@ -909,7 +913,7 @@ impl<'a> FParser<'a> {
         let return_type = self.return_type_of(fun);
 
         let value = return_type.map(|t| {
-            let on_stack = self.state.types[t].on_stack();
+            let on_stack = self.ty(t).on_stack();
             let value = self.new_anonymous_value(t, on_stack);
             if on_stack {
                 values.push(value);
@@ -941,7 +945,7 @@ impl<'a> FParser<'a> {
                     .iter()
                     .find(|&(p, _)| *p == name)
                 {
-                    let ty = &self.state.types[ty].kind;
+                    let ty = &self.ty(ty).kind;
                     match ty {
                         TKind::Const(t) => {
                             let (kind, ty) = match t.clone() {
@@ -1045,9 +1049,9 @@ impl<'a> FParser<'a> {
         let target = self.expr(fun, &ast[1])?;
         let ty = self.parse_type(module, &ast[2])?;
 
-        let original_datatype = self.state.body.values[target].ty;
-        let original_size = self.state.types[original_datatype].size;
-        let datatype_size = self.state.types[ty].size;
+        let original_datatype = self.value(target).ty;
+        let original_size = self.ty(original_datatype).size;
+        let datatype_size = self.ty(ty).size;
 
         if original_size != datatype_size {
             return Err(FError::new(
@@ -1056,7 +1060,7 @@ impl<'a> FParser<'a> {
             ));
         }
 
-        let value = self.new_anonymous_value(ty, self.state.body.values[target].mutable);
+        let value = self.new_anonymous_value(ty, self.value(target).mutable);
         self.add_inst(InstEnt::new(IKind::Cast(target), Some(value), &ast.token));
 
         Ok(Some(value))
@@ -1069,8 +1073,8 @@ impl<'a> FParser<'a> {
         value: Value,
         token: &Token,
     ) -> Result<Type> {
-        let mutable = self.state.body.values[header].mutable;
-        let header_datatype = self.state.body.values[header].ty;
+        let mutable = self.value(header).mutable;
+        let header_datatype = self.value(header).ty;
         let mut path = vec![];
         if !self.find_field(header_datatype, field, &mut path) {
             return Err(FError::new(
@@ -1082,7 +1086,7 @@ impl<'a> FParser<'a> {
         let mut offset = 0;
         let mut current_type = header_datatype;
         for &i in path.iter().rev() {
-            match &self.state.types[current_type].kind {
+            match &self.ty(current_type).kind {
                 &TKind::Structure(sid) => {
                     let field = &self.state.stypes[sid].fields[i];
                     offset += field.offset;
@@ -1090,10 +1094,10 @@ impl<'a> FParser<'a> {
                 }
                 &TKind::Pointer(pointed) => {
                     let value = self.new_anonymous_value(current_type, mutable);
-                    self.state.body.values[value].offset = offset;
+                    self.value_mut(value).offset = offset;
                     self.add_inst(InstEnt::new(IKind::Offset(header), Some(value), &token));
 
-                    match &self.state.types[pointed].kind {
+                    match &self.ty(pointed).kind {
                         &TKind::Structure(sid) => {
                             let field = &self.state.stypes[sid].fields[i];
                             offset = field.offset;
@@ -1101,18 +1105,18 @@ impl<'a> FParser<'a> {
                             let loaded = self.new_anonymous_value(pointed, mutable);
                             self.add_inst(InstEnt::new(IKind::Deref(value), Some(loaded), &token));
                             header = loaded;
-                            self.state.body.values[loaded].offset = offset;
+                            self.value_mut(loaded).offset = offset;
                         }
                         _ => unreachable!(),
                     }
                 }
-                _ => todo!("{:?}", self.state.types[current_type]),
+                _ => todo!("{:?}", self.ty(current_type)),
             }
         }
 
         let inst = self.add_inst(InstEnt::new(IKind::Offset(header), Some(value), token));
 
-        let val = &mut self.state.body.values[value];
+        let val = self.value_mut(value);
         val.inst = Some(inst);
         val.offset = offset;
         val.ty = current_type;
@@ -1123,24 +1127,24 @@ impl<'a> FParser<'a> {
     fn inst_of(&mut self, value: Value) -> Inst {
         // if inst is none then this is function parameter and its safe to put it
         // at the beginning of the entry block
-        self.state.body.values[value]
+        self.value(value)
             .inst
-            .unwrap_or(self.state.body.insts.first().unwrap())
+            .unwrap_or(self.state.bstate.body.insts.first().unwrap())
     }
 
     pub fn add_variable(&mut self, name: ID, ty: Type, mutable: bool) -> Value {
         let val = self.new_value(name, ty, mutable);
-        self.state.vars.push(val);
+        self.state.bstate.vars.push(val);
         val
     }
 
     fn assignment(&mut self, fun: Fun, ast: &Ast) -> ExprResult {
         let target = self.expr(fun, &ast[1])?;
         let value = self.expr(fun, &ast[2])?;
-        let target_datatype = self.state.body.values[target].ty;
-        let value_datatype = self.state.body.values[value].ty;
+        let target_datatype = self.value(target).ty;
+        let value_datatype = self.value(value).ty;
 
-        if !self.state.body.values[target].mutable {
+        if !self.value(target).mutable {
             return Err(FError::new(FEKind::AssignToImmutable, ast.token.clone()));
         }
 
@@ -1163,10 +1167,10 @@ impl<'a> FParser<'a> {
     ) -> Result<Fun> {
         let mut types = self.context.pool.get();
         types.clear();
-        types.extend(args.iter().map(|&v| self.state.body.values[v].ty));
+        types.extend(args.iter().map(|&v| self.value(v).ty));
 
         let result = if dot_expr {
-            let first_mutable = self.state.body.values[args[0]].mutable;
+            let first_mutable = self.value(args[0]).mutable;
             let (fun, id, kind) =
                 self.dot_find_or_create(module, base, name, params, &mut types, &token)?;
             if id.0 != 0 {
@@ -1200,16 +1204,16 @@ impl<'a> FParser<'a> {
     #[inline]
     fn new_value(&mut self, name: ID, ty: Type, mutable: bool) -> Value {
         let value = ValueEnt::new(name, ty, mutable);
-        self.state.body.values.add(value)
+        self.state.bstate.body.values.add(value)
     }
 
     pub fn add_inst(&mut self, inst: InstEnt) -> Inst {
-        debug_assert!(self.state.block.is_some(), "no block to add inst to");
+        debug_assert!(self.state.bstate.block.is_some(), "no block to add inst to");
         let closing = inst.kind.is_closing();
         let value = inst.value;
-        let inst = self.state.body.insts.push(inst);
+        let inst = self.state.bstate.body.insts.push(inst);
         if let Some(value) = value {
-            self.state.body.values[value].inst = Some(inst);
+            self.value_mut(value).inst = Some(inst);
         }
         if closing {
             self.close_block();
@@ -1220,15 +1224,15 @@ impl<'a> FParser<'a> {
     pub fn add_inst_above(&mut self, inst: InstEnt, at: Inst) -> Inst {
         debug_assert!(!inst.kind.is_closing(), "cannot insert closing instruction");
         let value = inst.value;
-        let inst = self.state.body.insts.insert_before(at, inst);
+        let inst = self.state.bstate.body.insts.insert_before(at, inst);
         if let Some(value) = value {
-            self.state.body.values[value].inst = Some(inst);
+            self.value_mut(value).inst = Some(inst);
         }
         inst
     }
 
     pub fn new_block(&mut self) -> Inst {
-        self.state.body.insts.add_hidden(InstEnt::new(
+        self.state.bstate.body.insts.add_hidden(InstEnt::new(
             IKind::Block(Default::default()),
             None,
             &Token::default(),
@@ -1236,21 +1240,21 @@ impl<'a> FParser<'a> {
     }
 
     pub fn make_block_current(&mut self, block: Inst) {
-        debug_assert!(self.state.block.is_none(), "current block is not closed");
-        self.state.body.insts.show_as_last(block);
-        self.state.block = Some(block);
+        debug_assert!(self.state.bstate.block.is_none(), "current block is not closed");
+        self.state.bstate.body.insts.show_as_last(block);
+        self.state.bstate.block = Some(block);
     }
 
     pub fn close_block(&mut self) {
-        debug_assert!(self.state.block.is_some(), "no block to close");
-        let block = self.state.block.unwrap();
-        let inst = self.state.body.insts.push(InstEnt::new(
+        debug_assert!(self.state.bstate.block.is_some(), "no block to close");
+        let block = self.state.bstate.block.unwrap();
+        let inst = self.state.bstate.body.insts.push(InstEnt::new(
             IKind::BlockEnd(block),
             None,
             &Token::default(),
         ));
-        self.state.body.insts[block].kind.block_mut().end = Some(inst);
-        self.state.block = None;
+        self.inst_mut(block).kind.block_mut().end = Some(inst);
+        self.state.bstate.block = None;
     }
 
     fn dot_find_or_create(
@@ -1312,13 +1316,13 @@ impl<'a> FParser<'a> {
                 );
             }
 
-            match &self.state.types[ty].kind {
+            match &self.ty(ty).kind {
                 &TKind::Structure(id) => {
                     for field in self.state.stypes[id].fields.iter().filter(|f| f.embedded) {
                         frontier.push((field.ty, field.id));
                     }
                 }
-                &TKind::Pointer(pointed) => match &self.state.types[pointed].kind {
+                &TKind::Pointer(pointed) => match &self.ty(pointed).kind {
                     &TKind::Structure(id) => {
                         for field in self.state.stypes[id].fields.iter().filter(|f| f.embedded) {
                             frontier.push((field.ty, field.id));
@@ -1346,11 +1350,11 @@ impl<'a> FParser<'a> {
     ) -> Result<Fun> {
         let mut specific_id = values
             .iter()
-            .fold(base, |base, &val| base.add(self.state.types[val].id));
+            .fold(base, |base, &val| base.add(self.ty(val).id));
 
         if values.len() == 0 {
             for &ty in params {
-                specific_id = specific_id.add(self.state.types[ty].id);
+                specific_id = specific_id.add(self.ty(ty).id);
             }
         }
 
@@ -1545,7 +1549,7 @@ impl<'a> FParser<'a> {
         let signature = self.parse_signature(module, &ast[0], &mut id)?;
         if signature.args.len() == 0 {
             for final_param in final_params.iter() {
-                let tid = self.state.types[final_param.1].id;
+                let tid = self.ty(final_param.1).id;
                 id = id.add(tid);
             }
         }
@@ -1606,7 +1610,57 @@ impl<'a> FParser<'a> {
                 &AKind::Fun(vis) => {
                     self.collect_fun(std::mem::take(a), module, module_id, vis, attr_id)?
                 }
+                &AKind::VarStatement(vis, mutable) => {
+                    self.collect_global_var(std::mem::take(a), module, module_id, vis, mutable, attr_id)?
+                }
                 _ => (),
+            }
+        }
+
+        Ok(())
+    }
+
+    fn collect_global_var(
+        &mut self,
+        mut ast: Ast,
+        module: Mod,
+        module_id: ID,
+        vis: Vis,
+        mutable: bool,
+        attr_id: usize,
+    ) -> Result {
+        for var_line in ast.iter_mut() {
+            let ty = if var_line[1].kind != AKind::None {
+                Some(self.parse_type(module, &var_line[1])?)
+            } else {
+                None
+            };
+
+            let mut values = std::mem::take(&mut var_line[2]);
+
+            for (name, value) in var_line[0].iter().zip(values.drain(..).chain(std::iter::repeat(Ast::none()))) {
+                let hint = name.token.clone();
+                let id = GLOBAL_SALT
+                    .add(hint.spam.hash)
+                    .add(module_id);
+                
+                let g_ent = GlobalEnt {
+                    vis,
+                    mutable,
+                    id,
+                    kind: GKind::Normal(value, ty),
+                    hint,
+                    attr_id,
+                };
+
+                let (shadowed, _) = self.state.globals.insert(id, g_ent);
+                
+                if let Some(shadowed) = shadowed {
+                    return Err(FError::new(
+                        FEKind::RedefinedGlobal(shadowed.hint.clone()),
+                        name.token.clone(),
+                    ));
+                }
             }
         }
 
@@ -1740,7 +1794,7 @@ impl<'a> FParser<'a> {
             let ty = self.parse_type(module, &arg_section[arg_section.len() - 1])?;
             for arg in arg_section[0..arg_section.len() - 1].iter() {
                 let id = arg.token.spam.hash;
-                *fun_id = fun_id.add(self.state.types[ty].id);
+                *fun_id = fun_id.add(self.ty(ty).id);
                 let val_ent = ValueEnt {
                     id,
                     ty,
@@ -1830,7 +1884,7 @@ impl<'a> FParser<'a> {
 
         while let Some((ty, done)) = stack.last_mut() {
             let ty = *ty;
-            let ty_ent = &self.state.types[ty];
+            let ty_ent = &self.ty(ty);
 
             if *done {
                 if !ty_ent.params.is_empty() {
@@ -1866,18 +1920,19 @@ impl<'a> FParser<'a> {
 
     fn find_loop(&self, token: &Token) -> std::result::Result<Loop, bool> {
         if token.spam.range.len() == 0 {
-            return self.state.loops.last().cloned().ok_or(true);
+            return self.state.bstate.loops.last().cloned().ok_or(true);
         }
 
         let name = token.spam.hash;
 
         self.state
+            .bstate
             .loops
             .iter()
             .rev()
             .find(|l| l.name == name)
             .cloned()
-            .ok_or_else(|| self.state.loops.is_empty())
+            .ok_or_else(|| self.state.bstate.loops.is_empty())
     }
 
     fn base_of_err(&mut self, ty: Type, token: &Token) -> Result<Type> {
@@ -1886,7 +1941,7 @@ impl<'a> FParser<'a> {
     }
 
     fn base_of(&mut self, ty: Type) -> Option<Type> {
-        match self.state.types[ty].kind {
+        match self.ty(ty).kind {
             TKind::Pointer(pointed) => Some(pointed),
             _ => None,
         }
@@ -1909,34 +1964,59 @@ impl<'a> FParser<'a> {
 
     #[inline]
     pub fn is_pointer(&self, ty: Type) -> bool {
-        matches!(self.state.types[ty].kind, TKind::Pointer(..))
+        matches!(self.ty(ty).kind, TKind::Pointer(..))
     }
 
     #[inline]
     fn pass_mutability(&mut self, from: Value, to: Value) {
-        self.state.body.values[to].mutable = self.state.body.values[from].mutable;
+        self.value_mut(to).mutable = self.value(from).mutable;
     }
 
     fn push_scope(&mut self) {
-        self.state.frames.push(self.state.vars.len());
+        self.state.bstate.frames.push(self.state.bstate.vars.len());
     }
 
     fn pop_scope(&mut self) {
-        let idx = self.state.frames.pop().unwrap();
-        self.state.vars.truncate(idx)
+        let idx = self.state.bstate.frames.pop().unwrap();
+        self.state.bstate.vars.truncate(idx)
     }
 
     fn find_variable(&self, id: ID) -> Option<Value> {
         self.state
+            .bstate    
             .vars
             .iter()
             .rev()
-            .find(|&&v| self.state.body.values[v].id == id)
+            .find(|&&v| self.value(v).id == id)
             .cloned()
+    }
+
+    fn ty(&self, ty: Type) -> &TypeEnt {
+        &self.state.types[ty]
+    }
+
+    fn inst(&self, inst: Inst) -> &InstEnt {
+        &self.state.bstate.body.insts[inst]
+    }
+
+    fn inst_mut(&mut self, inst: Inst) -> &mut InstEnt {
+        &mut self.state.bstate.body.insts[inst]
+    }
+
+    fn value(&self, value: Value) -> &ValueEnt {
+        &self.state.bstate.body.values[value]
+    }
+
+    fn value_mut(&mut self, value: Value) -> &mut ValueEnt {
+        &mut self.state.bstate.body.values[value]
     }
 
     fn array_of(&mut self, ty: Type, length: usize) -> Type {
         TParser::new(&mut self.state.t_state, &mut self.context.t_context).array_of(ty, length)
+    }
+
+    fn clear_vars(&mut self) {
+        self.state.bstate.vars.clear();
     }
 }
 
@@ -2114,6 +2194,13 @@ crate::def_displayer!(
                 "cannot create empty array from '[]' syntax as type of element is unknown"
             )?;
         },
+        FEKind::RedefinedGlobal(other) => {
+            writeln!(
+                f,
+                "redefinition of global variable\n{}\n",
+                TokenDisplay::new(self.state, &other)
+            )?;
+        },
     }
 );
 
@@ -2132,6 +2219,7 @@ impl FError {
 #[derive(Debug)]
 pub enum FEKind {
     EmptyArray,
+    RedefinedGlobal(Token),
     DuplicateEntrypoint(Fun),
     TooShortAttribute(usize, usize),
     InvalidLinkage,
@@ -2447,7 +2535,9 @@ impl Program {
         unsafe {
             POINTER_TYPE = module.isa().pointer_type();
         }
-        Self { module }
+        Self { 
+            module,
+        }
     }
 }
 
@@ -2461,22 +2551,46 @@ impl Default for Program {
     }
 }
 
+crate::index_pointer!(Global);
+
+pub struct GlobalEnt {
+    pub id: ID,
+    pub vis: Vis,
+    pub mutable: bool,
+    pub kind: GKind,
+    pub hint: Token,
+    pub attr_id: usize,
+}
+
+pub enum GKind {
+    Normal(Ast, Option<Type>),
+    Represented(DataId, Type),
+}
+
+#[derive(Default)]
+pub struct BodyState {
+    pub vars: Vec<Value>,
+    pub loops: Vec<Loop>,
+    pub frames: Vec<usize>,
+    pub body: FunBody,
+    pub block: Option<Inst>,
+}
+
 pub struct FState {
     pub t_state: TState,
+    
     pub funs: Table<Fun, FunEnt>,
     pub nfuns: ReusableList<NFun, NFunEnt>,
     pub gfuns: List<GFun, GFunEnt>,
     pub rfuns: List<RFun, RFunEnt>,
 
-    pub loops: Vec<Loop>,
-
+    pub globals: Table<Global, GlobalEnt>,
+    
     pub entry_point: Option<Fun>,
-    pub vars: Vec<Value>,
-    pub frames: Vec<usize>,
-    pub body: FunBody,
-    pub block: Option<Inst>,
-    pub unresolved: Vec<Fun>,
 
+    pub bstate: BodyState,
+    
+    pub unresolved: Vec<Fun>,
     pub represented: Vec<Fun>,
     pub index_spam: Spam
 }
@@ -2491,15 +2605,12 @@ impl Default for FState {
             nfuns: ReusableList::new(),
             gfuns: List::new(),
             rfuns: List::new(),
-            loops: Vec::new(),
-            body: FunBody::default(),
-            block: None,
             unresolved: Vec::new(),
-            vars: Vec::new(),
             entry_point: None,
             represented: Vec::new(),
-            frames: Vec::new(),
             index_spam: Spam::default(),
+            globals: Table::new(),
+            bstate: BodyState::default(),
         };
 
         let spam = state.builtin_spam("__index__");

@@ -180,8 +180,9 @@ impl<'a> AParser<'a> {
                 TKind::Fun => ast.push(self.fun()?),
                 TKind::Attr => ast.push(self.attr()?),
                 TKind::Struct => ast.push(self.struct_declaration()?),
+                TKind::Var | TKind::Let => ast.push(self.var_statement(true)?),
                 TKind::Indent(_) => self.next()?,
-                _ => return Err(self.unexpected_str("expected 'fun' or 'attr' or 'struct'")),
+                _ => return Err(self.unexpected_str("expected 'fun' or 'attr' or 'struct' or 'let' or 'var'")),
             }
         }
         Ok(ast)
@@ -358,16 +359,25 @@ impl<'a> AParser<'a> {
     fn statement(&mut self) -> Result<Ast> {
         match self.state.token.kind {
             TKind::Return => self.return_statement(),
-            TKind::Var | TKind::Let => self.var_statement(),
+            TKind::Var | TKind::Let => self.var_statement(false),
             TKind::Break => return self.break_statement(),
             TKind::Continue => return self.continue_statement(),
             _ => self.expr(),
         }
     }
 
-    fn var_statement(&mut self) -> Result<Ast> {
-        let mut ast = self.ast(AKind::VarStatement(self.state.token.kind == TKind::Var));
+    fn var_statement(&mut self, top_level: bool) -> Result<Ast> {
+        let mutable = self.state.token.kind == TKind::Var;
+        let mut ast = self.ast(AKind::None);
         self.next()?;
+
+        let vis = if top_level {
+            self.visibility()?
+        } else {
+            Vis::None
+        };
+        ast.kind = AKind::VarStatement(vis, mutable);
+
         self.walk_block(|s| {
             ast.push(s.var_statement_line()?);
             Ok(())
@@ -1188,7 +1198,7 @@ pub enum AKind {
     AttributeElement,
     AttributeAssign,
 
-    VarStatement(bool),
+    VarStatement(Vis, bool),
     VarAssign,
 
     ReturnStatement,

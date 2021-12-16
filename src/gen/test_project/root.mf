@@ -1,0 +1,20 @@
+
+
+var storage: [int, 10]
+
+attr entry
+fun main -> int:
+  let array = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]
+  var 
+    i = 0
+    sum = 0
+  
+  loop:
+    if i >= array.len():
+      break
+    sum += array[i]
+    storage[i] = array[i]
+    i += 1
+
+  return sum - 11 * 5
+        
