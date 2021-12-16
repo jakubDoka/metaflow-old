@@ -1170,9 +1170,9 @@ Dummy(1)
 | ^^
 |> 72:3:text_code.mf
 |   "
-| hello    there
+| hello there
 |   "
-| ^^^^^^^^^^^^^^
+| ^^^^^^^^^^^
 Group "fun":
  Fun(None) "fun flo: pass":
   FunHeader "fun flo:":
@@ -1517,11 +1517,19 @@ Group "fun":
      Ident "a"
      Ident "c"
     Lit "30"
- Fun(None) "fun some_string -> &u8:\r\n  \"\r\nhello    there\r\n  \"":
+ Fun(None) "fun some_string -> &u8:\r\n  \"\r\nhello there\r\n  \"":
   FunHeader "fun some_string -> &u8:":
    Ident "some_string"
    Ref "&u8:":
     Ident "u8"
   Group ":":
-   Lit "\"\r\nhello    there\r\n  \""
+   Lit "\"\r\nhello there\r\n  \""
+
+|> 47:8:builtin.mf
+| struct Seq[T]:
+|        ^^^^^^^
+is redefinition of
+ |> 31:8:builtin.mf
+| struct Option[T]:
+|        ^^^^^^^^^^
 
