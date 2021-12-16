@@ -8,19 +8,18 @@ use cranelift_codegen::{
 };
 
 use cranelift_object::{ObjectBuilder, ObjectModule};
-use std::{fmt::Display, process::Command};
+use std::process::Command;
 
 use crate::{
     cli::Arguments,
-    functions::{FContext, FEDisplay, FError, FState, Program},
-    lexer::{TKind as LTKind, Token, TokenView},
-    module_tree::{MTContext, MTEDisplay, MTError, MTParser, MTState},
-    types::{TContext, TState},
+    functions::{FError, Program, FErrorDisplay},
+    lexer::{TokenDisplay, Token},
+    module_tree::{MTError, MTParser, MTErrorDisplay},
 };
 
 use super::*;
 
-type Result<T> = std::result::Result<T, GenError>;
+type Result<T> = std::result::Result<T, GError>;
 
 pub fn compile(args: Arguments) -> Result<()> {
     if args.len() < 1 {
@@ -115,26 +114,19 @@ pub fn generate_obj_file(args: &Arguments) -> Result<Vec<u8>> {
 
     let mut program = Program::new(ObjectModule::new(builder));
 
-    let mut state = MTState::default();
-    let mut context = MTContext::default();
+    let mut state = GState::default();
+    let mut context = GContext::default();
 
     if let Err(error) = MTParser::new(&mut state, &mut context).parse(&args[0]) {
-        eprintln!("{}", MTEDisplay::new(&state, &error));
+        eprintln!("{}", MTErrorDisplay::new(&state, &error));
         return Err(GEKind::ModuleTreeError(error).into());
     }
-
-    let state = TState::new(state);
-    let context = TContext::new(context);
-    let state = FState::new(state);
-    let context = FContext::new(context);
-    let mut state = GState::new(state);
-    let mut context = GContext::new(context);
 
     for i in (0..state.module_order.len()).rev() {
         let module = state.module_order[i];
         if let Err(error) = Generator::new(&mut program, &mut state, &mut context).generate(module)
         {
-            eprintln!("{}", GEDisplay::new(&state, &error));
+            eprintln!("{}", GErrorDisplay::new(&state, &error));
             return Err(error);
         }
     }
@@ -142,55 +134,41 @@ pub fn generate_obj_file(args: &Arguments) -> Result<Vec<u8>> {
     Ok(program.module.finish().emit().unwrap())
 }
 
-pub struct GEDisplay<'a> {
-    state: &'a GState,
-    error: &'a GenError,
-}
-
-impl<'a> GEDisplay<'a> {
-    pub fn new(state: &'a GState, error: &'a GenError) -> Self {
-        Self { state, error }
+crate::def_displayer!(
+    GErrorDisplay,
+    GState,
+    GError,
+    |self, f| {
+        GEKind::FunError(error) => {
+            write!(f, "{}", FErrorDisplay::new(&self.state, error))?;
+        },
+        GEKind::ModuleTreeError(error) => {
+            write!(f, "{}", MTErrorDisplay::new(&self.state, error))?;
+        },
+        GEKind::IoError(err) => {
+            writeln!(f, "{}", err)?;
+        },
+        GEKind::InvalidTriplet(error) => {
+            writeln!(f, "invalid triplet: {}", error)?;
+        },
+        GEKind::CompilationFlagError(err) => {
+            writeln!(f, "invalid compilation flag: {}", err)?;
+        },
+        GEKind::NoFiles => {
+            writeln!(f, "first argument is missing <FILE>")?;
+        },
     }
-}
-
-impl<'a> Display for GEDisplay<'a> {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        if self.error.token.kind != LTKind::None {
-            writeln!(f, "{}", TokenView::new(&self.error.token))?;
-        }
-        match &self.error.kind {
-            GEKind::FunError(error) => {
-                write!(f, "{}", FEDisplay::new(&self.state, error))
-            }
-            GEKind::ModuleTreeError(error) => {
-                write!(f, "{}", MTEDisplay::new(&self.state, error))
-            }
-            GEKind::IoError(err) => {
-                writeln!(f, "{}", err)?;
-                Ok(())
-            }
-            GEKind::InvalidTriplet(error) => {
-                writeln!(f, "invalid triplet: {}", error)?;
-                Ok(())
-            }
-            GEKind::CompilationFlagError(err) => {
-                writeln!(f, "invalid compilation flag: {}", err)?;
-                Ok(())
-            }
-            GEKind::NoFiles => writeln!(f, "first argument is missing <FILE>"),
-        }
-    }
-}
+);
 
 #[derive(Debug)]
-pub struct GenError {
+pub struct GError {
     kind: GEKind,
     token: Token,
 }
 
-impl GenError {
-    pub fn new(kind: GEKind, token: Token) -> GenError {
-        GenError { kind, token }
+impl GError {
+    pub fn new(kind: GEKind, token: Token) -> Self {
+        Self { kind, token }
     }
 }
 
@@ -204,9 +182,9 @@ pub enum GEKind {
     NoFiles,
 }
 
-impl Into<GenError> for GEKind {
-    fn into(self) -> GenError {
-        GenError {
+impl Into<GError> for GEKind {
+    fn into(self) -> GError {
+        GError {
             kind: self,
             token: Token::default(),
         }
@@ -455,7 +433,8 @@ pub fn test_sippet(sippet: &str, exit_code: i32) {
 
     compile(args).unwrap();
 
-    let output = Command::new("test_project.exe").output().unwrap();
+
+    let output = Command::new(".\\test_project.exe").output().unwrap();
 
     assert_eq!(output.status.code().unwrap(), exit_code);
 

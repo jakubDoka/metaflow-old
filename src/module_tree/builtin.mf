@@ -38,10 +38,10 @@ fun some[T](value: T) -> Option[T]:
   option.is_some = true
   option
 
-fun is_some(option: Option[T]) -> bool:
+fun is_some[T](option: Option[T]) -> bool:
   option.is_some
 
-fun is_none(option: Option[T]) -> bool:
+fun is_none[T](option: Option[T]) -> bool:
   !option.is_some
 
 struct Seq[T]:

@@ -3,16 +3,16 @@
 extern crate cranelift_codegen;
 extern crate cranelift_frontend;
 
-//pub mod attributes;
-//pub mod cli;
-//pub mod functions;
-//pub mod gen;
+pub mod gen;
+pub mod functions;
+pub mod types;
+pub mod module_tree;
+pub mod attributes;
 pub mod ast;
 pub mod lexer;
 pub mod util;
-//pub mod module_tree;
+pub mod cli;
 pub mod testing;
-//pub mod types;
 
 pub const FILE_EXTENSION: &str = ".pmt";
 
@@ -24,7 +24,7 @@ fn main() {
 }
 
 fn run() {
-    /* let args = match cli::Arguments::new(std::env::args()) {
+    /*let args = match cli::Arguments::new(std::env::args()) {
         Ok(args) => args,
         Err(e) => {
             println!("{:?}", e);
@@ -56,12 +56,12 @@ enum Foo {
 
 #[cfg(feature = "testing")]
 fn test() {
+    cli::test();
     util::test();
     lexer::test();
     ast::test();
-    /*cli::test();
     module_tree::test();
     types::test();
     functions::test();
-    gen::test();*/
+    gen::test();
 }

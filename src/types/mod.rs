@@ -2,10 +2,10 @@ use std::fmt::Write;
 use std::ops::{Deref, DerefMut};
 use std::rc::Rc;
 
-use crate::ast::{AKind, Ast, AstError, AstParser, Vis};
-use crate::lexer::{TKind as LTKind, Token, TokenView};
-use crate::module_tree::{self, MTContext, MTParser, MTState, Mod, TreeStorage};
-use crate::util::sdbm::{SdbmHashState, ID};
+use crate::ast::{AKind, Ast, AError, AParser, Vis, AErrorDisplay};
+use crate::lexer::{TKind as LTKind, Token, Spam, LineData, TokenDisplay};
+use crate::module_tree::{self, MTContext, MTState, Mod, TreeStorage, MTParser};
+use crate::util::sdbm::{ ID};
 use crate::util::storage::{IndexPointer, List, ReusableList, Table};
 use cranelift_codegen::ir::types::*;
 use cranelift_codegen::ir::types::{Type as CrType, INVALID};
@@ -200,7 +200,9 @@ impl<'a> TParser<'a> {
                 ));
             }
             for (a, &param) in header[1..].iter().zip(params[1..].iter()) {
-                let id = TYPE_SALT.add(a.token.spam.raw()).combine(module_id);
+                let id = TYPE_SALT
+                    .add(ID::new(self.state.display(&a.token.spam)))
+                    .add(module_id);
 
                 let sha = self.state.types.link(id, param);
                 shadowed.push((id, sha));
@@ -219,8 +221,7 @@ impl<'a> TParser<'a> {
             let hint = field_line.token.clone();
 
             for field in field_line[..field_line.len() - 1].iter() {
-                let name = field.token.spam.raw();
-                let id = ID(0).add(name);
+                let id = field.token.spam.hash;
                 let field = SField {
                     embedded,
                     vis,
@@ -338,9 +339,9 @@ impl<'a> TParser<'a> {
 
         let mut id = TYPE_SALT;
         for &param in params.iter() {
-            id = id.combine(self.state.types[param].id);
+            id = id.add(self.state.types[param].id);
         }
-        id = id.combine(module_id);
+        id = id.add(module_id);
 
         if let Some(id) = self.type_index(id) {
             return Ok((module, id));
@@ -364,7 +365,7 @@ impl<'a> TParser<'a> {
             visibility: ty_ent.visibility,
             params: params.clone(),
             kind: TKind::Unresolved(ast_id),
-            name: ty_ent.name,
+            name: ty_ent.name.clone(),
             hint: ast.token.clone(),
             attribute_id: ty_ent.attribute_id,
             size: 0,
@@ -385,27 +386,27 @@ impl<'a> TParser<'a> {
             .find_dep(module, &ast[0].token)
             .ok_or_else(|| TError::new(TEKind::UnknownModule, ast.token.clone()))?;
         let module_id = self.state.modules[module].id;
-        let id = TYPE_SALT.add(ast[1].token.spam.raw());
-        self.type_index(id.combine(module_id))
+        let id = TYPE_SALT.add(ast[1].token.spam.hash);
+        self.type_index(id.add(module_id))
             .map(|id| (module, id))
             .ok_or_else(|| TError::new(TEKind::UnknownType, ast[0].token.clone()))
     }
 
     fn resolve_simple_type(&mut self, module: Mod, name: &Token) -> Result<(Mod, Type)> {
-        let id = TYPE_SALT.add(name.spam.raw());
+        let id = TYPE_SALT.add(name.spam.hash);
 
         let mut buffer = self.context.pool.get();
         self.state.collect_scopes(module, &mut buffer);
 
         let (module, module_id) = buffer[0];
-        if let Some(ty) = self.type_index(id.combine(module_id)) {
+        if let Some(ty) = self.type_index(id.add(module_id)) {
             return Ok((module, ty));
         }
 
         let mut found = None;
 
         for (module, module_id) in buffer.drain(1..) {
-            if let Some(ty) = self.type_index(id.combine(module_id)) {
+            if let Some(ty) = self.type_index(id.add(module_id)) {
                 if let Some((_, found)) = found {
                     return Err(TError::new(TEKind::AmbiguousType(ty, found), name.clone()));
                 }
@@ -419,14 +420,15 @@ impl<'a> TParser<'a> {
     fn collect(&mut self, module: Mod) -> Result<()> {
         let mut context = std::mem::take(&mut self.context.ast);
 
-        let module_ent = &mut self.state.modules[module];
+        let mut module_ent = std::mem::take(&mut self.state.modules[module]);
         let module_name = module_ent.id;
 
-        let mut ast = AstParser::new(&mut module_ent.ast, &mut context)
+        let mut ast = AParser::new(&mut self.state, &mut module_ent.ast, &mut context)
             .parse()
-            .map_err(|err| TError::new(TEKind::AstError(err), Token::default()))?;
+            .map_err(|err| TError::new(TEKind::AError(err), Token::default()))?;
 
-        module_ent.attributes.parse(&mut ast);
+        module_ent.attributes.parse(&self.state, &mut ast);
+        self.state.modules[module] = module_ent;
 
         for (i, a) in ast.iter_mut().enumerate() {
             match a.kind.clone() {
@@ -448,17 +450,15 @@ impl<'a> TParser<'a> {
                         ));
                     };
 
-                    let name = ident.token.spam.raw();
                     let hint = ast[0].token.clone();
-                    let id = TYPE_SALT.add(name).combine(module_name);
-
+                    let id = TYPE_SALT.add(ident.token.spam.hash).add(module_name);
                     let datatype = TypeEnt {
                         visibility,
                         id,
                         params: vec![],
                         module,
                         kind,
-                        name,
+                        name: ident.token.spam.clone(),
                         attribute_id: i,
                         hint: hint.clone(),
                         size: 0,
@@ -489,9 +489,9 @@ impl<'a> TParser<'a> {
         let module = self.state.types[ty].module;
         let name = "&";
         let id = TYPE_SALT
-            .add(name)
-            .combine(self.state.types[ty].id)
-            .combine(self.state.modules[module].id);
+            .add(ID::new(name))
+            .add(self.state.types[ty].id)
+            .add(self.state.modules[module].id);
 
         if let Some(index) = self.type_index(id) {
             return index;
@@ -502,7 +502,7 @@ impl<'a> TParser<'a> {
             id,
             params: vec![],
             kind: TKind::Pointer(ty),
-            name,
+            name: Spam::default(),
             hint: Token::default(),
             module,
             attribute_id: 0,
@@ -519,9 +519,9 @@ impl<'a> TParser<'a> {
         let element_id = self.state.types[element].id;
 
         let id = TYPE_SALT
-            .add("[]")
-            .combine(element_id)
-            .combine(ID(length as u64));
+            .add(ID::new("[]"))
+            .add(element_id)
+            .add(ID(length as u64));
 
         if let Some(&index) = self.state.types.index(id) {
             return index;
@@ -548,7 +548,7 @@ impl<'a> TParser<'a> {
         self.context.constant_buffer.clear();
         write!(self.context.constant_buffer, "{}", constant).unwrap();
 
-        let id = TYPE_SALT.add(&self.context.constant_buffer);
+        let id = TYPE_SALT.add(ID::new(&self.context.constant_buffer));
 
         if let Some(&tp) = self.state.types.index(id) {
             return tp;
@@ -612,7 +612,7 @@ pub struct TypeEnt {
     pub visibility: Vis,
     pub params: Vec<Type>,
     pub kind: TKind,
-    pub name: &'static str,
+    pub name: Spam,
     pub hint: Token,
     pub attribute_id: usize,
     pub size: u32,
@@ -706,17 +706,9 @@ pub struct TContext {
     pub constant_buffer: String,
 }
 
-impl TContext {
-    pub fn new(mt_context: MTContext) -> Self {
-        Self {
-            mt_context,
-            ..Default::default()
-        }
-    }
-}
-
 crate::inherit!(TContext, mt_context, MTContext);
 
+#[derive(Debug, Clone)]
 pub struct TState {
     pub builtin_repo: BuiltinRepo,
     pub types: Table<Type, TypeEnt>,
@@ -730,14 +722,14 @@ pub struct TState {
 
 crate::inherit!(TState, mt_state, MTState);
 
-impl TState {
-    pub fn new(mt_state: MTState) -> Self {
+impl Default for TState {
+    fn default() -> Self {
         let mut s = Self {
             builtin_repo: Default::default(),
             types: Table::new(),
             asts: ReusableList::new(),
             stypes: List::new(),
-            mt_state,
+            mt_state: MTState::default(),
             unresolved: vec![],
             resolved: vec![],
             parsed_ast: Ast::default(),
@@ -774,7 +766,8 @@ macro_rules! define_repo {
                 let builtin_id = state.modules[module].id;
 
                 $(
-                    let id = TYPE_SALT.add(stringify!($name)).combine(builtin_id);
+                    let name = state.builtin_spam(stringify!($name));
+                    let id = TYPE_SALT.add(ID::new(stringify!($name))).add(builtin_id);
                     let type_ent = TypeEnt {
                         id,
                         visibility: Vis::Public,
@@ -782,8 +775,8 @@ macro_rules! define_repo {
                         size: $size,
                         align: $size.min(8),
                         module,
-                        hint: Token::builtin(stringify!($name)),
-                        name: stringify!($name),
+                        hint: Token::new(LTKind::Ident, name.clone(), LineData::default()),
+                        name,
                         params: vec![],
                         attribute_id: 0,
                     };
@@ -836,7 +829,7 @@ impl<'a> std::fmt::Display for TypeDisplay<'a> {
         let ty = &self.state.types[self.type_id];
         match &ty.kind {
             TKind::Pointer(id, ..) => {
-                write!(f, "{}", ty.name)?;
+                write!(f, "{}", self.state.display(&ty.name))?;
                 write!(f, "{}", Self::new(self.state, *id))
             }
             TKind::Structure(_) if !ty.params.is_empty() => {
@@ -849,7 +842,7 @@ impl<'a> std::fmt::Display for TypeDisplay<'a> {
                 write!(f, "]")
             }
             TKind::Builtin(_) | TKind::Unresolved(_) | TKind::Generic(_) | TKind::Structure(_) => {
-                write!(f, "{}", ty.name)
+                write!(f, "{}", self.state.display(&ty.name))
             }
             TKind::Const(value) => {
                 write!(f, "{}", value)
@@ -861,90 +854,74 @@ impl<'a> std::fmt::Display for TypeDisplay<'a> {
     }
 }
 
-pub struct TEDisplay<'a> {
-    state: &'a TState,
-    error: &'a TError,
-}
+crate::def_displayer!(
+    TErrorDisplay,
+    TState,
+    TError,
+    |self, f| {
+        TEKind::InstancingNonGeneric(origin) => {
+            writeln!(
+                f,
+                "instancing non-generic type, defined here:\n {}",
+                TokenDisplay::new(&self.state, origin)
+            )?;
+        },
+        TEKind::AError(error) => {
+            writeln!(f, "{}", AErrorDisplay::new(self.state, error))?;
+        },
+        TEKind::UnexpectedAst(token) => {
+            writeln!(f, "{}", token)?;
+        },
+        &TEKind::AmbiguousType(a, b) => {
+            let a = self.state.types[a].hint.clone();
+            let b = self.state.types[b].hint.clone();
+            writeln!(
+                f,
+                "matches\n{}\nand\n{}\nambiguity is not allowed",
+                TokenDisplay::new(&self.state, &a),
+                TokenDisplay::new(&self.state, &b)
+            )?;
+        },
+        TEKind::UnknownType => {
+            writeln!(f, "type not defined in current scope")?;
+        },
+        TEKind::NotGeneric => {
+            writeln!(f, "type is not generic thus cannot be instantiated")?;
+        },
+        TEKind::UnknownModule => {
+            writeln!(f, "module not defined in current scope")?;
+        },
+        TEKind::InstantiationDepthExceeded => {
+            writeln!(
+                f,
+                "instantiation depth exceeded, max is {}",
+                TParser::MAX_TYPE_INSTANTIATION_DEPTH
+            )?;
+        },
+        TEKind::WrongInstantiationArgAmount(actual, expected) => {
+            writeln!(
+                f,
+                "wrong amount of arguments for type instantiation, expected {} but got {}",
+                expected, actual
+            )?;
+        },
+        TEKind::AccessingExternalPrivateType => {todo!()},
+        TEKind::AccessingFilePrivateType =>  {todo!()},
+        TEKind::InfiniteSize(cycle) => {
+            writeln!(f, "infinite size detected, cycle:")?;
+            for ty in cycle.iter() {
+                writeln!(f, "  {}", TypeDisplay::new(self.state, *ty))?;
+            }
+        },
+        TEKind::Redefinition(other) => {
+            writeln!(f, "is redefinition of\n{}", TokenDisplay::new(&self.state, other))?;
+        },
 
-impl<'a> TEDisplay<'a> {
-    pub fn new(state: &'a TState, error: &'a TError) -> Self {
-        Self { state, error }
+        TEKind::ExpectedIntConstant => {
+            writeln!(f, "expected positive integer constant")?;
+        },
     }
-}
-
-impl std::fmt::Display for TEDisplay<'_> {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        if self.error.token.kind != LTKind::None {
-            writeln!(f, "{}", TokenView::new(&self.error.token))?;
-        }
-
-        match &self.error.kind {
-            TEKind::InstancingNonGeneric(origin) => {
-                writeln!(
-                    f,
-                    "instancing non-generic type, defined here:\n {}",
-                    TokenView::new(&origin)
-                )?;
-            }
-            TEKind::AstError(error) => {
-                writeln!(f, "{}", error)?;
-            }
-            TEKind::UnexpectedAst(token) => {
-                writeln!(f, "{}", token)?;
-            }
-            &TEKind::AmbiguousType(a, b) => {
-                let a = self.state.types[a].hint.clone();
-                let b = self.state.types[b].hint.clone();
-                writeln!(
-                    f,
-                    "matches\n{}\nand\n{}",
-                    TokenView::new(&a),
-                    TokenView::new(&b)
-                )?;
-            }
-            TEKind::UnknownType => {
-                writeln!(f, "type not defined in current scope")?;
-            }
-            TEKind::NotGeneric => {
-                writeln!(f, "type is not generic thus cannot be instantiated")?;
-            }
-            TEKind::UnknownModule => {
-                writeln!(f, "module not defined in current scope")?;
-            }
-            TEKind::InstantiationDepthExceeded => {
-                writeln!(
-                    f,
-                    "instantiation depth exceeded, max is {}",
-                    TParser::MAX_TYPE_INSTANTIATION_DEPTH
-                )?;
-            }
-            TEKind::WrongInstantiationArgAmount(actual, expected) => {
-                writeln!(
-                    f,
-                    "wrong amount of arguments for type instantiation, expected {} but got {}",
-                    expected, actual
-                )?;
-            }
-            TEKind::AccessingExternalPrivateType => todo!(),
-            TEKind::AccessingFilePrivateType => todo!(),
-            TEKind::InfiniteSize(cycle) => {
-                writeln!(f, "infinite size detected, cycle:")?;
-                for ty in cycle.iter() {
-                    writeln!(f, "  {}", TypeDisplay::new(self.state, *ty))?;
-                }
-            }
-            TEKind::Redefinition(other) => {
-                writeln!(f, "is redefinition of\n {}", TokenView::new(&other))?;
-            }
-
-            TEKind::ExpectedIntConstant => {
-                writeln!(f, "expected positive integer constant")?;
-            }
-        }
-
-        Ok(())
-    }
-}
+);
 
 #[derive(Debug)]
 pub struct TError {
@@ -961,7 +938,7 @@ impl TError {
 #[derive(Debug)]
 pub enum TEKind {
     InstancingNonGeneric(Token),
-    AstError(AstError),
+    AError(AError),
     UnexpectedAst(String),
     AmbiguousType(Type, Type),
     UnknownType,
@@ -977,20 +954,17 @@ pub enum TEKind {
 }
 
 pub fn test() {
-    let mut state = MTState::default();
-    let mut context = MTContext::default();
+    let mut state = TState::default();
+    let mut context = TContext::default();
 
     MTParser::new(&mut state, &mut context)
         .parse("src/types/test_project")
         .unwrap();
-    let mut state = TState::new(state);
-    let mut context = TContext::new(context);
-
-    let order = std::mem::take(&mut state.module_order);
-
-    let mut parser = TParser::new(&mut state, &mut context);
-
-    for &module in order.iter().rev() {
-        parser.parse(module).unwrap();
+    
+    for module in std::mem::take(&mut state.module_order).drain(..).rev() {
+        TParser::new(&mut state, &mut context)
+            .parse(module)
+            .map_err(|e| println!("{}", TErrorDisplay::new(&mut state, &e)))
+            .unwrap();
     }
 }

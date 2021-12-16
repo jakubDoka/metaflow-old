@@ -18,15 +18,15 @@ use crate::{
     functions::{
         self, FContext, FKind, FParser, FState, FinalValue, Fun, IKind, Inst, Program, RFun, Value,
     },
-    lexer::{TKind as LTKind, Token},
+    lexer::{TKind as LTKind, Token, Spam},
     module_tree::Mod,
     types::{self, ptr_ty, TKind, Type, TypeDisplay},
     util::{sdbm::SdbmHash, storage::IndexPointer},
 };
 
-use super::{GEKind, GenError};
+use super::{GEKind, GError};
 
-type Result<T = ()> = std::result::Result<T, GenError>;
+type Result<T = ()> = std::result::Result<T, GError>;
 
 pub const STRING_SALT: u64 = 0xDEADBEEF; // just a random number
 
@@ -48,7 +48,7 @@ impl<'a> Generator<'a> {
     pub fn generate(&mut self, module: Mod) -> Result {
         FParser::new(self.program, self.state, self.context)
             .parse(module)
-            .map_err(|err| GenError::new(GEKind::FunError(err), Token::default()))?;
+            .map_err(|err| GError::new(GEKind::FunError(err), Token::default()))?;
 
         self.make_bodies()?;
 
@@ -184,9 +184,9 @@ impl<'a> Generator<'a> {
                     arg_buffer.extend(args);
 
                     if let &FKind::Builtin(return_type) = &other.kind {
-                        let name = other.name;
+                        let name = other.name.clone();
                         self.call_builtin(fun, name, return_type, &arg_buffer, value, builder);
-                    } else if other.module == Mod::new(0) && matches!(other.name, "sizeof") {
+                    } else if other.module == Mod::new(0) && matches!(self.state.display(&other.name), "sizeof") {
                         self.call_generic_builtin(fun, id, &arg_buffer, value, builder);
                     } else {
                         let rid = other.kind.unwrap_represented();
@@ -283,7 +283,7 @@ impl<'a> Generator<'a> {
                         LTKind::Char(val) => builder.ins().iconst(I32, *val as i64),
                         LTKind::String(data) => {
                             let data = data.clone();
-                            let id = data.deref().sdbm_hash(STRING_SALT);
+                            let id = data.deref().sdbm_hash().wrapping_add(STRING_SALT);
                             let mut name_buffer = self.context.pool.get();
                             functions::write_base36(id, &mut name_buffer);
                             let name = unsafe { std::str::from_utf8_unchecked(&name_buffer) };
@@ -402,26 +402,27 @@ impl<'a> Generator<'a> {
         builder: &mut FunctionBuilder,
     ) {
         let fun_ent = &self.state.funs[other];
-        match fun_ent.name {
+        match self.state.display(&fun_ent.name) {
             "sizeof" => {
                 let value = target.unwrap();
                 let size = self.state.types[fun_ent.params[0].1].size;
                 let size = builder.ins().iconst(ptr_ty(), size as i64);
                 self.wrap_val(fun, value, size);
             }
-            _ => unreachable!("{}", fun_ent.name),
+            _ => unreachable!("{}", self.state.display(&fun_ent.name)),
         }
     }
 
     fn call_builtin(
         &mut self,
         fun: RFun,
-        name: &str,
+        name: Spam,
         return_type: Option<Type>,
         args: &[Value],
         target: Option<Value>,
         builder: &mut FunctionBuilder,
     ) {
+        let name = self.state.display(&name);
         match args.len() {
             1 => {
                 let val = &self.state.rfuns[fun].body.values[args[0]];
@@ -877,17 +878,12 @@ impl<'a> Generator<'a> {
     }
 }
 
+#[derive(Default)]
 pub struct GState {
     pub f_state: FState,
 }
 
 crate::inherit!(GState, f_state, FState);
-
-impl GState {
-    pub fn new(f_state: FState) -> Self {
-        Self { f_state }
-    }
-}
 
 pub struct GContext {
     pub data_context: DataContext,
@@ -896,11 +892,11 @@ pub struct GContext {
 
 crate::inherit!(GContext, f_context, FContext);
 
-impl GContext {
-    pub fn new(f_context: FContext) -> Self {
+impl Default for GContext {
+    fn default() -> Self {
         Self {
             data_context: DataContext::new(),
-            f_context,
+            f_context: Default::default(),
         }
     }
 }

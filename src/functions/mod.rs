@@ -2,15 +2,15 @@ use core::panic;
 use std::ops::{Deref, DerefMut};
 use std::str::FromStr;
 
-use crate::ast::{AKind, Ast, Vis};
-use crate::lexer::Token;
-use crate::lexer::{TKind as LTKind, TokenView};
+use crate::ast::{AKind, Ast, Vis, AstDisplay};
+use crate::lexer::{Token, Spam, TokenDisplay};
+use crate::lexer::TKind as LTKind;
 use crate::module_tree::*;
 use crate::types::Type;
 use crate::types::*;
 use crate::util::storage::{LinkedList, ReusableList, Table};
 use crate::util::{
-    sdbm::{SdbmHashState, ID},
+    sdbm::{ ID},
     storage::{IndexPointer, List},
 };
 
@@ -169,19 +169,19 @@ impl<'a> FParser<'a> {
         let (linkage, alias) = if let Some(attr) = attributes.get_attr(attr_id, "linkage") {
             assert_attr_len(attr, 1)?;
 
-            let linkage = match attr[1].token.spam.raw() {
+            let linkage = match self.state.display(&attr[1].token.spam) {
                 "import" => Linkage::Import,
                 "local" => Linkage::Local,
                 "export" => Linkage::Export,
                 "preemptible" => Linkage::Preemptible,
                 "hidden" => Linkage::Hidden,
-                _ => return Err(FError::new(FEKind::InvalidLinkage, attr.token.clone())),
+                _ => return Err(FError::new(FEKind::InvalidLinkage, attr[1].token.clone())),
             };
 
             if attr.len() > 2 {
-                (linkage, attr[2].token.spam.raw())
+                (linkage, self.state.display(&attr[2].token.spam))
             } else if linkage == Linkage::Import {
-                (linkage, self.state.funs[fun].name)
+                (linkage, self.state.display(&self.state.funs[fun].name))
             } else {
                 (linkage, name)
             }
@@ -191,13 +191,13 @@ impl<'a> FParser<'a> {
 
         let call_conv = if let Some(attr) = attributes.get_attr(attr_id, "call_conv") {
             assert_attr_len(attr, 1)?;
-            let conv = attr[1].token.spam.raw();
+            let conv = self.state.display(&attr[1].token.spam);
             if conv == "platform" {
                 let triple = self.program.module.isa().triple();
                 CallConv::triple_default(triple)
             } else {
                 CallConv::from_str(conv)
-                    .map_err(|_| FError::new(FEKind::InvalidCallConv, attr.token.clone()))?
+                    .map_err(|_| FError::new(FEKind::InvalidCallConv, attr[1].token.clone()))?
             }
         } else {
             CallConv::Fast
@@ -425,7 +425,7 @@ impl<'a> FParser<'a> {
             if var_line[2].kind == AKind::None {
                 for name in var_line[0].iter() {
                     let ty = ty.unwrap();
-                    let name = ID(0).add(name.token.spam.deref());
+                    let name = name.token.spam.hash;
 
                     let temp_value = self.state.body.values.add(ValueEnt::temp(ty));
 
@@ -445,7 +445,7 @@ impl<'a> FParser<'a> {
                 }
             } else {
                 for (name, raw_value) in var_line[0].iter().zip(var_line[2].iter()) {
-                    let name = ID(0).add(name.token.spam.deref());
+                    let name = name.token.spam.hash;
                     let value = self.expr(fun, raw_value)?;
                     let actual_datatype = self.state.body.values[value].ty;
 
@@ -487,17 +487,18 @@ impl<'a> FParser<'a> {
             AKind::Pass => Ok(None),
             AKind::Array => self.array(fun, ast),
             AKind::Index => self.index(fun, ast),
-            _ => todo!("unmatched expr ast {}", ast),
+            _ => todo!("unmatched expr ast {}", AstDisplay::new(self.state, &ast)),
         }
     }
 
     fn index(&mut self, fun: Fun, ast: &Ast) -> ExprResult {
         let target = self.expr(fun, &ast[0])?;
         let index = self.expr(fun, &ast[1])?;
-        let id = FUN_SALT.add("__index__");
+        let id = FUN_SALT.add(self.state.index_spam.hash);
         let args = &[target, index];
+        let spam = self.state.index_spam.clone();
         let result = self
-            .call_low(fun, id, "__index__", true, &[], args, &ast.token)?
+            .call_low(fun, id, &spam, true, &[], args, &ast.token)?
             .ok_or_else(|| FError::new(FEKind::ExpectedValue, ast.token.clone()))?;
 
         let result = self.deref_expr_low(result, &ast.token)?;
@@ -609,7 +610,7 @@ impl<'a> FParser<'a> {
     }
 
     fn unary_op(&mut self, fun: Fun, ast: &Ast) -> ExprResult {
-        let name = FUN_SALT.add(ast[0].token.spam.deref());
+        let name = FUN_SALT.add(ast[0].token.spam.hash);
         let value = self.expr(fun, &ast[1])?;
 
         let mut values = self.context.pool.get();
@@ -617,7 +618,7 @@ impl<'a> FParser<'a> {
         self.call_low(
             fun,
             name,
-            ast[0].token.spam.raw(),
+            &ast[0].token.spam,
             false,
             &[],
             &values,
@@ -628,7 +629,7 @@ impl<'a> FParser<'a> {
     fn dot_expr(&mut self, fun: Fun, ast: &Ast) -> ExprResult {
         let header = self.expr(fun, &ast[0])?;
         let mutable = self.state.body.values[header].mutable;
-        let field = ID(0).add(ast[1].token.spam.deref());
+        let field = ast[1].token.spam.hash;
 
         let inst = self.add_inst(InstEnt::new(IKind::NoOp, None, &Token::default()));
         let value = self.new_anonymous_value(self.state.builtin_repo.bool, mutable);
@@ -678,7 +679,7 @@ impl<'a> FParser<'a> {
     }
 
     fn loop_expr(&mut self, fun: Fun, ast: &Ast) -> ExprResult {
-        let name = ID(0).add(ast[0].token.spam.deref());
+        let name = ast[0].token.spam.hash;
 
         let start_block = self.new_block();
         let end_block = self.new_block();
@@ -850,23 +851,21 @@ impl<'a> FParser<'a> {
     fn call(&mut self, fun: Fun, ast: &Ast) -> ExprResult {
         let module = self.state.funs[fun].module;
         let mut generic_params = self.context.pool.get();
-        let (base_name, name) = match ast[0].kind {
+        let name = match ast[0].kind {
             AKind::Ident => (
-                FUN_SALT.add(ast[0].token.spam.deref()),
-                ast[0].token.spam.raw(),
+                ast[0].token.spam.clone()
             ),
             AKind::Instantiation => {
                 for arg in ast[0][1..].iter() {
                     let id = self.parse_type(module, arg)?;
                     generic_params.push(id);
                 }
-                (
-                    FUN_SALT.add(ast[0][0].token.spam.deref()),
-                    ast[0][0].token.spam.raw(),
-                )
+                ast[0][0].token.spam.clone()
             }
             _ => unreachable!(),
         };
+
+        let base_name = FUN_SALT.add(name.hash);
 
         let mut buffer = self.context.pool.get();
         for value in ast[1..].iter() {
@@ -877,7 +876,7 @@ impl<'a> FParser<'a> {
         self.call_low(
             fun,
             base_name,
-            name,
+            &name,
             ast.kind == AKind::Call(true),
             &generic_params,
             &buffer,
@@ -889,7 +888,7 @@ impl<'a> FParser<'a> {
         &mut self,
         fun: Fun,
         base_name: ID,
-        name: &'static str,
+        name: &Spam,
         dot_call: bool,
         params: &[Type],
         values: &[Value],
@@ -932,12 +931,11 @@ impl<'a> FParser<'a> {
     }
 
     fn ident(&mut self, fun: Fun, ast: &Ast) -> ExprResult {
-        let name = ID(0).add(ast.token.spam.raw());
-        self.find_variable(name)
+        self.find_variable(ast.token.spam.hash)
             .or_else(|| {
                 let name = TYPE_SALT
-                    .add(ast.token.spam.raw())
-                    .combine(self.state.modules[self.state.funs[fun].module].id);
+                    .add(ast.token.spam.hash)
+                    .add(self.state.modules[self.state.funs[fun].module].id);
                 if let Some(&(_, ty)) = self.state.funs[fun]
                     .params
                     .iter()
@@ -1002,7 +1000,7 @@ impl<'a> FParser<'a> {
             LTKind::Bool(_) => self.state.builtin_repo.bool,
             LTKind::Char(_) => self.state.builtin_repo.i32,
             LTKind::String(_) => self.pointer_of(self.state.builtin_repo.u8),
-            _ => unreachable!("{}", ast),
+            _ => unreachable!("{}", AstDisplay::new(self.state, ast)),
         };
 
         let value = self.new_temp_value(ty);
@@ -1017,7 +1015,7 @@ impl<'a> FParser<'a> {
     }
 
     fn binary_op(&mut self, fun: Fun, ast: &Ast) -> ExprResult {
-        match ast[0].token.spam.deref() {
+        match self.state.display(&ast[0].token.spam) {
             "=" => return self.assignment(fun, ast),
             "as" => return self.bit_cast(fun, ast),
             _ => (),
@@ -1026,7 +1024,7 @@ impl<'a> FParser<'a> {
         let left = self.expr(fun, &ast[1])?;
         let right = self.expr(fun, &ast[2])?;
 
-        let base_id = FUN_SALT.add(ast[0].token.spam.deref());
+        let base_id = FUN_SALT.add(ast[0].token.spam.hash);
 
         let mut buffer = self.context.pool.get();
         buffer.extend(&[left, right]);
@@ -1034,7 +1032,7 @@ impl<'a> FParser<'a> {
         self.call_low(
             fun,
             base_id,
-            ast[0].token.spam.raw(),
+            &ast[0].token.spam,
             false,
             &[],
             &buffer,
@@ -1157,7 +1155,7 @@ impl<'a> FParser<'a> {
         &mut self,
         module: Mod,
         base: ID,
-        name: &str,
+        name: &Spam,
         params: &[Type],
         args: &mut [Value],
         dot_expr: bool,
@@ -1259,7 +1257,7 @@ impl<'a> FParser<'a> {
         &mut self,
         module: Mod,
         base: ID,
-        name: &str,
+        name: &Spam,
         params: &[Type],
         values: &mut [Type],
         token: &Token,
@@ -1341,18 +1339,18 @@ impl<'a> FParser<'a> {
         &mut self,
         module: Mod,
         base: ID,
-        name: &str,
+        name: &Spam,
         params: &[Type],
         values: &[Type],
         token: &Token,
     ) -> Result<Fun> {
         let mut specific_id = values
             .iter()
-            .fold(base, |base, &val| base.combine(self.state.types[val].id));
+            .fold(base, |base, &val| base.add(self.state.types[val].id));
 
         if values.len() == 0 {
             for &ty in params {
-                specific_id = specific_id.combine(self.state.types[ty].id);
+                specific_id = specific_id.add(self.state.types[ty].id);
             }
         }
 
@@ -1391,7 +1389,7 @@ impl<'a> FParser<'a> {
 
         found.ok_or_else(|| {
             FError::new(
-                FEKind::FunctionNotFound(name.to_string(), values.to_vec()),
+                FEKind::FunctionNotFound(name.clone(), values.to_vec()),
                 token.clone(),
             )
         })
@@ -1407,14 +1405,14 @@ impl<'a> FParser<'a> {
         values: &[Type],
         token: &Token,
     ) -> Result<Option<Fun>> {
-        if let Some(&fun) = self.state.funs.index(specific_id.combine(module_id)) {
+        if let Some(&fun) = self.state.funs.index(specific_id.add(module_id)) {
             return Ok(Some(fun));
         }
 
         let mut g_fun = self
             .state
             .funs
-            .index(base.combine(GENERIC_FUN_SALT).combine(module_id))
+            .index(base.add(GENERIC_FUN_SALT).add(module_id))
             .cloned();
 
         let mut found = None;
@@ -1523,9 +1521,9 @@ impl<'a> FParser<'a> {
         let fun_ent = &self.state.funs[fun];
         let g_ent = &self.state.gfuns[g];
         let fun_module_id = self.state.modules[fun_ent.module].id;
-        let mut id = FUN_SALT.add(fun_ent.name);
+        let mut id = FUN_SALT.add(fun_ent.name.hash);
         let vis = fun_ent.vis;
-        let name = fun_ent.name;
+        let name = fun_ent.name.clone();
         let hint = fun_ent.hint.clone();
         let attr_id = fun_ent.attr_id;
         let ast_id = g_ent.ast;
@@ -1535,7 +1533,7 @@ impl<'a> FParser<'a> {
 
         for i in 0..params.len() {
             if let Some(ty) = params[i] {
-                let id = self.state.gfuns[g].signature.params[i].combine(fun_module_id);
+                let id = self.state.gfuns[g].signature.params[i].add(fun_module_id);
                 shadowed.push((id, self.state.types.link(id, ty)));
                 final_params.push((id, ty));
             } else {
@@ -1548,10 +1546,10 @@ impl<'a> FParser<'a> {
         if signature.args.len() == 0 {
             for final_param in final_params.iter() {
                 let tid = self.state.types[final_param.1].id;
-                id = id.combine(tid);
+                id = id.add(tid);
             }
         }
-        id = id.combine(self.state.modules[module].id);
+        id = id.add(self.state.modules[module].id);
         self.state.asts[ast_id] = ast;
 
         for (id, ty) in shadowed.drain(..) {
@@ -1627,10 +1625,11 @@ impl<'a> FParser<'a> {
         let hint = header.token.clone();
         let name = &header[0];
         let (name, mut id, kind, unresolved) = if name.kind == AKind::Ident {
-            let name = name.token.spam.raw();
-            let mut fun_id = FUN_SALT.add(name);
+            let mut fun_id = FUN_SALT.add(name.token.spam.hash);
 
             let signature = self.parse_signature(module, header, &mut fun_id)?;
+
+            let name = name.token.spam.clone();
 
             let ast = self.state.asts.add(ast);
             let n_ent = NFunEnt {
@@ -1645,11 +1644,12 @@ impl<'a> FParser<'a> {
             if nm.kind != AKind::Ident {
                 return Err(FError::new(FEKind::InvalidFunctionHeader, nm.token.clone()));
             }
-            let nm = nm.token.spam.raw();
+
+            let id = FUN_SALT.add(nm.token.spam.hash).add(GENERIC_FUN_SALT);
 
             let mut params = self.context.pool.get();
             for param in name[1..].iter() {
-                let ty = TYPE_SALT.add(param.token.spam.raw());
+                let ty = TYPE_SALT.add(param.token.spam.hash);
                 params.push(ty);
             }
 
@@ -1671,6 +1671,8 @@ impl<'a> FParser<'a> {
                 arg_count,
             };
 
+            let nm = nm.token.spam.clone();
+
             let g_ent = GFunEnt {
                 signature,
                 ast: self.state.asts.add(ast),
@@ -1678,8 +1680,6 @@ impl<'a> FParser<'a> {
             };
 
             let g = self.state.gfuns.add(g_ent);
-
-            let id = FUN_SALT.add(nm).combine(GENERIC_FUN_SALT);
 
             (nm, id, FKind::Generic(g), false)
         } else {
@@ -1689,7 +1689,7 @@ impl<'a> FParser<'a> {
             ));
         };
 
-        id = id.combine(module_id);
+        id = id.add(module_id);
 
         let fun_ent = FunEnt {
             vis,
@@ -1739,8 +1739,8 @@ impl<'a> FParser<'a> {
         for arg_section in &header[1..header.len() - 1] {
             let ty = self.parse_type(module, &arg_section[arg_section.len() - 1])?;
             for arg in arg_section[0..arg_section.len() - 1].iter() {
-                let id = ID(0).add(arg.token.spam.raw());
-                *fun_id = fun_id.combine(self.state.types[ty].id);
+                let id = arg.token.spam.hash;
+                *fun_id = fun_id.add(self.state.types[ty].id);
                 let val_ent = ValueEnt {
                     id,
                     ty,
@@ -1786,7 +1786,7 @@ impl<'a> FParser<'a> {
             let ast = *ast;
             match &ast.kind {
                 AKind::Ident => {
-                    let id = TYPE_SALT.add(ast.token.spam.raw());
+                    let id = TYPE_SALT.add(ast.token.spam.hash);
                     if let Some(index) = params.iter().position(|&p| p == id) {
                         buffer.push(GenericElement::Parameter(index));
                     } else {
@@ -1813,7 +1813,7 @@ impl<'a> FParser<'a> {
                     let ty = self.parse_type(module, ast)?;
                     buffer.push(GenericElement::Element(ty, None));
                 }
-                _ => todo!("{}", ast),
+                _ => todo!("{}", AstDisplay::new(self.state, ast)),
             }
         }
 
@@ -1865,11 +1865,11 @@ impl<'a> FParser<'a> {
     }
 
     fn find_loop(&self, token: &Token) -> std::result::Result<Loop, bool> {
-        if token.spam.is_empty() {
+        if token.spam.range.len() == 0 {
             return self.state.loops.last().cloned().ok_or(true);
         }
 
-        let name = ID(0).add(token.spam.deref());
+        let name = token.spam.hash;
 
         self.state
             .loops
@@ -1940,200 +1940,182 @@ impl<'a> FParser<'a> {
     }
 }
 
-pub struct FEDisplay<'a> {
-    state: &'a FState,
-    error: &'a FError,
-}
-
-impl<'a> FEDisplay<'a> {
-    pub fn new(state: &'a FState, error: &'a FError) -> Self {
-        Self { state, error }
-    }
-}
-
-impl<'a> std::fmt::Display for FEDisplay<'a> {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        if self.error.token.kind != LTKind::None {
-            writeln!(f, "{}", TokenView::new(&self.error.token))?;
-        }
-
-        match &self.error.kind {
-            &FEKind::DuplicateEntrypoint(other) => {
-                let other = self.state.funs[other].hint.clone();
-                writeln!(
-                    f,
-                    "entrypoint already defined here:\n{}",
-                    TokenView::new(&other)
-                )?;
+crate::def_displayer!(
+    FErrorDisplay,
+    FState,
+    FError,
+    |self, f| {
+        &FEKind::DuplicateEntrypoint(other) => {
+            let other = self.state.funs[other].hint.clone();
+            writeln!(
+                f,
+                "entrypoint already defined here:\n{}",
+                TokenDisplay::new(self.state, &other)
+            )?;
+        },
+        FEKind::TooShortAttribute(actual, expected) => {
+            writeln!(
+                f,
+                "too short attribute, expected {} but got {}",
+                expected, actual
+            )?;
+        },
+        FEKind::InvalidCallConv => {
+            writeln!(
+                f,
+                "Invalid call convention, list of valid call conventions:"
+            )?;
+            for cc in [
+                "platform - picks call convention based of target platform",
+                "fast",
+                "cold - then its unlikely this gets called",
+                "system_v",
+                "windows_fastcall",
+                "apple_aarch64",
+                "baldrdash_system_v",
+                "baldrdash_windows",
+                "baldrdash_2020",
+                "probestack",
+                "wasmtime_system_v",
+                "wasmtime_fastcall",
+                "wasmtime_apple_aarch64",
+            ] {
+                writeln!(f, "  {}", cc)?;
             }
-            FEKind::TooShortAttribute(actual, expected) => {
-                writeln!(
-                    f,
-                    "too short attribute, expected {} but got {}",
-                    expected, actual
-                )?;
+        },
+        FEKind::InvalidLinkage => {
+            writeln!(f, "Invalid linkage, valid linkages are:")?;
+            for cc in ["import", "local", "export", "preemptible", "hidden"] {
+                writeln!(f, "  {}", cc)?;
             }
-            FEKind::InvalidCallConv => {
-                writeln!(f, "{}", TokenView::new(&self.error.token))?;
-                writeln!(
-                    f,
-                    "Invalid call convention, list of valid call conventions:"
-                )?;
-                for cc in [
-                    "platform - picks call convention based of target platform",
-                    "fast",
-                    "cold - then its unlikely this gets called",
-                    "system_v",
-                    "windows_fastcall",
-                    "apple_aarch64",
-                    "baldrdash_system_v",
-                    "baldrdash_windows",
-                    "baldrdash_2020",
-                    "probestack",
-                    "wasmtime_system_v",
-                    "wasmtime_fastcall",
-                    "wasmtime_apple_aarch64",
-                ] {
-                    writeln!(f, "  {}", cc)?;
+        },
+        FEKind::TypeError(error) => {
+            writeln!(f, "{}", TErrorDisplay::new(self.state, &error))?;
+        },
+        FEKind::Redefinition(other) => {
+            writeln!(f, "redefinition of\n{}", TokenDisplay::new(self.state, &other))?;
+        },
+        FEKind::InvalidBitCast(actual, expected) => {
+            writeln!(
+                f,
+                "invalid bit-cast, expected type of size {} but got {}",
+                expected, actual
+            )?;
+        },
+        FEKind::AssignToImmutable => {
+            writeln!(f, "cannot assign to immutable value")?;
+        },
+        FEKind::ExpectedValue => {
+            writeln!(f, "expected this expression to have a value")?;
+        },
+        &FEKind::TypeMismatch(actual, expected) => {
+            writeln!(
+                f,
+                "type mismatch, expected '{}' but got '{}'",
+                TypeDisplay::new(&self.state, expected),
+                TypeDisplay::new(&self.state, actual)
+            )?;
+        },
+        FEKind::FunctionNotFound(name, arguments) => {
+            writeln!(
+                f,
+                "function {}({}) does not exist within current scope",
+                self.state.display(name),
+                arguments
+                    .iter()
+                    .map(|t| format!("{}", TypeDisplay::new(&self.state, *t)))
+                    .collect::<Vec<_>>()
+                    .join(", ")
+            )?;
+        },
+        FEKind::UnexpectedValue => {
+            writeln!(
+                f,
+                "value not expected here, consider adding 'pass' after expression"
+            )?;
+        },
+        FEKind::UnexpectedReturnValue => {
+            writeln!(f, "return value not expected, if you want to return something, add '-> <type>' after '()' in signature")?;
+        },
+        FEKind::UnexpectedAuto => {
+            writeln!(f, "'auto' not allowed here")?;
+        },
+        FEKind::UndefinedVariable => {
+            writeln!(f, "cannot find variable in current scope")?;
+        },
+        FEKind::UnresolvedType => {
+            writeln!(
+                f,
+                "type of this expression cannot be inferred, consider annotating the type"
+            )?;
+        },
+        &FEKind::UnknownField(ty) => {
+            writeln!(
+                f,
+                "unknown field for type '{}', type has this fields (embedded included):",
+                TypeDisplay::new(&self.state, ty)
+            )?;
+            let mut frontier = vec![(ty, Spam::default(), true)];
+            let mut i = 0;
+            while i < frontier.len() {
+                let (ty, _, embedded) = frontier[i];
+                if !embedded {
+                    continue;
                 }
-            }
-            FEKind::InvalidLinkage => {
-                writeln!(f, "{}", TokenView::new(&self.error.token))?;
-                writeln!(f, "Invalid linkage, valid linkages are:")?;
-                for cc in ["import", "local", "export", "preemptible", "hidden"] {
-                    writeln!(f, "  {}", cc)?;
-                }
-            }
-            FEKind::TypeError(error) => {
-                writeln!(f, "{}", TEDisplay::new(self.state, &error))?;
-            }
-            FEKind::Redefinition(other) => {
-                writeln!(f, "redefinition of\n{}", TokenView::new(&other))?;
-            }
-            FEKind::InvalidBitCast(actual, expected) => {
-                writeln!(
-                    f,
-                    "invalid bit-cast, expected type of size {} but got {}",
-                    expected, actual
-                )?;
-            }
-            FEKind::AssignToImmutable => {
-                writeln!(f, "cannot assign to immutable value")?;
-            }
-            FEKind::ExpectedValue => {
-                writeln!(f, "expected this expression to have a value")?;
-            }
-            &FEKind::TypeMismatch(actual, expected) => {
-                writeln!(
-                    f,
-                    "type mismatch, expected '{}' but got '{}'",
-                    TypeDisplay::new(&self.state, expected),
-                    TypeDisplay::new(&self.state, actual)
-                )?;
-            }
-            FEKind::FunctionNotFound(name, arguments) => {
-                writeln!(
-                    f,
-                    "function {}({}) does not exist within current scope",
-                    name,
-                    arguments
-                        .iter()
-                        .map(|t| format!("{}", TypeDisplay::new(&self.state, *t)))
-                        .collect::<Vec<_>>()
-                        .join(", ")
-                )?;
-            }
-            FEKind::UnexpectedValue => {
-                writeln!(
-                    f,
-                    "value not expected here, consider adding 'pass' after expression"
-                )?;
-            }
-            FEKind::UnexpectedReturnValue => {
-                writeln!(f, "return value not expected, if you want to return something, add '-> <type>' after '()' in signature")?;
-            }
-            FEKind::UnexpectedAuto => {
-                writeln!(f, "'auto' not allowed here")?;
-            }
-            FEKind::UndefinedVariable => {
-                writeln!(f, "cannot find variable in current scope")?;
-            }
-            FEKind::UnresolvedType => {
-                writeln!(
-                    f,
-                    "type of this expression cannot be inferred, consider annotating the type"
-                )?;
-            }
-            &FEKind::UnknownField(ty) => {
-                writeln!(
-                    f,
-                    "unknown field for type '{}', type has this fields (embedded included):",
-                    TypeDisplay::new(&self.state, ty)
-                )?;
-                let mut frontier = vec![(ty, "", true)];
-                let mut i = 0;
-                while i < frontier.len() {
-                    let (ty, _, embedded) = frontier[i];
-                    if !embedded {
-                        continue;
-                    }
-                    match self.state.types[ty].kind {
-                        TKind::Structure(sty) => {
-                            for f in self.state.stypes[sty].fields.iter() {
-                                frontier.push((f.ty, f.hint.spam.raw(), f.embedded));
-                            }
+                match self.state.types[ty].kind {
+                    TKind::Structure(sty) => {
+                        for f in self.state.stypes[sty].fields.iter() {
+                            frontier.push((f.ty, f.hint.spam.clone(), f.embedded));
                         }
-                        _ => (),
-                    }
-                    i += 1;
+                    },
+                    _ => (),
                 }
+                i += 1;
+            }
 
-                for (ty, name, _) in frontier {
-                    writeln!(f, "  {}: {}", name, TypeDisplay::new(&self.state, ty))?;
-                }
+            for (ty, name, _) in frontier {
+                writeln!(f, "  {}: {}", self.state.display(&name), TypeDisplay::new(&self.state, ty))?;
             }
-            FEKind::MutableRefOfImmutable => {
-                writeln!(f, "cannot take mutable reference of immutable value")?;
-            }
-            FEKind::MissingElseBranch => {
-                writeln!(f, "expected 'else' branch since 'if' branch returns value, consider adding 'pass' after last expression if this is intended")?;
-            }
-            FEKind::ContinueOutsideLoop => {
-                writeln!(f, "cannot use 'continue' outside of loop")?;
-            }
-            FEKind::BreakOutsideLoop => {
-                writeln!(f, "cannot use 'break' outside of loop")?;
-            }
-            FEKind::WrongLabel => {
-                writeln!(f, "parent loop with this label does not exist")?;
-            }
-            FEKind::NonPointerDereference => {
-                writeln!(f, "cannot dereference non-pointer type")?;
-            }
-            FEKind::InvalidFunctionHeader => {
-                writeln!(f, "invalid function header, syntax for header is:\n  ident | op [ '[' ident {{ ',' ident }} ']' ]")?;
-            }
-            &FEKind::AmbiguousFunction(a, b) => {
-                let a = self.state.funs[a].hint.clone();
-                let b = self.state.funs[b].hint.clone();
-                writeln!(
-                    f,
-                    "ambiguous function call, matches\n{}\nand\n{}",
-                    TokenView::new(&a),
-                    TokenView::new(&b)
-                )?;
-            }
-            FEKind::EmptyArray => {
-                writeln!(
-                    f,
-                    "cannot create empty array from '[]' syntax as type of element is unknown"
-                )?;
-            }
-        }
-
-        Ok(())
+        },
+        FEKind::MutableRefOfImmutable => {
+            writeln!(f, "cannot take mutable reference of immutable value")?;
+        },
+        FEKind::MissingElseBranch => {
+            writeln!(f, "expected 'else' branch since 'if' branch returns value, consider adding 'pass' after last expression if this is intended")?;
+        },
+        FEKind::ContinueOutsideLoop => {
+            writeln!(f, "cannot use 'continue' outside of loop")?;
+        },
+        FEKind::BreakOutsideLoop => {
+            writeln!(f, "cannot use 'break' outside of loop")?;
+        },
+        FEKind::WrongLabel => {
+            writeln!(f, "parent loop with this label does not exist")?;
+        },
+        FEKind::NonPointerDereference => {
+            writeln!(f, "cannot dereference non-pointer type")?;
+        },
+        FEKind::InvalidFunctionHeader => {
+            writeln!(f, "invalid function header, syntax for header is:\n  ident | op [ '[' ident {{ ',' ident }} ']' ]")?;
+        },
+        &FEKind::AmbiguousFunction(a, b) => {
+            let a = self.state.funs[a].hint.clone();
+            let b = self.state.funs[b].hint.clone();
+            writeln!(
+                f,
+                "ambiguous function call, matches\n{}\nand\n{}",
+                TokenDisplay::new(self.state, &a),
+                TokenDisplay::new(self.state, &b)
+            )?;
+        },
+        FEKind::EmptyArray => {
+            writeln!(
+                f,
+                "cannot create empty array from '[]' syntax as type of element is unknown"
+            )?;
+        },
     }
-}
+);
 
 #[derive(Debug)]
 pub struct FError {
@@ -2160,7 +2142,7 @@ pub enum FEKind {
     AssignToImmutable,
     ExpectedValue,
     TypeMismatch(Type, Type),
-    FunctionNotFound(String, Vec<Type>),
+    FunctionNotFound(Spam, Vec<Type>),
     UnexpectedValue,
     UnexpectedReturnValue,
     UnexpectedAuto,
@@ -2193,7 +2175,7 @@ pub struct FunEnt {
     pub hint: Token,
     pub params: Vec<(ID, Type)>,
     pub kind: FKind,
-    pub name: &'static str,
+    pub name: Spam,
     pub attr_id: usize,
 }
 
@@ -2496,14 +2478,15 @@ pub struct FState {
     pub unresolved: Vec<Fun>,
 
     pub represented: Vec<Fun>,
+    pub index_spam: Spam
 }
 
 crate::inherit!(FState, t_state, TState);
 
-impl FState {
-    pub fn new(t_state: TState) -> Self {
+impl Default for FState {
+    fn default() -> Self {
         let mut state = Self {
-            t_state,
+            t_state: TState::default(),
             funs: Table::new(),
             nfuns: ReusableList::new(),
             gfuns: List::new(),
@@ -2516,7 +2499,12 @@ impl FState {
             entry_point: None,
             represented: Vec::new(),
             frames: Vec::new(),
+            index_spam: Spam::default(),
         };
+
+        let spam = state.builtin_spam("__index__");
+
+        state.index_spam = spam;
 
         let module_id = state.modules[state.builtin_module].id;
 
@@ -2525,21 +2513,21 @@ impl FState {
         fn create_builtin_fun(
             state: &mut FState,
             module: ID,
-            name: &'static str,
+            name: Spam,
             args: &[Type],
             ret_ty: Option<Type>,
         ) {
-            let mut id = FUN_SALT.add(name);
+            let mut id = FUN_SALT.add(name.hash);
             for &arg in args {
-                id = id.combine(state.types[arg].id);
+                id = id.add(state.types[arg].id);
             }
-            id = id.combine(module);
+            id = id.add(module);
             let fun_ent = FunEnt {
                 id,
                 name,
                 vis: Vis::Public,
                 module: state.builtin_module,
-                hint: Token::builtin(name),
+                hint: Token::default(),
                 params: vec![],
                 kind: FKind::Builtin(ret_ty),
                 attr_id: 0,
@@ -2549,7 +2537,7 @@ impl FState {
 
         for i in types {
             for j in types {
-                let name = state.types[i].name;
+                let name = state.types[i].name.clone();
                 create_builtin_fun(&mut state, module_id, name, &[j], Some(i));
             }
         }
@@ -2586,8 +2574,9 @@ impl FState {
 
         for &(operators, types) in builtin_unary_ops.iter() {
             for op in operators.split(' ') {
+                let op = state.builtin_spam(op);
                 for &datatype in types.iter() {
-                    create_builtin_fun(&mut state, module_id, op, &[datatype], Some(datatype));
+                    create_builtin_fun(&mut state, module_id, op.clone(), &[datatype], Some(datatype));
                 }
             }
         }
@@ -2603,6 +2592,7 @@ impl FState {
 
         for &(operators, types) in builtin_bin_ops.iter() {
             for op in operators.split(' ') {
+                let op_spam = state.builtin_spam(op);
                 for &ty in types.iter() {
                     let return_type = if matches!(op, "==" | "!=" | ">" | "<" | ">=" | "<=") {
                         state.builtin_repo.bool
@@ -2610,7 +2600,7 @@ impl FState {
                         ty
                     };
 
-                    create_builtin_fun(&mut state, module_id, op, &[ty, ty], Some(return_type));
+                    create_builtin_fun(&mut state, module_id, op_spam.clone(), &[ty, ty], Some(return_type));
                 }
             }
         }
@@ -2618,23 +2608,24 @@ impl FState {
         state
     }
 }
+
 pub struct FContext {
     pub t_context: TContext,
     pub body_pool: Vec<FunBody>,
     pub signature: Signature,
 }
 
-impl FContext {
-    pub fn new(t_context: TContext) -> Self {
+crate::inherit!(FContext, t_context, TContext);
+
+impl Default for FContext {
+    fn default() -> Self {
         Self {
-            t_context,
+            t_context: TContext::default(),
             body_pool: Vec::new(),
             signature: Signature::new(CallConv::Fast),
         }
     }
 }
-
-crate::inherit!(FContext, t_context, TContext);
 
 pub fn write_base36(mut number: u64, buffer: &mut Vec<u8>) {
     while number > 0 {
@@ -2677,7 +2668,7 @@ impl std::fmt::Display for FunDisplay<'_> {
 
         let r_ent = &self.state.rfuns[rid];
 
-        writeln!(f, "{}", fun.hint.spam.deref())?;
+        writeln!(f, "{}", self.state.display(&fun.hint.spam))?;
         writeln!(f)?;
 
         for (i, inst) in r_ent.body.insts.iter() {
@@ -2697,10 +2688,10 @@ impl std::fmt::Display for FunDisplay<'_> {
                             value,
                             ty,
                             inst.kind,
-                            inst.hint.spam.deref()
+                            self.state.display(&inst.hint.spam)
                         )?;
                     } else {
-                        writeln!(f, "    {:?} |{}", inst.kind, inst.hint.spam.deref())?;
+                        writeln!(f, "    {:?} |{}", inst.kind, self.state.display(&inst.hint.spam))?;
                     }
                 }
             }
@@ -2713,31 +2704,17 @@ impl std::fmt::Display for FunDisplay<'_> {
 pub fn test() {
     let mut program = Program::default();
 
-    let mut state = MTState::default();
-    let mut context = MTContext::default();
+    let mut state = FState::default();
+    let mut context = FContext::default();
 
     MTParser::new(&mut state, &mut context)
         .parse("src/functions/test_project")
         .unwrap();
-
-    let state = TState::new(state);
-    let context = TContext::new(context);
-    let mut state = FState::new(state);
-    let mut context = FContext::new(context);
-
-    for i in (0..state.module_order.len()).rev() {
-        let module = state.module_order[i];
+    
+    for &module in std::mem::take(&mut state.module_order).iter().rev() {
         FParser::new(&mut program, &mut state, &mut context)
             .parse(module)
+            .map_err(|e| println!("{}", FErrorDisplay::new(&state, &e)))
             .unwrap();
-    }
-
-    for (i, fun) in state.funs.iter().enumerate() {
-        match fun.kind {
-            FKind::Represented(_) => (),
-            _ => continue,
-        };
-
-        println!("{}", FunDisplay::new(&state, Fun::new(i)));
     }
 }

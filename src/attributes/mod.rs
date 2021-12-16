@@ -1,9 +1,9 @@
 use crate::{
     ast::{AKind, Ast},
     util::{
-        sdbm::{SdbmHashState, ID},
+        sdbm::{ ID},
         storage::{IndexPointer, Table},
-    },
+    }, lexer::LMainState,
 };
 
 crate::index_pointer!(Attribute);
@@ -12,37 +12,43 @@ crate::index_pointer!(Attribute);
 pub struct Attributes {
     pub map: Table<Attribute, Ast>,
     pub stack: Vec<Attribute>,
+    pub frames: Vec<usize>,
 }
 
 impl Attributes {
-    pub fn parse(&mut self, ast: &mut Ast) {
+    pub fn parse(&mut self, state: &LMainState, ast: &mut Ast) {
         let mut marker = 0;
         let mut i = 0;
         while i < ast.len() {
             if ast[i].kind != AKind::Attribute {
                 for &stacked in &self.stack {
                     for attr in 1..self.map[stacked].len() {
-                        let id = ID(0)
-                            .add(self.map[stacked][attr][0].token.spam.raw())
-                            .combine(ID(marker as u64));
-                        self.map.link(id, stacked);
+                        let id = self.map[stacked][attr][0].token.spam.hash
+                            .add(ID(marker as u64));
+                        let shadowed = self.map.link(id, stacked);
+                        debug_assert!(shadowed.is_none());
                     }
                 }
                 if marker < i {
                     ast.drain(marker..i).for_each(|mut attr| {
-                        attr.drain(..).for_each(|ast| {
-                            let id = ID(0)
-                                .add(ast[0].token.spam.raw())
-                                .combine(ID(marker as u64));
-                            let (_, id) = self.map.insert(id, ast);
-                            match self.map[id][0].token.spam.raw() {
+                        attr.drain(..).for_each(|mut ast| {                            
+                            match state.display(&ast[0].token.spam) {
                                 "push" => {
-                                    self.stack.push(id);
+                                    self.frames.push(ast.len());
+                                    for ast in ast.drain(1..) {
+                                        let id = self.map.add_hidden(ast);
+                                        self.stack.push(id);                                        
+                                    }
                                 }
                                 "pop" => {
-                                    self.stack.pop();
+                                    let len = self.frames.pop().unwrap_or(0);
+                                    self.stack.truncate(len);
                                 }
-                                _ => (),
+                                _ => {
+                                    let id = ast[0].token.spam.hash
+                                        .add(ID(marker as u64));
+                                    self.map.insert(id, ast);
+                                },
                             }
                         })
                     });
@@ -60,7 +66,7 @@ impl Attributes {
     }
 
     pub fn get_attr(&self, idx: usize, name: &str) -> Option<&Ast> {
-        let id = ID(0).add(name).combine(ID(idx as u64));
+        let id = ID::new(name).add(ID(idx as u64));
 
         self.map.get(id)
     }

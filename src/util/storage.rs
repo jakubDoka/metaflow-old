@@ -304,7 +304,7 @@ impl<V> Default for Map<V> {
 #[derive(Clone, Debug)]
 pub struct Table<I: IndexPointer, T> {
     map: Map<I>,
-    data: List<I, T>,
+    data: List<I, (ID, T)>,
 }
 
 impl<I: IndexPointer, T> Table<I, T> {
@@ -321,17 +321,18 @@ impl<I: IndexPointer, T> Table<I, T> {
     }
 
     pub fn add_hidden(&mut self, value: T) -> I {
-        self.data.add(value)
+        self.data.add((ID(0), value))
     }
 
     pub fn insert(&mut self, id: ID, data: T) -> (Option<T>, I) {
         if let Some(&i) = self.map.get(id) {
-            (Some(std::mem::replace(&mut self.data[i], data)), i)
-        } else {
-            let i = self.data.add(data);
-            self.map.insert(id, i);
-            (None, i)
+            if id == self.data[i].0 {
+                return (Some(std::mem::replace(&mut self.data[i].1, data)), i)
+            }
         }
+        let i = self.data.add((id, data));
+        self.map.insert(id, i);
+        (None, i)
     }
 
     #[inline]
@@ -340,11 +341,11 @@ impl<I: IndexPointer, T> Table<I, T> {
     }
 
     pub fn iter<'a>(&'a self) -> impl Iterator<Item = &'a T> + 'a {
-        self.data.iter().map(|v| v.1)
+        self.data.iter().map(|v| &v.1.1)
     }
 
     pub fn iter_mut(&mut self) -> impl Iterator<Item = &mut T> {
-        self.data.iter_mut().map(|v| v.1)
+        self.data.iter_mut().map(|v| &mut v.1.1)
     }
 
     pub fn link(&mut self, id: ID, index: I) -> Option<I> {
@@ -369,11 +370,11 @@ impl<I: IndexPointer, T> Table<I, T> {
             .get(id)
             .cloned()
             .unwrap_or_else(|| self.insert(id, data()).1);
-        &mut self.data[i]
+        &mut self.data[i].1
     }
 
     pub fn get(&self, id: ID) -> Option<&T> {
-        self.map.get(id).map(|&i| &self.data[i])
+        self.map.get(id).map(|&i| &self.data[i].1)
     }
 
     pub fn len(&self) -> usize {
@@ -386,14 +387,14 @@ impl<I: IndexPointer, T> Index<I> for Table<I, T> {
 
     #[inline]
     fn index(&self, id: I) -> &Self::Output {
-        &self.data[id]
+        &self.data[id].1
     }
 }
 
 impl<I: IndexPointer, T> IndexMut<I> for Table<I, T> {
     #[inline]
     fn index_mut(&mut self, id: I) -> &mut Self::Output {
-        &mut self.data[id]
+        &mut self.data[id].1
     }
 }
 
@@ -402,14 +403,14 @@ impl<I: IndexPointer, T> Index<ID> for Table<I, T> {
 
     fn index(&self, id: ID) -> &Self::Output {
         let i = *self.map.get(id).expect("invalid ID");
-        &self.data[i]
+        &self.data[i].1
     }
 }
 
 impl<I: IndexPointer, T> IndexMut<ID> for Table<I, T> {
     fn index_mut(&mut self, id: ID) -> &mut Self::Output {
         let i = *self.map.get(id).expect("invalid ID");
-        &mut self.data[i]
+        &mut self.data[i].1
     }
 }
 

@@ -1,4 +1,4 @@
-use crate::lexer::*;
+use crate::{lexer::*, util::sdbm::ID};
 
 use std::{
     fmt::Write,
@@ -43,7 +43,7 @@ impl<'a> AParser<'a> {
             let name = self.state.token.spam.clone();
             self.next()?;
             match self.state.token.kind {
-                TKind::Op if self.main_state.display(&self.state.token.spam.clone()) == "=" => {
+                TKind::Op if self.state.token.spam.hash == self.main_state.equal_sign => {
                     self.next()?;
 
                     if !matches!(self.state.token.kind, TKind::String(_)) {
@@ -82,12 +82,12 @@ impl<'a> AParser<'a> {
                                 .find('@')
                                 .unwrap_or(path_and_version.range.len());
 
-                            let path = Spam::new(
+                            let path = s.main_state.new_spam(
                                 path_and_version.source, 
                                 path_and_version.range.start..path_and_version.range.start + split_at
                             );
 
-                            let version = Spam::new(
+                            let version = s.main_state.new_spam(
                                 path_and_version.source, 
                                 path_and_version.range.start + split_at + 1..path_and_version.range.end
                             );
@@ -264,13 +264,12 @@ impl<'a> AParser<'a> {
                 TKind::RPar,
                 Self::attr_element,
             )?,
-            TKind::Op => match self.main_state.display(&self.state.token.spam) {
-                "=" => {
-                    ast.kind = AKind::AttributeAssign;
-                    self.next()?;
-                    ast.push(self.expr()?);
-                }
-                _ => return Err(self.unexpected_str("expected '=' or '('")),
+            TKind::Op => if self.state.token.spam.hash == self.main_state.equal_sign {
+                ast.kind = AKind::AttributeAssign;
+                self.next()?;
+                ast.push(self.expr()?);
+            } else {
+                return Err(self.unexpected_str("expected '=' or '('"));
             },
             _ => (),
         }
@@ -397,7 +396,7 @@ impl<'a> AParser<'a> {
             Ast::none()
         };
 
-        let values = if self.main_state.display(&self.state.token.spam) == "=" {
+        let values = if self.state.token.spam.hash == self.main_state.equal_sign {
             let mut values = self.ast(AKind::Group);
             self.next()?;
             self.list(
@@ -490,7 +489,7 @@ impl<'a> AParser<'a> {
 
             let mut token = result.token.clone();
             
-            self.join_token_with(&mut token, &next.token);
+            self.join_token_with(&mut token, &next.token, false);
 
             // this handles the '{op}=' sugar
             result = if pre == ASSIGN_PRECEDENCE
@@ -501,7 +500,10 @@ impl<'a> AParser<'a> {
                     AKind::Ident,
                     Token::new(
                         TKind::Op,
-                        Spam::new(op.spam.source, op.spam.range.start..op.spam.range.end - 1),
+                        self.main_state.new_spam(
+                            op.spam.source, 
+                            op.spam.range.start..op.spam.range.end - 1
+                        ),
                         op.line_data.clone(),
                     ),
                 );
@@ -509,7 +511,10 @@ impl<'a> AParser<'a> {
                     AKind::Ident,
                     Token::new(
                         TKind::Op,
-                        Spam::new(op.spam.source, op.spam.range.end - 1..op.spam.range.end),
+                        self.main_state.new_spam(
+                            op.spam.source, 
+                            op.spam.range.end - 1..op.spam.range.end
+                        ),
                         op.line_data.clone(),
                     ),
                 );
@@ -549,10 +554,12 @@ impl<'a> AParser<'a> {
             | TKind::Float(..)
             | TKind::String(..) => self.ast(AKind::Lit),
             TKind::LPar => {
+                let token = self.state.token.clone();
                 self.next()?;
-                let expr = self.expr()?;
+                let mut expr = self.expr()?;
                 self.expect_str(TKind::RPar, "expected ')'")?;
                 self.next()?;
+                expr.token = token;
                 expr
             }
             TKind::If => return self.if_expr(),
@@ -947,11 +954,11 @@ impl<'a> AParser<'a> {
     }
 
     fn join_token(&self, token: &mut Token) {
-        self.join_token_with(token, &self.state.token);
+        self.join_token_with(token, &self.state.token, true);
     }
 
-    fn join_token_with(&self, token: &mut Token, other: &Token) {
-        self.main_state.join_spams(&mut token.spam, &other.spam);
+    fn join_token_with(&self, token: &mut Token, other: &Token, trim: bool) {
+        self.main_state.join_spams(&mut token.spam, &other.spam, trim);
     }
 }
 
@@ -991,19 +998,24 @@ impl AContext {
     }
 }
 
+#[derive(Debug, Clone)]
 pub struct AMainState {
     pub l_main_state: LMainState,
+    pub equal_sign: ID,
 }
 
 crate::inherit!(AMainState, l_main_state, LMainState);
 
-impl AMainState {
-    pub fn new() -> Self {
+impl Default for AMainState {
+    fn default() -> Self {
         Self {
-            l_main_state: LMainState::new(),
+            l_main_state: LMainState::default(),
+            equal_sign: ID::new("="),
         }
     }
+}
 
+impl AMainState {
     pub fn a_state_for(&self, source: Source) -> AState {
         let mut l_state = LState::new(source);
         let mut lexer = self.lexer_for(&mut l_state);
@@ -1017,11 +1029,19 @@ impl AMainState {
             level: 0,
         }
     }
+
+    pub fn attr_of(&self, manifest: &Manifest, name: &str) -> Option<Spam> {
+        manifest        
+            .attrs
+            .iter()
+            .find(|(a_name, _)| self.display(a_name) == name)
+            .map(|(_, value)| value.clone())
+    }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Default)]
 pub struct AState {
-    l_state: LState,
+    pub l_state: LState,
     peeked: Token,
     pub token: Token,
     is_type_expr: bool,
@@ -1115,12 +1135,12 @@ impl Ast {
 
 crate::inherit!(Ast, children, Vec<Ast>);
 
-pub struct AstDiyplay<'a> {
+pub struct AstDisplay<'a> {
     state: &'a AMainState,
     ast: &'a Ast,
 }
 
-impl<'a> AstDiyplay<'a> {
+impl<'a> AstDisplay<'a> {
     pub fn new(state: &'a AMainState, ast: &'a Ast) -> Self {
         Self { state, ast }
     }
@@ -1143,7 +1163,7 @@ impl<'a> AstDiyplay<'a> {
     }
 }
 
-impl std::fmt::Display for AstDiyplay<'_> {
+impl std::fmt::Display for AstDisplay<'_> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         self.log(self.ast, 0, f)
     }
@@ -1216,6 +1236,20 @@ impl Default for Vis {
     }
 }
 
+crate::def_displayer!(
+    AErrorDisplay,
+    AMainState,
+    AError,
+    |self, f| {
+        AEKind::LError(error) => {
+            writeln!(f, "{}", LErrorDisplay::new(self.state, error))?;
+        },
+        AEKind::UnexpectedToken(message) => {
+            writeln!(f, "{}", message)?;
+        },
+    }
+);
+
 #[derive(Debug)]
 pub struct AError {
     pub kind: AEKind,
@@ -1232,9 +1266,6 @@ impl AError {
 pub enum AEKind {
     LError(LError),
     UnexpectedToken(String),
-    UnexpectedEof,
-    MissingAttribute(Spam, Spam),
-    InvalidAttribute(Spam, Spam),
 }
 
 impl Into<AError> for AEKind {
@@ -1247,7 +1278,7 @@ impl Into<AError> for AEKind {
 }
 
 pub fn test() {
-    let mut a_main_state = AMainState::new();
+    let mut a_main_state = AMainState::default();
     let source = SourceEnt {
         name: "text_code.mf".to_string(),
         content: crate::testing::TEST_CODE.to_string(),
@@ -1259,5 +1290,5 @@ pub fn test() {
     let mut a_parser = AParser::new(&mut a_main_state, &mut a_state, &mut context);
     let ast = a_parser.parse().unwrap();
 
-    println!("{}", AstDiyplay::new(&a_main_state, &ast));
+    println!("{}", AstDisplay::new(&a_main_state, &ast));
 }

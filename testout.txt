@@ -1,3 +1,5 @@
+Ok(Arguments { filename: "file", flags: ["flag", "flag"], field_flags: [("flag", "value")], args: ["arg", "arg"] })
+Ok(Arguments { filename: "file", flags: [], field_flags: [], args: ["string value"] })
 Dummy1
 [(Dummy(1), 0)]
 0
@@ -1524,22 +1526,4 @@ Group "fun":
     Ident "u8"
   Group ":":
    Lit "\"\r\nhello there\r\n  \""
-
-|> 13:6:builtin.mf
-| attr linkage(import, printf)
-|      ^^^^^^^^^^^^^^^^^^^^^^^
-Invalid call convention, list of valid call conventions:
-  platform - picks call convention based of target platform
-  fast
-  cold - then its unlikely this gets called
-  system_v
-  windows_fastcall
-  apple_aarch64
-  baldrdash_system_v
-  baldrdash_windows
-  baldrdash_2020
-  probestack
-  wasmtime_system_v
-  wasmtime_fastcall
-  wasmtime_apple_aarch64
 

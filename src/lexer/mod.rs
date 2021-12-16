@@ -1,4 +1,4 @@
-use crate::util::storage::IndexPointer;
+use crate::util::{storage::IndexPointer, sdbm::{ ID}};
 use std::{
     fmt::{Debug, Display},
     ops::Range,
@@ -341,7 +341,11 @@ impl<'a> Lexer<'a> {
     }
 
     pub fn sub(&self, range: Range<usize>) -> Spam {
-        Spam::new(self.state.source, range)
+        Spam::new(
+            self.state.source, 
+            ID::new(&self.source[range.clone()]), 
+            range, 
+        )
     }
 
     pub fn column(&self) -> usize {
@@ -430,6 +434,7 @@ impl LState {
     }
 }
 
+#[derive(Debug, Clone)]
 pub struct LMainState {
     pub sources: List<Source, SourceEnt>,
     pub builtin_source: Source,
@@ -453,11 +458,27 @@ impl LMainState {
         &self.sources[spam.source].content[spam.range.clone()]
     }
 
-    pub fn join_spams(&self, spam: &mut Spam, other: &Spam) {
-        debug_assert!(spam.source == other.source && spam.range.end <= other.range.start);
+    pub fn join_spams(&self, spam: &mut Spam, other: &Spam, trim: bool) {
+        if spam.range.end == other.range.end {
+            return
+        }
+        
+        debug_assert!(
+            spam.source == other.source && 
+            spam.range.end <= other.range.start,       
+            "{:?} {:?}",
+            spam,
+            other,
+        );
+
+        let end = if trim {
+            other.range.start
+        } else {
+            other.range.end
+        };
 
         spam.range.end = spam.range.start + 
-            self.sources[spam.source].content[spam.range.start..other.range.end].trim_end().len();
+            self.sources[spam.source].content[spam.range.start..end].trim_end().len();
     }
 
     pub fn builtin_spam(&mut self, name: &str) -> Spam {
@@ -465,11 +486,21 @@ impl LMainState {
         let start = builtin.len();
         builtin.push_str(name);
         let end = builtin.len();
-        Spam::new(self.builtin_source, start..end)
+        Spam::new(self.builtin_source, ID::new(name), start..end)
+    }
+
+    pub fn new_spam(&self, source: Source, range: Range<usize>) -> Spam {
+        Spam::new(source, ID::new(&self.sources[source].content[range.clone()]), range)
     }
 
     pub fn lexer_for<'a>(&'a self, state: &'a mut LState) -> Lexer<'a> {
         Lexer::new(self.sources[state.source].content.as_str(), state)
+    }
+}
+
+impl Default for LMainState {
+    fn default() -> Self {
+        Self::new()
     }
 }
 
@@ -574,6 +605,7 @@ pub enum TKind {
     Group,
 
     Eof,
+    Error,
     None,
 }
 
@@ -622,6 +654,7 @@ impl std::fmt::Display for TKind {
             TKind::Group => "group",
             TKind::Eof => "end of file",
             TKind::None => "nothing",
+            TKind::Error => "error",
         })
     }
 }
@@ -646,7 +679,6 @@ impl<'a> TokenDisplay<'a> {
 impl std::fmt::Display for TokenDisplay<'_> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         if self.token.kind == TKind::None {
-            write!(f, "|> no line information available")?;
             return Ok(());
         }
 
@@ -710,19 +742,41 @@ impl std::fmt::Display for TokenDisplay<'_> {
     }
 }
 
+crate::def_displayer!(
+    LErrorDisplay,
+    LMainState,
+    LError,
+    |self, f| {
+        LEKind::InvalidCharacter => {
+            write!(f, "invalid character literal")?;
+        },
+        LEKind::UnknownCharacter => {
+            write!(f, "lexer does not recognize this character")?;
+        },
+        LEKind::UnclosedCharacter => {
+            writeln!(f, "unclosed character literal")?;
+        },
+        LEKind::UnclosedString => {
+            writeln!(f, "unclosed string literal")?;
+        },
+    }
+);
+
 #[derive(Debug)]
 pub struct LError {
     pub kind: LEKind,
-    pub spam: Spam,
-    pub line_data: LineData,
+    pub token: Token,
 }
 
 impl LError {
     pub fn new(kind: LEKind, spam: Spam, line_data: LineData) -> Self {
-        LError {
+        Self {
             kind,
-            spam,
-            line_data,
+            token: Token {
+                kind: TKind::Error,
+                spam,
+                line_data,
+            },
         }
     }
 }
@@ -776,12 +830,13 @@ impl LineData {
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct Spam {
     pub source: Source,
+    pub hash: ID,
     pub range: Range<usize>,
 }
 
 impl Spam {
-    pub fn new(source: Source, range: Range<usize>) -> Self {
-        Self { source, range }
+    pub fn new(source: Source, hash: ID, range: Range<usize>) -> Self {
+        Self { source, range, hash }
     }
 }
 

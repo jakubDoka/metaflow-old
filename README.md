@@ -178,9 +178,9 @@ ref = '&' [ var ]
 generics = '[' ident { ',' ident } ']'
 args = '(' { [ 'var' ] ident { ',' ident } ':' type } ')'
 vis = 'pub' | 'priv'
-label = "'[a-zA-Z0-9_]+"
-op = "([\+\-\*/%\^=<>!&\|\?:~]+|min|max|abs)"
-ident = "[a-zA-Z_][a-zA-Z0-9_]+"
+label = "'[a-zA-Z0-9_]+\b"
+op = "([\+\-\*/%\^=<>!&\|\?:~]+|\b(min|max|abs)\b)"
+ident = "\b[a-zA-Z_][a-zA-Z0-9_]*\b"
 
 ```
 
@@ -196,9 +196,9 @@ Almost all the data compiler uses during compilation is stored in constructs con
 
 Exception to this rule is `crate::ast::Ast` which does not use this kind of storage for sanity reasons, it also does not need to as its only used as immutable structure.
 
-What you will see a lot is `self.context.pool.get()` whenever temporary Vec is needed. Pool saves used Vec-s and only allocate if there is not vec to reuse. What pool returns is PoolRef that will send it self to pool upon drop.
+What you will see a lot is `self.context.pool.get()` whenever temporary Vec is needed. Pool saves used Vec-s and only allocate if there is not vec to reuse. What pool returns is PoolRef that will send it self to pool upon drop. The lifetime of the pool is ont related to Vecs when they are borrowed, instead pool panics if it is dropped before all Vecs are returned to it. This ensures we dont have to deal with livetimes but also assert some safety on debug builds.
 
-Important decision was leaking the memory of source files. This makes them static and allows tokens capture whole file without lifetime. The file contents has to live whole duration of program anyway. Though, if this approach causes issues in a future, rework will be inevitable. With nowadays RAM sizes it should be fine though.
+All items that has particular name from source code are hashed with sdbm hash and combined with custom hashing mentod. Related to this, custom hashmap is used that focuses on integer ids. Idea is to improve performance as we do not need default safe hashes. Other reason for using custom hashes is speed up of static dispatch of nongeneric functions.
 
 ### Compilation steps
 
