@@ -1,5 +1,7 @@
 {
     "cSpell.words": [
+        "aarch",
+        "baldrdash",
         "bconst",
         "bfuns",
         "binemit",
@@ -53,8 +55,11 @@
         "peekable",
         "Preemptible",
         "preopt",
+        "probestack",
         "putchar",
+        "repr",
         "rfuns",
+        "sdbm",
         "sdiv",
         "sextend",
         "sint",
@@ -69,6 +74,7 @@
         "umin",
         "urem",
         "ushr",
+        "wasmtime",
         "zeroinit"
     ]
 }

@@ -829,8 +829,7 @@ impl<'a> std::fmt::Display for TypeDisplay<'a> {
         let ty = &self.state.types[self.type_id];
         match &ty.kind {
             TKind::Pointer(id, ..) => {
-                write!(f, "{}", self.state.display(&ty.name))?;
-                write!(f, "{}", Self::new(self.state, *id))
+                write!(f, "&{}", Self::new(self.state, *id))
             }
             TKind::Structure(_) if !ty.params.is_empty() => {
                 write!(f, "{}", Self::new(self.state, ty.params[0]))?;

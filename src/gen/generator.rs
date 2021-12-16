@@ -16,7 +16,7 @@ use std::ops::{Deref, DerefMut};
 
 use crate::{
     functions::{
-        self, FContext, FKind, FParser, FState, FinalValue, Fun, IKind, Inst, Program, RFun, Value, InstEnt, ValueEnt,
+        self, FContext, FKind, FParser, FState, FinalValue, Fun, IKind, Inst, Program, RFun, Value, InstEnt, ValueEnt, GKind,
     },
     lexer::{TKind as LTKind, Token, Spam},
     module_tree::Mod,
@@ -49,8 +49,30 @@ impl<'a> Generator<'a> {
         FParser::new(self.program, self.state, self.context)
             .parse(module)
             .map_err(|err| GError::new(GEKind::FunError(err), Token::default()))?;
+        
+        self.make_globals()?;
 
         self.make_bodies()?;
+
+        Ok(())
+    }
+
+    fn make_globals(&mut self) -> Result {
+        let mut resolved = std::mem::take(&mut self.state.resolved_globals);
+        for global in resolved.drain(..) {
+            let glob = &self.state.globals[global];
+            let (id, ty) = match &glob.kind {
+                &GKind::Represented(id, ty) => (id, ty),
+                _ => unreachable!(),
+            };
+            self.context.data_context.define_zeroinit(self.ty(ty).size as usize);
+            let ctx = unsafe {
+                std::mem::transmute::<&DataContext, &DataContext>(&self.context.data_context)
+            };
+            self.program.module.define_data(id, ctx).unwrap();
+        }
+
+        self.state.resolved_globals = resolved;
 
         Ok(())
     }
@@ -62,7 +84,7 @@ impl<'a> Generator<'a> {
         let mut represented = std::mem::take(&mut self.state.represented);
 
         for fun in represented.drain(..) {
-            //println!("{}", FunDisplay::new(&self.state, fun));
+            println!("{}", crate::functions::FunDisplay::new(&self.state, fun));
 
             let rid = self.state.funs[fun].kind.unwrap_represented();
             let fun_id = self.state.rfuns[rid].id;
@@ -328,13 +350,7 @@ impl<'a> Generator<'a> {
                     let value = value.unwrap();
                     let other = *other;
                     let val = self.unwrap_val(fun, other, builder);
-                    if self.value(fun, value).on_stack {
-                        self.value_mut(fun, value).value = FinalValue::Pointer(val);
-                    } else {
-                        let repr = self.repr_of_val(fun, value);
-                        let val = builder.ins().load(repr, MemFlags::new(), val, 0);
-                        self.value_mut(fun, value).value = FinalValue::Value(val);
-                    }
+                    self.value_mut(fun, value).value = FinalValue::Pointer(val);
                 }
                 IKind::Ref(val) => {
                     let val = self.unwrap_val(fun, *val, builder);
@@ -355,6 +371,16 @@ impl<'a> Generator<'a> {
                             self.pass(fun, other, value);
                         }
                     }
+                }
+                &IKind::GlobalLoad(global) => {
+                    let (id, ty) = match &self.state.globals[global].kind {
+                        &GKind::Represented(id, ty) => (id, ty),
+                        _ => unreachable!(),
+                    };
+                    let data = self.program.module.declare_data_in_func(id, builder.func);
+                    let val = builder.ins().global_value(self.repr(ty), data);
+                    let value = self.value_mut(fun, value.unwrap());
+                    value.value = FinalValue::Pointer(val);
                 }
                 IKind::BlockEnd(_) => break,
                 value => unreachable!("{:?}", value),
@@ -606,11 +632,11 @@ impl<'a> Generator<'a> {
     fn assign_val(
         &mut self,
         fun: RFun,
-        target: Value,
+        target_value: Value,
         source: Value,
         builder: &mut FunctionBuilder,
     ) {
-        let target = &self.value(fun, target);
+        let target = &self.value(fun, target_value);
         let source_v = &self.value(fun, source);
         let ty = source_v.ty;
 
@@ -707,7 +733,10 @@ impl<'a> Generator<'a> {
                     }
                 }
             }
-            kind => unreachable!("{:?}", kind),
+            kind => {
+                
+                unreachable!("{:?} {:?}", kind, target_value)
+            },
         };
     }
 
@@ -788,24 +817,12 @@ impl<'a> Generator<'a> {
                 val
             }
             FinalValue::Pointer(pointer) => {
-                let wrapped_type = match self.ty(ty).kind {
-                    TKind::Pointer(inner, ..) => inner,
-                    _ => unreachable!(),
-                };
-                if self.on_stack(wrapped_type) {
-                    if value.offset != 0 {
-                        let ptr_type = types::ptr_ty();
-                        let offset = builder.ins().iconst(ptr_type, value.offset as i64);
-                        builder.ins().iadd(pointer, offset)
-                    } else {
-                        pointer
-                    }
+                if value.offset != 0 {
+                    let ptr_type = types::ptr_ty();
+                    let offset = builder.ins().iconst(ptr_type, value.offset as i64);
+                    builder.ins().iadd(pointer, offset)
                 } else {
-                    let repr = self.repr(wrapped_type);
-                    let flags = MemFlags::new();
-                    builder
-                        .ins()
-                        .load(repr, flags, pointer, value.offset as i32)
+                    pointer
                 }
             }
             FinalValue::StackSlot(slot) => {

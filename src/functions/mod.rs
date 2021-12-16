@@ -53,8 +53,70 @@ impl<'a> FParser<'a> {
 
         self.collect(module)?;
 
+        self.translate_globals()?;
+
         self.translate()?;
 
+        Ok(())
+    }
+
+    fn translate_globals(&mut self) -> Result {
+        std::mem::swap(&mut self.state.bstate, &mut self.state.main_bstate);
+        let mut unresolved = std::mem::take(&mut self.state.unresolved_globals);
+        let fun = self.state.main_fun;
+        let mut buffer = self.context.pool.get();
+
+        for global in unresolved.drain(..) {
+            let glob = &mut self.state.globals[global];
+            let (ast, ty) = match &mut glob.kind {
+                GKind::Normal(ast, ty) => (std::mem::take(ast), ty.clone()),
+                _ => unreachable!(),
+            };
+            let attr_id = glob.attr_id;
+            let module = glob.module;
+            
+            write_base36(glob.id.0, &mut buffer);
+            
+            self.state.funs[fun].module = module;
+            
+            let ty = if ast.kind != AKind::None {
+                let value = self.expr(fun, &ast)?;
+                let ty = self.value(value).ty;
+                let target = self.new_anonymous_value(ty, true);
+                self.add_inst(InstEnt::new(
+                    IKind::GlobalLoad(global),
+                    Some(target),
+                    &ast.token
+                ));
+
+                self.add_inst(InstEnt::new(
+                    IKind::Assign(target),
+                    Some(value),
+                    &ast.token
+                ));
+
+                ty
+            } else {
+                ty.unwrap()
+            };
+
+            let name = unsafe {
+                std::str::from_utf8_unchecked(buffer.as_slice())
+            };
+
+            let attributes = &self.state.modules[module].attributes;
+
+            let tls = attributes.enabled(attr_id, "tls") || attributes.enabled(attr_id, "thread_local");
+
+            let data_id = self.program.module.declare_data(name, Linkage::Export, true, tls).unwrap();
+            
+            self.state.globals[global].kind = GKind::Represented(data_id, ty);
+
+            self.state.resolved_globals.push(global);
+        }
+
+        self.state.unresolved_globals = unresolved;
+        
         Ok(())
     }
 
@@ -935,50 +997,114 @@ impl<'a> FParser<'a> {
     }
 
     fn ident(&mut self, fun: Fun, ast: &Ast) -> ExprResult {
-        self.find_variable(ast.token.spam.hash)
-            .or_else(|| {
-                let name = TYPE_SALT
-                    .add(ast.token.spam.hash)
-                    .add(self.state.modules[self.state.funs[fun].module].id);
-                if let Some(&(_, ty)) = self.state.funs[fun]
-                    .params
-                    .iter()
-                    .find(|&(p, _)| *p == name)
-                {
-                    let ty = &self.ty(ty).kind;
-                    match ty {
-                        TKind::Const(t) => {
-                            let (kind, ty) = match t.clone() {
-                                TypeConst::Bool(val) => {
-                                    (LTKind::Bool(val), self.state.builtin_repo.bool)
-                                }
-                                TypeConst::Int(val) => {
-                                    (LTKind::Int(val, 0), self.state.builtin_repo.int)
-                                }
-                                TypeConst::Float(val) => {
-                                    (LTKind::Float(val, 64), self.state.builtin_repo.f64)
-                                }
-                                TypeConst::Char(val) => {
-                                    (LTKind::Char(val), self.state.builtin_repo.u32)
-                                }
-                                TypeConst::String(val) => (
-                                    LTKind::String(val),
-                                    self.pointer_of(self.state.builtin_repo.u8),
-                                ),
-                            };
+        if ast.kind == AKind::Ident {
+            let ident = &ast.token;
+            let value = self.find_variable(ident.spam.hash)
+                .or_else(|| self.find_constant_parameter(fun, ident));
 
-                            let value = self.new_temp_value(ty);
-                            self.add_inst(InstEnt::new(IKind::Lit(kind), Some(value), &ast.token));
-                            Some(value)
-                        }
-                        _ => None,
-                    }
-                } else {
-                    None
-                }
-            })
+            if value.is_some() {
+                value
+            } else {
+                self.find_global(fun, None, ident)?
+            }
+        } else {
+            self.find_global(fun, Some(&ast[0].token), &ast[1].token)?
+        }
             .ok_or_else(|| FError::new(FEKind::UndefinedVariable, ast.token.clone()))
             .map(|var| Some(var))
+    }
+
+    fn find_global(&mut self, fun: Fun, scope: Option<&Token>, token: &Token) -> Result<Option<Value>> {
+        let module = self.state.funs[fun].module;
+        
+        let mut found = None;
+        
+        if let Some(scope) = scope {
+            let module = self.state.find_dep(module, scope)
+                .ok_or_else(|| FError::new(FEKind::TypeError(TError::new(TEKind::UnknownModule, scope.clone())), Token::default()))?;
+            let id = GLOBAL_SALT
+                .add(token.spam.hash)
+                .add(self.state.modules[module].id);
+            found = self.state.globals.index(id).map(|v| v.clone());
+        } else {
+            let mut buffer = self.context.pool.get();
+            self.state.collect_scopes(module, &mut buffer);
+            for (_, module_id) in buffer.drain(..) {
+                let id = GLOBAL_SALT
+                    .add(token.spam.hash)
+                    .add(module_id);
+                if let Some(&value) = self.state.globals.index(id) {
+                    if let Some(found) = found {
+                        return Err(FError::new(FEKind::AmbiguousGlobal(found, value), token.clone()));
+                    }
+                    found = Some(value);
+                    break;
+                }
+            }
+        }
+        
+        let found = if let Some(found) = found {
+            found
+        } else {
+            return Ok(None);
+        };
+
+        let ty = match self.state.globals[found].kind {
+            GKind::Represented(_, ty) => ty,
+            _ => unreachable!(),
+        };
+
+        let value = self.new_anonymous_value(ty, self.state.globals[found].mutable);
+        self.add_inst(InstEnt::new(
+            IKind::GlobalLoad(found),
+            Some(value),
+            token,
+        ));
+
+        Ok(Some(value))
+    }
+
+
+    fn find_constant_parameter(&mut self, fun: Fun, token: &Token) -> Option<Value> {
+        let name = TYPE_SALT
+            .add(token.spam.hash)
+            .add(self.state.modules[self.state.funs[fun].module].id);
+        if let Some(&(_, ty)) = self.state.funs[fun]
+            .params
+            .iter()
+            .find(|&(p, _)| *p == name)
+        {
+            let ty = &self.ty(ty).kind;
+            match ty {
+                TKind::Const(t) => {
+                    let (kind, ty) = match t.clone() {
+                        TypeConst::Bool(val) => {
+                            (LTKind::Bool(val), self.state.builtin_repo.bool)
+                        }
+                        TypeConst::Int(val) => {
+                            (LTKind::Int(val, 0), self.state.builtin_repo.int)
+                        }
+                        TypeConst::Float(val) => {
+                            (LTKind::Float(val, 64), self.state.builtin_repo.f64)
+                        }
+                        TypeConst::Char(val) => {
+                            (LTKind::Char(val), self.state.builtin_repo.u32)
+                        }
+                        TypeConst::String(val) => (
+                            LTKind::String(val),
+                            self.pointer_of(self.state.builtin_repo.u8),
+                        ),
+                    };
+
+                    let value = self.new_temp_value(ty);
+                    self.add_inst(InstEnt::new(IKind::Lit(kind), Some(value), token));
+                    Some(value)
+                }
+                _ => None,
+            }
+        } else {
+            None
+        }
     }
 
     fn lit(&mut self, ast: &Ast) -> ExprResult {
@@ -1648,12 +1774,13 @@ impl<'a> FParser<'a> {
                     vis,
                     mutable,
                     id,
+                    module,
                     kind: GKind::Normal(value, ty),
                     hint,
                     attr_id,
                 };
 
-                let (shadowed, _) = self.state.globals.insert(id, g_ent);
+                let (shadowed, id) = self.state.globals.insert(id, g_ent);
                 
                 if let Some(shadowed) = shadowed {
                     return Err(FError::new(
@@ -1661,6 +1788,8 @@ impl<'a> FParser<'a> {
                         name.token.clone(),
                     ));
                 }
+
+                self.state.unresolved_globals.push(id);
             }
         }
 
@@ -2201,6 +2330,16 @@ crate::def_displayer!(
                 TokenDisplay::new(self.state, &other)
             )?;
         },
+        &FEKind::AmbiguousGlobal(a, b) => {
+            let a = self.state.globals[a].hint.clone();
+            let b = self.state.globals[b].hint.clone();
+            writeln!(
+                f,
+                "ambiguous global variable, matches\n{}\nand\n{}",
+                TokenDisplay::new(self.state, &a),
+                TokenDisplay::new(self.state, &b)
+            )?;
+        },
     }
 );
 
@@ -2245,6 +2384,7 @@ pub enum FEKind {
     NonPointerDereference,
     InvalidFunctionHeader,
     AmbiguousFunction(Fun, Fun),
+    AmbiguousGlobal(Global, Global),
 }
 
 pub enum DotInstr {
@@ -2411,6 +2551,7 @@ impl InstEnt {
 #[derive(Debug, Clone)]
 pub enum IKind {
     NoOp,
+    GlobalLoad(Global),
     Call(Fun, Vec<Value>),
     UnresolvedCall(ID, &'static str, bool, Vec<Value>),
     UnresolvedDot(Value, ID),
@@ -2556,6 +2697,7 @@ crate::index_pointer!(Global);
 pub struct GlobalEnt {
     pub id: ID,
     pub vis: Vis,
+    pub module: Mod,
     pub mutable: bool,
     pub kind: GKind,
     pub hint: Token,
@@ -2589,7 +2731,11 @@ pub struct FState {
     pub entry_point: Option<Fun>,
 
     pub bstate: BodyState,
-    
+    pub main_bstate: BodyState,
+    pub main_fun: Fun,
+
+    pub unresolved_globals: Vec<Global>,
+    pub resolved_globals: Vec<Global>,
     pub unresolved: Vec<Fun>,
     pub represented: Vec<Fun>,
     pub index_spam: Spam
@@ -2611,7 +2757,37 @@ impl Default for FState {
             index_spam: Spam::default(),
             globals: Table::new(),
             bstate: BodyState::default(),
+            main_bstate: BodyState::default(),
+            unresolved_globals: Vec::new(),
+            main_fun: Fun::default(),
+            resolved_globals: Vec::new(),
         };
+
+        let n_fun = NFunEnt {
+            sig: FunSignature {
+                args: vec![
+                    ValueEnt::new(ID(0), state.builtin_repo.int, true), //arg count
+                    ValueEnt::new(ID(0), state.builtin_repo.int, true), //args
+                ],
+                ret_ty: None,
+            },
+            ast: GAst::default(),
+        };
+
+        let n = state.nfuns.add(n_fun);
+
+        let main_fun = FunEnt {
+            id: ID(0),
+            vis: Vis::Public,
+            module: Mod::default(),
+            kind: FKind::Normal(n),
+            hint: Token::default(),
+            attr_id: 0,
+            params: Vec::new(),
+            name: state.builtin_spam("main"),
+        };
+
+        state.main_fun = state.funs.add_hidden(main_fun);
 
         let spam = state.builtin_spam("__index__");
 
