@@ -1175,37 +1175,37 @@ Dummy(1)
 | ^^^^^^^^^^^
 Group "fun":
  Fun(None) "fun flo: pass":
-  FunHeader "fun flo:":
+  FunHeader "fun flo":
    Ident "flo"
    None ""
   Group ":":
    Pass "pass"
  Fun(None) "fun foo(): pass":
-  FunHeader "fun foo():":
+  FunHeader "fun foo()":
    Ident "foo"
    None ""
   Group ":":
    Pass "pass"
  Fun(None) "fun goo(a: i8, b: i8): pass":
-  FunHeader "fun goo(a: i8, b: i8):":
+  FunHeader "fun goo(a: i8, b: i8)":
    Ident "goo"
-   FunArgument(false) "a: i8,":
+   FunArgument(false) "a: i8":
     Ident "a"
     Ident "i8"
-   FunArgument(false) "b: i8)":
+   FunArgument(false) "b: i8":
     Ident "b"
     Ident "i8"
    None ""
   Group ":":
    Pass "pass"
  Fun(None) "fun loo:\r\n  noo::loo::[i8]()\r\n\r\n  let array = [1, 2, 3]\r\n  array[0] = 3\r\n  array[2] = always[1]\r\n  array[1] = 1\r\n\r\n  pass":
-  FunHeader "fun loo:":
+  FunHeader "fun loo":
    Ident "loo"
    None ""
   Group ":":
    Call(false) "noo::loo::[i8]()":
-    Instantiation "noo::loo::[i8](":
-     ExplicitPackage "noo::loo::":
+    Instantiation "noo::loo::[i8]":
+     ExplicitPackage "noo::loo":
       Ident "noo"
       Ident "loo"
      Ident "i8"
@@ -1216,165 +1216,165 @@ Group "fun":
      None ""
      Group "=":
       Array "[":
-       Lit "1,"
-       Lit "2,"
-       Lit "3]"
+       Lit "1"
+       Lit "2"
+       Lit "3"
    BinaryOp "array[0] = 3":
     Ident "="
-    Index "array[0] =":
+    Index "array[0]":
      Ident "array"
-     Lit "0]"
+     Lit "0"
     Lit "3"
    BinaryOp "array[2] = always[1]":
     Ident "="
-    Index "array[2] =":
+    Index "array[2]":
      Ident "array"
-     Lit "2]"
+     Lit "2"
     Index "always[1]":
      Ident "always"
-     Lit "1]"
+     Lit "1"
    BinaryOp "array[1] = 1":
     Ident "="
-    Index "array[1] =":
+    Index "array[1]":
      Ident "array"
-     Lit "1]"
+     Lit "1"
     Lit "1"
    Pass "pass"
  Fun(None) "fun main -> i64:\r\n  return 10 + 4 - 2 * 1 + 8":
-  FunHeader "fun main -> i64:":
+  FunHeader "fun main -> i64":
    Ident "main"
    Ident "i64"
   Group ":":
    ReturnStatement "return 10 + 4 - 2 * 1 + 8":
     BinaryOp "10 + 4 - 2 * 1 + 8":
      Ident "-"
-     BinaryOp "10 + 4 -":
+     BinaryOp "10 + 4":
       Ident "+"
-      Lit "10 +"
-      Lit "4 -"
+      Lit "10"
+      Lit "4"
      BinaryOp "2 * 1 + 8":
       Ident "+"
-      BinaryOp "2 * 1 +":
+      BinaryOp "2 * 1":
        Ident "*"
-       Lit "2 *"
-       Lit "1 +"
+       Lit "2"
+       Lit "1"
       Lit "8"
  Fun(None) "fun operator_stress_test -> i64:\r\n  return 10 + 2 * 1 - 9 | 4 & 1 ^ 2 >> 1 << 7 min 20 max 10":
-  FunHeader "fun operator_stress_test -> i64:":
+  FunHeader "fun operator_stress_test -> i64":
    Ident "operator_stress_test"
    Ident "i64"
   Group ":":
    ReturnStatement "return 10 + 2 * 1 - 9 | 4 & 1 ^ 2 >> 1 << 7 min 20 max 10":
     BinaryOp "10 + 2 * 1 - 9 | 4 & 1 ^ 2 >> 1 << 7 min 20 max 10":
      Ident "+"
-     Lit "10 +"
+     Lit "10"
      BinaryOp "2 * 1 - 9 | 4 & 1 ^ 2 >> 1 << 7 min 20 max 10":
       Ident "|"
-      BinaryOp "2 * 1 - 9 |":
+      BinaryOp "2 * 1 - 9":
        Ident "-"
-       BinaryOp "2 * 1 -":
+       BinaryOp "2 * 1":
         Ident "*"
-        Lit "2 *"
-        Lit "1 -"
-       Lit "9 |"
+        Lit "2"
+        Lit "1"
+       Lit "9"
       BinaryOp "4 & 1 ^ 2 >> 1 << 7 min 20 max 10":
        Ident "^"
-       BinaryOp "4 & 1 ^":
+       BinaryOp "4 & 1":
         Ident "&"
-        Lit "4 &"
-        Lit "1 ^"
+        Lit "4"
+        Lit "1"
        BinaryOp "2 >> 1 << 7 min 20 max 10":
         Ident "max"
-        BinaryOp "2 >> 1 << 7 min 20 max":
+        BinaryOp "2 >> 1 << 7 min 20":
          Ident "min"
-         BinaryOp "2 >> 1 << 7 min":
+         BinaryOp "2 >> 1 << 7":
           Ident "<<"
-          BinaryOp "2 >> 1 <<":
+          BinaryOp "2 >> 1":
            Ident ">>"
-           Lit "2 >>"
-           Lit "1 <<"
-          Lit "7 min"
-         Lit "20 max"
+           Lit "2"
+           Lit "1"
+          Lit "7"
+         Lit "20"
         Lit "10"
  Fun(None) "fun conditional -> i64:\r\n  if false:\r\n    return 10\r\n  elif true:\r\n    return if true: 10 else: 20\r\n  else:\r\n    return 0":
-  FunHeader "fun conditional -> i64:":
+  FunHeader "fun conditional -> i64":
    Ident "conditional"
    Ident "i64"
   Group ":":
    IfExpr "if false:\r\n    return 10\r\n  elif true:\r\n    return if true: 10 else: 20\r\n  else:\r\n    return 0":
-    Lit "false:"
+    Lit "false"
     Group ":":
      ReturnStatement "return 10":
       Lit "10"
     Group "elif":
      IfExpr "elif true:\r\n    return if true: 10 else: 20\r\n  else:\r\n    return 0":
-      Lit "true:"
+      Lit "true"
       Group ":":
        ReturnStatement "return if true: 10 else: 20":
         IfExpr "if true: 10 else: 20":
-         Lit "true:"
+         Lit "true"
          Group ":":
-          Lit "10 else"
+          Lit "10"
          Group ":":
           Lit "20"
       Group ":":
        ReturnStatement "return 0":
         Lit "0"
  Attribute "attr inline = always, call_conv = cold":
-  AttributeAssign "inline = always,":
+  AttributeAssign "inline = always":
    Ident "inline"
    Ident "always"
   AttributeAssign "call_conv = cold":
    Ident "call_conv"
    Ident "cold"
  Fun(None) "fun inline_fn -> u32:\r\n  return 10":
-  FunHeader "fun inline_fn -> u32:":
+  FunHeader "fun inline_fn -> u32":
    Ident "inline_fn"
    Ident "u32"
   Group ":":
    ReturnStatement "return 10":
     Lit "10"
  Fun(None) "fun fib(v: i64) -> i64:\r\n  return if v == 0 | v == 1:\r\n    1\r\n  else:\r\n    fib(v - 1) + fib(v - 2)":
-  FunHeader "fun fib(v: i64) -> i64:":
+  FunHeader "fun fib(v: i64) -> i64":
    Ident "fib"
-   FunArgument(false) "v: i64)":
+   FunArgument(false) "v: i64":
     Ident "v"
     Ident "i64"
    Ident "i64"
   Group ":":
    ReturnStatement "return if v == 0 | v == 1:\r\n    1\r\n  else:\r\n    fib(v - 1) + fib(v - 2)":
     IfExpr "if v == 0 | v == 1:\r\n    1\r\n  else:\r\n    fib(v - 1) + fib(v - 2)":
-     BinaryOp "v == 0 | v == 1:":
+     BinaryOp "v == 0 | v == 1":
       Ident "|"
-      BinaryOp "v == 0 |":
+      BinaryOp "v == 0":
        Ident "=="
        Ident "v"
-       Lit "0 |"
-      BinaryOp "v == 1:":
+       Lit "0"
+      BinaryOp "v == 1":
        Ident "=="
        Ident "v"
-       Lit "1:"
+       Lit "1"
      Group ":":
       Lit "1"
      Group ":":
       BinaryOp "fib(v - 1) + fib(v - 2)":
        Ident "+"
-       Call(false) "fib(v - 1) +":
+       Call(false) "fib(v - 1)":
         Ident "fib"
-        BinaryOp "v - 1)":
+        BinaryOp "v - 1":
          Ident "-"
          Ident "v"
-         Lit "1)"
+         Lit "1"
        Call(false) "fib(v - 2)":
         Ident "fib"
-        BinaryOp "v - 2)":
+        BinaryOp "v - 2":
          Ident "-"
          Ident "v"
-         Lit "2)"
+         Lit "2"
  Fun(None) "fun fib_loop(v: i64) -> i64:\r\n  var a, b, c = 1\r\n  loop'a:\r\n    c = a + b\r\n    a = b\r\n    b = c\r\n    v = v - 1\r\n    if v == 0:\r\n      break'a\r\n  return c":
-  FunHeader "fun fib_loop(v: i64) -> i64:":
+  FunHeader "fun fib_loop(v: i64) -> i64":
    Ident "fib_loop"
-   FunArgument(false) "v: i64)":
+   FunArgument(false) "v: i64":
     Ident "v"
     Ident "i64"
    Ident "i64"
@@ -1416,10 +1416,10 @@ Group "fun":
        Ident "v"
        Lit "1"
      IfExpr "if v == 0:\r\n      break'a":
-      BinaryOp "v == 0:":
+      BinaryOp "v == 0":
        Ident "=="
        Ident "v"
-       Lit "0:"
+       Lit "0"
       Group ":":
        Break "break'a":
         Ident "'a"
@@ -1428,9 +1428,9 @@ Group "fun":
    ReturnStatement "return c":
     Ident "c"
  Fun(None) "fun unary_operators(a: i64) -> i64:\r\n  return -a + ~a + !a + ++a + --a":
-  FunHeader "fun unary_operators(a: i64) -> i64:":
+  FunHeader "fun unary_operators(a: i64) -> i64":
    Ident "unary_operators"
-   FunArgument(false) "a: i64)":
+   FunArgument(false) "a: i64":
     Ident "a"
     Ident "i64"
    Ident "i64"
@@ -1438,22 +1438,22 @@ Group "fun":
    ReturnStatement "return -a + ~a + !a + ++a + --a":
     BinaryOp "-a + ~a + !a + ++a + --a":
      Ident "+"
-     BinaryOp "-a + ~a + !a + ++a +":
+     BinaryOp "-a + ~a + !a + ++a":
       Ident "+"
-      BinaryOp "-a + ~a + !a +":
+      BinaryOp "-a + ~a + !a":
        Ident "+"
-       BinaryOp "-a + ~a +":
+       BinaryOp "-a + ~a":
         Ident "+"
-        UnaryOp "-a +":
+        UnaryOp "-a":
          Ident "-"
          Ident "a"
-        UnaryOp "~a +":
+        UnaryOp "~a":
          Ident "~"
          Ident "a"
-       UnaryOp "!a +":
+       UnaryOp "!a":
         Ident "!"
         Ident "a"
-      UnaryOp "++a +":
+      UnaryOp "++a":
        Ident "++"
        Ident "a"
      UnaryOp "--a":
@@ -1477,7 +1477,7 @@ Group "fun":
     Ident "gva"
     Ident "int"
  Fun(None) "fun strings -> i64:\r\n  var hello = \"hello\"\r\n  return 0":
-  FunHeader "fun strings -> i64:":
+  FunHeader "fun strings -> i64":
    Ident "strings"
    Ident "i64"
   Group ":":
@@ -1491,45 +1491,55 @@ Group "fun":
    ReturnStatement "return 0":
     Lit "0"
  Fun(None) "fun mutable_ref(a: &Foo):\r\n  a.a = 10\r\n  a.b = 20\r\n  a.c = 30":
-  FunHeader "fun mutable_ref(a: &Foo):":
+  FunHeader "fun mutable_ref(a: &Foo)":
    Ident "mutable_ref"
-   FunArgument(false) "a: &Foo)":
+   FunArgument(false) "a: &Foo":
     Ident "a"
-    Ref "&Foo)":
+    Ref "&Foo":
      Ident "Foo"
    None ""
   Group ":":
    BinaryOp "a.a = 10":
     Ident "="
-    DotExpr "a.a =":
+    DotExpr "a.a":
      Ident "a"
      Ident "a"
     Lit "10"
    BinaryOp "a.b = 20":
     Ident "="
-    DotExpr "a.b =":
+    DotExpr "a.b":
      Ident "a"
      Ident "b"
     Lit "20"
    BinaryOp "a.c = 30":
     Ident "="
-    DotExpr "a.c =":
+    DotExpr "a.c":
      Ident "a"
      Ident "c"
     Lit "30"
  Fun(None) "fun some_string -> &u8:\r\n  \"\r\nhello there\r\n  \"":
-  FunHeader "fun some_string -> &u8:":
+  FunHeader "fun some_string -> &u8":
    Ident "some_string"
-   Ref "&u8:":
+   Ref "&u8":
     Ident "u8"
   Group ":":
    Lit "\"\r\nhello there\r\n  \""
 
-|> 47:8:builtin.mf
-| struct Seq[T]:
-|        ^^^^^^^
-is redefinition of
- |> 31:8:builtin.mf
-| struct Option[T]:
-|        ^^^^^^^^^^
+|> 13:6:builtin.mf
+| attr linkage(import, printf)
+|      ^^^^^^^^^^^^^^^^^^^^^^^
+Invalid call convention, list of valid call conventions:
+  platform - picks call convention based of target platform
+  fast
+  cold - then its unlikely this gets called
+  system_v
+  windows_fastcall
+  apple_aarch64
+  baldrdash_system_v
+  baldrdash_windows
+  baldrdash_2020
+  probestack
+  wasmtime_system_v
+  wasmtime_fastcall
+  wasmtime_apple_aarch64
 
