@@ -1,9 +1,10 @@
 use crate::{
     ast::{AKind, Ast},
+    lexer::LMainState,
     util::{
-        sdbm::{ ID},
+        sdbm::ID,
         storage::{IndexPointer, Table},
-    }, lexer::LMainState,
+    },
 };
 
 crate::index_pointer!(Attribute);
@@ -23,7 +24,10 @@ impl Attributes {
             if ast[i].kind != AKind::Attribute {
                 for &stacked in &self.stack {
                     for attr in 1..self.map[stacked].len() {
-                        let id = self.map[stacked][attr][0].token.spam.hash
+                        let id = self.map[stacked][attr][0]
+                            .token
+                            .spam
+                            .hash
                             .add(ID(marker as u64));
                         let shadowed = self.map.link(id, stacked);
                         debug_assert!(shadowed.is_none());
@@ -31,13 +35,13 @@ impl Attributes {
                 }
                 if marker < i {
                     ast.drain(marker..i).for_each(|mut attr| {
-                        attr.drain(..).for_each(|mut ast| {                            
-                            match state.display(&ast[0].token.spam) {
+                        attr.drain(..)
+                            .for_each(|mut ast| match state.display(&ast[0].token.spam) {
                                 "push" => {
                                     self.frames.push(ast.len());
                                     for ast in ast.drain(1..) {
                                         let id = self.map.add_hidden(ast);
-                                        self.stack.push(id);                                        
+                                        self.stack.push(id);
                                     }
                                 }
                                 "pop" => {
@@ -45,12 +49,10 @@ impl Attributes {
                                     self.stack.truncate(len);
                                 }
                                 _ => {
-                                    let id = ast[0].token.spam.hash
-                                        .add(ID(marker as u64));
+                                    let id = ast[0].token.spam.hash.add(ID(marker as u64));
                                     self.map.insert(id, ast);
-                                },
-                            }
-                        })
+                                }
+                            })
                     });
                     i = marker;
                 }

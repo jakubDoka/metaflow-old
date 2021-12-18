@@ -7,10 +7,13 @@ impl ID {
     pub fn new(data: &str) -> Self {
         Self(data.sdbm_hash())
     }
-    
+
     #[inline]
     pub fn add(self, id: Self) -> Self {
-        ID(id.0.wrapping_mul((self.0 << 32) | (self.0 >> 32)).wrapping_add(self.0))
+        ID(id
+            .0
+            .wrapping_mul((self.0 << 32) | (self.0 >> 32))
+            .wrapping_add(self.0))
     }
 }
 

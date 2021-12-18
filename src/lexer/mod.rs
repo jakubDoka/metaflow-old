@@ -1,4 +1,4 @@
-use crate::util::{storage::IndexPointer, sdbm::{ ID}};
+use crate::util::{sdbm::ID, storage::IndexPointer};
 use std::{
     fmt::{Debug, Display},
     ops::Range,
@@ -342,9 +342,9 @@ impl<'a> Lexer<'a> {
 
     pub fn sub(&self, range: Range<usize>) -> Spam {
         Spam::new(
-            self.state.source, 
-            ID::new(&self.source[range.clone()]), 
-            range, 
+            self.state.source,
+            ID::new(&self.source[range.clone()]),
+            range,
         )
     }
 
@@ -460,12 +460,11 @@ impl LMainState {
 
     pub fn join_spams(&self, spam: &mut Spam, other: &Spam, trim: bool) {
         if spam.range.end == other.range.end {
-            return
+            return;
         }
-        
+
         debug_assert!(
-            spam.source == other.source && 
-            spam.range.end <= other.range.start,       
+            spam.source == other.source && spam.range.end <= other.range.start,
             "{:?} {:?}",
             spam,
             other,
@@ -477,8 +476,10 @@ impl LMainState {
             other.range.end
         };
 
-        spam.range.end = spam.range.start + 
-            self.sources[spam.source].content[spam.range.start..end].trim_end().len();
+        spam.range.end = spam.range.start
+            + self.sources[spam.source].content[spam.range.start..end]
+                .trim_end()
+                .len();
     }
 
     pub fn builtin_spam(&mut self, name: &str) -> Spam {
@@ -490,7 +491,11 @@ impl LMainState {
     }
 
     pub fn new_spam(&self, source: Source, range: Range<usize>) -> Spam {
-        Spam::new(source, ID::new(&self.sources[source].content[range.clone()]), range)
+        Spam::new(
+            source,
+            ID::new(&self.sources[source].content[range.clone()]),
+            range,
+        )
     }
 
     pub fn lexer_for<'a>(&'a self, state: &'a mut LState) -> Lexer<'a> {
@@ -720,7 +725,7 @@ impl std::fmt::Display for TokenDisplay<'_> {
                         i = 0;
                     }
                     if ch != ' ' {
-                        continue;    
+                        continue;
                     }
                 }
 
@@ -836,7 +841,11 @@ pub struct Spam {
 
 impl Spam {
     pub fn new(source: Source, hash: ID, range: Range<usize>) -> Self {
-        Self { source, range, hash }
+        Self {
+            source,
+            range,
+            hash,
+        }
     }
 }
 

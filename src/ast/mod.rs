@@ -83,12 +83,12 @@ impl<'a> AParser<'a> {
                                 .unwrap_or(path_and_version.range.len());
 
                             let path = s.main_state.new_spam(
-                                path_and_version.source, 
+                                path_and_version.source,
                                 path_and_version.range.start..path_and_version.range.start + split_at
                             );
 
                             let version = s.main_state.new_spam(
-                                path_and_version.source, 
+                                path_and_version.source,
                                 path_and_version.range.start + split_at + 1..path_and_version.range.end
                             );
 
@@ -109,12 +109,10 @@ impl<'a> AParser<'a> {
                         })?;
                     }
                     _ => {
-                        return Err(
-                            self.unexpected(format!(
-                                "unexpected item in manifest '{}'", 
-                                self.main_state.display(&name)
-                            ))
-                        );
+                        return Err(self.unexpected(format!(
+                            "unexpected item in manifest '{}'",
+                            self.main_state.display(&name)
+                        )));
                     }
                 },
                 _ => {
@@ -182,7 +180,10 @@ impl<'a> AParser<'a> {
                 TKind::Struct => ast.push(self.struct_declaration()?),
                 TKind::Var | TKind::Let => ast.push(self.var_statement(true)?),
                 TKind::Indent(_) => self.next()?,
-                _ => return Err(self.unexpected_str("expected 'fun' or 'attr' or 'struct' or 'let' or 'var'")),
+                _ => {
+                    return Err(self
+                        .unexpected_str("expected 'fun' or 'attr' or 'struct' or 'let' or 'var'"))
+                }
             }
         }
         Ok(ast)
@@ -265,13 +266,15 @@ impl<'a> AParser<'a> {
                 TKind::RPar,
                 Self::attr_element,
             )?,
-            TKind::Op => if self.state.token.spam.hash == self.main_state.equal_sign {
-                ast.kind = AKind::AttributeAssign;
-                self.next()?;
-                ast.push(self.expr()?);
-            } else {
-                return Err(self.unexpected_str("expected '=' or '('"));
-            },
+            TKind::Op => {
+                if self.state.token.spam.hash == self.main_state.equal_sign {
+                    ast.kind = AKind::AttributeAssign;
+                    self.next()?;
+                    ast.push(self.expr()?);
+                } else {
+                    return Err(self.unexpected_str("expected '=' or '('"));
+                }
+            }
             _ => (),
         }
 
@@ -498,7 +501,7 @@ impl<'a> AParser<'a> {
             }
 
             let mut token = result.token.clone();
-            
+
             self.join_token_with(&mut token, &next.token, false);
 
             // this handles the '{op}=' sugar
@@ -510,10 +513,8 @@ impl<'a> AParser<'a> {
                     AKind::Ident,
                     Token::new(
                         TKind::Op,
-                        self.main_state.new_spam(
-                            op.spam.source, 
-                            op.spam.range.start..op.spam.range.end - 1
-                        ),
+                        self.main_state
+                            .new_spam(op.spam.source, op.spam.range.start..op.spam.range.end - 1),
                         op.line_data.clone(),
                     ),
                 );
@@ -521,10 +522,8 @@ impl<'a> AParser<'a> {
                     AKind::Ident,
                     Token::new(
                         TKind::Op,
-                        self.main_state.new_spam(
-                            op.spam.source, 
-                            op.spam.range.end - 1..op.spam.range.end
-                        ),
+                        self.main_state
+                            .new_spam(op.spam.source, op.spam.range.end - 1..op.spam.range.end),
                         op.line_data.clone(),
                     ),
                 );
@@ -968,7 +967,8 @@ impl<'a> AParser<'a> {
     }
 
     fn join_token_with(&self, token: &mut Token, other: &Token, trim: bool) {
-        self.main_state.join_spams(&mut token.spam, &other.spam, trim);
+        self.main_state
+            .join_spams(&mut token.spam, &other.spam, trim);
     }
 }
 
@@ -1041,7 +1041,7 @@ impl AMainState {
     }
 
     pub fn attr_of(&self, manifest: &Manifest, name: &str) -> Option<Spam> {
-        manifest        
+        manifest
             .attrs
             .iter()
             .find(|(a_name, _)| self.display(a_name) == name)
@@ -1139,8 +1139,6 @@ impl Ast {
     pub fn push(&mut self, ast: Ast) {
         self.children.push(ast);
     }
-
-    
 }
 
 crate::inherit!(Ast, children, Vec<Ast>);
@@ -1159,7 +1157,12 @@ impl<'a> AstDisplay<'a> {
         std::iter::repeat(())
             .take(level)
             .for_each(|_| f.write_char(' ').unwrap());
-        write!(f, "{:?} {:?}", ast.kind, self.state.display(&ast.token.spam))?;
+        write!(
+            f,
+            "{:?} {:?}",
+            ast.kind,
+            self.state.display(&ast.token.spam)
+        )?;
         if ast.children.len() > 0 {
             write!(f, ":\n")?;
             for child in &ast.children {

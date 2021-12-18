@@ -3,16 +3,16 @@
 extern crate cranelift_codegen;
 extern crate cranelift_frontend;
 
-pub mod gen;
-pub mod functions;
-pub mod types;
-pub mod module_tree;
-pub mod attributes;
 pub mod ast;
-pub mod lexer;
-pub mod util;
+pub mod attributes;
 pub mod cli;
+pub mod functions;
+pub mod gen;
+pub mod lexer;
+pub mod module_tree;
 pub mod testing;
+pub mod types;
+pub mod util;
 
 pub const FILE_EXTENSION: &str = ".pmt";
 

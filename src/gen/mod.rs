@@ -12,9 +12,9 @@ use std::process::Command;
 
 use crate::{
     cli::Arguments,
-    functions::{FError, Program, FErrorDisplay},
-    lexer::{TokenDisplay, Token},
-    module_tree::{MTError, MTParser, MTErrorDisplay},
+    functions::{FError, FErrorDisplay, Program},
+    lexer::{Token, TokenDisplay},
+    module_tree::{MTError, MTErrorDisplay, MTParser},
 };
 
 use super::*;
@@ -117,19 +117,16 @@ pub fn generate_obj_file(args: &Arguments) -> Result<Vec<u8>> {
     let mut state = GState::default();
     let mut context = GContext::default();
 
-    if let Err(error) = MTParser::new(&mut state, &mut context).parse(&args[0]) {
-        eprintln!("{}", MTErrorDisplay::new(&state, &error));
-        return Err(GEKind::ModuleTreeError(error).into());
-    }
+    MTParser::new(&mut state, &mut context)
+        .parse(&args[0])
+        .map_err(|err| GEKind::MTError(err).into())?;
 
     for i in (0..state.module_order.len()).rev() {
         let module = state.module_order[i];
-        if let Err(error) = Generator::new(&mut program, &mut state, &mut context).generate(module)
-        {
-            eprintln!("{}", GErrorDisplay::new(&state, &error));
-            return Err(error);
-        }
+        Generator::new(&mut program, &mut state, &mut context).generate(module)?
     }
+
+    Generator::new(&mut program, &mut state, &mut context).finalize()?;
 
     Ok(program.module.finish().emit().unwrap())
 }
@@ -142,7 +139,7 @@ crate::def_displayer!(
         GEKind::FunError(error) => {
             write!(f, "{}", FErrorDisplay::new(&self.state, error))?;
         },
-        GEKind::ModuleTreeError(error) => {
+        GEKind::MTError(error) => {
             write!(f, "{}", MTErrorDisplay::new(&self.state, error))?;
         },
         GEKind::IoError(err) => {
@@ -174,7 +171,7 @@ impl GError {
 
 #[derive(Debug)]
 pub enum GEKind {
-    ModuleTreeError(MTError),
+    MTError(MTError),
     FunError(FError),
     IoError(std::io::Error),
     InvalidTriplet(LookupError),
@@ -447,6 +444,31 @@ fun main -> int:
         "#,
         0,
     );
+    test_sippet(
+        r#"
+attr entry
+fun main -> int:
+  var a = 1
+  var b = &a
+  *b = 0
+  return a 
+      "#,
+        0,
+    );
+
+    test_sippet(
+        r#"
+let a = 1
+
+attr entry
+fun main -> int:
+  return a - 1
+    "#,
+        0,
+    );
+
+    std::fs::remove_file("src/gen/test_project/root.mf").unwrap_or(());
+    std::fs::remove_file("test_project.exe").unwrap_or(());
 }
 
 pub fn test_sippet(sippet: &str, exit_code: i32) {
@@ -456,11 +478,7 @@ pub fn test_sippet(sippet: &str, exit_code: i32) {
 
     compile(args).unwrap();
 
-
     let output = Command::new(".\\test_project.exe").output().unwrap();
 
     assert_eq!(output.status.code().unwrap(), exit_code);
-
-    std::fs::remove_file("src/gen/test_project/root.mf").unwrap_or(());
-    std::fs::remove_file("test_project.exe").unwrap_or(());
 }

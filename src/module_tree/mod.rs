@@ -1,11 +1,11 @@
 use std::ops::{Deref, DerefMut};
 use std::path::{Path, PathBuf};
 
-use crate::ast::{AError, AParser, AState, AContext, Dep, AMainState, AErrorDisplay};
+use crate::ast::{AContext, AError, AErrorDisplay, AMainState, AParser, AState, Dep};
 use crate::attributes::Attributes;
 use crate::lexer::{SourceEnt, Spam, TokenDisplay};
 use crate::util::pool::{Pool, PoolRef};
-use crate::util::sdbm::{ ID};
+use crate::util::sdbm::ID;
 use crate::util::storage::{IndexPointer, Table};
 use crate::{lexer::Token, util::storage::List};
 
@@ -66,7 +66,11 @@ impl<'a> MTParser<'a> {
                     .find(|dep| dep.0 == id)
                     .map(|dep| dep.1)
                     .or_else(|| {
-                        if head == self.state.display(&self.state.manifests[module.manifest].name) {
+                        if head
+                            == self
+                                .state
+                                .display(&self.state.manifests[module.manifest].name)
+                        {
                             Some(module.manifest)
                         } else {
                             None
@@ -83,9 +87,10 @@ impl<'a> MTParser<'a> {
                 )?;
                 frontier.push(dependency);
                 let nickname = MOD_SALT.add(
-                    import.nickname
+                    import
+                        .nickname
                         .map(|n| n.hash)
-                        .unwrap_or_else(|| self.state.modules[dependency].name.hash)
+                        .unwrap_or_else(|| self.state.modules[dependency].name.hash),
                 );
                 module.dependency.push((nickname, dependency));
                 module.dependant.push(module_id);
@@ -131,12 +136,12 @@ impl<'a> MTParser<'a> {
 
         let name_len = module_path.file_stem().unwrap().len();
         let whole_len = module_path.file_name().unwrap().len();
-        
+
         let name = self.state.new_spam(
-            root_spam.source, 
-            root_spam.range.end - whole_len..root_spam.range.end + whole_len - name_len
+            root_spam.source,
+            root_spam.range.end - whole_len..root_spam.range.end + whole_len - name_len,
         );
-        
+
         let module_path = module_path
             .strip_prefix(
                 module_path
@@ -146,8 +151,6 @@ impl<'a> MTParser<'a> {
                     .unwrap_or(""),
             )
             .unwrap();
-        
-        
 
         if module_path == Path::new("") && manifest_name != root {
             return Err(MTError::new(MTEKind::DisplacedModule, token));
@@ -171,12 +174,10 @@ impl<'a> MTParser<'a> {
             content,
         };
 
-        
         let source = self.state.sources.add(source);
         let ast = self.state.a_state_for(source);
 
         path_buffer.clear();
-
 
         let ent = ModEnt {
             id,
@@ -252,7 +253,9 @@ impl<'a> MTParser<'a> {
                 .parse_manifest()
                 .map_err(Into::into)?;
 
-            let root_file_spam = self.state.attr_of(&manifest, "root")
+            let root_file_spam = self
+                .state
+                .attr_of(&manifest, "root")
                 .unwrap_or_else(|| self.state.builtin_spam("main.mf"));
             let root_file = self.state.display(&root_file_spam);
 
@@ -263,15 +266,16 @@ impl<'a> MTParser<'a> {
                 .ok_or_else(|| MTError::new(MTEKind::MissingPathStem, token.clone()))?
                 .len();
             let whole_len = Path::new(root_file).file_name().unwrap().len();
-                
+
             let name = self.state.new_spam(
                 root_file_spam.source,
-                root_file_spam.range.end - whole_len..root_file_spam.range.end - whole_len + name_len
+                root_file_spam.range.end - whole_len
+                    ..root_file_spam.range.end - whole_len + name_len,
             );
-            
+
             let root_path = self.state.new_spam(
-                root_file_spam.source, 
-                root_file_spam.range.start..root_file_spam.range.start + parent_len
+                root_file_spam.source,
+                root_file_spam.range.start..root_file_spam.range.start + parent_len,
             );
 
             let manifest_ent = &mut self.state.manifests[manifest_id];
@@ -499,7 +503,7 @@ impl Default for MTState {
 
         let source = SourceEnt {
             name: "builtin.mf".to_string(),
-            content: include_str!("builtin.mf").to_string(),  
+            content: include_str!("builtin.mf").to_string(),
         };
         let source = s.sources.add(source);
 
@@ -511,11 +515,8 @@ impl Default for MTState {
             ..Default::default()
         };
 
-        s.builtin_module = s
-            .modules
-            .insert(builtin_module.id, builtin_module)
-            .1;
-        
+        s.builtin_module = s.modules.insert(builtin_module.id, builtin_module).1;
+
         s
     }
 }
@@ -666,6 +667,4 @@ pub enum MTEKind {
     DownloadFailed,
 }
 
-pub fn test() {
-
-}
+pub fn test() {}

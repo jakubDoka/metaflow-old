@@ -327,7 +327,7 @@ impl<I: IndexPointer, T> Table<I, T> {
     pub fn insert(&mut self, id: ID, data: T) -> (Option<T>, I) {
         if let Some(&i) = self.map.get(id) {
             if id == self.data[i].0 {
-                return (Some(std::mem::replace(&mut self.data[i].1, data)), i)
+                return (Some(std::mem::replace(&mut self.data[i].1, data)), i);
             }
         }
         let i = self.data.add((id, data));
@@ -341,11 +341,11 @@ impl<I: IndexPointer, T> Table<I, T> {
     }
 
     pub fn iter<'a>(&'a self) -> impl Iterator<Item = &'a T> + 'a {
-        self.data.iter().map(|v| &v.1.1)
+        self.data.iter().map(|v| &v.1 .1)
     }
 
     pub fn iter_mut(&mut self) -> impl Iterator<Item = &mut T> {
-        self.data.iter_mut().map(|v| &mut v.1.1)
+        self.data.iter_mut().map(|v| &mut v.1 .1)
     }
 
     pub fn link(&mut self, id: ID, index: I) -> Option<I> {

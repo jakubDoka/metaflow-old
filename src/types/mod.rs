@@ -2,10 +2,10 @@ use std::fmt::Write;
 use std::ops::{Deref, DerefMut};
 use std::rc::Rc;
 
-use crate::ast::{AKind, Ast, AError, AParser, Vis, AErrorDisplay};
-use crate::lexer::{TKind as LTKind, Token, Spam, LineData, TokenDisplay};
-use crate::module_tree::{self, MTContext, MTState, Mod, TreeStorage, MTParser};
-use crate::util::sdbm::{ ID};
+use crate::ast::{AError, AErrorDisplay, AKind, AParser, Ast, Vis};
+use crate::lexer::{LineData, Spam, TKind as LTKind, Token, TokenDisplay};
+use crate::module_tree::{self, MTContext, MTParser, MTState, Mod, TreeStorage};
+use crate::util::sdbm::ID;
 use crate::util::storage::{IndexPointer, List, ReusableList, Table};
 use cranelift_codegen::ir::types::*;
 use cranelift_codegen::ir::types::{Type as CrType, INVALID};
@@ -959,7 +959,7 @@ pub fn test() {
     MTParser::new(&mut state, &mut context)
         .parse("src/types/test_project")
         .unwrap();
-    
+
     for module in std::mem::take(&mut state.module_order).drain(..).rev() {
         TParser::new(&mut state, &mut context)
             .parse(module)
