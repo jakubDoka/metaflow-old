@@ -22,7 +22,11 @@ use crate::{
     lexer::{Spam, TKind as LTKind, Token},
     module_tree::Mod,
     types::{self, ptr_ty, TKind, Type, TypeDisplay, TypeEnt},
-    util::{sdbm::SdbmHash, storage::IndexPointer},
+    util::{
+        pool::PoolRef,
+        sdbm::SdbmHash,
+        storage::IndexPointer,
+    },
 };
 
 use super::{GEKind, GError};
@@ -100,7 +104,8 @@ impl<'a> Generator<'a> {
         for fun in represented.drain(..) {
             println!("{}", crate::functions::FunDisplay::new(&self.state, fun));
 
-            let rid = self.state.funs[fun].kind.unwrap_represented();
+            let fun = &self.state.funs[fun];
+            let rid = fun.kind.unwrap_represented();
             let fun_id = self.state.rfuns[rid].id;
             if self
                 .program
@@ -127,10 +132,12 @@ impl<'a> Generator<'a> {
 
             self.body(rid, &mut builder)?;
 
-            self.state.rfuns[rid].body.clear();
-            self.context
-                .body_pool
-                .push(std::mem::take(&mut self.state.rfuns[rid].body));
+            if !self.state.rfuns[rid].inline {
+                self.state.rfuns[rid].body.clear();
+                self.context
+                    .body_pool
+                    .push(std::mem::take(&mut self.state.rfuns[rid].body));
+            }
 
             builder.finalize();
 
@@ -159,6 +166,76 @@ impl<'a> Generator<'a> {
     }
 
     fn body(&mut self, fun: RFun, builder: &mut FunctionBuilder) -> Result {
+        let mut stack = self.context.pool.get();
+        stack.push((
+            fun,
+            self.collect_blocks(fun, builder),
+            0,
+            Option::<Inst>::None,
+            Option::<CrBlock>::None,
+        ));
+        let mut arg_buffer = self.context.pool.get();
+
+        'o: while let Some((current_fun, blocks, current_block, current_inst, return_block)) =
+            stack.last_mut()
+        {
+            while *current_block < blocks.len() {
+                let block = if let &mut Some(current_inst) = current_inst {
+                    current_inst
+                } else {
+                    let (block, cr_block) = blocks[*current_block];
+                    builder.switch_to_block(cr_block);
+                    block
+                };
+
+                if let Some(inlined_fun) =
+                    self.block(*current_fun, block, *return_block, builder)?
+                {
+                    match &self.inst(*current_fun, inlined_fun).kind {
+                        IKind::Call(id, args) => {
+                            let id = *id;
+                            arg_buffer.clear();
+                            arg_buffer.extend(
+                                args.iter()
+                                    .map(|arg| self.unwrap_val(*current_fun, *arg, builder)),
+                            );
+                            let next_fun = self.state.funs[id].kind.unwrap_represented();
+                            let blocks = self.collect_blocks(*current_fun, builder);
+                            builder.ins().jump(blocks[0].1, &*arg_buffer);
+                            let return_block = builder.create_block();
+                            let sig = &self.state.rfuns[next_fun].ir_signature;
+                            if sig.returns.len() > 0 {
+                                builder.append_block_param(return_block, sig.returns[0].value_type);
+                            }
+                            stack.push((next_fun, blocks, 0, None, Some(return_block)));
+                            continue'o;
+                        }
+                        _ => unreachable!(),
+                    }
+                }
+                *current_block += 1;
+            }
+
+            if let (&mut Some(return_block), &mut Some(current_inst)) = (return_block, current_inst) {
+                builder.switch_to_block(return_block);
+                if let Some(return_value) = self.inst(*current_fun, current_inst).value {
+                    self.wrap_val(fun, return_value, builder.block_params(return_block)[0]);
+                }
+            }
+            
+            stack.pop().unwrap();
+        }
+
+        builder.seal_all_blocks();
+
+        Ok(())
+    }
+
+    fn collect_blocks(
+        &mut self,
+        fun: RFun,
+        builder: &mut FunctionBuilder,
+    ) -> PoolRef<(Inst, CrBlock)> {
         let entry_block = self.state.rfuns[fun].body.insts.first().unwrap();
         let mut current = entry_block;
 
@@ -174,6 +251,7 @@ impl<'a> Generator<'a> {
                 let value = builder.append_block_param(cr_block, self.repr_of_val(fun, arg));
                 self.wrap_val(fun, arg, value);
             }
+            self.inst_mut(fun, current).kind.block_mut().args = args;
 
             let next = self.state.rfuns[fun].body.insts.next(current).unwrap();
 
@@ -191,17 +269,16 @@ impl<'a> Generator<'a> {
             }
         }
 
-        for (block, cr_block) in buffer.drain(..) {
-            builder.switch_to_block(cr_block);
-            self.block(fun, block, builder)?;
-        }
-
-        builder.seal_all_blocks();
-
-        Ok(())
+        buffer
     }
 
-    fn block(&mut self, fun: RFun, mut current: Inst, builder: &mut FunctionBuilder) -> Result {
+    fn block(
+        &mut self,
+        fun: RFun,
+        mut current: Inst,
+        return_block: Option<CrBlock>,
+        builder: &mut FunctionBuilder,
+    ) -> Result<Option<Inst>> {
         let mut call_buffer = self.context.pool.get();
         let mut arg_buffer = self.context.pool.get();
 
@@ -228,6 +305,7 @@ impl<'a> Generator<'a> {
                     } else {
                         let rid = other.kind.unwrap_represented();
                         let r_ent = &self.state.rfuns[rid];
+                        let inline = r_ent.inline;
                         let fun_id = r_ent.id;
 
                         let mut struct_return = false;
@@ -245,21 +323,26 @@ impl<'a> Generator<'a> {
                             }
                         }
 
-                        let fun_ref = self
-                            .program
-                            .module
-                            .declare_func_in_func(fun_id, builder.func);
+                        if inline {
+                            return Ok(Some(current));
+                        } else {
+                            let fun_ref = self
+                                .program
+                                .module
+                                .declare_func_in_func(fun_id, builder.func);
 
-                        call_buffer.clear();
-                        call_buffer
-                            .extend(arg_buffer.iter().map(|&a| self.unwrap_val(fun, a, builder)));
+                            call_buffer.clear();
+                            call_buffer.extend(
+                                arg_buffer.iter().map(|&a| self.unwrap_val(fun, a, builder)),
+                            );
 
-                        let inst = builder.ins().call(fun_ref, &call_buffer);
+                            let inst = builder.ins().call(fun_ref, &call_buffer);
 
-                        if !struct_return {
-                            if let Some(value) = value {
-                                let val = builder.inst_results(inst)[0];
-                                self.wrap_val(fun, value, val);
+                            if !struct_return {
+                                if let Some(value) = value {
+                                    let val = builder.inst_results(inst)[0];
+                                    self.wrap_val(fun, value, val);
+                                }
                             }
                         }
                     }
@@ -328,11 +411,20 @@ impl<'a> Generator<'a> {
                     self.value_mut(fun, value).value = FinalValue::Value(lit);
                 }
                 IKind::Return(value) => {
-                    if let Some(value) = value {
-                        let value = self.unwrap_val(fun, *value, builder);
-                        builder.ins().return_(&[value]);
+                    if let Some(return_block) = return_block {
+                        if let Some(value) = value {
+                            let value = self.unwrap_val(fun, *value, builder);
+                            builder.ins().jump(return_block, &[value]);
+                        } else {
+                            builder.ins().jump(return_block, &[]);
+                        }
                     } else {
-                        builder.ins().return_(&[]);
+                        if let Some(value) = value {
+                            let value = self.unwrap_val(fun, *value, builder);
+                            builder.ins().return_(&[value]);
+                        } else {
+                            builder.ins().return_(&[]);
+                        }
                     }
                 }
                 IKind::Assign(other) => {
@@ -404,7 +496,7 @@ impl<'a> Generator<'a> {
             current = self.state.rfuns[fun].body.insts.next(current).unwrap();
         }
 
-        Ok(())
+        Ok(None)
     }
 
     fn call_generic_builtin(

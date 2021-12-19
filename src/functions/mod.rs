@@ -249,7 +249,7 @@ impl<'a> FParser<'a> {
         let name = unsafe { std::str::from_utf8_unchecked(&name_buffer[..]) };
         let attributes = &self.state.modules[self.state.funs[fun].module].attributes;
 
-        let (linkage, alias) = if let Some(attr) = attributes.get_attr(attr_id, "linkage") {
+        let (linkage, alias) = if let Some(attr) = attributes.attr(attr_id, "linkage") {
             assert_attr_len(attr, 1)?;
 
             let linkage = match self.state.display(&attr[1].token.spam) {
@@ -272,7 +272,7 @@ impl<'a> FParser<'a> {
             (Linkage::Export, name)
         };
 
-        let call_conv = if let Some(attr) = attributes.get_attr(attr_id, "call_conv") {
+        let call_conv = if let Some(attr) = attributes.attr(attr_id, "call_conv") {
             assert_attr_len(attr, 1)?;
             let conv = self.state.display(&attr[1].token.spam);
             if conv == "platform" {
@@ -311,7 +311,7 @@ impl<'a> FParser<'a> {
             signature.returns.push(AbiParam::special(repr, purpose));
         }
 
-        if let Some(attr) = attributes.get_attr(attr_id, "entry") {
+        if let Some(attr) = attributes.attr(attr_id, "entry") {
             if !n_ent.sig.args.is_empty()
                 && (
                     !n_ent.sig.args.len() != 2
@@ -363,6 +363,15 @@ impl<'a> FParser<'a> {
             }
         }
 
+        let inline = if let Some(attr) = attributes.attr(attr_id, "inline") {
+            if self.state.bstate.body.recursive {
+                return Err(FError::new(FEKind::RecursiveInline, attr.token.clone()));
+            }
+            true
+        } else {
+            false
+        };
+
         let alias = if fun_id == ID(0) { "main" } else { alias };
 
         let id = self
@@ -376,6 +385,7 @@ impl<'a> FParser<'a> {
             ir_signature: signature.clone(),
             id,
             body: std::mem::take(&mut self.state.bstate.body),
+            inline,
         };
 
         let f = self.state.rfuns.add(r_ent);
@@ -997,7 +1007,7 @@ impl<'a> FParser<'a> {
         let mut values = values.to_vec();
         let module = self.state.funs[fun].module;
 
-        let fun = self.smart_find_or_create(
+        let other_fun = self.smart_find_or_create(
             module,
             base_name,
             name,
@@ -1006,7 +1016,9 @@ impl<'a> FParser<'a> {
             dot_call,
             token,
         )?;
-        let return_type = self.return_type_of(fun);
+        let return_type = self.return_type_of(other_fun);
+
+        self.state.bstate.body.recursive |= fun == other_fun;
 
         let value = return_type.map(|t| {
             let on_stack = self.ty(t).on_stack();
@@ -1017,7 +1029,7 @@ impl<'a> FParser<'a> {
             value
         });
 
-        self.add_inst(InstEnt::new(IKind::Call(fun, values), value, token));
+        self.add_inst(InstEnt::new(IKind::Call(other_fun, values), value, token));
 
         Ok(value)
     }
@@ -2395,6 +2407,9 @@ crate::def_displayer!(
         FEKind::InvalidEntrySignature => {
             writeln!(f, "invalid entry point signature, expected 'fun (int, & &u8)' or 'fun ()'")?;
         },
+        FEKind::RecursiveInline => {
+            writeln!(f, "cannot inline recursive function")?;
+        },
     }
 );
 
@@ -2412,6 +2427,7 @@ impl FError {
 
 #[derive(Debug)]
 pub enum FEKind {
+    RecursiveInline,
     InvalidEntrySignature,
     EmptyArray,
     RedefinedGlobal(Token),
@@ -2467,6 +2483,7 @@ pub struct FunEnt {
 pub struct FunBody {
     pub values: List<Value, ValueEnt>,
     pub insts: LinkedList<Inst, InstEnt>,
+    pub recursive: bool,
 }
 
 impl FunBody {
@@ -2544,6 +2561,7 @@ pub struct RFunEnt {
     pub ir_signature: Signature,
     pub id: FuncId,
     pub body: FunBody,
+    pub inline: bool,
 }
 
 crate::index_pointer!(CFun);

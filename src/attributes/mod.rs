@@ -64,10 +64,10 @@ impl Attributes {
     }
 
     pub fn enabled(&self, idx: usize, name: &str) -> bool {
-        self.get_attr(idx, name).is_some()
+        self.attr(idx, name).is_some()
     }
 
-    pub fn get_attr(&self, idx: usize, name: &str) -> Option<&Ast> {
+    pub fn attr(&self, idx: usize, name: &str) -> Option<&Ast> {
         let id = ID::new(name).add(ID(idx as u64));
 
         self.map.get(id)
