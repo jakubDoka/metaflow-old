@@ -2,6 +2,10 @@
 var something = [1, 2, 3]
 let hello = "hello"
 
+fun something -> fun(int, int) -> int:
+  return fun(a, b: int) -> int: a + b
+
+
 fun flo: pass
 
 fun foo(): pass

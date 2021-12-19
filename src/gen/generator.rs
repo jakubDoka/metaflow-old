@@ -200,13 +200,16 @@ impl<'a> Generator<'a> {
                                     .map(|arg| self.unwrap_val(*current_fun, *arg, builder)),
                             );
                             let next_fun = self.state.funs[id].kind.unwrap_represented();
-                            let blocks = self.collect_blocks(*current_fun, builder);
+                            let blocks = self.collect_blocks(next_fun, builder);
                             builder.ins().jump(blocks[0].1, &*arg_buffer);
                             let return_block = builder.create_block();
                             let sig = &self.state.rfuns[next_fun].ir_signature;
                             if sig.returns.len() > 0 {
-                                builder.append_block_param(return_block, sig.returns[0].value_type);
+                                let value = builder.append_block_param(return_block, sig.returns[0].value_type);
+                                let return_value = self.inst(*current_fun, inlined_fun).value.unwrap();
+                                self.wrap_val(*current_fun, return_value, value);             
                             }
+                            *current_inst = Some(self.state.rfuns[*current_fun].body.insts.next(inlined_fun).unwrap());
                             stack.push((next_fun, blocks, 0, None, Some(return_block)));
                             continue'o;
                         }
@@ -214,13 +217,11 @@ impl<'a> Generator<'a> {
                     }
                 }
                 *current_block += 1;
+                *current_inst = None;
             }
 
-            if let (&mut Some(return_block), &mut Some(current_inst)) = (return_block, current_inst) {
+            if let &mut Some(return_block) = return_block {
                 builder.switch_to_block(return_block);
-                if let Some(return_value) = self.inst(*current_fun, current_inst).value {
-                    self.wrap_val(fun, return_value, builder.block_params(return_block)[0]);
-                }
             }
             
             stack.pop().unwrap();

@@ -15,3 +15,11 @@ struct IntOption:
 
 struct SomeArray:
   a: [int, 8]
+
+struct Interface:
+  value: uint
+  add: fun(uint)
+  sub: fun(uint)
+  mul: fun(uint)
+  div: fun(uint)
+  get: fun -> uint

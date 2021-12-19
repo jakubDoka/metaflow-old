@@ -1,6 +1,0 @@
-
-let a = 1
-attr entry
-fun main -> int:
-  return a - 1
-    

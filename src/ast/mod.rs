@@ -175,7 +175,7 @@ impl<'a> AParser<'a> {
         let mut ast = self.ast(AKind::Group);
         while self.state.token.kind != TKind::Eof {
             match self.state.token.kind {
-                TKind::Fun => ast.push(self.fun()?),
+                TKind::Fun => ast.push(self.fun(false)?),
                 TKind::Attr => ast.push(self.attr()?),
                 TKind::Struct => ast.push(self.struct_declaration()?),
                 TKind::Var | TKind::Let => ast.push(self.var_statement(true)?),
@@ -283,42 +283,54 @@ impl<'a> AParser<'a> {
         Ok(ast)
     }
 
-    fn fun(&mut self) -> Result<Ast> {
+    fn fun(&mut self, anonymous: bool) -> Result<Ast> {
         let mut ast = self.ast(AKind::None);
-        let (header, visibility) = self.fun_header()?;
+        let (header, visibility) = self.fun_header(anonymous)?;
         ast.push(header);
         ast.kind = AKind::Fun(visibility);
-        ast.push(if self.state.token == TKind::Colon {
+
+        ast.push(if self.state.token == TKind::Colon && !self.state.is_type_expr {
             self.stmt_block()?
         } else {
             Ast::none()
         });
+        
 
         self.join_token(&mut ast.token);
 
         Ok(ast)
     }
 
-    fn fun_header(&mut self) -> Result<(Ast, Vis)> {
+    fn fun_header(&mut self, anonymous: bool) -> Result<(Ast, Vis)> {
         let mut ast = self.ast(AKind::FunHeader);
         self.next()?;
 
-        let visibility = self.visibility()?;
+        let visibility = if anonymous {
+            Vis::None
+        } else {
+            self.visibility()?
+        };
 
+        let previous = self.state.is_type_expr;
         self.state.is_type_expr = true;
         ast.push(match self.state.token.kind {
-            TKind::Ident | TKind::Op => self.ident_expr()?,
+            TKind::Ident | TKind::Op if !anonymous => self.ident_expr()?,
             _ => Ast::none(),
         });
-        self.state.is_type_expr = false;
+        self.state.is_type_expr = previous;
 
         if self.state.token == TKind::LPar {
+            let parser = if self.state.is_type_expr {
+                Self::expr
+            } else {
+                Self::fun_argument
+            };
             self.list(
                 &mut ast,
                 TKind::LPar,
                 TKind::Comma,
                 TKind::RPar,
-                Self::fun_argument,
+                parser,
             )?;
         }
 
@@ -603,6 +615,7 @@ impl<'a> AParser<'a> {
                 self.list(&mut ast, TKind::LBra, TKind::Comma, TKind::RBra, Self::expr)?;
                 return Ok(ast);
             }
+            TKind::Fun => return self.fun(true),
             _ => todo!("unmatched simple expr pattern {:?}", self.state.token),
         };
 

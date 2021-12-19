@@ -128,7 +128,7 @@ impl<'a> TParser<'a> {
                 TKind::Array(element, size) => {
                     self.state.types[ty].size = size * self.state.types[element].size;
                 }
-                TKind::Pointer(..) | TKind::Builtin(_) => (),
+                TKind::Pointer(..) | TKind::Builtin(..) | TKind::FunPointer(..) => (),
                 _ => unreachable!("{:?}", ty_ent.kind),
             }
         }
@@ -269,8 +269,60 @@ impl<'a> TParser<'a> {
             AKind::Ref => self.resolve_pointer(module, ast, depth),
             AKind::Array => self.resolve_array(module, ast, depth),
             AKind::Lit => self.resolve_constant(module, &ast.token),
+            AKind::Fun(..) => self.resolve_function_pointer(module, ast, depth),
             _ => unreachable!("{:?}", ast.kind),
         }
+    }
+
+    fn resolve_function_pointer(&mut self, module: Mod, ast: &Ast, depth: usize) -> Result<(Mod, Type)> {
+        let mut args = self.context.pool.get();
+
+        let ast = &ast[0];
+
+        let mut id = TYPE_SALT.add(ID::new("fun"));
+
+        for arg in ast[1..ast.len() - 1].iter() {
+            let (_, ty) = self.resolve_type(module, arg, depth)?;
+            id = id.add(self.state.types[ty].id);
+            args.push(ty);
+        }
+
+        let ret = if ast[ast.len() - 1].kind != AKind::None {
+            let (_, ty) = self.resolve_type(module, &ast[ast.len() - 1], depth)?;
+            id = id.add(ID::new("->")).add(self.state.types[ty].id);
+            Some(ty)
+        } else {
+            None
+        };
+
+        if let Some(&id) = self.state.types.index(id) {
+            return Ok((module, id));
+        }
+
+        let fun = FunPointerEnt {
+            args: args.clone(),
+            ret,
+        };
+        let fun = self.state.fun_pointers.add(fun);
+        
+        let size = ptr_ty().bytes() as u32;
+        let type_ent = TypeEnt {
+            kind: TKind::FunPointer(fun),
+            params: vec![],
+            hint: ast.token.clone(),
+            id,
+            module,
+            visibility: Vis::None,
+            name: ast.token.spam.clone(),
+            attr_id: usize::MAX,
+            size,
+            align: size,
+        };
+
+        let (shadowed, id) = self.state.types.insert(id, type_ent);
+        debug_assert!(shadowed.is_none());
+
+        Ok((module, id))
     }
 
     fn resolve_array(&mut self, module: Mod, ast: &Ast, depth: usize) -> Result<(Mod, Type)> {
@@ -367,7 +419,7 @@ impl<'a> TParser<'a> {
             kind: TKind::Unresolved(ast_id),
             name: ty_ent.name.clone(),
             hint: ast.token.clone(),
-            attribute_id: ty_ent.attribute_id,
+            attr_id: ty_ent.attr_id,
             size: 0,
             align: 0,
         };
@@ -459,7 +511,7 @@ impl<'a> TParser<'a> {
                         module,
                         kind,
                         name: ident.token.spam.clone(),
-                        attribute_id: i,
+                        attr_id: i,
                         hint: hint.clone(),
                         size: 0,
                         align: 0,
@@ -505,7 +557,7 @@ impl<'a> TParser<'a> {
             name: Spam::default(),
             hint: Token::default(),
             module,
-            attribute_id: 0,
+            attr_id: 0,
             size: 8,
             align: 8,
         };
@@ -582,6 +634,14 @@ impl<'a> TreeStorage<Type> for TParser<'a> {
                 structure.fields[idx].ty
             }
             TKind::Array(ty, _) => ty,
+            TKind::FunPointer(id) => {
+                let fun = &self.state.fun_pointers[id];
+                if idx == fun.args.len() {
+                    fun.ret.unwrap()
+                } else {
+                    fun.args[idx]
+                }
+            },
             _ => unreachable!("{:?}", node.kind),
         }
     }
@@ -592,6 +652,10 @@ impl<'a> TreeStorage<Type> for TParser<'a> {
         match node.kind {
             _ if node.module != self.module || node.size != 0 => 0,
             TKind::Builtin(_) | TKind::Pointer(..) => 0,
+            TKind::FunPointer(id) => {
+                let fun = &self.state.fun_pointers[id];
+                fun.args.len() + fun.ret.is_some() as usize
+            }
             TKind::Array(..) => 1,
             TKind::Structure(id) => self.state.stypes[id].fields.len(),
             TKind::Generic(_) | TKind::Unresolved(_) | TKind::Const(_) => unreachable!(),
@@ -605,7 +669,7 @@ impl<'a> TreeStorage<Type> for TParser<'a> {
 
 crate::index_pointer!(Type);
 
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Clone)]
 pub struct TypeEnt {
     pub id: ID,
     pub module: Mod,
@@ -614,9 +678,26 @@ pub struct TypeEnt {
     pub kind: TKind,
     pub name: Spam,
     pub hint: Token,
-    pub attribute_id: usize,
+    pub attr_id: usize,
     pub size: u32,
     pub align: u32,
+}
+
+impl Default for TypeEnt {
+    fn default() -> Self {
+        Self {
+            id: ID::new(""),
+            module: Mod::new(0),
+            visibility: Vis::Public,
+            params: vec![],
+            kind: TKind::Unresolved(GAst::new(0)),
+            name: Spam::default(),
+            hint: Token::default(),
+            attr_id: usize::MAX,
+            size: 0,
+            align: 0,
+        }
+    }
 }
 
 impl TypeEnt {
@@ -627,8 +708,13 @@ impl TypeEnt {
     pub fn repr(&self) -> CrType {
         match self.kind {
             TKind::Builtin(ty) => ty,
-            TKind::Structure(..) | TKind::Pointer(..) | TKind::Array(..) => ptr_ty(),
-            TKind::Generic(..) | TKind::Unresolved(..) | TKind::Const(..) => unreachable!(),
+            TKind::Structure(..) | 
+            TKind::Pointer(..) |
+            TKind::FunPointer(..) | 
+            TKind::Array(..) => ptr_ty(),
+            TKind::Generic(..) | 
+            TKind::Unresolved(..) | 
+            TKind::Const(..) => unreachable!(),
         }
     }
 }
@@ -638,6 +724,7 @@ pub enum TKind {
     Builtin(CrType),
     Pointer(Type),
     Array(Type, u32),
+    FunPointer(FunPointer),
     Const(TypeConst),
     Structure(SType),
     Generic(GAst),
@@ -648,6 +735,14 @@ impl Default for TKind {
     fn default() -> Self {
         TKind::Builtin(ptr_ty())
     }
+}
+
+super::index_pointer!(FunPointer);
+
+#[derive(Debug, Clone)]
+pub struct FunPointerEnt {
+    args: Vec<Type>,
+    ret: Option<Type>,
 }
 
 #[derive(Debug, Clone)]
@@ -714,6 +809,7 @@ pub struct TState {
     pub types: Table<Type, TypeEnt>,
     pub asts: ReusableList<GAst, Ast>,
     pub stypes: List<SType, STypeEnt>,
+    pub fun_pointers: List<FunPointer, FunPointerEnt>,
     pub mt_state: MTState,
     pub unresolved: Vec<(Type, usize)>,
     pub resolved: Vec<Type>,
@@ -733,6 +829,7 @@ impl Default for TState {
             unresolved: vec![],
             resolved: vec![],
             parsed_ast: Ast::default(),
+            fun_pointers: List::new(),
         };
 
         s.builtin_repo = BuiltinRepo::new(&mut s);
@@ -778,7 +875,7 @@ macro_rules! define_repo {
                         hint: Token::new(LTKind::Ident, name.clone(), LineData::default()),
                         name,
                         params: vec![],
-                        attribute_id: 0,
+                        attr_id: 0,
                     };
                     let (_, $name) = state.types.insert(id, type_ent);
                 )+
@@ -848,6 +945,14 @@ impl<'a> std::fmt::Display for TypeDisplay<'a> {
             }
             TKind::Array(id, len) => {
                 write!(f, "[{}, {}]", Self::new(self.state, *id), len)
+            }
+            &TKind::FunPointer(id) => {
+                let fun = &self.state.fun_pointers[id];
+                write!(f, "fn({})", fun.args.iter().map(|id| format!("{}", Self::new(self.state, *id))).collect::<Vec<_>>().join(", "))?;
+                if let Some(ret) = fun.ret {
+                    write!(f, " -> {}", Self::new(self.state, ret))?;
+                }
+                Ok(())
             }
         }
     }

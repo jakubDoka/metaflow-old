@@ -391,7 +391,9 @@ impl<'a> FParser<'a> {
         let f = self.state.rfuns.add(r_ent);
         self.state.funs[fun].kind = FKind::Represented(f);
 
-        self.state.represented.push(fun);
+        if !inline {
+            self.state.represented.push(fun);
+        }
 
         Ok(())
     }

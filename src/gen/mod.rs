@@ -466,6 +466,25 @@ fun main -> int:
     "#,
         0,
     );
+    test_sippet(
+        r#"
+attr inline
+fun something(a, b: int) -> int:
+  return (a + b) - 2 * a
+
+attr inline
+fun even_worse(a, b: int) -> int:
+  if a > b:
+    return something(a, b)
+  else:
+    return something(b, a)
+
+attr entry
+fun main -> int:
+  return even_worse(1, 1)
+    "#,
+        0,
+    );
 
     std::fs::remove_file("src/gen/test_project/root.mf").unwrap_or(());
     std::fs::remove_file("test_project.exe").unwrap_or(());
