@@ -1,6 +1,8 @@
 fun goo[T](x: T) -> T: x
 
-fun ++[T](a, b: T) -> T: a + b
+
+impl int:
+  fun ++(a, b: Self) -> Self: a + b
 
 struct Fun:
   a: i32
@@ -111,20 +113,23 @@ fun main -> int:
 struct Vec:
   x, y: f32
 
-fun +(a, b: Vec) -> Vec:
-  var v: Vec
-  v.x = a.x + b.x
-  v.y = a.y + b.y
-  v
+impl Vec:
+  fun +(a, b: Vec) -> Vec:
+    var v: Vec
+    v.x = a.x + b.x
+    v.y = a.y + b.y
+    v
 
 struct Seq[T]:
   len, cap: i32
   data: &T
 
+impl[T] Seq[T]:
+  fun push(seq: &Self, x: T): pass
+
 struct Embedded[T]:
   embed vec: Seq[T]
 
-fun push[T](seq: &Seq[T], x: T): pass
 
 fun something -> Embedded[i64]:
   var a, b: Vec
@@ -158,6 +163,6 @@ fun arrays -> int:
   loop:
     if i >= a.len():
       break
-    a[i] = b[i]
+    (&a)[i] = b[i]
     i += 1
   return 0

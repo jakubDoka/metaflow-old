@@ -712,6 +712,14 @@ impl TypeEnt {
             TKind::Generic(..) | TKind::Unresolved(..) | TKind::Const(..) => unreachable!(),
         }
     }
+
+    pub fn base(&self) -> Option<Type> {
+        if let TKind::Array(..) = self.kind {
+            Some(Type::new(13))
+        } else {
+            self.params.first().cloned()
+        }
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -880,7 +888,7 @@ macro_rules! define_repo {
                 }
             }
 
-            pub fn type_list(&self) -> [Type; 13] {
+            pub fn type_list(&self) -> [Type; 14] {
                 [
                     $(self.$name,)+
                 ]
@@ -902,7 +910,8 @@ define_repo!(
     f64, F64, 8;
     bool, B1, 1;
     int, ptr_ty(), ptr_ty().bytes() as u32;
-    uint, ptr_ty(), ptr_ty().bytes() as u32
+    uint, ptr_ty(), ptr_ty().bytes() as u32;
+    array, INVALID, 0
 );
 
 pub struct TypeDisplay<'a> {

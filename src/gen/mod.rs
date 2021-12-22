@@ -14,7 +14,7 @@ use crate::{
     cli::Arguments,
     functions::{FError, FErrorDisplay, Program},
     lexer::{Token, TokenDisplay},
-    module_tree::{MTError, MTErrorDisplay, MTParser},
+    module_tree::{MTError, MTErrorDisplay, MTParser}, collector::Collector, ast::AParser, types::{TError, TEKind},
 };
 
 use super::*;
@@ -120,13 +120,29 @@ pub fn generate_obj_file(args: &Arguments) -> Result<Vec<u8>> {
     MTParser::new(&mut state, &mut context)
         .parse(&args[0])
         .map_err(|err| GEKind::MTError(err).into())?;
+      
+    let mut collector = Collector::default();
 
-    for i in (0..state.module_order.len()).rev() {
-        let module = state.module_order[i];
-        Generator::new(&mut program, &mut state, &mut context).generate(module)?
+    for module in std::mem::take(&mut state.module_order).drain(..).rev() {
+        let mut ast = std::mem::take(&mut state.modules[module].ast);
+
+        let mut ast = AParser::new(&mut state, &mut ast, &mut context)
+            .parse()
+            .map_err(|err| TError::new(TEKind::AError(err), Token::default()))
+            .unwrap();
+
+        collector.clear(&mut context);
+        collector.parse(&mut state, &mut ast);
+
+        context.recycle(ast);
+
+        Generator::new(&mut program, &mut state, &mut context, &mut collector)
+            .generate(module)
+            .map_err(|e| println!("{}", GErrorDisplay::new(&mut state, &e)))
+            .unwrap();
     }
 
-    Generator::new(&mut program, &mut state, &mut context).finalize()?;
+    Generator::new(&mut program, &mut state, &mut context, &mut collector).finalize()?;
 
     Ok(program.module.finish().emit().unwrap())
 }
@@ -283,11 +299,12 @@ fun main -> int:
 struct Point:
   x, y: int
 
-fun set(p: Point, x: int, y: int) -> Point:
-  var p = p
-  p.x = x
-  p.y = y
-  return p
+impl Point:
+  fun set(p: Self, x: int, y: int) -> Self:
+    var p = p
+    p.x = x
+    p.y = y
+    return p
 
 attr entry
 fun main -> int:
@@ -304,7 +321,7 @@ fun main -> int:
   var a: int
   ++a
   --a
-  return int(!true) + ~1 + 2 + abs -1 - 1 + a
+  return bool::int(!true) + ~1 + 2 + abs -1 - 1 + a
         "#,
         0,
     );
@@ -317,7 +334,7 @@ fun main -> int:
     a = a + 1.0
     if a > 100.0:
       break
-  return int(a) - 101
+  return f64::int(a) - 101
         "#,
         0,
     );
@@ -346,16 +363,17 @@ fun main -> int:
 struct Point:
   x, y: int
 
-fun init(v: &Point, x: int, y: int) -> Point:
-  (*v).x = x
-  (*v).y = y
-  pass
+impl Point:
+  fun init(v: &Point, x: int, y: int) -> Point:
+    (*v).x = x
+    (*v).y = y
+    pass
 
 attr entry
 fun main -> int:
   var p: Point
   p.init(2, 2)
-  return p.x - p.y
+  return p.x + p.y - 4
         "#,
         0,
     );
@@ -398,7 +416,7 @@ fun main -> int:
   eb.g = 7i8
   eb.h = 8i8
 
-  return int(eb.a + eb.h + eb.g + eb.f + eb.e + eb.d + eb.c + eb.b - 4i8 * 9i8)
+  return u8::int(eb.a + eb.h + eb.g + eb.f + eb.e + eb.d + eb.c + eb.b - 4i8 * 9i8)
   "#,
         0,
     );

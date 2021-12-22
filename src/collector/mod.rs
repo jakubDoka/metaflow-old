@@ -1,12 +1,11 @@
 use std::ops::Range;
 
 use crate::{
-    ast::{AKind, AMainState, Ast, AstDisplay, AContext},
-    types::TYPE_SALT,
+    ast::{AContext, AKind, AMainState, Ast, AstDisplay},
     util::{
         sdbm::ID,
         storage::{IndexPointer, List, ReusableList},
-    },
+    }, lexer::TokenDisplay,
 };
 
 crate::index_pointer!(Attr);
@@ -36,12 +35,11 @@ pub struct Collector {
 }
 
 impl Collector {
-    pub fn parse(&mut self, l_state: &AMainState, ast: &mut Vec<Ast>) {
+    pub fn parse(&mut self, l_state: &AMainState, ast: &mut Ast) {
         for mut item in ast.drain(..) {
             match item.kind {
                 AKind::Fun(_)
                 | AKind::Impl(_)
-                | AKind::FunHeader
                 | AKind::VarStatement(_, _)
                 | AKind::StructDeclaration(_) => {
                     let start = self.marker;
@@ -53,14 +51,16 @@ impl Collector {
                         attrs: Attrs(start..end, false),
                         ast: item,
                     };
-
+                    
                     match item.ast.kind {
                         AKind::Impl(_) => {
                             let scope = ScopeEnt {
                                 attributes: self.to_permanent(item.attrs),
                                 params: item.ast[0]
                                     .iter()
-                                    .map(|param| TYPE_SALT.add(param.token.spam.hash))
+                                    .map(|param| {
+                                        param.token.spam.hash
+                                    })
                                     .collect(),
                                 ty: std::mem::take(&mut item.ast[1]),
                             };
@@ -87,7 +87,8 @@ impl Collector {
                                 self.stack.push(self.attributes.add((attr, false)));
                             }
                         } else {
-                            self.attributes.add((attr, false));
+                            let id = self.attributes.add((attr, false));
+                            self.ordering.push(id);
                         }
                     }
                 }
@@ -101,8 +102,7 @@ impl Collector {
     }
 
     pub fn attr_id(&self, attrs: &Attrs, hash: ID) -> Option<Attr> {
-        self
-            .attrs(attrs)
+        self.attrs(attrs)
             .iter()
             .find(|&&attr| self.attributes[attr].0[0].token.spam.hash == hash)
             .copied()
@@ -145,11 +145,13 @@ impl Collector {
     }
 
     pub fn clear(&mut self, ctx: &mut AContext) {
-        self.attributes.retain(|attr| if attr.1 {
-            true
-        } else {
-            ctx.recycle(std::mem::take(&mut attr.0));
-            false
+        self.attributes.retain(|attr| {
+            if attr.1 {
+                true
+            } else {
+                ctx.recycle(std::mem::take(&mut attr.0));
+                false
+            }
         });
 
         self.globals.clear();

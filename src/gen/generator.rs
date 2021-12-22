@@ -22,7 +22,7 @@ use crate::{
     lexer::{Spam, TKind as LTKind, Token},
     module_tree::Mod,
     types::{self, ptr_ty, TKind, Type, TypeDisplay, TypeEnt},
-    util::{pool::PoolRef, sdbm::SdbmHash, storage::IndexPointer},
+    util::{pool::PoolRef, sdbm::SdbmHash, storage::IndexPointer}, collector::Collector,
 };
 
 use super::{GEKind, GError};
@@ -35,19 +35,21 @@ pub struct Generator<'a> {
     program: &'a mut Program,
     state: &'a mut FState,
     context: &'a mut GContext,
+    collector: &'a mut Collector,
 }
 
 impl<'a> Generator<'a> {
-    pub fn new(program: &'a mut Program, state: &'a mut GState, context: &'a mut GContext) -> Self {
+    pub fn new(program: &'a mut Program, state: &'a mut GState, context: &'a mut GContext, collector: &'a mut Collector) -> Self {
         Self {
             program,
             state,
             context,
+            collector,
         }
     }
 
     pub fn generate(&mut self, module: Mod) -> Result {
-        FParser::new(self.program, self.state, self.context)
+        FParser::new(self.program, self.state, self.context, self.collector)
             .parse(module)
             .map_err(|err| GError::new(GEKind::FunError(err), Token::default()))?;
 
@@ -59,11 +61,10 @@ impl<'a> Generator<'a> {
     }
 
     pub fn finalize(&mut self) -> Result {
-        FParser::new(self.program, self.state, self.context)
+        FParser::new(self.program, self.state, self.context, self.collector)
             .finalize()
             .map_err(|err| GError::new(GEKind::FunError(err), Token::default()))?;
 
-        println!("{:?}", self.state.represented);
         self.make_bodies()?;
 
         Ok(())
@@ -98,7 +99,7 @@ impl<'a> Generator<'a> {
         let mut represented = std::mem::take(&mut self.state.represented);
 
         for fun in represented.drain(..) {
-            println!("{}", crate::functions::FunDisplay::new(&self.state, fun));
+            crate::test_println!("{}", crate::functions::FunDisplay::new(&self.state, fun));
 
             let fun = &self.state.funs[fun];
             let rid = fun.kind.unwrap_represented();
@@ -118,8 +119,6 @@ impl<'a> Generator<'a> {
                 continue;
             }
 
-            println!("{:?}", rid);
-
             ctx.func.signature = std::mem::replace(
                 &mut self.state.rfuns[rid].ir_signature,
                 Signature::new(CallConv::Fast),
@@ -137,7 +136,7 @@ impl<'a> Generator<'a> {
 
             builder.finalize();
 
-            println!("{}", ctx.func.display());
+            crate::test_println!("{}", ctx.func.display());
 
             ctx.compute_cfg();
             ctx.compute_domtree();
@@ -300,7 +299,7 @@ impl<'a> Generator<'a> {
                     arg_buffer.clear();
                     arg_buffer.extend(args);
 
-                    if let &FKind::Builtin(return_type) = &other.kind {
+                    if let &FKind::Builtin(_, return_type) = &other.kind {
                         let name = other.name.clone();
                         self.call_builtin(fun, name, return_type, &arg_buffer, value, builder);
                     } else if other.module == Mod::new(0)

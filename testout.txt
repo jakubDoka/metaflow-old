@@ -1638,22 +1638,23 @@ Group "\n":
  Impl(None) "impl":
   None ""
   Ident "Scope"
-  Fun(None) "fun new -> Self:\r\n    return":
-   FunHeader "fun new -> Self":
-    Ident "new"
-    Ident "Self"
-   Group ":":
-    ReturnStatement "return":
-     None ""
-  Fun(None) "fun do_nothing(s: Self):\r\n    pass":
-   FunHeader "fun do_nothing(s: Self)":
-    Ident "do_nothing"
-    FunArgument(false) "s: Self":
-     Ident "s"
+  Group ":":
+   Fun(None) "fun new -> Self:\r\n    return":
+    FunHeader "fun new -> Self":
+     Ident "new"
      Ident "Self"
-    None ""
-   Group ":":
-    Pass "pass"
+    Group ":":
+     ReturnStatement "return":
+      None ""
+   Fun(None) "fun do_nothing(s: Self):\r\n    pass":
+    FunHeader "fun do_nothing(s: Self)":
+     Ident "do_nothing"
+     FunArgument(false) "s: Self":
+      Ident "s"
+      Ident "Self"
+     None ""
+    Group ":":
+     Pass "pass"
  StructDeclaration(None) "struct":
   Instantiation "Template[T]":
    Ident "Template"
@@ -1665,25 +1666,26 @@ Group "\n":
   Instantiation "Template[T]":
    Ident "Template"
    Ident "T"
-  Fun(None) "fun new -> Self:\r\n    return":
-   FunHeader "fun new -> Self":
-    Ident "new"
-    Ident "Self"
-   Group ":":
-    ReturnStatement "return":
-     None ""
-  Fun(None) "fun do_nothing(s: Self, value: T) -> T:\r\n    value":
-   FunHeader "fun do_nothing(s: Self, value: T) -> T":
-    Ident "do_nothing"
-    FunArgument(false) "s: Self":
-     Ident "s"
+  Group ":":
+   Fun(None) "fun new -> Self:\r\n    return":
+    FunHeader "fun new -> Self":
+     Ident "new"
      Ident "Self"
-    FunArgument(false) "value: T":
-     Ident "value"
+    Group ":":
+     ReturnStatement "return":
+      None ""
+   Fun(None) "fun do_nothing(s: Self, value: T) -> T:\r\n    value":
+    FunHeader "fun do_nothing(s: Self, value: T) -> T":
+     Ident "do_nothing"
+     FunArgument(false) "s: Self":
+      Ident "s"
+      Ident "Self"
+     FunArgument(false) "value: T":
+      Ident "value"
+      Ident "T"
      Ident "T"
-    Ident "T"
-   Group ":":
-    Ident "value"
+    Group ":":
+     Ident "value"
  Fun(None) "fun use_chain:\r\n  module::Type::method::[param]()":
   FunHeader "fun use_chain":
    Ident "use_chain"
@@ -1691,7 +1693,7 @@ Group "\n":
   Group ":":
    Call(false) "module::Type::method::[param]()":
     Instantiation "module::Type::method::[param]":
-     ExplicitPackage "module::Type::method":
+     Path "module::Type::method":
       Ident "module"
       Ident "Type"
       Ident "method"
@@ -1727,7 +1729,7 @@ Group "\n":
   Group ":":
    Call(false) "noo::loo::[i8]()":
     Instantiation "noo::loo::[i8]":
-     ExplicitPackage "noo::loo":
+     Path "noo::loo":
       Ident "noo"
       Ident "loo"
      Ident "i8"
@@ -2046,4 +2048,2048 @@ Group "\n":
     Ident "u8"
   Group ":":
    Lit "\"\r\nhello there\r\n  \""
+
+fun print(str: &u8)
+
+
+fun memset(ptr: &u8, value: u8, size: int)
+
+
+fun free(ptr: &u8)
+
+
+fun realloc(ptr: &u8, size: int) -> &u8
+
+
+fun alloc(size: int) -> &u8
+
+
+fun main -> int
+
+  Inst1[]
+    Value(0): int = Lit(Int(0, 0)) |0
+    Return(Some(Value(0))) |return 0
+
+
+function u0:0() -> i64 fast {
+block0:
+    v0 = iconst.i64 0
+    return v0
+}
+
+
+
+  Inst1[Value(0), Value(1)]
+    Value(2): int = Zeroed |
+    Value(3): int = VarDecl(Value(2)) |
+    Value(4): int = Call(Fun(444), []) |entry
+    Value(4): int = Assign(Value(3)) |entry
+    Return(Some(Value(3))) |
+
+
+function u0:0(i64, i64) -> i64 fast {
+    sig0 = () -> i64 fast
+    fn0 = colocated u0:5 sig0
+
+block0(v0: i64, v1: i64):
+    v5 = iconst.i64 0
+    v3 -> v5
+    v2 = iconst.i64 0
+    v4 = call fn0()
+    return v4
+}
+
+fun print(str: &u8)
+
+
+fun memset(ptr: &u8, value: u8, size: int)
+
+
+fun free(ptr: &u8)
+
+
+fun realloc(ptr: &u8, size: int) -> &u8
+
+
+fun alloc(size: int) -> &u8
+
+
+fun main -> int
+
+  Inst1[]
+    Value(0): int = Lit(Int(1, 0)) |1
+    Value(1): int = Lit(Int(1, 0)) |1
+    Value(2): int = Call(Fun(270), [Value(0), Value(1)]) |1 - 1
+    Return(Some(Value(2))) |return 1 - 1
+
+
+function u0:0() -> i64 fast {
+block0:
+    v0 = iconst.i64 1
+    v1 = iconst.i64 1
+    v2 = isub v0, v1
+    return v2
+}
+
+
+
+  Inst1[Value(0), Value(1)]
+    Value(2): int = Zeroed |
+    Value(3): int = VarDecl(Value(2)) |
+    Value(4): int = Call(Fun(444), []) |entry
+    Value(4): int = Assign(Value(3)) |entry
+    Return(Some(Value(3))) |
+
+
+function u0:0(i64, i64) -> i64 fast {
+    sig0 = () -> i64 fast
+    fn0 = colocated u0:5 sig0
+
+block0(v0: i64, v1: i64):
+    v5 = iconst.i64 0
+    v3 -> v5
+    v2 = iconst.i64 0
+    v4 = call fn0()
+    return v4
+}
+
+fun print(str: &u8)
+
+
+fun memset(ptr: &u8, value: u8, size: int)
+
+
+fun free(ptr: &u8)
+
+
+fun realloc(ptr: &u8, size: int) -> &u8
+
+
+fun alloc(size: int) -> &u8
+
+
+fun main -> int
+
+  Inst1[]
+    Value(0): int = Lit(Int(1, 0)) |1
+    Value(1): int = Lit(Int(1, 0)) |1
+    Value(2): int = Call(Fun(260), [Value(0), Value(1)]) |1 + 1
+    Return(Some(Value(2))) |return 1 + 1
+
+
+function u0:0() -> i64 fast {
+block0:
+    v0 = iconst.i64 1
+    v1 = iconst.i64 1
+    v2 = iadd v0, v1
+    return v2
+}
+
+
+
+  Inst1[Value(0), Value(1)]
+    Value(2): int = Zeroed |
+    Value(3): int = VarDecl(Value(2)) |
+    Value(4): int = Call(Fun(444), []) |entry
+    Value(4): int = Assign(Value(3)) |entry
+    Return(Some(Value(3))) |
+
+
+function u0:0(i64, i64) -> i64 fast {
+    sig0 = () -> i64 fast
+    fn0 = colocated u0:5 sig0
+
+block0(v0: i64, v1: i64):
+    v5 = iconst.i64 0
+    v3 -> v5
+    v2 = iconst.i64 0
+    v4 = call fn0()
+    return v4
+}
+
+fun print(str: &u8)
+
+
+fun memset(ptr: &u8, value: u8, size: int)
+
+
+fun free(ptr: &u8)
+
+
+fun realloc(ptr: &u8, size: int) -> &u8
+
+
+fun alloc(size: int) -> &u8
+
+
+fun main -> int
+
+  Inst1[]
+    Value(0): int = Lit(Int(1, 0)) |1
+    Value(1): int = Lit(Int(1, 0)) |1
+    Value(2): bool = Call(Fun(300), [Value(0), Value(1)]) |1 == 1
+    JumpIfTrue(Value(2), Inst(5), []) |1 == 1
+    Jump(Inst(8), []) |:
+
+  Inst5[]
+    Value(3): int = Lit(Int(0, 0)) |0
+    Jump(Inst(7), [Value(3)]) |if 1 == 1: 0 else: 1
+
+  Inst8[]
+    Value(5): int = Lit(Int(1, 0)) |1
+    Jump(Inst(7), [Value(5)]) |1
+
+  Inst7[Value(4)]
+    Return(Some(Value(4))) |return if 1 == 1: 0 else: 1
+
+
+function u0:0() -> i64 fast {
+block0:
+    v1 = iconst.i64 1
+    v2 = iconst.i64 1
+    v3 = icmp eq v1, v2
+    brnz v3, block1
+    jump block2
+
+block1:
+    v4 = iconst.i64 0
+    jump block3(v4)
+
+block2:
+    v5 = iconst.i64 1
+    jump block3(v5)
+
+block3(v0: i64):
+    return v0
+}
+
+
+
+  Inst1[Value(0), Value(1)]
+    Value(2): int = Zeroed |
+    Value(3): int = VarDecl(Value(2)) |
+    Value(4): int = Call(Fun(444), []) |entry
+    Value(4): int = Assign(Value(3)) |entry
+    Return(Some(Value(3))) |
+
+
+function u0:0(i64, i64) -> i64 fast {
+    sig0 = () -> i64 fast
+    fn0 = colocated u0:5 sig0
+
+block0(v0: i64, v1: i64):
+    v5 = iconst.i64 0
+    v3 -> v5
+    v2 = iconst.i64 0
+    v4 = call fn0()
+    return v4
+}
+
+fun print(str: &u8)
+
+
+fun memset(ptr: &u8, value: u8, size: int)
+
+
+fun free(ptr: &u8)
+
+
+fun realloc(ptr: &u8, size: int) -> &u8
+
+
+fun alloc(size: int) -> &u8
+
+
+fun main -> i32
+
+  Inst1[]
+    Value(0): i32 = Lit(Int(10, 32)) |10i32
+    Value(1): i32 = VarDecl(Value(0)) |v = 10i32
+    Value(2): i32 = Call(Fun(445), [Value(1)]) |fib_loop(v)
+    Value(3): i32 = Call(Fun(444), [Value(1)]) |fib(v)
+    Value(4): i32 = Call(Fun(264), [Value(2), Value(3)]) |fib_loop(v) - fib(v)
+    Return(Some(Value(4))) |return fib_loop(v) - fib(v)
+
+
+function u0:0() -> i32 fast {
+    sig0 = (i32) -> i32 fast
+    sig1 = (i32) -> i32 fast
+    fn0 = colocated u0:6 sig0
+    fn1 = colocated u0:7 sig1
+
+block0:
+    v0 = iconst.i32 10
+    v1 = call fn0(v0)
+    v2 = call fn1(v0)
+    v3 = isub v1, v2
+    return v3
+}
+
+fun fib_loop(v: i32) -> i32
+
+  Inst1[Value(0)]
+    Value(1): i32 = Lit(Int(1, 32)) |1i32
+    Value(2): i32 = VarDecl(Value(1)) |a, b, c = 1i32
+    Value(3): i32 = VarDecl(Value(2)) |a, b, c = 1i32
+    Value(4): i32 = VarDecl(Value(2)) |a, b, c = 1i32
+    Value(5): i32 = VarDecl(Value(0)) |v = v
+    Jump(Inst(7), []) |loop'a:
+    c = a + b
+    a = b
+    b = c
+    v = v - 1i32
+    if v == 1i32:
+      break'a
+
+  Inst7[]
+    Value(6): i32 = Call(Fun(254), [Value(2), Value(3)]) |a + b
+    Value(6): i32 = Assign(Value(4)) |c = a + b
+    Value(3): i32 = Assign(Value(2)) |a = b
+    Value(4): i32 = Assign(Value(3)) |b = c
+    Value(7): i32 = Lit(Int(1, 32)) |1i32
+    Value(8): i32 = Call(Fun(264), [Value(5), Value(7)]) |v - 1i32
+    Value(8): i32 = Assign(Value(5)) |v = v - 1i32
+    Value(9): i32 = Lit(Int(1, 32)) |1i32
+    Value(10): bool = Call(Fun(294), [Value(5), Value(9)]) |v == 1i32
+    JumpIfTrue(Value(10), Inst(20), []) |v == 1i32
+    Jump(Inst(22), []) |
+
+  Inst20[]
+    Jump(Inst(8), []) |break'a
+
+  Inst22[]
+    Jump(Inst(7), []) |loop'a:
+    c = a + b
+    a = b
+    b = c
+    v = v - 1i32
+    if v == 1i32:
+      break'a
+
+  Inst8[]
+    Return(Some(Value(4))) |return c
+
+
+function u0:0(i32) -> i32 fast {
+block0(v0: i32):
+    v19 = iconst.i32 0
+    v5 -> v19
+    v18 = iconst.i32 0
+    v4 -> v18
+    v17 = iconst.i32 0
+    v3 -> v17
+    v16 = iconst.i32 0
+    v2 -> v16
+    v1 = iconst.i32 1
+    jump block1(v1, v1, v1, v0)
+
+block1(v6: i32, v7: i32, v9: i32, v11: i32):
+    v20 -> v7
+    v8 = iadd v6, v7
+    v15 -> v8
+    v21 -> v8
+    v22 -> v8
+    v10 = iconst.i32 1
+    v12 = isub v11, v10
+    v23 -> v12
+    v13 = iconst.i32 1
+    v14 = icmp eq v12, v13
+    brnz v14, block2
+    jump block3
+
+block2:
+    jump block4
+
+block3:
+    jump block1(v20, v21, v22, v23)
+
+block4:
+    return v15
+}
+
+fun fib(v: i32) -> i32
+
+  Inst1[Value(0)]
+    Value(1): i32 = Lit(Int(2, 32)) |2i32
+    Value(2): bool = Call(Fun(344), [Value(0), Value(1)]) |v < 2i32
+    JumpIfTrue(Value(2), Inst(4), []) |v < 2i32
+    Jump(Inst(7), []) |:
+
+  Inst4[]
+    Value(3): i32 = Lit(Int(1, 32)) |1i32
+    Jump(Inst(6), [Value(3)]) |if v < 2i32:
+    1i32
+  else:
+    fib(v - 1i32) + fib(v - 2i32)
+
+  Inst7[]
+    Value(5): i32 = Lit(Int(1, 32)) |1i32
+    Value(6): i32 = Call(Fun(264), [Value(0), Value(5)]) |v - 1i32
+    Value(7): i32 = Call(Fun(444), [Value(6)]) |fib(v - 1i32)
+    Value(8): i32 = Lit(Int(2, 32)) |2i32
+    Value(9): i32 = Call(Fun(264), [Value(0), Value(8)]) |v - 2i32
+    Value(10): i32 = Call(Fun(444), [Value(9)]) |fib(v - 2i32)
+    Value(11): i32 = Call(Fun(254), [Value(7), Value(10)]) |fib(v - 1i32) + fib(v - 2i32)
+    Jump(Inst(6), [Value(11)]) |fib(v - 1i32) + fib(v - 2i32)
+
+  Inst6[Value(4)]
+    Return(Some(Value(4))) |return if v < 2i32:
+    1i32
+  else:
+    fib(v - 1i32) + fib(v - 2i32)
+
+
+function u0:0(i32) -> i32 fast {
+    sig0 = (i32) -> i32 fast
+    sig1 = (i32) -> i32 fast
+    fn0 = colocated u0:7 sig0
+    fn1 = colocated u0:7 sig1
+
+block0(v0: i32):
+    v2 = iconst.i32 2
+    v3 = icmp slt v0, v2
+    brnz v3, block1
+    jump block2
+
+block1:
+    v4 = iconst.i32 1
+    jump block3(v4)
+
+block2:
+    v5 = iconst.i32 1
+    v6 = isub.i32 v0, v5
+    v7 = call fn0(v6)
+    v8 = iconst.i32 2
+    v9 = isub.i32 v0, v8
+    v10 = call fn1(v9)
+    v11 = iadd v7, v10
+    jump block3(v11)
+
+block3(v1: i32):
+    return v1
+}
+
+
+
+  Inst1[Value(0), Value(1)]
+    Value(2): int = Zeroed |
+    Value(3): int = VarDecl(Value(2)) |
+    Value(4): i32 = Call(Fun(446), []) |entry
+    Return(Some(Value(3))) |
+
+
+function u0:0(i64, i64) -> i64 fast {
+    sig0 = () -> i32 fast
+    fn0 = colocated u0:5 sig0
+
+block0(v0: i64, v1: i64):
+    v5 = iconst.i64 0
+    v3 -> v5
+    v2 = iconst.i64 0
+    v4 = call fn0()
+    return v2
+}
+
+fun print(str: &u8)
+
+
+fun memset(ptr: &u8, value: u8, size: int)
+
+
+fun free(ptr: &u8)
+
+
+fun realloc(ptr: &u8, size: int) -> &u8
+
+
+fun alloc(size: int) -> &u8
+
+
+fun main -> int
+
+  Inst1[]
+    Value(0): Point = Zeroed |p: Point
+    Value(1): Point = VarDecl(Value(0)) |p: Point
+    Value(2): Point3 = Zeroed |p3: Point3
+    Value(3): Point3 = VarDecl(Value(2)) |p3: Point3
+    Value(4): Rect = Zeroed |r: Rect
+    Value(5): Rect = VarDecl(Value(4)) |r: Rect
+    Value(6): int = Offset(Value(1)) |p.x
+    Value(7): int = Lit(Int(1, 0)) |1
+    Value(7): int = Assign(Value(6)) |p.x = 1
+    Value(8): Point = Offset(Value(3)) |p3.point
+    Value(1): Point = Assign(Value(8)) |p3.point = p
+    Value(9): int = Offset(Value(3)) |p3.y
+    Value(10): int = Lit(Int(2, 0)) |2
+    Value(10): int = Assign(Value(9)) |p3.y = 2
+    Value(11): Point = Offset(Value(5)) |r.mi
+    Value(12): Point = Offset(Value(3)) |p3.point
+    Value(12): Point = Assign(Value(11)) |r.mi = p3.point
+    Value(13): Point = Offset(Value(5)) |r
+    Value(14): int = Offset(Value(13)) |r.mi.x
+    Value(15): Point = Offset(Value(5)) |r
+    Value(16): int = Offset(Value(15)) |r.mi.y
+    Value(17): int = Call(Fun(270), [Value(14), Value(16)]) |r.mi.x - r.mi.y
+    Value(18): int = Lit(Int(1, 0)) |1
+    Value(19): int = Call(Fun(260), [Value(17), Value(18)]) |r.mi.x - r.mi.y + 1
+    Return(Some(Value(19))) |return r.mi.x - r.mi.y + 1
+
+
+function u0:0() -> i64 fast {
+    ss0 = explicit_slot 16
+    ss1 = explicit_slot 24
+    ss2 = explicit_slot 32
+
+block0:
+    v0 = iconst.i64 0
+    stack_store v0, ss0
+    stack_store v0, ss0+8
+    v1 = iconst.i64 0
+    stack_store v1, ss1
+    stack_store v1, ss1+8
+    stack_store v1, ss1+16
+    v2 = iconst.i64 0
+    stack_store v2, ss2
+    stack_store v2, ss2+8
+    stack_store v2, ss2+16
+    stack_store v2, ss2+24
+    v3 = iconst.i64 1
+    stack_store v3, ss0
+    v4 = stack_load.i64 ss0
+    stack_store v4, ss1
+    v5 = stack_load.i64 ss0+8
+    stack_store v5, ss1+8
+    v6 = iconst.i64 2
+    stack_store v6, ss1+8
+    v7 = stack_load.i64 ss1
+    stack_store v7, ss2
+    v8 = stack_load.i64 ss1+8
+    stack_store v8, ss2+8
+    v9 = stack_load.i64 ss2
+    v10 = stack_load.i64 ss2+8
+    v11 = isub v9, v10
+    v12 = iconst.i64 1
+    v13 = iadd v11, v12
+    return v13
+}
+
+
+
+  Inst1[Value(0), Value(1)]
+    Value(2): int = Zeroed |
+    Value(3): int = VarDecl(Value(2)) |
+    Value(4): int = Call(Fun(444), []) |entry
+    Value(4): int = Assign(Value(3)) |entry
+    Return(Some(Value(3))) |
+
+
+function u0:0(i64, i64) -> i64 fast {
+    sig0 = () -> i64 fast
+    fn0 = colocated u0:5 sig0
+
+block0(v0: i64, v1: i64):
+    v5 = iconst.i64 0
+    v3 -> v5
+    v2 = iconst.i64 0
+    v4 = call fn0()
+    return v4
+}
+
+fun print(str: &u8)
+
+
+fun memset(ptr: &u8, value: u8, size: int)
+
+
+fun free(ptr: &u8)
+
+
+fun realloc(ptr: &u8, size: int) -> &u8
+
+
+fun alloc(size: int) -> &u8
+
+
+fun main -> int
+
+  Inst1[]
+    Value(0): Point = Zeroed |p, q: Point
+    Value(1): Point = VarDecl(Value(0)) |p, q: Point
+    Value(2): Point = Zeroed |p, q: Point
+    Value(3): Point = VarDecl(Value(2)) |p, q: Point
+    Value(4): int = Lit(Int(1, 0)) |1
+    Value(5): int = Lit(Int(2, 0)) |2
+    Value(6): Point = Call(Fun(444), [Value(1), Value(4), Value(5), Value(6)]) |p.set(1, 2)
+    Value(6): Point = Assign(Value(1)) |p = p.set(1, 2)
+    Value(7): int = Offset(Value(1)) |p.x
+    Value(8): int = Offset(Value(1)) |p.y
+    Value(9): int = Call(Fun(260), [Value(7), Value(8)]) |p.x + p.y
+    Value(10): int = Lit(Int(3, 0)) |3
+    Value(11): int = Call(Fun(270), [Value(9), Value(10)]) |p.x + p.y - 3
+    Return(Some(Value(11))) |return p.x + p.y - 3
+
+
+function u0:0() -> i64 fast {
+    ss0 = explicit_slot 16
+    ss1 = explicit_slot 16
+    ss2 = explicit_slot 16
+    sig0 = (i64, i64, i64, i64 sret) -> i64 sret fast
+    fn0 = colocated u0:6 sig0
+
+block0:
+    v0 = iconst.i64 0
+    stack_store v0, ss0
+    stack_store v0, ss0+8
+    v1 = iconst.i64 0
+    stack_store v1, ss1
+    stack_store v1, ss1+8
+    v2 = iconst.i64 1
+    v3 = iconst.i64 2
+    v4 = stack_addr.i64 ss0
+    v5 = stack_addr.i64 ss2
+    v6 = call fn0(v4, v2, v3, v5)
+    v7 = stack_load.i64 ss2
+    stack_store v7, ss0
+    v8 = stack_load.i64 ss2+8
+    stack_store v8, ss0+8
+    v9 = stack_load.i64 ss0
+    v10 = stack_load.i64 ss0+8
+    v11 = iadd v9, v10
+    v12 = iconst.i64 3
+    v13 = isub v11, v12
+    return v13
+}
+
+fun set(p: Self, x: int, y: int) -> Self
+
+  Inst1[Value(0), Value(1), Value(2), Value(3)]
+    Value(4): Point = VarDecl(Value(0)) |p = p
+    Value(5): int = Offset(Value(4)) |p.x
+    Value(1): int = Assign(Value(5)) |p.x = x
+    Value(6): int = Offset(Value(4)) |p.y
+    Value(2): int = Assign(Value(6)) |p.y = y
+    Value(7): Point = Deref(Value(3), false) |return p
+    Value(4): Point = Assign(Value(7)) |return p
+    Return(Some(Value(3))) |return p
+
+
+function u0:0(i64, i64, i64, i64 sret) -> i64 sret fast {
+    ss0 = explicit_slot 16
+
+block0(v0: i64, v1: i64, v2: i64, v3: i64):
+    stack_store v0, ss0
+    stack_store v1, ss0
+    stack_store v2, ss0+8
+    v4 = stack_addr.i64 ss0
+    v5 = load.i64 v4
+    store v5, v3
+    v6 = load.i64 v4+8
+    store v6, v3+8
+    return v3
+}
+
+
+
+  Inst1[Value(0), Value(1)]
+    Value(2): int = Zeroed |
+    Value(3): int = VarDecl(Value(2)) |
+    Value(4): int = Call(Fun(445), []) |entry
+    Value(4): int = Assign(Value(3)) |entry
+    Return(Some(Value(3))) |
+
+
+function u0:0(i64, i64) -> i64 fast {
+    sig0 = () -> i64 fast
+    fn0 = colocated u0:5 sig0
+
+block0(v0: i64, v1: i64):
+    v5 = iconst.i64 0
+    v3 -> v5
+    v2 = iconst.i64 0
+    v4 = call fn0()
+    return v4
+}
+
+fun print(str: &u8)
+
+
+fun memset(ptr: &u8, value: u8, size: int)
+
+
+fun free(ptr: &u8)
+
+
+fun realloc(ptr: &u8, size: int) -> &u8
+
+
+fun alloc(size: int) -> &u8
+
+
+fun main -> int
+
+  Inst1[]
+    Value(0): int = Zeroed |a: int
+    Value(1): int = VarDecl(Value(0)) |a: int
+    Value(2): int = Call(Fun(225), [Value(1)]) |++a
+    Value(3): int = Call(Fun(235), [Value(1)]) |--a
+    Value(4): bool = Lit(Bool(true)) |true
+    Value(5): bool = Call(Fun(251), [Value(4)]) |!true
+    Value(6): int = Call(Fun(165), [Value(5)]) |bool::int(!true)
+    Value(7): int = Lit(Int(1, 0)) |1
+    Value(8): int = Call(Fun(205), [Value(7)]) |~1
+    Value(9): int = Call(Fun(260), [Value(6), Value(8)]) |bool::int(!true) + ~1
+    Value(10): int = Lit(Int(2, 0)) |2
+    Value(11): int = Call(Fun(260), [Value(9), Value(10)]) |bool::int(!true) + ~1 + 2
+    Value(12): int = Lit(Int(1, 0)) |1
+    Value(13): int = Call(Fun(243), [Value(12)]) |-1
+    Value(14): int = Call(Fun(250), [Value(13)]) |abs -1
+    Value(15): int = Call(Fun(260), [Value(11), Value(14)]) |bool::int(!true) + ~1 + 2 + abs -1
+    Value(16): int = Lit(Int(1, 0)) |1
+    Value(17): int = Call(Fun(270), [Value(15), Value(16)]) |bool::int(!true) + ~1 + 2 + abs -1 - 1
+    Value(18): int = Call(Fun(260), [Value(17), Value(1)]) |bool::int(!true) + ~1 + 2 + abs -1 - 1 + a
+    Return(Some(Value(18))) |return bool::int(!true) + ~1 + 2 + abs -1 - 1 + a
+
+
+function u0:0() -> i64 fast {
+block0:
+    v22 = iconst.i64 0
+    v1 -> v22
+    v0 = iconst.i64 0
+    v2 = iadd_imm v0, 1
+    v3 = iadd_imm v2, -1
+    v4 = bconst.b1 true
+    v5 = bint.i8 v4
+    v6 = icmp_imm eq v5, 0
+    v7 = bint.i64 v6
+    v8 = iconst.i64 1
+    v9 = bnot v8
+    v10 = iadd v7, v9
+    v11 = iconst.i64 2
+    v12 = iadd v10, v11
+    v13 = iconst.i64 1
+    v14 = ineg v13
+    v15 = icmp_imm sgt v14, 0
+    v16 = ineg v14
+    v17 = select v15, v14, v16
+    v18 = iadd v12, v17
+    v19 = iconst.i64 1
+    v20 = isub v18, v19
+    v21 = iadd v20, v3
+    return v21
+}
+
+
+
+  Inst1[Value(0), Value(1)]
+    Value(2): int = Zeroed |
+    Value(3): int = VarDecl(Value(2)) |
+    Value(4): int = Call(Fun(444), []) |entry
+    Value(4): int = Assign(Value(3)) |entry
+    Return(Some(Value(3))) |
+
+
+function u0:0(i64, i64) -> i64 fast {
+    sig0 = () -> i64 fast
+    fn0 = colocated u0:5 sig0
+
+block0(v0: i64, v1: i64):
+    v5 = iconst.i64 0
+    v3 -> v5
+    v2 = iconst.i64 0
+    v4 = call fn0()
+    return v4
+}
+
+fun print(str: &u8)
+
+
+fun memset(ptr: &u8, value: u8, size: int)
+
+
+fun free(ptr: &u8)
+
+
+fun realloc(ptr: &u8, size: int) -> &u8
+
+
+fun alloc(size: int) -> &u8
+
+
+fun main -> int
+
+  Inst1[]
+    Value(0): f64 = Lit(Float(1.0, 64)) |1.0
+    Value(1): f64 = VarDecl(Value(0)) |a = 1.0
+    Jump(Inst(4), []) |loop:
+    a = a + 1.0
+    if a > 100.0:
+      break
+
+  Inst4[]
+    Value(2): f64 = Lit(Float(1.0, 64)) |1.0
+    Value(3): f64 = Call(Fun(403), [Value(1), Value(2)]) |a + 1.0
+    Value(3): f64 = Assign(Value(1)) |a = a + 1.0
+    Value(4): f64 = Lit(Float(100.0, 64)) |100.0
+    Value(5): bool = Call(Fun(419), [Value(1), Value(4)]) |a > 100.0
+    JumpIfTrue(Value(5), Inst(13), []) |a > 100.0
+    Jump(Inst(15), []) |
+
+  Inst13[]
+    Jump(Inst(5), []) |break
+
+  Inst15[]
+    Jump(Inst(4), []) |loop:
+    a = a + 1.0
+    if a > 100.0:
+      break
+
+  Inst5[]
+    Value(6): int = Call(Fun(164), [Value(1)]) |f64::int(a)
+    Value(7): int = Lit(Int(101, 0)) |101
+    Value(8): int = Call(Fun(270), [Value(6), Value(7)]) |f64::int(a) - 101
+    Return(Some(Value(8))) |return f64::int(a) - 101
+
+
+function u0:0() -> i64 fast {
+block0:
+    v11 = f64const 0.0
+    v1 -> v11
+    v0 = f64const 0x1.0000000000000p0
+    jump block1(v0)
+
+block1(v3: f64):
+    v2 = f64const 0x1.0000000000000p0
+    v4 = fadd v3, v2
+    v7 -> v4
+    v12 -> v4
+    v5 = f64const 0x1.9000000000000p6
+    v6 = fcmp gt v4, v5
+    brnz v6, block2
+    jump block3
+
+block2:
+    jump block4
+
+block3:
+    jump block1(v12)
+
+block4:
+    v8 = fcvt_to_sint.i64 v7
+    v9 = iconst.i64 101
+    v10 = isub v8, v9
+    return v10
+}
+
+
+
+  Inst1[Value(0), Value(1)]
+    Value(2): int = Zeroed |
+    Value(3): int = VarDecl(Value(2)) |
+    Value(4): int = Call(Fun(444), []) |entry
+    Value(4): int = Assign(Value(3)) |entry
+    Return(Some(Value(3))) |
+
+
+function u0:0(i64, i64) -> i64 fast {
+    sig0 = () -> i64 fast
+    fn0 = colocated u0:5 sig0
+
+block0(v0: i64, v1: i64):
+    v5 = iconst.i64 0
+    v3 -> v5
+    v2 = iconst.i64 0
+    v4 = call fn0()
+    return v4
+}
+
+fun print(str: &u8)
+
+
+fun memset(ptr: &u8, value: u8, size: int)
+
+
+fun free(ptr: &u8)
+
+
+fun realloc(ptr: &u8, size: int) -> &u8
+
+
+fun alloc(size: int) -> &u8
+
+
+fun main -> int
+
+  Inst1[]
+    Value(0): &u8 = Lit(String([72, 101, 108, 108, 111, 44, 32, 87, 111, 114, 108, 100, 33, 0])) |"Hello, World!"
+    Value(1): &u8 = VarDecl(Value(0)) |a = "Hello, World!"
+    Value(2): uint = Cast(Value(1)) |a as uint
+    Value(3): uint = VarDecl(Value(2)) |b = a as uint
+    Jump(Inst(6), []) |loop:
+    let char = *(b as &u8)
+    if char == 0u8:
+      break
+    putchar(char.i32())
+    b += 1 as uint
+
+  Inst6[]
+    Value(4): &u8 = Cast(Value(3)) |(b as &u8)
+    Value(5): u8 = Deref(Value(4), false) |*(b as &u8)
+    Value(6): u8 = VarDecl(Value(5)) |char = *(b as &u8)
+    Value(7): u8 = Lit(Uint(0, 8)) |0u8
+    Value(8): bool = Call(Fun(296), [Value(6), Value(7)]) |char == 0u8
+    JumpIfTrue(Value(8), Inst(15), []) |char == 0u8
+    Jump(Inst(17), []) |
+
+  Inst15[]
+    Jump(Inst(7), []) |break
+
+  Inst17[]
+    Value(9): i32 = Call(Fun(33), [Value(6)]) |char.i32()
+    Call(Fun(444), [Value(9)]) |putchar(char.i32())
+    Value(10): int = Lit(Int(1, 0)) |1
+    Value(11): uint = Cast(Value(10)) |1 as uint
+    Value(12): uint = Call(Fun(261), [Value(3), Value(11)]) |b += 1 as uint
+    Value(12): uint = Assign(Value(3)) |b += 1 as uint
+    Jump(Inst(6), []) |loop:
+    let char = *(b as &u8)
+    if char == 0u8:
+      break
+    putchar(char.i32())
+    b += 1 as uint
+
+  Inst7[]
+    Value(13): int = Lit(Int(0, 0)) |0
+    Return(Some(Value(13))) |return 0
+
+
+function u0:0() -> i64 fast {
+    gv0 = symbol colocated u1:0
+    sig0 = (i32) windows_fastcall
+    fn0 = u0:6 sig0
+
+block0:
+    v13 = iconst.i64 0
+    v2 -> v13
+    v12 = iconst.i64 0
+    v1 -> v12
+    v0 = global_value.i64 gv0
+    jump block1(v0)
+
+block1(v3: i64):
+    v9 -> v3
+    v4 = load.i8 v3
+    v5 = iconst.i8 0
+    v6 = icmp eq v4, v5
+    brnz v6, block2
+    jump block3
+
+block2:
+    jump block4
+
+block3:
+    v7 = sextend.i32 v4
+    call fn0(v7)
+    v8 = iconst.i64 1
+    v10 = iadd.i64 v9, v8
+    jump block1(v10)
+
+block4:
+    v11 = iconst.i64 0
+    return v11
+}
+
+fun putchar(c: i32)
+
+
+
+
+  Inst1[Value(0), Value(1)]
+    Value(2): int = Zeroed |
+    Value(3): int = VarDecl(Value(2)) |
+    Value(4): int = Call(Fun(445), []) |entry
+    Value(4): int = Assign(Value(3)) |entry
+    Return(Some(Value(3))) |
+
+
+function u0:0(i64, i64) -> i64 fast {
+    sig0 = () -> i64 fast
+    fn0 = colocated u0:5 sig0
+
+block0(v0: i64, v1: i64):
+    v5 = iconst.i64 0
+    v3 -> v5
+    v2 = iconst.i64 0
+    v4 = call fn0()
+    return v4
+}
+
+fun print(str: &u8)
+
+
+fun memset(ptr: &u8, value: u8, size: int)
+
+
+fun free(ptr: &u8)
+
+
+fun realloc(ptr: &u8, size: int) -> &u8
+
+
+fun alloc(size: int) -> &u8
+
+
+fun main -> int
+
+  Inst1[]
+    Value(0): Point = Zeroed |p: Point
+    Value(1): Point = VarDecl(Value(0)) |p: Point
+    Value(2): int = Lit(Int(2, 0)) |2
+    Value(3): int = Lit(Int(2, 0)) |2
+    Value(5): &Point = Ref(Value(1)) |p.init(2, 2)
+    Value(4): Point = Call(Fun(444), [Value(5), Value(2), Value(3), Value(4)]) |p.init(2, 2)
+    Value(6): int = Offset(Value(1)) |p.x
+    Value(7): int = Offset(Value(1)) |p.y
+    Value(8): int = Call(Fun(260), [Value(6), Value(7)]) |p.x + p.y
+    Value(9): int = Lit(Int(4, 0)) |4
+    Value(10): int = Call(Fun(270), [Value(8), Value(9)]) |p.x + p.y - 4
+    Return(Some(Value(10))) |return p.x + p.y - 4
+
+
+function u0:0() -> i64 fast {
+    ss0 = explicit_slot 16
+    ss1 = explicit_slot 16
+    sig0 = (i64, i64, i64, i64 sret) -> i64 sret fast
+    fn0 = colocated u0:6 sig0
+
+block0:
+    v0 = iconst.i64 0
+    stack_store v0, ss0
+    stack_store v0, ss0+8
+    v1 = iconst.i64 2
+    v2 = iconst.i64 2
+    v3 = stack_addr.i64 ss0
+    v4 = stack_addr.i64 ss1
+    v5 = call fn0(v3, v1, v2, v4)
+    v6 = stack_load.i64 ss0
+    v7 = stack_load.i64 ss0+8
+    v8 = iadd v6, v7
+    v9 = iconst.i64 4
+    v10 = isub v8, v9
+    return v10
+}
+
+fun init(v: &Point, x: int, y: int) -> Point
+
+  Inst1[Value(0), Value(1), Value(2), Value(3)]
+    Value(4): Point = Deref(Value(0), false) |(
+    Value(5): int = Offset(Value(4)) |(*v).x
+    Value(1): int = Assign(Value(5)) |(*v).x = x
+    Value(6): Point = Deref(Value(0), false) |(
+    Value(7): int = Offset(Value(6)) |(*v).y
+    Value(2): int = Assign(Value(7)) |(*v).y = y
+    Value(8): Point = Zeroed |pass
+    Value(9): Point = Deref(Value(3), false) |pass
+    Value(8): Point = Assign(Value(9)) |pass
+    Return(Some(Value(3))) |pass
+
+
+function u0:0(i64, i64, i64, i64 sret) -> i64 sret fast {
+block0(v0: i64, v1: i64, v2: i64, v3: i64):
+    store v1, v0
+    store v2, v0+8
+    v4 = iconst.i64 0
+    store v4, v3
+    store v4, v3+8
+    return v3
+}
+
+
+
+  Inst1[Value(0), Value(1)]
+    Value(2): int = Zeroed |
+    Value(3): int = VarDecl(Value(2)) |
+    Value(4): int = Call(Fun(445), []) |entry
+    Value(4): int = Assign(Value(3)) |entry
+    Return(Some(Value(3))) |
+
+
+function u0:0(i64, i64) -> i64 fast {
+    sig0 = () -> i64 fast
+    fn0 = colocated u0:5 sig0
+
+block0(v0: i64, v1: i64):
+    v5 = iconst.i64 0
+    v3 -> v5
+    v2 = iconst.i64 0
+    v4 = call fn0()
+    return v4
+}
+
+fun print(str: &u8)
+
+
+fun memset(ptr: &u8, value: u8, size: int)
+
+
+fun free(ptr: &u8)
+
+
+fun realloc(ptr: &u8, size: int) -> &u8
+
+
+fun alloc(size: int) -> &u8
+
+
+fun main -> int
+
+  Inst1[]
+    Value(0): Point = Zeroed |p: Point
+    Value(1): Point = VarDecl(Value(0)) |p: Point
+    Value(2): Cell[Point] = Zeroed |c: Cell[Point]
+    Value(3): Cell[Point] = VarDecl(Value(2)) |c: Cell[Point]
+    Value(4): &Point = Offset(Value(3)) |c.p
+    Value(5): &Point = Ref(Value(1)) |&p
+    Value(5): &Point = Assign(Value(4)) |c.p = &p
+    Value(7): &Point = Offset(Value(3)) |c.x
+    Value(8): Point = Deref(Value(7), false) |c.x
+    Value(6): int = Offset(Value(8)) |c.x
+    Value(9): int = Lit(Int(1, 0)) |1
+    Value(9): int = Assign(Value(6)) |c.x = 1
+    Value(11): &Point = Offset(Value(3)) |c.y
+    Value(12): Point = Deref(Value(11), false) |c.y
+    Value(10): int = Offset(Value(12)) |c.y
+    Value(13): int = Lit(Int(2, 0)) |2
+    Value(13): int = Assign(Value(10)) |c.y = 2
+    Value(14): int = Lit(Int(0, 0)) |0
+    Return(Some(Value(14))) |return 0
+
+
+function u0:0() -> i64 fast {
+    ss0 = explicit_slot 16
+
+block0:
+    v7 = iconst.i64 0
+    v2 -> v7
+    v0 = iconst.i64 0
+    stack_store v0, ss0
+    stack_store v0, ss0+8
+    v1 = iconst.i64 0
+    v3 = stack_addr.i64 ss0
+    v4 = iconst.i64 1
+    store v4, v3
+    v5 = iconst.i64 2
+    store v5, v3+8
+    v6 = iconst.i64 0
+    return v6
+}
+
+
+
+  Inst1[Value(0), Value(1)]
+    Value(2): int = Zeroed |
+    Value(3): int = VarDecl(Value(2)) |
+    Value(4): int = Call(Fun(444), []) |entry
+    Value(4): int = Assign(Value(3)) |entry
+    Return(Some(Value(3))) |
+
+
+function u0:0(i64, i64) -> i64 fast {
+    sig0 = () -> i64 fast
+    fn0 = colocated u0:5 sig0
+
+block0(v0: i64, v1: i64):
+    v5 = iconst.i64 0
+    v3 -> v5
+    v2 = iconst.i64 0
+    v4 = call fn0()
+    return v4
+}
+
+fun print(str: &u8)
+
+
+fun memset(ptr: &u8, value: u8, size: int)
+
+
+fun free(ptr: &u8)
+
+
+fun realloc(ptr: &u8, size: int) -> &u8
+
+
+fun alloc(size: int) -> &u8
+
+
+fun main -> int
+
+  Inst1[]
+    Value(0): EightBytes = Zeroed |eb: EightBytes
+    Value(1): EightBytes = VarDecl(Value(0)) |eb: EightBytes
+    Value(2): i8 = Offset(Value(1)) |eb.a
+    Value(3): i8 = Lit(Int(1, 8)) |1i8
+    Value(3): i8 = Assign(Value(2)) |eb.a = 1i8
+    Value(4): i8 = Offset(Value(1)) |eb.b
+    Value(5): i8 = Lit(Int(2, 8)) |2i8
+    Value(5): i8 = Assign(Value(4)) |eb.b = 2i8
+    Value(6): i8 = Offset(Value(1)) |eb.c
+    Value(7): i8 = Lit(Int(3, 8)) |3i8
+    Value(7): i8 = Assign(Value(6)) |eb.c = 3i8
+    Value(8): i8 = Offset(Value(1)) |eb.d
+    Value(9): i8 = Lit(Int(4, 8)) |4i8
+    Value(9): i8 = Assign(Value(8)) |eb.d = 4i8
+    Value(10): i8 = Offset(Value(1)) |eb.e
+    Value(11): i8 = Lit(Int(5, 8)) |5i8
+    Value(11): i8 = Assign(Value(10)) |eb.e = 5i8
+    Value(12): i8 = Offset(Value(1)) |eb.f
+    Value(13): i8 = Lit(Int(6, 8)) |6i8
+    Value(13): i8 = Assign(Value(12)) |eb.f = 6i8
+    Value(14): i8 = Offset(Value(1)) |eb.g
+    Value(15): i8 = Lit(Int(7, 8)) |7i8
+    Value(15): i8 = Assign(Value(14)) |eb.g = 7i8
+    Value(16): i8 = Offset(Value(1)) |eb.h
+    Value(17): i8 = Lit(Int(8, 8)) |8i8
+    Value(17): i8 = Assign(Value(16)) |eb.h = 8i8
+    Value(18): i8 = Offset(Value(1)) |eb.a
+    Value(19): i8 = Offset(Value(1)) |eb.h
+    Value(20): i8 = Call(Fun(252), [Value(18), Value(19)]) |eb.a + eb.h
+    Value(21): i8 = Offset(Value(1)) |eb.g
+    Value(22): i8 = Call(Fun(252), [Value(20), Value(21)]) |eb.a + eb.h + eb.g
+    Value(23): i8 = Offset(Value(1)) |eb.f
+    Value(24): i8 = Call(Fun(252), [Value(22), Value(23)]) |eb.a + eb.h + eb.g + eb.f
+    Value(25): i8 = Offset(Value(1)) |eb.e
+    Value(26): i8 = Call(Fun(252), [Value(24), Value(25)]) |eb.a + eb.h + eb.g + eb.f + eb.e
+    Value(27): i8 = Offset(Value(1)) |eb.d
+    Value(28): i8 = Call(Fun(252), [Value(26), Value(27)]) |eb.a + eb.h + eb.g + eb.f + eb.e + eb.d
+    Value(29): i8 = Offset(Value(1)) |eb.c
+    Value(30): i8 = Call(Fun(252), [Value(28), Value(29)]) |eb.a + eb.h + eb.g + eb.f + eb.e + eb.d + eb.c
+    Value(31): i8 = Offset(Value(1)) |eb.b
+    Value(32): i8 = Call(Fun(252), [Value(30), Value(31)]) |eb.a + eb.h + eb.g + eb.f + eb.e + eb.d + eb.c + eb.b
+    Value(33): i8 = Lit(Int(4, 8)) |4i8
+    Value(34): i8 = Lit(Int(9, 8)) |9i8
+    Value(35): i8 = Call(Fun(272), [Value(33), Value(34)]) |4i8 * 9i8
+    Value(36): i8 = Call(Fun(262), [Value(32), Value(35)]) |eb.a + eb.h + eb.g + eb.f + eb.e + eb.d + eb.c + eb.b - 4i8 * 9i8
+    Value(37): int = Call(Fun(159), [Value(36)]) |u8::int(eb.a + eb.h + eb.g + eb.f + eb.e + eb.d + eb.c + eb.b - 4i8 * 9i8)
+    Return(Some(Value(37))) |return u8::int(eb.a + eb.h + eb.g + eb.f + eb.e + eb.d + eb.c + eb.b - 4i8 * 9i8)
+
+
+function u0:0() -> i64 fast {
+block0:
+    v78 = iconst.i64 0
+    v1 -> v78
+    v0 = iconst.i64 0
+    v2 = iconst.i8 1
+    v3 = iconst.i64 -256
+    v4 = band v0, v3
+    v5 = uextend.i64 v2
+    v6 = ishl_imm v5, 0
+    v7 = bor v4, v6
+    v8 = iconst.i8 2
+    v9 = iconst.i64 0xffff_ffff_ffff_00ff
+    v10 = band v7, v9
+    v11 = uextend.i64 v8
+    v12 = ishl_imm v11, 8
+    v13 = bor v10, v12
+    v14 = iconst.i8 3
+    v15 = iconst.i64 0xffff_ffff_ff00_ffff
+    v16 = band v13, v15
+    v17 = uextend.i64 v14
+    v18 = ishl_imm v17, 16
+    v19 = bor v16, v18
+    v20 = iconst.i8 4
+    v21 = iconst.i64 0xffff_ffff_00ff_ffff
+    v22 = band v19, v21
+    v23 = uextend.i64 v20
+    v24 = ishl_imm v23, 24
+    v25 = bor v22, v24
+    v26 = iconst.i8 5
+    v27 = iconst.i64 0xffff_ff00_ffff_ffff
+    v28 = band v25, v27
+    v29 = uextend.i64 v26
+    v30 = ishl_imm v29, 32
+    v31 = bor v28, v30
+    v32 = iconst.i8 6
+    v33 = iconst.i64 0xffff_00ff_ffff_ffff
+    v34 = band v31, v33
+    v35 = uextend.i64 v32
+    v36 = ishl_imm v35, 40
+    v37 = bor v34, v36
+    v38 = iconst.i8 7
+    v39 = iconst.i64 0xff00_ffff_ffff_ffff
+    v40 = band v37, v39
+    v41 = uextend.i64 v38
+    v42 = ishl_imm v41, 48
+    v43 = bor v40, v42
+    v44 = iconst.i8 8
+    v45 = iconst.i64 0x00ff_ffff_ffff_ffff
+    v46 = band v43, v45
+    v47 = uextend.i64 v44
+    v48 = ishl_imm v47, 56
+    v49 = bor v46, v48
+    v50 = ushr_imm v49, 0
+    v51 = ireduce.i8 v50
+    v52 = ushr_imm v49, 56
+    v53 = ireduce.i8 v52
+    v54 = iadd v51, v53
+    v55 = ushr_imm v49, 48
+    v56 = ireduce.i8 v55
+    v57 = iadd v54, v56
+    v58 = ushr_imm v49, 40
+    v59 = ireduce.i8 v58
+    v60 = iadd v57, v59
+    v61 = ushr_imm v49, 32
+    v62 = ireduce.i8 v61
+    v63 = iadd v60, v62
+    v64 = ushr_imm v49, 24
+    v65 = ireduce.i8 v64
+    v66 = iadd v63, v65
+    v67 = ushr_imm v49, 16
+    v68 = ireduce.i8 v67
+    v69 = iadd v66, v68
+    v70 = ushr_imm v49, 8
+    v71 = ireduce.i8 v70
+    v72 = iadd v69, v71
+    v73 = iconst.i8 4
+    v74 = iconst.i8 9
+    v75 = imul v73, v74
+    v76 = isub v72, v75
+    v77 = sextend.i64 v76
+    return v77
+}
+
+
+
+  Inst1[Value(0), Value(1)]
+    Value(2): int = Zeroed |
+    Value(3): int = VarDecl(Value(2)) |
+    Value(4): int = Call(Fun(444), []) |entry
+    Value(4): int = Assign(Value(3)) |entry
+    Return(Some(Value(3))) |
+
+
+function u0:0(i64, i64) -> i64 fast {
+    sig0 = () -> i64 fast
+    fn0 = colocated u0:5 sig0
+
+block0(v0: i64, v1: i64):
+    v5 = iconst.i64 0
+    v3 -> v5
+    v2 = iconst.i64 0
+    v4 = call fn0()
+    return v4
+}
+
+fun print(str: &u8)
+
+
+fun memset(ptr: &u8, value: u8, size: int)
+
+
+fun free(ptr: &u8)
+
+
+fun realloc(ptr: &u8, size: int) -> &u8
+
+
+fun alloc(size: int) -> &u8
+
+
+fun main -> int
+
+  Inst1[]
+    Value(0): int = Lit(Int(1, 0)) |1
+    Value(1): int = Lit(Int(2, 0)) |2
+    Value(2): int = Lit(Int(3, 0)) |3
+    Value(3): int = Lit(Int(4, 0)) |4
+    Value(4): int = Lit(Int(5, 0)) |5
+    Value(5): int = Lit(Int(6, 0)) |6
+    Value(6): int = Lit(Int(7, 0)) |7
+    Value(7): int = Lit(Int(8, 0)) |8
+    Value(8): int = Lit(Int(9, 0)) |9
+    Value(9): int = Lit(Int(10, 0)) |10
+    Value(10): [int, 10] = Uninitialized |[
+    Value(11): int = Offset(Value(10)) |[
+    Value(0): int = Assign(Value(11)) |[
+    Value(12): int = Offset(Value(10)) |[
+    Value(1): int = Assign(Value(12)) |[
+    Value(13): int = Offset(Value(10)) |[
+    Value(2): int = Assign(Value(13)) |[
+    Value(14): int = Offset(Value(10)) |[
+    Value(3): int = Assign(Value(14)) |[
+    Value(15): int = Offset(Value(10)) |[
+    Value(4): int = Assign(Value(15)) |[
+    Value(16): int = Offset(Value(10)) |[
+    Value(5): int = Assign(Value(16)) |[
+    Value(17): int = Offset(Value(10)) |[
+    Value(6): int = Assign(Value(17)) |[
+    Value(18): int = Offset(Value(10)) |[
+    Value(7): int = Assign(Value(18)) |[
+    Value(19): int = Offset(Value(10)) |[
+    Value(8): int = Assign(Value(19)) |[
+    Value(20): int = Offset(Value(10)) |[
+    Value(9): int = Assign(Value(20)) |[
+    Value(21): [int, 10] = VarDecl(Value(10)) |array = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]
+    Value(22): int = Lit(Int(0, 0)) |0
+    Value(23): int = VarDecl(Value(22)) |i = 0
+    Value(24): int = Lit(Int(0, 0)) |0
+    Value(25): int = VarDecl(Value(24)) |sum = 0
+    Jump(Inst(38), []) |loop:
+    if i >= array.len():
+      break
+    sum += array[i]
+    i += 1
+
+  Inst38[]
+    Value(27): &[int, 10] = Ref(Value(21)) |array.len()
+    Value(26): int = Call(Fun(445), [Value(27)]) |array.len()
+    Value(28): bool = Call(Fun(320), [Value(23), Value(26)]) |i >= array.len()
+    JumpIfTrue(Value(28), Inst(45), []) |i >= array.len()
+    Jump(Inst(47), []) |
+
+  Inst45[]
+    Jump(Inst(39), []) |break
+
+  Inst47[]
+    Value(30): &[int, 10] = Ref(Value(21)) |array[i]
+    Value(29): &int = Call(Fun(446), [Value(30), Value(23)]) |array[i]
+    Value(31): int = Deref(Value(29), false) |array[i]
+    Value(32): int = Call(Fun(260), [Value(25), Value(31)]) |sum += array[i]
+    Value(32): int = Assign(Value(25)) |sum += array[i]
+    Value(33): int = Lit(Int(1, 0)) |1
+    Value(34): int = Call(Fun(260), [Value(23), Value(33)]) |i += 1
+    Value(34): int = Assign(Value(23)) |i += 1
+    Jump(Inst(38), []) |loop:
+    if i >= array.len():
+      break
+    sum += array[i]
+    i += 1
+
+  Inst39[]
+    Value(35): int = Lit(Int(11, 0)) |11
+    Value(36): int = Lit(Int(5, 0)) |5
+    Value(37): int = Call(Fun(280), [Value(35), Value(36)]) |11 * 5
+    Value(38): int = Call(Fun(270), [Value(25), Value(37)]) |sum - 11 * 5
+    Return(Some(Value(38))) |return sum - 11 * 5
+
+
+function u0:0() -> i64 fast {
+    ss0 = explicit_slot 80
+    ss1 = explicit_slot 80
+    sig0 = (i64) -> i64 fast
+    sig1 = (i64, i64) -> i64 fast
+    fn0 = colocated u0:8 sig0
+    fn1 = colocated u0:6 sig1
+
+block0:
+    v42 = iconst.i64 0
+    v23 -> v42
+    v41 = iconst.i64 0
+    v21 -> v41
+    v0 = iconst.i64 1
+    v1 = iconst.i64 2
+    v2 = iconst.i64 3
+    v3 = iconst.i64 4
+    v4 = iconst.i64 5
+    v5 = iconst.i64 6
+    v6 = iconst.i64 7
+    v7 = iconst.i64 8
+    v8 = iconst.i64 9
+    v9 = iconst.i64 10
+    stack_store v0, ss0
+    stack_store v1, ss0+8
+    stack_store v2, ss0+16
+    stack_store v3, ss0+24
+    stack_store v4, ss0+32
+    stack_store v5, ss0+40
+    stack_store v6, ss0+48
+    stack_store v7, ss0+56
+    stack_store v8, ss0+64
+    stack_store v9, ss0+72
+    v10 = stack_load.i64 ss0
+    stack_store v10, ss1
+    v11 = stack_load.i64 ss0+8
+    stack_store v11, ss1+8
+    v12 = stack_load.i64 ss0+16
+    stack_store v12, ss1+16
+    v13 = stack_load.i64 ss0+24
+    stack_store v13, ss1+24
+    v14 = stack_load.i64 ss0+32
+    stack_store v14, ss1+32
+    v15 = stack_load.i64 ss0+40
+    stack_store v15, ss1+40
+    v16 = stack_load.i64 ss0+48
+    stack_store v16, ss1+48
+    v17 = stack_load.i64 ss0+56
+    stack_store v17, ss1+56
+    v18 = stack_load.i64 ss0+64
+    stack_store v18, ss1+64
+    v19 = stack_load.i64 ss0+72
+    stack_store v19, ss1+72
+    v20 = iconst.i64 0
+    v22 = iconst.i64 0
+    jump block1(v20, v22)
+
+block1(v26: i64, v43: i64):
+    v29 -> v26
+    v31 -> v43
+    v39 -> v43
+    v24 = stack_addr.i64 ss1
+    v25 = call fn0(v24)
+    v27 = icmp sge v26, v25
+    brnz v27, block2
+    jump block3
+
+block2:
+    jump block4
+
+block3:
+    v28 = stack_addr.i64 ss1
+    v30 = call fn1(v28, v29)
+    v32 = load.i64 v30
+    v33 = iadd.i64 v31, v32
+    v34 = iconst.i64 1
+    v35 = iadd.i64 v29, v34
+    jump block1(v35, v33)
+
+block4:
+    v36 = iconst.i64 11
+    v37 = iconst.i64 5
+    v38 = imul v36, v37
+    v40 = isub.i64 v39, v38
+    return v40
+}
+
+fun __index__(p: &Self, index: int) -> &T
+
+  Inst1[Value(0), Value(1)]
+    Value(2): int = Cast(Value(0)) |p as int
+    Value(3): int = Call(Fun(447), []) |sizeof::[T]()
+    Value(4): int = Call(Fun(280), [Value(1), Value(3)]) |index * sizeof::[T]()
+    Value(5): int = Call(Fun(260), [Value(2), Value(4)]) |(p as int + index * sizeof::[T]())
+    Value(6): &int = Cast(Value(5)) |(p as int + index * sizeof::[T]()) as &T
+    Return(Some(Value(6))) |(p as int + index * sizeof::[T]()) as &T
+
+
+function u0:0(i64, i64) -> i64 fast {
+block0(v0: i64, v1: i64):
+    v2 = iconst.i64 8
+    v3 = imul v1, v2
+    v4 = iadd v0, v3
+    return v4
+}
+
+fun sizeof[T] -> int
+
+
+fun len(array: &Self) -> int
+
+  Inst1[Value(0)]
+    Value(1): int = Lit(Int(10, 0)) |L
+    Return(Some(Value(1))) |L
+
+
+function u0:0(i64) -> i64 fast {
+block0(v0: i64):
+    v1 = iconst.i64 10
+    return v1
+}
+
+
+
+  Inst1[Value(0), Value(1)]
+    Value(2): int = Zeroed |
+    Value(3): int = VarDecl(Value(2)) |
+    Value(4): int = Call(Fun(444), []) |entry
+    Value(4): int = Assign(Value(3)) |entry
+    Return(Some(Value(3))) |
+
+
+function u0:0(i64, i64) -> i64 fast {
+    sig0 = () -> i64 fast
+    fn0 = colocated u0:5 sig0
+
+block0(v0: i64, v1: i64):
+    v5 = iconst.i64 0
+    v3 -> v5
+    v2 = iconst.i64 0
+    v4 = call fn0()
+    return v4
+}
+
+fun print(str: &u8)
+
+
+fun memset(ptr: &u8, value: u8, size: int)
+
+
+fun free(ptr: &u8)
+
+
+fun realloc(ptr: &u8, size: int) -> &u8
+
+
+fun alloc(size: int) -> &u8
+
+
+fun main -> int
+
+  Inst1[]
+    Value(0): int = Lit(Int(1, 0)) |1
+    Value(1): int = Lit(Int(2, 0)) |2
+    Value(2): int = Lit(Int(3, 0)) |3
+    Value(3): int = Lit(Int(4, 0)) |4
+    Value(4): int = Lit(Int(5, 0)) |5
+    Value(5): int = Lit(Int(6, 0)) |6
+    Value(6): int = Lit(Int(7, 0)) |7
+    Value(7): int = Lit(Int(8, 0)) |8
+    Value(8): int = Lit(Int(9, 0)) |9
+    Value(9): int = Lit(Int(10, 0)) |10
+    Value(10): [int, 10] = Uninitialized |[
+    Value(11): int = Offset(Value(10)) |[
+    Value(0): int = Assign(Value(11)) |[
+    Value(12): int = Offset(Value(10)) |[
+    Value(1): int = Assign(Value(12)) |[
+    Value(13): int = Offset(Value(10)) |[
+    Value(2): int = Assign(Value(13)) |[
+    Value(14): int = Offset(Value(10)) |[
+    Value(3): int = Assign(Value(14)) |[
+    Value(15): int = Offset(Value(10)) |[
+    Value(4): int = Assign(Value(15)) |[
+    Value(16): int = Offset(Value(10)) |[
+    Value(5): int = Assign(Value(16)) |[
+    Value(17): int = Offset(Value(10)) |[
+    Value(6): int = Assign(Value(17)) |[
+    Value(18): int = Offset(Value(10)) |[
+    Value(7): int = Assign(Value(18)) |[
+    Value(19): int = Offset(Value(10)) |[
+    Value(8): int = Assign(Value(19)) |[
+    Value(20): int = Offset(Value(10)) |[
+    Value(9): int = Assign(Value(20)) |[
+    Value(21): [int, 10] = VarDecl(Value(10)) |array = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]
+    Value(22): int = Lit(Int(0, 0)) |0
+    Value(23): int = VarDecl(Value(22)) |i = 0
+    Value(24): int = Lit(Int(0, 0)) |0
+    Value(25): int = VarDecl(Value(24)) |sum = 0
+    Jump(Inst(38), []) |loop:
+    if i >= array.len():
+      break
+    sum += array[i]
+    storage[i] = array[i]
+    i += 1
+
+  Inst38[]
+    Value(27): &[int, 10] = Ref(Value(21)) |array.len()
+    Value(26): int = Call(Fun(445), [Value(27)]) |array.len()
+    Value(28): bool = Call(Fun(320), [Value(23), Value(26)]) |i >= array.len()
+    JumpIfTrue(Value(28), Inst(45), []) |i >= array.len()
+    Jump(Inst(47), []) |
+
+  Inst45[]
+    Jump(Inst(39), []) |break
+
+  Inst47[]
+    Value(30): &[int, 10] = Ref(Value(21)) |array[i]
+    Value(29): &int = Call(Fun(446), [Value(30), Value(23)]) |array[i]
+    Value(31): int = Deref(Value(29), false) |array[i]
+    Value(32): int = Call(Fun(260), [Value(25), Value(31)]) |sum += array[i]
+    Value(32): int = Assign(Value(25)) |sum += array[i]
+    Value(33): [int, 10] = GlobalLoad(Global(0)) |storage
+    Value(35): &[int, 10] = Ref(Value(33)) |storage[i]
+    Value(34): &int = Call(Fun(446), [Value(35), Value(23)]) |storage[i]
+    Value(36): int = Deref(Value(34), true) |storage[i]
+    Value(38): &[int, 10] = Ref(Value(21)) |array[i]
+    Value(37): &int = Call(Fun(446), [Value(38), Value(23)]) |array[i]
+    Value(39): int = Deref(Value(37), false) |array[i]
+    Value(39): int = Assign(Value(36)) |storage[i] = array[i]
+    Value(40): int = Lit(Int(1, 0)) |1
+    Value(41): int = Call(Fun(260), [Value(23), Value(40)]) |i += 1
+    Value(41): int = Assign(Value(23)) |i += 1
+    Jump(Inst(38), []) |loop:
+    if i >= array.len():
+      break
+    sum += array[i]
+    storage[i] = array[i]
+    i += 1
+
+  Inst39[]
+    Value(42): int = Lit(Int(11, 0)) |11
+    Value(43): int = Lit(Int(5, 0)) |5
+    Value(44): int = Call(Fun(280), [Value(42), Value(43)]) |11 * 5
+    Value(45): int = Call(Fun(270), [Value(25), Value(44)]) |sum - 11 * 5
+    Return(Some(Value(45))) |return sum - 11 * 5
+
+
+function u0:0() -> i64 fast {
+    ss0 = explicit_slot 80
+    ss1 = explicit_slot 80
+    gv0 = symbol colocated u1:0
+    sig0 = (i64) -> i64 fast
+    sig1 = (i64, i64) -> i64 fast
+    sig2 = (i64, i64) -> i64 fast
+    sig3 = (i64, i64) -> i64 fast
+    fn0 = colocated u0:8 sig0
+    fn1 = colocated u0:6 sig1
+    fn2 = colocated u0:6 sig2
+    fn3 = colocated u0:6 sig3
+
+block0:
+    v47 = iconst.i64 0
+    v23 -> v47
+    v46 = iconst.i64 0
+    v21 -> v46
+    v0 = iconst.i64 1
+    v1 = iconst.i64 2
+    v2 = iconst.i64 3
+    v3 = iconst.i64 4
+    v4 = iconst.i64 5
+    v5 = iconst.i64 6
+    v6 = iconst.i64 7
+    v7 = iconst.i64 8
+    v8 = iconst.i64 9
+    v9 = iconst.i64 10
+    stack_store v0, ss0
+    stack_store v1, ss0+8
+    stack_store v2, ss0+16
+    stack_store v3, ss0+24
+    stack_store v4, ss0+32
+    stack_store v5, ss0+40
+    stack_store v6, ss0+48
+    stack_store v7, ss0+56
+    stack_store v8, ss0+64
+    stack_store v9, ss0+72
+    v10 = stack_load.i64 ss0
+    stack_store v10, ss1
+    v11 = stack_load.i64 ss0+8
+    stack_store v11, ss1+8
+    v12 = stack_load.i64 ss0+16
+    stack_store v12, ss1+16
+    v13 = stack_load.i64 ss0+24
+    stack_store v13, ss1+24
+    v14 = stack_load.i64 ss0+32
+    stack_store v14, ss1+32
+    v15 = stack_load.i64 ss0+40
+    stack_store v15, ss1+40
+    v16 = stack_load.i64 ss0+48
+    stack_store v16, ss1+48
+    v17 = stack_load.i64 ss0+56
+    stack_store v17, ss1+56
+    v18 = stack_load.i64 ss0+64
+    stack_store v18, ss1+64
+    v19 = stack_load.i64 ss0+72
+    stack_store v19, ss1+72
+    v20 = iconst.i64 0
+    v22 = iconst.i64 0
+    jump block1(v20, v22)
+
+block1(v26: i64, v48: i64):
+    v29 -> v26
+    v31 -> v48
+    v44 -> v48
+    v24 = stack_addr.i64 ss1
+    v25 = call fn0(v24)
+    v27 = icmp sge v26, v25
+    brnz v27, block2
+    jump block3
+
+block2:
+    jump block4
+
+block3:
+    v28 = stack_addr.i64 ss1
+    v30 = call fn1(v28, v29)
+    v32 = load.i64 v30
+    v33 = iadd.i64 v31, v32
+    v34 = global_value.i64 gv0
+    v35 = call fn2(v34, v29)
+    v36 = stack_addr.i64 ss1
+    v37 = call fn3(v36, v29)
+    v38 = load.i64 v37
+    store v38, v35
+    v39 = iconst.i64 1
+    v40 = iadd.i64 v29, v39
+    jump block1(v40, v33)
+
+block4:
+    v41 = iconst.i64 11
+    v42 = iconst.i64 5
+    v43 = imul v41, v42
+    v45 = isub.i64 v44, v43
+    return v45
+}
+
+fun __index__(p: &Self, index: int) -> &T
+
+  Inst1[Value(0), Value(1)]
+    Value(2): int = Cast(Value(0)) |p as int
+    Value(3): int = Call(Fun(447), []) |sizeof::[T]()
+    Value(4): int = Call(Fun(280), [Value(1), Value(3)]) |index * sizeof::[T]()
+    Value(5): int = Call(Fun(260), [Value(2), Value(4)]) |(p as int + index * sizeof::[T]())
+    Value(6): &int = Cast(Value(5)) |(p as int + index * sizeof::[T]()) as &T
+    Return(Some(Value(6))) |(p as int + index * sizeof::[T]()) as &T
+
+
+function u0:0(i64, i64) -> i64 fast {
+block0(v0: i64, v1: i64):
+    v2 = iconst.i64 8
+    v3 = imul v1, v2
+    v4 = iadd v0, v3
+    return v4
+}
+
+fun sizeof[T] -> int
+
+
+fun len(array: &Self) -> int
+
+  Inst1[Value(0)]
+    Value(1): int = Lit(Int(10, 0)) |L
+    Return(Some(Value(1))) |L
+
+
+function u0:0(i64) -> i64 fast {
+block0(v0: i64):
+    v1 = iconst.i64 10
+    return v1
+}
+
+
+
+  Inst1[Value(0), Value(1)]
+    Value(2): int = Zeroed |
+    Value(3): int = VarDecl(Value(2)) |
+    Value(4): int = Call(Fun(444), []) |entry
+    Value(4): int = Assign(Value(3)) |entry
+    Return(Some(Value(3))) |
+
+
+function u0:0(i64, i64) -> i64 fast {
+    sig0 = () -> i64 fast
+    fn0 = colocated u0:5 sig0
+
+block0(v0: i64, v1: i64):
+    v5 = iconst.i64 0
+    v3 -> v5
+    v2 = iconst.i64 0
+    v4 = call fn0()
+    return v4
+}
+
+fun print(str: &u8)
+
+
+fun memset(ptr: &u8, value: u8, size: int)
+
+
+fun free(ptr: &u8)
+
+
+fun realloc(ptr: &u8, size: int) -> &u8
+
+
+fun alloc(size: int) -> &u8
+
+
+fun main -> int
+
+  Inst1[]
+    Value(0): int = Lit(Int(1, 0)) |1
+    Value(1): int = VarDecl(Value(0)) |a = 1
+    Value(2): &int = Ref(Value(1)) |&a
+    Value(3): &int = VarDecl(Value(2)) |b = &a
+    Value(4): int = Deref(Value(3), true) |*b
+    Value(5): int = Lit(Int(0, 0)) |0
+    Value(5): int = Assign(Value(4)) |*b = 0
+    Return(Some(Value(1))) |return a
+
+
+function u0:0() -> i64 fast {
+    ss0 = explicit_slot 8
+
+block0:
+    v5 = iconst.i64 0
+    v2 -> v5
+    v0 = iconst.i64 1
+    stack_store v0, ss0
+    v1 = stack_addr.i64 ss0
+    v3 = iconst.i64 0
+    store v3, v1
+    v4 = stack_load.i64 ss0
+    return v4
+}
+
+
+
+  Inst1[Value(0), Value(1)]
+    Value(2): int = Zeroed |
+    Value(3): int = VarDecl(Value(2)) |
+    Value(4): int = Call(Fun(444), []) |entry
+    Value(4): int = Assign(Value(3)) |entry
+    Return(Some(Value(3))) |
+
+
+function u0:0(i64, i64) -> i64 fast {
+    sig0 = () -> i64 fast
+    fn0 = colocated u0:5 sig0
+
+block0(v0: i64, v1: i64):
+    v5 = iconst.i64 0
+    v3 -> v5
+    v2 = iconst.i64 0
+    v4 = call fn0()
+    return v4
+}
+
+fun print(str: &u8)
+
+
+fun memset(ptr: &u8, value: u8, size: int)
+
+
+fun free(ptr: &u8)
+
+
+fun realloc(ptr: &u8, size: int) -> &u8
+
+
+fun alloc(size: int) -> &u8
+
+
+fun main -> int
+
+  Inst1[]
+    Value(0): int = GlobalLoad(Global(0)) |a
+    Value(1): int = Lit(Int(1, 0)) |1
+    Value(2): int = Call(Fun(270), [Value(0), Value(1)]) |a - 1
+    Return(Some(Value(2))) |return a - 1
+
+
+function u0:0() -> i64 fast {
+    gv0 = symbol colocated u1:0
+
+block0:
+    v0 = global_value.i64 gv0
+    v1 = iconst.i64 1
+    v2 = load.i64 v0
+    v3 = isub v2, v1
+    return v3
+}
+
+
+
+  Inst1[Value(0), Value(1)]
+    Value(2): int = Zeroed |
+    Value(3): int = VarDecl(Value(2)) |
+    Value(4): int = Lit(Int(1, 0)) |1
+    Value(5): int = GlobalLoad(Global(0)) |1
+    Value(4): int = Assign(Value(5)) |1
+    Value(6): int = Call(Fun(444), []) |entry
+    Value(6): int = Assign(Value(3)) |entry
+    Return(Some(Value(3))) |
+
+
+function u0:0(i64, i64) -> i64 fast {
+    gv0 = symbol colocated u1:0
+    sig0 = () -> i64 fast
+    fn0 = colocated u0:5 sig0
+
+block0(v0: i64, v1: i64):
+    v7 = iconst.i64 0
+    v3 -> v7
+    v2 = iconst.i64 0
+    v4 = iconst.i64 1
+    v5 = global_value.i64 gv0
+    store v4, v5
+    v6 = call fn0()
+    return v6
+}
+
+fun print(str: &u8)
+
+
+fun memset(ptr: &u8, value: u8, size: int)
+
+
+fun free(ptr: &u8)
+
+
+fun realloc(ptr: &u8, size: int) -> &u8
+
+
+fun alloc(size: int) -> &u8
+
+
+fun main -> int
+
+  Inst1[]
+    Value(0): int = Lit(Int(1, 0)) |1
+    Value(1): int = Lit(Int(1, 0)) |1
+    Value(2): int = Call(Fun(445), [Value(0), Value(1)]) |even_worse(1, 1)
+    Return(Some(Value(2))) |return even_worse(1, 1)
+
+
+function u0:0() -> i64 fast {
+block0:
+    v0 = iconst.i64 1
+    v1 = iconst.i64 1
+    jump block1(v0, v1)
+
+block1(v2: i64, v3: i64):
+    v5 = icmp sgt v2, v3
+    brnz v5, block2
+    jump block3
+
+block2:
+    jump block6(v2, v3)
+
+block6(v6: i64, v7: i64):
+    v9 = iadd v6, v7
+    v10 = iconst.i64 2
+    v11 = imul v10, v6
+    v12 = isub v9, v11
+    jump block7(v12)
+
+block7(v8: i64):
+    jump block5(v8)
+
+block3:
+    jump block8(v3, v2)
+
+block8(v13: i64, v14: i64):
+    v16 = iadd v13, v14
+    v17 = iconst.i64 2
+    v18 = imul v17, v13
+    v19 = isub v16, v18
+    jump block9(v19)
+
+block9(v15: i64):
+    jump block5(v15)
+
+block4:
+    v20 = iconst.i64 0
+    jump block5(v20)
+
+block5(v4: i64):
+    return v4
+}
+
+
+
+  Inst1[Value(0), Value(1)]
+    Value(2): int = Zeroed |
+    Value(3): int = VarDecl(Value(2)) |
+    Value(4): int = Call(Fun(446), []) |entry
+    Value(4): int = Assign(Value(3)) |entry
+    Return(Some(Value(3))) |
+
+
+function u0:0(i64, i64) -> i64 fast {
+    sig0 = () -> i64 fast
+    fn0 = colocated u0:5 sig0
+
+block0(v0: i64, v1: i64):
+    v5 = iconst.i64 0
+    v3 -> v5
+    v2 = iconst.i64 0
+    v4 = call fn0()
+    return v4
+}
 

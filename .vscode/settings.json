@@ -75,6 +75,7 @@
         "umin",
         "urem",
         "ushr",
+        "vals",
         "wasmtime",
         "zeroinit"
     ]

@@ -217,12 +217,14 @@ impl<'a> AParser<'a> {
 
         ast.push(self.type_expr()?);
 
+        let mut body = self.ast(AKind::Group);
         self.expect_str(TKind::Colon, "expected ':' after 'impl' type")?;
         self.next()?;
         self.walk_block(|s| {
-            ast.push(s.fun(false)?);
+            body.push(s.fun(false)?);
             Ok(())
         })?;
+        ast.push(body);
 
         Ok(ast)
     }

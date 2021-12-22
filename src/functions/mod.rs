@@ -2,8 +2,8 @@ use core::panic;
 use std::ops::{Deref, DerefMut};
 use std::str::FromStr;
 
-use crate::ast::{AKind, Ast, AstDisplay, Vis};
-use crate::collector::{Collector, Attrs, Item, Scope};
+use crate::ast::{AKind, AParser, Ast, AstDisplay, Vis};
+use crate::collector::{Attrs, Collector, Item, Scope};
 use crate::lexer::TKind as LTKind;
 use crate::lexer::{Spam, Token, TokenDisplay};
 use crate::module_tree::*;
@@ -30,7 +30,6 @@ type ExprResult = Result<Option<Value>>;
 // wales i made up btw
 pub const FUN_SALT: ID = ID(0xDEADBEEF);
 pub const GLOBAL_SALT: ID = ID(0x2849437252);
-pub const GENERIC_FUN_SALT: ID = ID(0xFAEFACBD);
 
 pub struct FParser<'a> {
     program: &'a mut Program,
@@ -121,9 +120,14 @@ impl<'a> FParser<'a> {
 
             let name = unsafe { std::str::from_utf8_unchecked(buffer.as_slice()) };
 
-            let tls =
-                self.collector.attr_id(&attrs, self.state.tls_hash).is_some() || 
-                self.collector.attr_id(&attrs, self.state.thread_local_hash).is_some();
+            let tls = self
+                .collector
+                .attr_id(&attrs, self.state.tls_hash)
+                .is_some()
+                || self
+                    .collector
+                    .attr_id(&attrs, self.state.thread_local_hash)
+                    .is_some();
 
             let data_id = self
                 .program
@@ -155,6 +159,8 @@ impl<'a> FParser<'a> {
     fn fun(&mut self, fun: Fun) -> Result {
         let fun_ent = &self.state.funs[fun];
         let param_len = fun_ent.params.len();
+        let scope = fun_ent.scope;
+        let module = fun_ent.module;
 
         let nid = fun_ent.kind.unwrap_normal();
         let n_ent_ast = self.state.nfuns[nid].ast;
@@ -168,6 +174,16 @@ impl<'a> FParser<'a> {
         for i in 0..param_len {
             let (id, ty) = self.state.funs[fun].params[i];
             shadowed.push((id, self.state.types.link(id, ty)))
+        }
+
+        if let Some(scope) = scope {
+            let ty = unsafe { std::mem::transmute::<&Ast, &Ast>(&self.collector.scopes[scope].ty) };
+            let ty = self.parse_type(module, ty)?;
+            let id = TYPE_SALT
+                .add(self.state.self_hash)
+                .add(self.state.modules[module].id);
+            
+            shadowed.push((id, self.state.types.link(id, ty)));
         }
 
         let entry_point = self.new_block();
@@ -255,28 +271,29 @@ impl<'a> FParser<'a> {
 
         let name = unsafe { std::str::from_utf8_unchecked(&name_buffer[..]) };
 
-        let (linkage, alias) = if let Some(attr) = self.collector.attr(&attrs, self.state.linkage_hash) {
-            assert_attr_len(attr, 1)?;
+        let (linkage, alias) =
+            if let Some(attr) = self.collector.attr(&attrs, self.state.linkage_hash) {
+                assert_attr_len(attr, 1)?;
 
-            let linkage = match self.state.display(&attr[1].token.spam) {
-                "import" => Linkage::Import,
-                "local" => Linkage::Local,
-                "export" => Linkage::Export,
-                "preemptible" => Linkage::Preemptible,
-                "hidden" => Linkage::Hidden,
-                _ => return Err(FError::new(FEKind::InvalidLinkage, attr[1].token.clone())),
-            };
+                let linkage = match self.state.display(&attr[1].token.spam) {
+                    "import" => Linkage::Import,
+                    "local" => Linkage::Local,
+                    "export" => Linkage::Export,
+                    "preemptible" => Linkage::Preemptible,
+                    "hidden" => Linkage::Hidden,
+                    _ => return Err(FError::new(FEKind::InvalidLinkage, attr[1].token.clone())),
+                };
 
-            if attr.len() > 2 {
-                (linkage, self.state.display(&attr[2].token.spam))
-            } else if linkage == Linkage::Import {
-                (linkage, self.state.display(&self.state.funs[fun].name))
+                if attr.len() > 2 {
+                    (linkage, self.state.display(&attr[2].token.spam))
+                } else if linkage == Linkage::Import {
+                    (linkage, self.state.display(&self.state.funs[fun].name))
+                } else {
+                    (linkage, name)
+                }
             } else {
-                (linkage, name)
-            }
-        } else {
-            (Linkage::Export, name)
-        };
+                (Linkage::Export, name)
+            };
 
         let call_conv = if let Some(attr) = self.collector.attr(&attrs, self.state.call_conv_hash) {
             assert_attr_len(attr, 1)?;
@@ -630,11 +647,10 @@ impl<'a> FParser<'a> {
     fn index(&mut self, fun: Fun, ast: &Ast) -> ExprResult {
         let target = self.expr(fun, &ast[0])?;
         let index = self.expr(fun, &ast[1])?;
-        let id = FUN_SALT.add(self.state.index_spam.hash);
         let args = &[target, index];
         let spam = self.state.index_spam.clone();
         let result = self
-            .call_low(fun, id, &spam, true, &[], args, &ast.token)?
+            .call_low(fun, None, None, &spam, &[], args, &ast.token)?
             .ok_or_else(|| FError::new(FEKind::ExpectedValue, ast.token.clone()))?;
 
         let result = self.deref_expr_low(result, &ast.token)?;
@@ -742,16 +758,15 @@ impl<'a> FParser<'a> {
     }
 
     fn unary_op(&mut self, fun: Fun, ast: &Ast) -> ExprResult {
-        let name = FUN_SALT.add(ast[0].token.spam.hash);
         let value = self.expr(fun, &ast[1])?;
 
         let mut values = self.context.pool.get();
         values.push(value);
         self.call_low(
             fun,
-            name,
+            None,
+            None,
             &ast[0].token.spam,
-            false,
             &[],
             &values,
             &ast.token,
@@ -972,32 +987,71 @@ impl<'a> FParser<'a> {
         let module = self.state.funs[fun].module;
         let mut generic_params = self.context.pool.get();
         let name = match ast[0].kind {
-            AKind::Ident => (ast[0].token.spam.clone()),
+            AKind::Ident | AKind::Path => &ast[0],
             AKind::Instantiation => {
                 for arg in ast[0][1..].iter() {
                     let id = self.parse_type(module, arg)?;
                     generic_params.push(id);
                 }
-                ast[0][0].token.spam.clone()
+                &ast[0][0]
             }
             _ => unreachable!(),
         };
 
-        let base_name = FUN_SALT.add(name.hash);
+        let (module, caller, name) = if name.kind == AKind::Ident {
+            (None, None, name.token.spam.clone())
+        } else {
+            match &name[..] {
+                [module_name, caller_name, name] => {
+                    let dep = self
+                        .state
+                        .find_dep(module, &module_name.token)
+                        .ok_or_else(|| {
+                            FError::new(FEKind::UnknownModule, module_name.token.clone())
+                        })?;
+                    let caller = self.parse_type(dep, caller_name)?;
 
-        let mut buffer = self.context.pool.get();
+                    (
+                        Some(self.state.modules[dep].id),
+                        Some(caller),
+                        name.token.spam.clone(),
+                    )
+                }
+                [something, name] => {
+                    if let Some(dep) = self.state.find_dep(module, &something.token) {
+                        (
+                            Some(self.state.modules[dep].id),
+                            None,
+                            name.token.spam.clone(),
+                        )
+                    } else {
+                        let caller = self.parse_type(module, something)?;
+                        (None, Some(caller), name.token.spam.clone())
+                    }
+                }
+                _ => unreachable!(),
+            }
+        };
+
+        let mut values = self.context.pool.get();
         for value in ast[1..].iter() {
             let value = self.expr(fun, value)?;
-            buffer.push(value);
+            values.push(value);
         }
+
+        let caller = if ast.kind == AKind::Call(true) {
+            None
+        } else {
+            Some(caller)
+        };
 
         self.call_low(
             fun,
-            base_name,
+            module,
+            caller,
             &name,
-            ast.kind == AKind::Call(true),
             &generic_params,
-            &buffer,
+            &values,
             &ast.token,
         )
     }
@@ -1005,25 +1059,100 @@ impl<'a> FParser<'a> {
     fn call_low(
         &mut self,
         fun: Fun,
-        base_name: ID,
+        module_id: Option<ID>,
+        caller: Option<Option<Type>>,
         name: &Spam,
-        dot_call: bool,
         params: &[Type],
-        values: &[Value],
+        original_values: &[Value],
         token: &Token,
     ) -> ExprResult {
-        let mut values = values.to_vec();
+        let mut values = self.context.pool.get();
+        values.extend(original_values.iter().cloned());
+        let mut types = self.context.pool.get();
+        types.extend(values.iter().map(|&v| self.value(v).ty));
         let module = self.state.funs[fun].module;
 
-        let other_fun = self.smart_find_or_create(
-            module,
-            base_name,
-            name,
-            params,
-            &mut values,
-            dot_call,
-            token,
-        )?;
+        let id = FUN_SALT
+            .add(name.hash)
+            .add(ID(original_values.len() as u64));
+
+        let (result, field, final_type) = if let Some(caller) = caller {
+            let caller = caller.map(|caller| self.ty(caller).id).unwrap_or(ID(0));
+            let id = id.add(caller);
+            (self.find_fun(id, module_id, module), None, None)
+        } else {
+            let v = *original_values.first().unwrap();
+            let ty = self.value(v).ty;
+
+            let mut result = (Ok(None), None, None);
+            let mut fields = self.context.pool.get();
+            let mut i = 0;
+            fields.push((None, ty));
+            while i < fields.len() {
+                let (field, ty) = fields[i];
+                let ty = self.base_of(ty).unwrap_or(ty);
+                let ty_id = self.ty(self.ty(ty).base().unwrap_or(ty)).id;
+                let pre_result = self.find_fun(id.add(ty_id), module_id, module);
+                match pre_result {
+                    Ok(Some(_)) => {
+                        result = (pre_result, field, Some(ty));
+                        break;
+                    }
+                    Err(_) if i == 0 => {
+                        result = (pre_result, None, Some(ty));
+                        break;
+                    }
+                    _ => (),
+                }
+                match self.ty(ty).kind {
+                    TKind::Structure(id) => {
+                        fields.extend(self
+                            .state
+                            .stypes[id]
+                            .fields
+                            .iter()
+                            .filter(|f| f.embedded)
+                            .map(|f| (Some(f.id), f.ty)));
+                    },
+                    _ => (),
+                }
+                i += 1;
+            }
+            result
+        };
+
+        if let Some(ty) = final_type {
+            types[0] = ty;
+        }
+
+        let other_fun = result
+            .map_err(|(a, b)| FError::new(FEKind::AmbiguousFunction(a, b), token.clone()))?
+            .ok_or_else(|| {
+                FError::new(
+                    FEKind::FunctionNotFound(name.clone(), types.to_vec()),
+                    token.clone(),
+                )
+            })?;
+        
+        
+        let other_fun = if let FKind::Generic(g) = self.state.funs[other_fun].kind {
+            if caller.is_none() {
+                let result = self.create(other_fun, g, params, &types)?;
+                types[0] = self.pointer_of(types[0]);
+                result.or(self.create(other_fun, g, params, &types)?)
+            } else {
+                self.create(other_fun, g, params, &types)?
+            }.ok_or_else(|| {
+                FError::new(
+                    FEKind::GenericMismatch(name.clone(), types.to_vec()),
+                    token.clone(),
+                )
+            })?
+        } else {
+            other_fun
+        };
+
+
         let return_type = self.return_type_of(other_fun);
 
         self.state.bstate.body.recursive |= fun == other_fun;
@@ -1037,15 +1166,83 @@ impl<'a> FParser<'a> {
             value
         });
 
-        self.add_inst(InstEnt::new(IKind::Call(other_fun, values), value, token));
+        if caller.is_none() {
+            if let Some(field) = field {
+                let temp = self.new_temp_value(self.state.builtin_repo.bool);
+                self.field_access(values[0], field, temp, token)?;
+                values[0] = temp;
+            }
+    
+            let first_arg_ty = match &self.state.funs[other_fun].kind {
+                &FKind::Represented(r) => {
+                    let r = &self.state.rfuns[r];
+                    r.signature.args[0].ty
+                }
+                &FKind::Normal(n) => {
+                    let n = &self.state.nfuns[n];
+                    n.sig.args[0].ty
+                }
+                &FKind::Builtin(arg, _) => {
+                    arg.unwrap()
+                },
+                kind => unreachable!("{:?}", kind),
+            };
+
+            let first_real_arg_ty = self.value(values[0]).ty;
+    
+            if first_real_arg_ty != first_arg_ty {
+                if self.base_of(first_real_arg_ty) == Some(first_arg_ty) {
+                    values[0] = self.deref_expr_low(values[0], token)?;
+                } else {
+                    values[0] = self.ref_expr_low(values[0], token);
+                }
+                debug_assert!(self.value(values[0]).ty == first_arg_ty);
+            }
+        }
+
+        self.add_inst(InstEnt::new(
+            IKind::Call(other_fun, values.clone()),
+            value,
+            token,
+        ));
 
         Ok(value)
+    }
+
+    fn find_fun(
+        &mut self,
+        id: ID,
+        module_id: Option<ID>,
+        module: Mod,
+    ) -> std::result::Result<Option<Fun>, (Fun, Fun)> {
+        if let Some(module_id) = module_id {
+            Ok(self.state.funs.index(id.add(module_id)).cloned())
+        } else {
+            if let Some(&fun) = self.state.funs.index(id.add(self.state.modules[module].id)) {
+                Ok(Some(fun))
+            } else {
+                let mut modules = self.context.pool.get();
+                self.state.collect_scopes(module, &mut modules);
+
+                let mut found = None;
+                for (_, module_id) in modules.drain(1..) {
+                    if let Some(&fun) = self.state.funs.index(id.add(module_id)) {
+                        if let Some(found) = found {
+                            return Err((found, fun));
+                        }
+                        found = Some(fun);
+                        break;
+                    }
+                }
+                Ok(found)
+            }
+        }
     }
 
     fn return_type_of(&self, fun: Fun) -> Option<Type> {
         match &self.state.funs[fun].kind {
             &FKind::Normal(nid) => self.state.nfuns[nid].sig.ret_ty,
-            &FKind::Builtin(ret_ty) => ret_ty,
+            &FKind::Builtin(_, ret_ty) => ret_ty,
             i => unreachable!("{:?}", i),
         }
     }
@@ -1134,6 +1331,7 @@ impl<'a> FParser<'a> {
             .iter()
             .find(|&(p, _)| *p == name)
         {
+
             let ty = &self.ty(ty).kind;
             match ty {
                 TKind::Const(t) => {
@@ -1208,16 +1406,14 @@ impl<'a> FParser<'a> {
         let left = self.expr(fun, &ast[1])?;
         let right = self.expr(fun, &ast[2])?;
 
-        let base_id = FUN_SALT.add(ast[0].token.spam.hash);
-
         let mut buffer = self.context.pool.get();
         buffer.extend(&[left, right]);
 
         self.call_low(
             fun,
-            base_id,
+            None,
+            None,
             &ast[0].token.spam,
-            false,
             &[],
             &buffer,
             &ast.token,
@@ -1344,42 +1540,6 @@ impl<'a> FParser<'a> {
         Ok(Some(value))
     }
 
-    fn smart_find_or_create(
-        &mut self,
-        module: Mod,
-        base: ID,
-        name: &Spam,
-        params: &[Type],
-        args: &mut [Value],
-        dot_expr: bool,
-        token: &Token,
-    ) -> Result<Fun> {
-        let mut types = self.context.pool.get();
-        types.clear();
-        types.extend(args.iter().map(|&v| self.value(v).ty));
-
-        let result = if dot_expr {
-            let first_mutable = self.value(args[0]).mutable;
-            let (fun, id, kind) =
-                self.dot_find_or_create(module, base, name, params, &mut types, &token)?;
-            if id.0 != 0 {
-                let value = self.new_anonymous_value(self.state.builtin_repo.bool, first_mutable);
-                self.field_access(args[0], id, value, &token)?;
-                args[0] = value;
-            }
-            match kind {
-                DotInstr::None => (),
-                DotInstr::Deref => args[0] = self.deref_expr_low(args[0], &token)?,
-                DotInstr::Ref => args[0] = self.ref_expr_low(args[0], &token),
-            }
-            Ok(fun)
-        } else {
-            self.find_or_create(module, base, name, params, &types, &token)
-        };
-
-        result
-    }
-
     #[inline]
     fn new_temp_value(&mut self, ty: Type) -> Value {
         self.new_anonymous_value(ty, false)
@@ -1449,193 +1609,8 @@ impl<'a> FParser<'a> {
         self.state.bstate.block = None;
     }
 
-    fn dot_find_or_create(
-        &mut self,
-        module: Mod,
-        base: ID,
-        name: &Spam,
-        params: &[Type],
-        values: &mut [Type],
-        token: &Token,
-    ) -> Result<(Fun, ID, DotInstr)> {
-        let mut frontier = self.context.pool.get();
-        frontier.push((values[0], ID(0)));
-
-        let mut final_err = None;
-
-        macro_rules! unwrap {
-            ($expr:expr, $id:expr, $type:ident) => {
-                match $expr {
-                    Ok(expr) => return Ok((expr, $id, DotInstr::$type)),
-                    #[allow(unused_assignments)]
-                    Err(err) => {
-                        if let FError {
-                            kind: FEKind::FunctionNotFound(..),
-                            ..
-                        } = err
-                        {
-                            final_err = Some(err);
-                        } else {
-                            return Err(err);
-                        }
-                    }
-                }
-            };
-        }
-
-        let mut i = 0;
-        while i < frontier.len() {
-            let (ty, id) = frontier[i];
-            values[0] = ty;
-            unwrap!(
-                self.find_or_create(module, base, name, params, values, token),
-                id,
-                None
-            );
-            if self.is_pointer(ty) {
-                values[0] = self.base_of(ty).unwrap();
-                unwrap!(
-                    self.find_or_create(module, base, name, params, values, token),
-                    id,
-                    Deref
-                );
-            } else {
-                values[0] = self.pointer_of(ty);
-                unwrap!(
-                    self.find_or_create(module, base, name, params, values, token),
-                    id,
-                    Ref
-                );
-            }
-
-            match &self.ty(ty).kind {
-                &TKind::Structure(id) => {
-                    for field in self.state.stypes[id].fields.iter().filter(|f| f.embedded) {
-                        frontier.push((field.ty, field.id));
-                    }
-                }
-                &TKind::Pointer(pointed) => match &self.ty(pointed).kind {
-                    &TKind::Structure(id) => {
-                        for field in self.state.stypes[id].fields.iter().filter(|f| f.embedded) {
-                            frontier.push((field.ty, field.id));
-                        }
-                    }
-                    _ => (),
-                },
-                _ => (),
-            }
-
-            i += 1;
-        }
-
-        Err(final_err.unwrap())
-    }
-
-    fn find_or_create(
-        &mut self,
-        module: Mod,
-        base: ID,
-        name: &Spam,
-        params: &[Type],
-        values: &[Type],
-        token: &Token,
-    ) -> Result<Fun> {
-        let mut specific_id = values
-            .iter()
-            .fold(base, |base, &val| base.add(self.ty(val).id));
-
-        if values.len() == 0 {
-            for &ty in params {
-                specific_id = specific_id.add(self.ty(ty).id);
-            }
-        }
-
-        let mut buffer = self.context.pool.get();
-        self.state.collect_scopes(module, &mut buffer);
-
-        let (_, module_id) = buffer[0];
-
-        if let Some(fun) =
-            self.find_or_create_low(specific_id, module_id, base, module, params, values, token)?
-        {
-            return Ok(fun);
-        }
-
-        let mut found = None;
-
-        for (module, module_id) in buffer.drain(1..) {
-            if let Some(fun) = self.find_or_create_low(
-                specific_id,
-                module_id,
-                base,
-                module,
-                params,
-                values,
-                token,
-            )? {
-                if let Some(found) = found {
-                    return Err(FError::new(
-                        FEKind::AmbiguousFunction(fun, found),
-                        token.clone(),
-                    ));
-                }
-                found = Some(fun);
-            }
-        }
-
-        found.ok_or_else(|| {
-            FError::new(
-                FEKind::FunctionNotFound(name.clone(), values.to_vec()),
-                token.clone(),
-            )
-        })
-    }
-
-    fn find_or_create_low(
-        &mut self,
-        specific_id: ID,
-        module_id: ID,
-        base: ID,
-        module: Mod,
-        params: &[Type],
-        values: &[Type],
-        token: &Token,
-    ) -> Result<Option<Fun>> {
-        if let Some(&fun) = self.state.funs.index(specific_id.add(module_id)) {
-            return Ok(Some(fun));
-        }
-
-        let mut g_fun = self
-            .state
-            .funs
-            .index(base.add(GENERIC_FUN_SALT).add(module_id))
-            .cloned();
-
-        let mut found = None;
-
-        while let Some(fun) = g_fun {
-            let g = match self.state.funs[fun].kind {
-                FKind::Generic(g) => g,
-                _ => unreachable!("{:?}", self.state.funs[fun].kind),
-            };
-            if let Some(fun) = self.create(module, fun, g, params, values)? {
-                if let Some(found) = found {
-                    return Err(FError::new(
-                        FEKind::AmbiguousFunction(fun, found),
-                        token.clone(),
-                    ));
-                }
-                found = Some(fun);
-            }
-            g_fun = self.state.gfuns[g].next;
-        }
-
-        Ok(found)
-    }
-
     fn create(
         &mut self,
-        module: Mod,
         fun: Fun,
         g: GFun,
         explicit_params: &[Type],
@@ -1716,7 +1691,8 @@ impl<'a> FParser<'a> {
 
         let fun_ent = &self.state.funs[fun];
         let g_ent = &self.state.gfuns[g];
-        let fun_module_id = self.state.modules[fun_ent.module].id;
+        let module = fun_ent.module;
+        let fun_module_id = self.state.modules[module].id;
         let mut id = FUN_SALT.add(fun_ent.name.hash);
         let vis = fun_ent.vis;
         let name = fun_ent.name.clone();
@@ -1730,7 +1706,9 @@ impl<'a> FParser<'a> {
 
         for i in 0..params.len() {
             if let Some(ty) = params[i] {
-                let id = self.state.gfuns[g].signature.params[i].add(fun_module_id);
+                let id = TYPE_SALT
+                    .add(self.state.gfuns[g].signature.params[i])
+                    .add(fun_module_id);
                 shadowed.push((id, self.state.types.link(id, ty)));
                 final_params.push((id, ty));
             } else {
@@ -1738,13 +1716,18 @@ impl<'a> FParser<'a> {
             }
         }
 
+        if let Some(scope) = scope {
+            let ty = unsafe { std::mem::transmute::<&Ast, &Ast>(&self.collector.scopes[scope].ty) };
+            let ty = self.parse_type(module, ty)?;
+            let id = TYPE_SALT.add(self.state.self_hash).add(fun_module_id);
+            shadowed.push((id, self.state.types.link(id, ty)));
+        }
+
         let ast = std::mem::take(&mut self.state.asts[ast_id]);
-        let signature = self.parse_signature(module, &ast[0], &mut id)?;
-        if signature.args.len() == 0 {
-            for final_param in final_params.iter() {
-                let tid = self.ty(final_param.1).id;
-                id = id.add(tid);
-            }
+        let signature = self.parse_signature(module, &ast[0])?;
+        id = id.add(ID(signature.args.len() as u64));
+        for final_param in final_params.iter() {
+            id = id.add(final_param.0);
         }
         id = id.add(self.state.modules[module].id);
         self.state.asts[ast_id] = ast;
@@ -1803,7 +1786,7 @@ impl<'a> FParser<'a> {
             self.collect_global_var(ast, module, module_id, attrs, scope)?
         }
         self.collector.globals = globals;
-        
+
         let mut functions = std::mem::take(&mut self.collector.functions);
         for Item { attrs, ast, scope } in functions.drain(..) {
             self.collect_fun(ast, module, module_id, attrs, scope)?
@@ -1821,15 +1804,21 @@ impl<'a> FParser<'a> {
         attrs: Attrs,
         scope: Option<Scope>,
     ) -> Result {
-        let scope_id = if let Some(scope) = scope {
-            let scope = std::mem::take(&mut self.collector.scopes[scope]);    
-            if scope.params.len() > 0 {
+        let scope_id = if let Some(scope_id) = scope {
+            let scope_ent = std::mem::take(&mut self.collector.scopes[scope_id]);
+            if scope_ent.params.len() > 0 {
                 return Err(FError::new(
-                    FEKind::VarInsideGenericScope(scope.ty.token.clone()),
+                    FEKind::VarInsideGenericScope(scope_ent.ty.token.clone()),
                     ast.token.clone(),
                 ));
             }
-            let ty = self.parse_type(module, &scope.ty)?; 
+            let ty = match scope_ent.ty.kind {
+                AKind::Ident => self.parse_type(module, &scope_ent.ty)?,
+                AKind::Instantiation => self.parse_type(module, &scope_ent.ty[0])?,
+                AKind::Array => self.state.builtin_repo.array,
+                _ => unreachable!(),
+            };
+            self.collector.scopes[scope_id] = scope_ent;
             self.ty(ty).id
         } else {
             ID(0)
@@ -1854,10 +1843,7 @@ impl<'a> FParser<'a> {
                 .zip(values.drain(..).chain(std::iter::repeat(Ast::none())))
             {
                 let hint = name.token.clone();
-                let id = GLOBAL_SALT
-                    .add(hint.spam.hash)
-                    .add(scope_id)
-                    .add(module_id);
+                let id = GLOBAL_SALT.add(hint.spam.hash).add(scope_id).add(module_id);
 
                 let g_ent = GlobalEnt {
                     vis,
@@ -1891,9 +1877,30 @@ impl<'a> FParser<'a> {
         ast: Ast,
         module: Mod,
         module_id: ID,
-        attrs: Attrs,
+        mut attrs: Attrs,
         scope: Option<Scope>,
     ) -> Result {
+        let mut shadowed = None;
+
+        let (caller, generic) = if let Some(scope_id) = scope {
+            let raw_ty = std::mem::take(&mut self.collector.scopes[scope_id].ty);
+            let ty = match raw_ty.kind {
+                AKind::Ident => self.parse_type(module, &raw_ty)?,
+                AKind::Instantiation => self.parse_type(module, &raw_ty[0])?,
+                AKind::Array => self.state.builtin_repo.array,
+                _ => unreachable!(),
+            };
+            let id = TYPE_SALT.add(self.state.self_hash).add(module_id);
+            shadowed = Some((id, self.state.types.link(id, ty)));
+            self.collector.scopes[scope_id].ty = raw_ty;
+            (
+                self.ty(ty).id,
+                self.collector.scopes[scope_id].params.len() > 0,
+            )
+        } else {
+            (ID(0), false)
+        };
+
         let vis = match ast.kind {
             AKind::Fun(vis) => vis,
             _ => unreachable!(),
@@ -1902,10 +1909,13 @@ impl<'a> FParser<'a> {
         let header = &ast[0];
         let hint = header.token.clone();
         let name = &header[0];
-        let (name, mut id, kind, unresolved) = if name.kind == AKind::Ident {
-            let mut fun_id = FUN_SALT.add(name.token.spam.hash);
+        let (name, mut id, kind, unresolved) = if name.kind == AKind::Ident && !generic {
+            let signature = self.parse_signature(module, header)?;
 
-            let signature = self.parse_signature(module, header, &mut fun_id)?;
+            let fun_id = FUN_SALT
+                .add(name.token.spam.hash)
+                .add(ID(signature.args.len() as u64))
+                .add(caller);
 
             let name = name.token.spam.clone();
 
@@ -1917,18 +1927,26 @@ impl<'a> FParser<'a> {
 
             let n = self.state.nfuns.add(n_ent);
             (name, fun_id, FKind::Normal(n), true)
-        } else if name.kind == AKind::Instantiation {
-            let nm = &name[0];
+        } else if name.kind == AKind::Instantiation || generic {
+            let nm = if name.kind == AKind::Instantiation {
+                &name[0]
+            } else {
+                name
+            };
+
             if nm.kind != AKind::Ident {
                 return Err(FError::new(FEKind::InvalidFunctionHeader, nm.token.clone()));
             }
 
-            let id = FUN_SALT.add(nm.token.spam.hash).add(GENERIC_FUN_SALT);
-
             let mut params = self.context.pool.get();
-            for param in name[1..].iter() {
-                let ty = TYPE_SALT.add(param.token.spam.hash);
-                params.push(ty);
+            if name.kind == AKind::Instantiation {
+                for param in name[1..].iter() {
+                    params.push(param.token.spam.hash);
+                }
+            }
+
+            if let Some(scope_id) = scope {
+                params.extend(self.collector.scopes[scope_id].params.iter());
             }
 
             let mut arg_count = 0;
@@ -1937,11 +1955,16 @@ impl<'a> FParser<'a> {
                 let amount = arg_section.len() - 1;
                 let idx = args.len();
                 args.push(GenericElement::NextArgument(amount, 0));
-                self.load_arg(module, &arg_section[amount], &params, &mut args)?;
+                self.load_arg(module, scope, &arg_section[amount], &params, &mut args)?;
                 let additional = args.len() - idx - 1;
                 args[idx] = GenericElement::NextArgument(amount, additional);
                 arg_count += amount;
             }
+
+            let id = FUN_SALT
+                .add(nm.token.spam.hash)
+                .add(ID(arg_count as u64))
+                .add(caller);
 
             let signature = GenericSignature {
                 params: params.clone(),
@@ -1959,6 +1982,8 @@ impl<'a> FParser<'a> {
 
             let g = self.state.gfuns.add(g_ent);
 
+            attrs = self.collector.to_permanent(attrs);
+
             (nm, id, FKind::Generic(g), false)
         } else {
             return Err(FError::new(
@@ -1966,6 +1991,10 @@ impl<'a> FParser<'a> {
                 name.token.clone(),
             ));
         };
+
+        if let Some((id, shadowed)) = shadowed {
+            self.state.types.remove_link(id, shadowed);
+        }
 
         id = id.add(module_id);
 
@@ -2006,12 +2035,7 @@ impl<'a> FParser<'a> {
         Ok(())
     }
 
-    fn parse_signature(
-        &mut self,
-        module: Mod,
-        header: &Ast,
-        fun_id: &mut ID,
-    ) -> Result<FunSignature> {
+    fn parse_signature(&mut self, module: Mod, header: &Ast) -> Result<FunSignature> {
         let mut args = self.context.pool.get();
         args.clear();
 
@@ -2019,7 +2043,6 @@ impl<'a> FParser<'a> {
             let ty = self.parse_type(module, &arg_section[arg_section.len() - 1])?;
             for arg in arg_section[0..arg_section.len() - 1].iter() {
                 let id = arg.token.spam.hash;
-                *fun_id = fun_id.add(self.ty(ty).id);
                 let val_ent = ValueEnt {
                     id,
                     ty,
@@ -2046,6 +2069,7 @@ impl<'a> FParser<'a> {
     fn load_arg(
         &mut self,
         module: Mod,
+        scope: Option<Scope>,
         ast: &Ast,
         params: &[ID],
         buffer: &mut Vec<GenericElement>,
@@ -2065,22 +2089,31 @@ impl<'a> FParser<'a> {
             let ast = *ast;
             match &ast.kind {
                 AKind::Ident => {
-                    let id = TYPE_SALT.add(ast.token.spam.hash);
-                    if let Some(index) = params.iter().position(|&p| p == id) {
-                        buffer.push(GenericElement::Parameter(index));
+                    if ast.token.spam.hash == self.state.self_hash && scope.is_some() {
+                        let ast = unsafe {
+                            std::mem::transmute::<&Ast, &Ast>(
+                                &self.collector.scopes[scope.unwrap()].ty,
+                            )
+                        };
+                        stack.push((ast, false));
                     } else {
-                        let ty = self.parse_type(module, ast)?;
-                        buffer.push(GenericElement::Element(ty, None));
+                        let id = ast.token.spam.hash;
+                        if let Some(index) = params.iter().position(|&p| p == id) {
+                            buffer.push(GenericElement::Parameter(index));
+                        } else {
+                            let ty = self.parse_type(module, ast)?;
+                            buffer.push(GenericElement::Element(ty, None));
+                        }
                     }
                 }
                 AKind::Instantiation => {
-                    self.load_arg(module, &ast[0], params, buffer)?;
+                    let ty = self.parse_type(module, &ast[0])?;
+                    buffer.push(GenericElement::Element(ty, None));
                     buffer.push(GenericElement::ScopeStart);
                     stack.extend(ast[1..].iter().map(|a| (a, false)));
                 }
                 &AKind::Ref => {
                     buffer.push(GenericElement::Pointer);
-
                     stack.push((&ast[0], false));
                 }
                 AKind::Array => {
@@ -2243,6 +2276,11 @@ impl<'a> FParser<'a> {
     fn clear_vars(&mut self) {
         self.state.bstate.vars.clear();
     }
+
+    fn generic_base_id(&self, values: Value) -> ID {
+        let ty = self.value(values).ty;
+        self.ty(self.ty(ty).base().unwrap_or(ty)).id
+    }
 }
 
 crate::def_displayer!(
@@ -2324,7 +2362,19 @@ crate::def_displayer!(
         FEKind::FunctionNotFound(name, arguments) => {
             writeln!(
                 f,
-                "function {}({}) does not exist within current scope",
+                "'{}({})' does not exist within current scope",
+                self.state.display(name),
+                arguments
+                    .iter()
+                    .map(|t| format!("{}", TypeDisplay::new(&self.state, *t)))
+                    .collect::<Vec<_>>()
+                    .join(", ")
+            )?;
+        },
+        FEKind::GenericMismatch(name, arguments) => {
+            writeln!(
+                f,
+                "'{}({})' does not match the generic signature",
                 self.state.display(name),
                 arguments
                     .iter()
@@ -2449,6 +2499,12 @@ crate::def_displayer!(
                 TokenDisplay::new(self.state, scope)
             )?;
         },
+        FEKind::UnknownModule => {
+            writeln!(f, "unknown module")?;
+        },
+        FEKind::InvalidDotCall => {
+            writeln!(f, "call cannot have explicit caller type and be a dot call")?;
+        },
     }
 );
 
@@ -2466,6 +2522,8 @@ impl FError {
 
 #[derive(Debug)]
 pub enum FEKind {
+    InvalidDotCall,
+    UnknownModule,
     VarInsideGenericScope(Token),
     RecursiveInline,
     InvalidEntrySignature,
@@ -2482,6 +2540,7 @@ pub enum FEKind {
     ExpectedValue,
     TypeMismatch(Type, Type),
     FunctionNotFound(Spam, Vec<Type>),
+    GenericMismatch(Spam, Vec<Type>),
     UnexpectedValue,
     UnexpectedReturnValue,
     UnexpectedAuto,
@@ -2536,7 +2595,7 @@ impl FunBody {
 
 #[derive(Debug, Clone)]
 pub enum FKind {
-    Builtin(Option<Type>),
+    Builtin(Option<Type>, Option<Type>),
     Generic(GFun),
     Normal(NFun),
     Represented(RFun),
@@ -2545,7 +2604,7 @@ pub enum FKind {
 
 impl Default for FKind {
     fn default() -> Self {
-        FKind::Builtin(None)
+        FKind::Builtin(None, None)
     }
 }
 
@@ -2858,6 +2917,7 @@ pub struct FState {
     pub inline_hash: ID,
     pub tls_hash: ID,
     pub thread_local_hash: ID,
+    pub self_hash: ID,
 }
 
 crate::inherit!(FState, t_state, TState);
@@ -2886,6 +2946,7 @@ impl Default for FState {
             inline_hash: ID::new("inline"),
             tls_hash: ID::new("tls"),
             thread_local_hash: ID::new("thread_local"),
+            self_hash: ID::new("Self"),
         };
 
         let count = state
@@ -2977,11 +3038,11 @@ impl Default for FState {
             args: &[Type],
             ret_ty: Option<Type>,
         ) {
-            let mut id = FUN_SALT.add(name.hash);
-            for &arg in args {
-                id = id.add(state.types[arg].id);
-            }
-            id = id.add(module);
+            let id = FUN_SALT
+                .add(name.hash)
+                .add(ID(args.len() as u64))
+                .add(state.types[args[0]].id)
+                .add(module);
             let fun_ent = FunEnt {
                 id,
                 name,
@@ -2989,7 +3050,7 @@ impl Default for FState {
                 module: state.builtin_module,
                 hint: Token::default(),
                 params: vec![],
-                kind: FKind::Builtin(ret_ty),
+                kind: FKind::Builtin(args.first().cloned(), ret_ty),
                 attrs: Attrs::default(),
                 scope: None,
             };
@@ -3066,7 +3127,6 @@ impl Default for FState {
                     } else {
                         ty
                     };
-
                     create_builtin_fun(
                         &mut state,
                         module_id,
@@ -3180,7 +3240,7 @@ impl std::fmt::Display for FunDisplay<'_> {
 }
 
 pub fn test() {
-    /*let mut program = Program::default();
+    let mut program = Program::default();
 
     let mut state = FState::default();
     let mut context = FContext::default();
@@ -3189,10 +3249,24 @@ pub fn test() {
         .parse("src/functions/test_project")
         .unwrap();
 
-    for &module in std::mem::take(&mut state.module_order).iter().rev() {
-        FParser::new(&mut program, &mut state, &mut context)
-            .parse(module)
-            .map_err(|e| println!("{}", FErrorDisplay::new(&state, &e)))
+    let mut collector = Collector::default();
+
+    for module in std::mem::take(&mut state.module_order).drain(..).rev() {
+        let mut ast = std::mem::take(&mut state.modules[module].ast);
+
+        let mut ast = AParser::new(&mut state, &mut ast, &mut context)
+            .parse()
+            .map_err(|err| TError::new(TEKind::AError(err), Token::default()))
             .unwrap();
-    }*/
+
+        collector.clear(&mut context);
+        collector.parse(&mut state, &mut ast);
+
+        context.recycle(ast);
+
+        FParser::new(&mut program, &mut state, &mut context, &mut collector)
+            .parse(module)
+            .map_err(|e| println!("{}", FErrorDisplay::new(&mut state, &e)))
+            .unwrap();
+    }
 }
