@@ -4,10 +4,10 @@ extern crate cranelift_codegen;
 extern crate cranelift_frontend;
 
 pub mod ast;
-pub mod attributes;
 pub mod cli;
+pub mod collector;
 pub mod functions;
-pub mod gen;
+//pub mod gen;
 pub mod lexer;
 pub mod module_tree;
 pub mod testing;
@@ -63,5 +63,5 @@ fn test() {
     module_tree::test();
     types::test();
     functions::test();
-    gen::test();
+    //gen::test();
 }

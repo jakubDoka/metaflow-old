@@ -5,6 +5,26 @@ let hello = "hello"
 fun something -> fun(int, int) -> int:
   return fun(a, b: int) -> int: a + b
 
+struct Scope
+
+impl Scope:
+  fun new -> Self:
+    return
+  
+  fun do_nothing(s: Self):
+    pass
+
+struct Template[T]
+
+impl[T] Template[T]:
+  fun new -> Self:
+    return
+  
+  fun do_nothing(s: Self, value: T) -> T:
+    value
+
+fun use_chain:
+  module::Type::method::[param]()
 
 fun flo: pass
 

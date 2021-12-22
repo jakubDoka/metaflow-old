@@ -2,7 +2,6 @@ use std::ops::{Deref, DerefMut};
 use std::path::{Path, PathBuf};
 
 use crate::ast::{AContext, AError, AErrorDisplay, AMainState, AParser, AState, Dep};
-use crate::attributes::Attributes;
 use crate::lexer::{SourceEnt, Spam, TokenDisplay};
 use crate::util::pool::{Pool, PoolRef};
 use crate::util::sdbm::ID;
@@ -186,8 +185,6 @@ impl<'a> MTParser<'a> {
             ast,
             manifest: manifest_id,
             name,
-
-            attributes: Default::default(),
         };
 
         let (_, module) = self.state.modules.insert(id, ent);
@@ -560,7 +557,6 @@ pub struct ModEnt {
     pub dependency: Vec<(ID, Mod)>,
     pub dependant: Vec<Mod>,
     pub ast: AState,
-    pub attributes: Attributes,
     pub manifest: Manifest,
 }
 
@@ -667,4 +663,11 @@ pub enum MTEKind {
     DownloadFailed,
 }
 
-pub fn test() {}
+pub fn test() {
+    let mut state = MTState::default();
+    let mut context = MTContext::default();
+
+    MTParser::new(&mut state, &mut context)
+        .parse("src/module_tree/test_project")
+        .unwrap();
+}

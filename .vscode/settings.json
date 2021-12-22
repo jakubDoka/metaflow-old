@@ -58,6 +58,7 @@
         "probestack",
         "putchar",
         "repr",
+        "rfind",
         "rfuns",
         "sdbm",
         "sdiv",

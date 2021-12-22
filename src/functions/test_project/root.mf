@@ -6,6 +6,19 @@ struct Fun:
   a: i32
   b: i32
 
+impl Fun:
+  fun +(a, b: Self) -> Self:
+    var result: Fun
+    result.a = a.a + b.a
+    result.b = a.b + b.b
+    result
+  
+  fun -(a, b: Self) -> Self:
+    var result: Fun
+    result.a = a.a - b.a
+    result.b = a.b - b.b
+    result
+
 fun init -> Fun:
   var fn: Fun
   

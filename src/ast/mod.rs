@@ -76,20 +76,21 @@ impl<'a> AParser<'a> {
                             path_and_version.range.end -= 1;
                             s.next()?;
 
-                            let split_at = s
+                            let (path_end, version_start) = s
                                 .main_state
                                 .display(&path_and_version)
                                 .find('@')
-                                .unwrap_or(path_and_version.range.len());
+                                .map(|i| (i, i + 1))
+                                .unwrap_or((path_and_version.range.len(), path_and_version.range.len()));
 
                             let path = s.main_state.new_spam(
                                 path_and_version.source,
-                                path_and_version.range.start..path_and_version.range.start + split_at
+                                path_and_version.range.start..path_and_version.range.start + path_end
                             );
 
                             let version = s.main_state.new_spam(
                                 path_and_version.source,
-                                path_and_version.range.start + split_at + 1..path_and_version.range.end
+                                path_and_version.range.start + version_start..path_and_version.range.end
                             );
 
                             s.join_token(&mut token);
@@ -175,17 +176,54 @@ impl<'a> AParser<'a> {
         let mut ast = self.ast(AKind::Group);
         while self.state.token.kind != TKind::Eof {
             match self.state.token.kind {
+                TKind::Impl => ast.push(self.impl_block()?),
                 TKind::Fun => ast.push(self.fun(false)?),
                 TKind::Attr => ast.push(self.attr()?),
                 TKind::Struct => ast.push(self.struct_declaration()?),
                 TKind::Var | TKind::Let => ast.push(self.var_statement(true)?),
                 TKind::Indent(_) => self.next()?,
                 _ => {
-                    return Err(self
-                        .unexpected_str("expected 'fun' or 'attr' or 'struct' or 'let' or 'var'"))
+                    return Err(self.unexpected_str(
+                        "expected 'fun' or 'attr' or 'struct' or 'let' or 'var' or 'impl'",
+                    ))
                 }
             }
         }
+        Ok(ast)
+    }
+
+    fn impl_block(&mut self) -> Result<Ast> {
+        let mut ast = self.ast(AKind::None);
+
+        self.next()?;
+
+        let vis = self.vis()?;
+
+        ast.kind = AKind::Impl(vis);
+
+        ast.push(if self.state.token == TKind::LBra {
+            let mut ast = self.ast(AKind::Group);
+            self.list(
+                &mut ast,
+                TKind::LBra,
+                TKind::Comma,
+                TKind::RBra,
+                Self::ident,
+            )?;
+            ast
+        } else {
+            Ast::none()
+        });
+
+        ast.push(self.type_expr()?);
+
+        self.expect_str(TKind::Colon, "expected ':' after 'impl' type")?;
+        self.next()?;
+        self.walk_block(|s| {
+            ast.push(s.fun(false)?);
+            Ok(())
+        })?;
+
         Ok(ast)
     }
 
@@ -193,7 +231,7 @@ impl<'a> AParser<'a> {
         let mut ast = self.ast(AKind::None);
         self.next()?;
 
-        ast.kind = AKind::StructDeclaration(self.visibility()?);
+        ast.kind = AKind::StructDeclaration(self.vis()?);
 
         ast.push(self.type_expr()?);
 
@@ -211,7 +249,7 @@ impl<'a> AParser<'a> {
             return self.attr();
         }
 
-        let vis = self.visibility()?;
+        let vis = self.vis()?;
 
         let embedded = if self.state.token == TKind::Embed {
             self.next()?;
@@ -289,12 +327,13 @@ impl<'a> AParser<'a> {
         ast.push(header);
         ast.kind = AKind::Fun(visibility);
 
-        ast.push(if self.state.token == TKind::Colon && !self.state.is_type_expr {
-            self.stmt_block()?
-        } else {
-            Ast::none()
-        });
-        
+        ast.push(
+            if self.state.token == TKind::Colon && !self.state.is_type_expr {
+                self.stmt_block()?
+            } else {
+                Ast::none()
+            },
+        );
 
         self.join_token(&mut ast.token);
 
@@ -305,11 +344,7 @@ impl<'a> AParser<'a> {
         let mut ast = self.ast(AKind::FunHeader);
         self.next()?;
 
-        let visibility = if anonymous {
-            Vis::None
-        } else {
-            self.visibility()?
-        };
+        let visibility = if anonymous { Vis::None } else { self.vis()? };
 
         let previous = self.state.is_type_expr;
         self.state.is_type_expr = true;
@@ -325,13 +360,7 @@ impl<'a> AParser<'a> {
             } else {
                 Self::fun_argument
             };
-            self.list(
-                &mut ast,
-                TKind::LPar,
-                TKind::Comma,
-                TKind::RPar,
-                parser,
-            )?;
+            self.list(&mut ast, TKind::LPar, TKind::Comma, TKind::RPar, parser)?;
         }
 
         ast.push(if self.state.token == TKind::RArrow {
@@ -386,11 +415,7 @@ impl<'a> AParser<'a> {
         let mut ast = self.ast(AKind::None);
         self.next()?;
 
-        let vis = if top_level {
-            self.visibility()?
-        } else {
-            Vis::None
-        };
+        let vis = if top_level { self.vis()? } else { Vis::None };
         ast.kind = AKind::VarStatement(vis, mutable);
 
         self.walk_block(|s| {
@@ -735,10 +760,15 @@ impl<'a> AParser<'a> {
 
         self.peek()?;
         if self.state.token == TKind::DoubleColon && self.state.peeked == TKind::Ident {
-            let mut temp_ast = Ast::new(AKind::ExplicitPackage, ast.token.clone());
+            let mut temp_ast = Ast::new(AKind::Path, ast.token.clone());
             temp_ast.push(ast);
             self.next()?;
             temp_ast.push(self.ident()?);
+            self.peek()?;
+            if self.state.token == TKind::DoubleColon && self.state.peeked == TKind::Ident {
+                self.next()?;
+                temp_ast.push(self.ident()?);
+            }
             ast = temp_ast;
             self.join_token(&mut ast.token);
         }
@@ -811,7 +841,7 @@ impl<'a> AParser<'a> {
         Ok(ast)
     }
 
-    fn visibility(&mut self) -> Result<Vis> {
+    fn vis(&mut self) -> Result<Vis> {
         Ok(match self.state.token.kind {
             TKind::Pub => {
                 self.next()?;
@@ -1199,9 +1229,10 @@ impl std::fmt::Display for AstDisplay<'_> {
 pub enum AKind {
     UseStatement(bool),
 
-    ExplicitPackage,
+    Path,
 
     Fun(Vis),
+    Impl(Vis),
     FunHeader,
     FunArgument(bool),
     Call(bool), // true if dot syntax is used

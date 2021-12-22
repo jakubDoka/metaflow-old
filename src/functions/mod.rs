@@ -3,6 +3,7 @@ use std::ops::{Deref, DerefMut};
 use std::str::FromStr;
 
 use crate::ast::{AKind, Ast, AstDisplay, Vis};
+use crate::collector::{Collector, Attrs, Item, Scope};
 use crate::lexer::TKind as LTKind;
 use crate::lexer::{Spam, Token, TokenDisplay};
 use crate::module_tree::*;
@@ -35,19 +36,26 @@ pub struct FParser<'a> {
     program: &'a mut Program,
     state: &'a mut FState,
     context: &'a mut FContext,
+    collector: &'a mut Collector,
 }
 
 impl<'a> FParser<'a> {
-    pub fn new(program: &'a mut Program, state: &'a mut FState, context: &'a mut FContext) -> Self {
+    pub fn new(
+        program: &'a mut Program,
+        state: &'a mut FState,
+        context: &'a mut FContext,
+        collector: &'a mut Collector,
+    ) -> Self {
         Self {
             program,
             state,
             context,
+            collector,
         }
     }
 
     pub fn parse(&mut self, module: Mod) -> Result {
-        TParser::new(&mut self.state.t_state, &mut self.context.t_context)
+        TParser::new(self.state, self.context, self.collector)
             .parse(module)
             .map_err(|err| FError::new(FEKind::TypeError(err), Token::default()))?;
 
@@ -87,7 +95,7 @@ impl<'a> FParser<'a> {
                 GKind::Normal(ast, ty) => (std::mem::take(ast), ty.clone()),
                 _ => unreachable!(),
             };
-            let attr_id = glob.attr_id;
+            let attrs = glob.attrs.clone();
             let module = glob.module;
 
             write_base36(glob.id.0, &mut buffer);
@@ -113,10 +121,9 @@ impl<'a> FParser<'a> {
 
             let name = unsafe { std::str::from_utf8_unchecked(buffer.as_slice()) };
 
-            let attributes = &self.state.modules[module].attributes;
-
             let tls =
-                attributes.enabled(attr_id, "tls") || attributes.enabled(attr_id, "thread_local");
+                self.collector.attr_id(&attrs, self.state.tls_hash).is_some() || 
+                self.collector.attr_id(&attrs, self.state.thread_local_hash).is_some();
 
             let data_id = self
                 .program
@@ -232,7 +239,7 @@ impl<'a> FParser<'a> {
         let disposable = fun_ent.params.is_empty();
         let n_ent = self.state.nfuns.remove(fun_ent.kind.unwrap_normal());
         let fun_id = fun_ent.id;
-        let attr_id = fun_ent.attr_id;
+        let attrs = fun_ent.attrs.clone();
         let state = unsafe {
             std::mem::transmute::<&mut BodyState, &mut BodyState>(&mut self.state.main_bstate)
         };
@@ -247,9 +254,8 @@ impl<'a> FParser<'a> {
         write_base36(fun_id.0, &mut name_buffer);
 
         let name = unsafe { std::str::from_utf8_unchecked(&name_buffer[..]) };
-        let attributes = &self.state.modules[self.state.funs[fun].module].attributes;
 
-        let (linkage, alias) = if let Some(attr) = attributes.attr(attr_id, "linkage") {
+        let (linkage, alias) = if let Some(attr) = self.collector.attr(&attrs, self.state.linkage_hash) {
             assert_attr_len(attr, 1)?;
 
             let linkage = match self.state.display(&attr[1].token.spam) {
@@ -272,7 +278,7 @@ impl<'a> FParser<'a> {
             (Linkage::Export, name)
         };
 
-        let call_conv = if let Some(attr) = attributes.attr(attr_id, "call_conv") {
+        let call_conv = if let Some(attr) = self.collector.attr(&attrs, self.state.call_conv_hash) {
             assert_attr_len(attr, 1)?;
             let conv = self.state.display(&attr[1].token.spam);
             if conv == "platform" {
@@ -311,7 +317,7 @@ impl<'a> FParser<'a> {
             signature.returns.push(AbiParam::special(repr, purpose));
         }
 
-        if let Some(attr) = attributes.attr(attr_id, "entry") {
+        if let Some(attr) = self.collector.attr(&attrs, self.state.entry_hash) {
             if !n_ent.sig.args.is_empty()
                 && (
                     !n_ent.sig.args.len() != 2
@@ -363,7 +369,7 @@ impl<'a> FParser<'a> {
             }
         }
 
-        let inline = if let Some(attr) = attributes.attr(attr_id, "inline") {
+        let inline = if let Some(attr) = self.collector.attr(&attrs, self.state.inline_hash) {
             if self.state.bstate.body.recursive {
                 return Err(FError::new(FEKind::RecursiveInline, attr.token.clone()));
             }
@@ -1715,7 +1721,8 @@ impl<'a> FParser<'a> {
         let vis = fun_ent.vis;
         let name = fun_ent.name.clone();
         let hint = fun_ent.hint.clone();
-        let attr_id = fun_ent.attr_id;
+        let attrs = fun_ent.attrs.clone();
+        let scope = fun_ent.scope;
         let ast_id = g_ent.ast;
 
         let mut shadowed = self.context.pool.get();
@@ -1764,8 +1771,9 @@ impl<'a> FParser<'a> {
             hint,
             params: final_params.clone(),
             name,
-            attr_id,
+            attrs,
             kind,
+            scope,
         };
 
         let (shadowed, id) = self.state.funs.insert(id, new_fun_ent);
@@ -1789,24 +1797,18 @@ impl<'a> FParser<'a> {
 
     fn collect(&mut self, module: Mod) -> Result {
         let module_id = self.state.modules[module].id;
-        let mut ast = std::mem::take(&mut self.state.parsed_ast);
 
-        for (attr_id, a) in ast.iter_mut().enumerate() {
-            match &a.kind {
-                &AKind::Fun(vis) => {
-                    self.collect_fun(std::mem::take(a), module, module_id, vis, attr_id)?
-                }
-                &AKind::VarStatement(vis, mutable) => self.collect_global_var(
-                    std::mem::take(a),
-                    module,
-                    module_id,
-                    vis,
-                    mutable,
-                    attr_id,
-                )?,
-                _ => (),
-            }
+        let mut globals = std::mem::take(&mut self.collector.globals);
+        for Item { attrs, ast, scope } in globals.drain(..) {
+            self.collect_global_var(ast, module, module_id, attrs, scope)?
         }
+        self.collector.globals = globals;
+        
+        let mut functions = std::mem::take(&mut self.collector.functions);
+        for Item { attrs, ast, scope } in functions.drain(..) {
+            self.collect_fun(ast, module, module_id, attrs, scope)?
+        }
+        self.collector.functions = functions;
 
         Ok(())
     }
@@ -1816,10 +1818,28 @@ impl<'a> FParser<'a> {
         mut ast: Ast,
         module: Mod,
         module_id: ID,
-        vis: Vis,
-        mutable: bool,
-        attr_id: usize,
+        attrs: Attrs,
+        scope: Option<Scope>,
     ) -> Result {
+        let scope_id = if let Some(scope) = scope {
+            let scope = std::mem::take(&mut self.collector.scopes[scope]);    
+            if scope.params.len() > 0 {
+                return Err(FError::new(
+                    FEKind::VarInsideGenericScope(scope.ty.token.clone()),
+                    ast.token.clone(),
+                ));
+            }
+            let ty = self.parse_type(module, &scope.ty)?; 
+            self.ty(ty).id
+        } else {
+            ID(0)
+        };
+
+        let (vis, mutable) = match ast.kind {
+            AKind::VarStatement(vis, mutable) => (vis, mutable),
+            _ => unreachable!(),
+        };
+
         for var_line in ast.iter_mut() {
             let ty = if var_line[1].kind != AKind::None {
                 Some(self.parse_type(module, &var_line[1])?)
@@ -1834,7 +1854,10 @@ impl<'a> FParser<'a> {
                 .zip(values.drain(..).chain(std::iter::repeat(Ast::none())))
             {
                 let hint = name.token.clone();
-                let id = GLOBAL_SALT.add(hint.spam.hash).add(module_id);
+                let id = GLOBAL_SALT
+                    .add(hint.spam.hash)
+                    .add(scope_id)
+                    .add(module_id);
 
                 let g_ent = GlobalEnt {
                     vis,
@@ -1843,7 +1866,8 @@ impl<'a> FParser<'a> {
                     module,
                     kind: GKind::Normal(value, ty),
                     hint,
-                    attr_id,
+                    attrs: attrs.clone(),
+                    scope,
                 };
 
                 let (shadowed, id) = self.state.globals.insert(id, g_ent);
@@ -1867,9 +1891,14 @@ impl<'a> FParser<'a> {
         ast: Ast,
         module: Mod,
         module_id: ID,
-        vis: Vis,
-        attr_id: usize,
+        attrs: Attrs,
+        scope: Option<Scope>,
     ) -> Result {
+        let vis = match ast.kind {
+            AKind::Fun(vis) => vis,
+            _ => unreachable!(),
+        };
+
         let header = &ast[0];
         let hint = header.token.clone();
         let name = &header[0];
@@ -1948,7 +1977,8 @@ impl<'a> FParser<'a> {
             params: vec![],
             kind,
             name,
-            attr_id,
+            attrs,
+            scope,
         };
 
         let (shadowed, id) = self.state.funs.insert(id, fun_ent);
@@ -2143,18 +2173,18 @@ impl<'a> FParser<'a> {
     }
 
     fn parse_type(&mut self, module: Mod, ast: &Ast) -> Result<Type> {
-        TParser::new(&mut self.state.t_state, &mut self.context.t_context)
+        TParser::new(self.state, self.context, self.collector)
             .parse_type(module, ast)
             .map(|t| t.1)
             .map_err(|err| FError::new(FEKind::TypeError(err), Token::default()))
     }
 
     fn pointer_of(&mut self, ty: Type) -> Type {
-        TParser::new(&mut self.state.t_state, &mut self.context.t_context).pointer_of(ty)
+        TParser::new(self.state, self.context, self.collector).pointer_of(ty)
     }
 
     fn constant_of(&mut self, constant: TypeConst) -> Type {
-        TParser::new(&mut self.state.t_state, &mut self.context.t_context).constant_of(constant)
+        TParser::new(self.state, self.context, self.collector).constant_of(constant)
     }
 
     #[inline]
@@ -2207,7 +2237,7 @@ impl<'a> FParser<'a> {
     }
 
     fn array_of(&mut self, ty: Type, length: usize) -> Type {
-        TParser::new(&mut self.state.t_state, &mut self.context.t_context).array_of(ty, length)
+        TParser::new(self.state, self.context, self.collector).array_of(ty, length)
     }
 
     fn clear_vars(&mut self) {
@@ -2412,6 +2442,13 @@ crate::def_displayer!(
         FEKind::RecursiveInline => {
             writeln!(f, "cannot inline recursive function")?;
         },
+        FEKind::VarInsideGenericScope(scope) => {
+            writeln!(
+                f,
+                "cannot declare global inside generic scope\n{}",
+                TokenDisplay::new(self.state, scope)
+            )?;
+        },
     }
 );
 
@@ -2429,6 +2466,7 @@ impl FError {
 
 #[derive(Debug)]
 pub enum FEKind {
+    VarInsideGenericScope(Token),
     RecursiveInline,
     InvalidEntrySignature,
     EmptyArray,
@@ -2478,7 +2516,8 @@ pub struct FunEnt {
     pub params: Vec<(ID, Type)>,
     pub kind: FKind,
     pub name: Spam,
-    pub attr_id: usize,
+    pub attrs: Attrs,
+    pub scope: Option<Scope>,
 }
 
 #[derive(Debug, Default, Clone)]
@@ -2775,7 +2814,8 @@ pub struct GlobalEnt {
     pub mutable: bool,
     pub kind: GKind,
     pub hint: Token,
-    pub attr_id: usize,
+    pub attrs: Attrs,
+    pub scope: Option<Scope>,
 }
 
 pub enum GKind {
@@ -2811,6 +2851,13 @@ pub struct FState {
     pub unresolved: Vec<Fun>,
     pub represented: Vec<Fun>,
     pub index_spam: Spam,
+
+    pub linkage_hash: ID,
+    pub entry_hash: ID,
+    pub call_conv_hash: ID,
+    pub inline_hash: ID,
+    pub tls_hash: ID,
+    pub thread_local_hash: ID,
 }
 
 crate::inherit!(FState, t_state, TState);
@@ -2832,6 +2879,13 @@ impl Default for FState {
             unresolved_globals: Vec::new(),
             main_fun: Fun::default(),
             resolved_globals: Vec::new(),
+
+            linkage_hash: ID::new("linkage"),
+            entry_hash: ID::new("entry"),
+            call_conv_hash: ID::new("call_conv"),
+            inline_hash: ID::new("inline"),
+            tls_hash: ID::new("tls"),
+            thread_local_hash: ID::new("thread_local"),
         };
 
         let count = state
@@ -2900,9 +2954,10 @@ impl Default for FState {
             module: Mod::default(),
             kind: FKind::Normal(n),
             hint: Token::default(),
-            attr_id: usize::MAX,
+            attrs: Attrs::default(),
             params: Vec::new(),
             name: state.builtin_spam("main"),
+            scope: None,
         };
 
         state.main_fun = state.funs.add_hidden(main_fun);
@@ -2935,7 +2990,8 @@ impl Default for FState {
                 hint: Token::default(),
                 params: vec![],
                 kind: FKind::Builtin(ret_ty),
-                attr_id: 0,
+                attrs: Attrs::default(),
+                scope: None,
             };
             assert!(state.funs.insert(id, fun_ent).0.is_none());
         }
@@ -3124,7 +3180,7 @@ impl std::fmt::Display for FunDisplay<'_> {
 }
 
 pub fn test() {
-    let mut program = Program::default();
+    /*let mut program = Program::default();
 
     let mut state = FState::default();
     let mut context = FContext::default();
@@ -3138,5 +3194,5 @@ pub fn test() {
             .parse(module)
             .map_err(|e| println!("{}", FErrorDisplay::new(&state, &e)))
             .unwrap();
-    }
+    }*/
 }

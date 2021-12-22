@@ -695,6 +695,7 @@ impl<I: IndexPointer, T> IndexMut<I> for LockedList<I, T> {
 #[derive(Debug)]
 pub struct ReusableList<I: IndexPointer, T> {
     inner: List<I, T>,
+    map: Vec<bool>,
     free: Vec<I>,
 }
 
@@ -702,15 +703,18 @@ impl<I: IndexPointer, T> ReusableList<I, T> {
     pub fn new() -> Self {
         Self {
             inner: List::new(),
+            map: Vec::new(),
             free: Vec::new(),
         }
     }
 
     pub fn add(&mut self, data: T) -> I {
         if let Some(id) = self.free.pop() {
+            self.map[id.raw()] = true;
             self.inner[id] = data;
             id
         } else {
+            self.map.push(true);
             self.inner.add(data)
         }
     }
@@ -718,8 +722,20 @@ impl<I: IndexPointer, T> ReusableList<I, T> {
 
 impl<I: IndexPointer, T: Default> ReusableList<I, T> {
     pub fn remove(&mut self, id: I) -> T {
+        self.map[id.raw()] = false;
         self.free.push(id);
         std::mem::take(&mut self.inner[id])
+    }
+
+    pub fn retain<F: FnMut(&mut T) -> bool>(&mut self, mut f: F) {
+        for i in 0..self.map.len() {
+            if self.map[i] {
+                let id = I::new(i);
+                if !f(&mut self.inner[id]) {
+                    self.remove(id);
+                }
+            }
+        }
     }
 }
 
@@ -727,14 +743,14 @@ impl<I: IndexPointer, T> Index<I> for ReusableList<I, T> {
     type Output = T;
 
     fn index(&self, id: I) -> &Self::Output {
-        debug_assert!(self.free.iter().all(|i| *i != id));
+        debug_assert!(self.map[id.raw()]);
         &self.inner[id]
     }
 }
 
 impl<I: IndexPointer, T> IndexMut<I> for ReusableList<I, T> {
     fn index_mut(&mut self, id: I) -> &mut Self::Output {
-        debug_assert!(self.free.iter().all(|i| *i != id));
+        debug_assert!(self.map[id.raw()]);
         &mut self.inner[id]
     }
 }
@@ -743,6 +759,7 @@ impl<I: IndexPointer, T: Clone> Clone for ReusableList<I, T> {
     fn clone(&self) -> Self {
         Self {
             inner: self.inner.clone(),
+            map: self.map.clone(),
             free: self.free.clone(),
         }
     }

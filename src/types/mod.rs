@@ -3,6 +3,7 @@ use std::ops::{Deref, DerefMut};
 use std::rc::Rc;
 
 use crate::ast::{AError, AErrorDisplay, AKind, AParser, Ast, Vis};
+use crate::collector::{Attrs, Collector, Item};
 use crate::lexer::{LineData, Spam, TKind as LTKind, Token, TokenDisplay};
 use crate::module_tree::{self, MTContext, MTParser, MTState, Mod, TreeStorage};
 use crate::util::sdbm::ID;
@@ -24,23 +25,29 @@ pub struct TParser<'a> {
     module: Mod,
     state: &'a mut TState,
     context: &'a mut TContext,
+    collector: &'a mut Collector,
 }
 
 impl<'a> TParser<'a> {
     pub const MAX_TYPE_INSTANTIATION_DEPTH: usize = 1000;
 
-    pub fn new(state: &'a mut TState, context: &'a mut TContext) -> Self {
+    pub fn new(
+        state: &'a mut TState,
+        context: &'a mut TContext,
+        collector: &'a mut Collector,
+    ) -> Self {
         Self {
             module: Mod::new(0),
             state,
             context,
+            collector,
         }
     }
 
     pub fn parse(&mut self, module: Mod) -> Result {
         self.module = module;
         self.collect(module)?;
-        self.connect(module)?;
+        self.connect()?;
         self.calc_sizes()?;
         Ok(())
     }
@@ -49,7 +56,7 @@ impl<'a> TParser<'a> {
         self.module = module;
         let result = self.resolve_type(module, ast, 0)?;
 
-        self.connect(module)?;
+        self.connect()?;
         self.calc_sizes()?;
         Ok(result)
     }
@@ -136,7 +143,7 @@ impl<'a> TParser<'a> {
         Ok(())
     }
 
-    fn connect(&mut self, _module: Mod) -> Result {
+    fn connect(&mut self) -> Result {
         while let Some((id, depth)) = self.state.unresolved.pop() {
             if depth > Self::MAX_TYPE_INSTANTIATION_DEPTH {
                 return Err(TError::new(
@@ -264,7 +271,7 @@ impl<'a> TParser<'a> {
     fn resolve_type(&mut self, module: Mod, ast: &Ast, depth: usize) -> Result<(Mod, Type)> {
         match ast.kind {
             AKind::Ident => self.resolve_simple_type(module, &ast.token),
-            AKind::ExplicitPackage => self.resolve_explicit_package_type(module, ast),
+            AKind::Path => self.resolve_explicit_package_type(module, ast),
             AKind::Instantiation => self.resolve_instance(module, ast, depth),
             AKind::Ref => self.resolve_pointer(module, ast, depth),
             AKind::Array => self.resolve_array(module, ast, depth),
@@ -274,7 +281,12 @@ impl<'a> TParser<'a> {
         }
     }
 
-    fn resolve_function_pointer(&mut self, module: Mod, ast: &Ast, depth: usize) -> Result<(Mod, Type)> {
+    fn resolve_function_pointer(
+        &mut self,
+        module: Mod,
+        ast: &Ast,
+        depth: usize,
+    ) -> Result<(Mod, Type)> {
         let mut args = self.context.pool.get();
 
         let ast = &ast[0];
@@ -304,7 +316,7 @@ impl<'a> TParser<'a> {
             ret,
         };
         let fun = self.state.fun_pointers.add(fun);
-        
+
         let size = ptr_ty().bytes() as u32;
         let type_ent = TypeEnt {
             kind: TKind::FunPointer(fun),
@@ -314,7 +326,7 @@ impl<'a> TParser<'a> {
             module,
             visibility: Vis::None,
             name: ast.token.spam.clone(),
-            attr_id: usize::MAX,
+            attrs: Attrs::default(),
             size,
             align: size,
         };
@@ -375,7 +387,7 @@ impl<'a> TParser<'a> {
     ) -> Result<(Mod, Type)> {
         let (module, ty) = match ast[0].kind {
             AKind::Ident => self.resolve_simple_type(source_module, &ast[0].token)?,
-            AKind::ExplicitPackage => self.resolve_explicit_package_type(source_module, &ast[0])?,
+            AKind::Path => self.resolve_explicit_package_type(source_module, &ast[0])?,
             _ => unreachable!("{:?}", ast[0].kind),
         };
 
@@ -419,7 +431,7 @@ impl<'a> TParser<'a> {
             kind: TKind::Unresolved(ast_id),
             name: ty_ent.name.clone(),
             hint: ast.token.clone(),
-            attr_id: ty_ent.attr_id,
+            attrs: ty_ent.attrs.clone(),
             size: 0,
             align: 0,
         };
@@ -470,22 +482,11 @@ impl<'a> TParser<'a> {
     }
 
     fn collect(&mut self, module: Mod) -> Result<()> {
-        let mut context = std::mem::take(&mut self.context.ast);
+        let module_name = self.state.modules[module].id;
 
-        let mut module_ent = std::mem::take(&mut self.state.modules[module]);
-        let module_name = module_ent.id;
-
-        let mut ast = AParser::new(&mut self.state, &mut module_ent.ast, &mut context)
-            .parse()
-            .map_err(|err| TError::new(TEKind::AError(err), Token::default()))?;
-
-        module_ent.attributes.parse(&self.state, &mut ast);
-        self.state.modules[module] = module_ent;
-
-        for (i, a) in ast.iter_mut().enumerate() {
-            match a.kind.clone() {
+        for Item { attrs, ast, .. } in self.collector.types.drain(..) {
+            match ast.kind.clone() {
                 AKind::StructDeclaration(visibility) => {
-                    let ast = std::mem::take(a);
                     let ast_id = self.state.asts.add(ast);
 
                     let ast = &self.state.asts[ast_id];
@@ -511,7 +512,7 @@ impl<'a> TParser<'a> {
                         module,
                         kind,
                         name: ident.token.spam.clone(),
-                        attr_id: i,
+                        attrs,
                         hint: hint.clone(),
                         size: 0,
                         align: 0,
@@ -526,13 +527,9 @@ impl<'a> TParser<'a> {
                         self.state.unresolved.push((id, 0));
                     }
                 }
-                _ => (),
+                _ => unreachable!("{:?}", ast.kind),
             }
         }
-
-        self.state.parsed_ast = ast;
-
-        self.context.ast = context;
 
         Ok(())
     }
@@ -557,7 +554,7 @@ impl<'a> TParser<'a> {
             name: Spam::default(),
             hint: Token::default(),
             module,
-            attr_id: 0,
+            attrs: Attrs::default(),
             size: 8,
             align: 8,
         };
@@ -641,7 +638,7 @@ impl<'a> TreeStorage<Type> for TParser<'a> {
                 } else {
                     fun.args[idx]
                 }
-            },
+            }
             _ => unreachable!("{:?}", node.kind),
         }
     }
@@ -678,7 +675,7 @@ pub struct TypeEnt {
     pub kind: TKind,
     pub name: Spam,
     pub hint: Token,
-    pub attr_id: usize,
+    pub attrs: Attrs,
     pub size: u32,
     pub align: u32,
 }
@@ -693,7 +690,7 @@ impl Default for TypeEnt {
             kind: TKind::Unresolved(GAst::new(0)),
             name: Spam::default(),
             hint: Token::default(),
-            attr_id: usize::MAX,
+            attrs: Attrs::default(),
             size: 0,
             align: 0,
         }
@@ -708,13 +705,11 @@ impl TypeEnt {
     pub fn repr(&self) -> CrType {
         match self.kind {
             TKind::Builtin(ty) => ty,
-            TKind::Structure(..) | 
-            TKind::Pointer(..) |
-            TKind::FunPointer(..) | 
-            TKind::Array(..) => ptr_ty(),
-            TKind::Generic(..) | 
-            TKind::Unresolved(..) | 
-            TKind::Const(..) => unreachable!(),
+            TKind::Structure(..)
+            | TKind::Pointer(..)
+            | TKind::FunPointer(..)
+            | TKind::Array(..) => ptr_ty(),
+            TKind::Generic(..) | TKind::Unresolved(..) | TKind::Const(..) => unreachable!(),
         }
     }
 }
@@ -875,7 +870,7 @@ macro_rules! define_repo {
                         hint: Token::new(LTKind::Ident, name.clone(), LineData::default()),
                         name,
                         params: vec![],
-                        attr_id: 0,
+                        attrs: Attrs::default(),
                     };
                     let (_, $name) = state.types.insert(id, type_ent);
                 )+
@@ -948,7 +943,15 @@ impl<'a> std::fmt::Display for TypeDisplay<'a> {
             }
             &TKind::FunPointer(id) => {
                 let fun = &self.state.fun_pointers[id];
-                write!(f, "fn({})", fun.args.iter().map(|id| format!("{}", Self::new(self.state, *id))).collect::<Vec<_>>().join(", "))?;
+                write!(
+                    f,
+                    "fn({})",
+                    fun.args
+                        .iter()
+                        .map(|id| format!("{}", Self::new(self.state, *id)))
+                        .collect::<Vec<_>>()
+                        .join(", ")
+                )?;
                 if let Some(ret) = fun.ret {
                     write!(f, " -> {}", Self::new(self.state, ret))?;
                 }
@@ -1065,8 +1068,22 @@ pub fn test() {
         .parse("src/types/test_project")
         .unwrap();
 
+    let mut collector = Collector::default();
+
     for module in std::mem::take(&mut state.module_order).drain(..).rev() {
-        TParser::new(&mut state, &mut context)
+        let mut ast = std::mem::take(&mut state.modules[module].ast);
+
+        let mut ast = AParser::new(&mut state, &mut ast, &mut context)
+            .parse()
+            .map_err(|err| TError::new(TEKind::AError(err), Token::default()))
+            .unwrap();
+
+        collector.clear(&mut context);
+        collector.parse(&mut state, &mut ast);
+
+        context.recycle(ast);
+
+        TParser::new(&mut state, &mut context, &mut collector)
             .parse(module)
             .map_err(|e| println!("{}", TErrorDisplay::new(&mut state, &e)))
             .unwrap();

@@ -22,11 +22,7 @@ use crate::{
     lexer::{Spam, TKind as LTKind, Token},
     module_tree::Mod,
     types::{self, ptr_ty, TKind, Type, TypeDisplay, TypeEnt},
-    util::{
-        pool::PoolRef,
-        sdbm::SdbmHash,
-        storage::IndexPointer,
-    },
+    util::{pool::PoolRef, sdbm::SdbmHash, storage::IndexPointer},
 };
 
 use super::{GEKind, GError};
@@ -205,13 +201,21 @@ impl<'a> Generator<'a> {
                             let return_block = builder.create_block();
                             let sig = &self.state.rfuns[next_fun].ir_signature;
                             if sig.returns.len() > 0 {
-                                let value = builder.append_block_param(return_block, sig.returns[0].value_type);
-                                let return_value = self.inst(*current_fun, inlined_fun).value.unwrap();
-                                self.wrap_val(*current_fun, return_value, value);             
+                                let value = builder
+                                    .append_block_param(return_block, sig.returns[0].value_type);
+                                let return_value =
+                                    self.inst(*current_fun, inlined_fun).value.unwrap();
+                                self.wrap_val(*current_fun, return_value, value);
                             }
-                            *current_inst = Some(self.state.rfuns[*current_fun].body.insts.next(inlined_fun).unwrap());
+                            *current_inst = Some(
+                                self.state.rfuns[*current_fun]
+                                    .body
+                                    .insts
+                                    .next(inlined_fun)
+                                    .unwrap(),
+                            );
                             stack.push((next_fun, blocks, 0, None, Some(return_block)));
-                            continue'o;
+                            continue 'o;
                         }
                         _ => unreachable!(),
                     }
@@ -223,7 +227,7 @@ impl<'a> Generator<'a> {
             if let &mut Some(return_block) = return_block {
                 builder.switch_to_block(return_block);
             }
-            
+
             stack.pop().unwrap();
         }
 
