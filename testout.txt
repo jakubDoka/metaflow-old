@@ -2103,7 +2103,7 @@ fun print(s: &Self, value: &u8)
 
 
 Token { kind: Fun, spam: Spam { source: Source(1), hash: ID(438937012895), range: 2460..2495 }, line_data: LineData { line: 128, column: 3, source: Source(1) } }
-Token { kind: Fun, spam: Spam { source: Source(1), hash: ID(438937012895), range: 4027..4072 }, line_data: LineData { line: 192, column: 3, source: Source(1) } }
+Token { kind: Fun, spam: Spam { source: Source(1), hash: ID(438937012895), range: 4005..4050 }, line_data: LineData { line: 191, column: 3, source: Source(1) } }
 function u0:0(i64, i64) fast {
     sig0 = (i64, i64) -> i64 windows_fastcall
     sig1 = (i64, i64, i64) windows_fastcall
@@ -2228,30 +2228,27 @@ fun print_int(s: &Self, value: int)
 
 
 Token { kind: Fun, spam: Spam { source: Source(1), hash: ID(438937012895), range: 3208..3236 }, line_data: LineData { line: 161, column: 3, source: Source(1) } }
-Token { kind: Fun, spam: Spam { source: Source(1), hash: ID(438937012895), range: 3735..3776 }, line_data: LineData { line: 183, column: 3, source: Source(1) } }
-Token { kind: Fun, spam: Spam { source: Source(1), hash: ID(438937012895), range: 4133..4175 }, line_data: LineData { line: 195, column: 4, source: Source(1) } }
-Token { kind: Fun, spam: Spam { source: Source(1), hash: ID(438937012895), range: 4248..4291 }, line_data: LineData { line: 199, column: 3, source: Source(1) } }
-Token { kind: Fun, spam: Spam { source: Source(1), hash: ID(438937012895), range: 4027..4072 }, line_data: LineData { line: 192, column: 3, source: Source(1) } }
+Token { kind: Fun, spam: Spam { source: Source(1), hash: ID(438937012895), range: 3713..3754 }, line_data: LineData { line: 182, column: 3, source: Source(1) } }
+Token { kind: Fun, spam: Spam { source: Source(1), hash: ID(438937012895), range: 4111..4153 }, line_data: LineData { line: 194, column: 4, source: Source(1) } }
+Token { kind: Fun, spam: Spam { source: Source(1), hash: ID(438937012895), range: 4226..4269 }, line_data: LineData { line: 198, column: 3, source: Source(1) } }
+Token { kind: Fun, spam: Spam { source: Source(1), hash: ID(438937012895), range: 4005..4050 }, line_data: LineData { line: 191, column: 3, source: Source(1) } }
 function u0:0(i64, i64) fast {
     gv0 = symbol colocated u1:1
-    gv1 = symbol colocated u1:2
-    sig0 = (i64) fast
-    sig1 = (i64, i64) -> i64 windows_fastcall
-    sig2 = (i64) fast
-    fn0 = colocated u0:19 sig0
-    fn1 = u0:26 sig1
-    fn2 = colocated u0:19 sig2
+    sig0 = (i64, i64) -> i64 windows_fastcall
+    sig1 = (i64) fast
+    fn0 = u0:26 sig0
+    fn1 = colocated u0:19 sig1
 
 block0(v0: i64, v1: i64):
-    v58 = iconst.i64 0
-    v57 -> v58
-    v54 = iconst.i64 0
-    v2 -> v54
-    jump block1(v1, v57)
+    v57 = iconst.i64 0
+    v56 -> v57
+    v53 = iconst.i64 0
+    v2 -> v53
+    jump block1(v1, v56)
 
-block1(v4: i64, v56: i64):
+block1(v4: i64, v55: i64):
     v7 -> v4
-    v9 -> v56
+    v9 -> v55
     v3 = iconst.i64 0
     v5 = icmp eq v4, v3
     brnz v5, block2
@@ -2263,18 +2260,18 @@ block2:
 block3:
     v6 = iconst.i64 10
     v8 = srem.i64 v7, v6
-    v63 -> v8
+    v62 -> v8
+    v65 -> v8
     v66 -> v8
-    v67 -> v8
-    v61 -> v63
-    v59 -> v61
+    v60 -> v62
+    v58 -> v60
     v10 = iconst.i64 10
     v11 = sdiv.i64 v7, v10
-    v62 -> v11
+    v61 -> v11
+    v63 -> v11
     v64 -> v11
-    v65 -> v11
-    v60 -> v62
-    v55 -> v60
+    v59 -> v61
+    v54 -> v59
     v12 = ireduce.i32 v8
     v13 = iconst.i32 48
     v14 = iadd v12, v13
@@ -2282,79 +2279,77 @@ block3:
     jump block5(v0, v15)
 
 block5(v16: i64, v17: i8):
-    v18 = global_value.i64 gv0
-    call fn0(v18)
-    v19 = iconst.i64 1
-    v20 = load.i64 v16+8
-    v21 = iadd v20, v19
-    v22 = load.i64 v16+16
-    v23 = icmp sgt v21, v22
-    brnz v23, block6
+    v18 = iconst.i64 1
+    v19 = load.i64 v16+8
+    v20 = iadd v19, v18
+    v21 = load.i64 v16+16
+    v22 = icmp sgt v20, v21
+    brnz v22, block6
     jump block7
 
 block6:
-    v24 = iconst.i64 2
-    v25 = load.i64 v16+16
-    v26 = imul v25, v24
-    store v26, v16+16
-    v27 = iconst.i64 1
-    v28 = load.i64 v16+16
-    v29 = imul v28, v27
-    v30 = load.i64 v16
-    v31 = call fn1(v30, v29)
-    store v31, v16
+    v23 = iconst.i64 2
+    v24 = load.i64 v16+16
+    v25 = imul v24, v23
+    store v25, v16+16
+    v26 = iconst.i64 1
+    v27 = load.i64 v16+16
+    v28 = imul v27, v26
+    v29 = load.i64 v16
+    v30 = call fn0(v29, v28)
+    store v30, v16
     jump block7
 
 block7:
-    v32 = load.i64 v16+8
-    jump block9(v16, v32)
+    v31 = load.i64 v16+8
+    jump block9(v16, v31)
 
-block9(v33: i64, v34: i64):
-    jump block11(v33, v34)
+block9(v32: i64, v33: i64):
+    jump block11(v32, v33)
 
-block11(v36: i64, v37: i64):
-    jump block15(v36, v37)
+block11(v35: i64, v36: i64):
+    jump block15(v35, v36)
 
-block15(v38: i64, v39: i64):
-    v41 = iconst.i64 0
-    v42 = icmp sge v39, v41
-    v43 = load.i64 v38+8
-    v44 = icmp slt v39, v43
-    v45 = band v42, v44
-    jump block16(v45)
+block15(v37: i64, v38: i64):
+    v40 = iconst.i64 0
+    v41 = icmp sge v38, v40
+    v42 = load.i64 v37+8
+    v43 = icmp slt v38, v42
+    v44 = band v41, v43
+    jump block16(v44)
 
-block16(v40: b1):
-    brnz v40, block12
+block16(v39: b1):
+    brnz v39, block12
     jump block13
 
 block12:
-    v46 = global_value.i64 gv1
-    call fn2(v46)
+    v45 = global_value.i64 gv0
+    call fn1(v45)
     jump block13
 
 block13:
     jump block14
 
 block14:
-    jump block17(v33, v34)
+    jump block17(v32, v33)
 
-block17(v47: i64, v48: i64):
-    v50 = iconst.i64 1
-    v51 = imul v48, v50
-    v52 = load.i64 v47
-    v53 = iadd v52, v51
-    jump block18(v53)
+block17(v46: i64, v47: i64):
+    v49 = iconst.i64 1
+    v50 = imul v47, v49
+    v51 = load.i64 v46
+    v52 = iadd v51, v50
+    jump block18(v52)
 
-block18(v49: i64):
-    jump block10(v49)
+block18(v48: i64):
+    jump block10(v48)
 
-block10(v35: i64):
-    store.i8 v17, v35
-    store.i64 v21, v16+8
+block10(v34: i64):
+    store.i8 v17, v34
+    store.i64 v20, v16+8
     jump block8
 
 block8:
-    jump block1(v55, v59)
+    jump block1(v54, v58)
 
 block4:
     return
@@ -2369,9 +2364,9 @@ fun pop_frame
     Return(None) |stacktrace.pop()
 
 
-Token { kind: Fun, spam: Spam { source: Source(1), hash: ID(438937012895), range: 3455..3485 }, line_data: LineData { line: 171, column: 3, source: Source(1) } }
-Token { kind: Fun, spam: Spam { source: Source(1), hash: ID(438937012895), range: 4027..4072 }, line_data: LineData { line: 192, column: 3, source: Source(1) } }
-Token { kind: Fun, spam: Spam { source: Source(1), hash: ID(438937012895), range: 4453..4479 }, line_data: LineData { line: 212, column: 3, source: Source(1) } }
+Token { kind: Fun, spam: Spam { source: Source(1), hash: ID(438937012895), range: 3433..3463 }, line_data: LineData { line: 170, column: 3, source: Source(1) } }
+Token { kind: Fun, spam: Spam { source: Source(1), hash: ID(438937012895), range: 4005..4050 }, line_data: LineData { line: 191, column: 3, source: Source(1) } }
+Token { kind: Fun, spam: Spam { source: Source(1), hash: ID(438937012895), range: 4431..4457 }, line_data: LineData { line: 211, column: 3, source: Source(1) } }
 function u0:0() fast {
     ss0 = explicit_slot 32
     ss1 = explicit_slot 24
@@ -2485,21 +2480,18 @@ fun push_frame(line, column: int, file: &u8)
 
 
 Token { kind: Fun, spam: Spam { source: Source(1), hash: ID(438937012895), range: 3208..3236 }, line_data: LineData { line: 161, column: 3, source: Source(1) } }
-Token { kind: Fun, spam: Spam { source: Source(1), hash: ID(438937012895), range: 3735..3776 }, line_data: LineData { line: 183, column: 3, source: Source(1) } }
-Token { kind: Fun, spam: Spam { source: Source(1), hash: ID(438937012895), range: 4133..4175 }, line_data: LineData { line: 195, column: 4, source: Source(1) } }
-Token { kind: Fun, spam: Spam { source: Source(1), hash: ID(438937012895), range: 4248..4291 }, line_data: LineData { line: 199, column: 3, source: Source(1) } }
-Token { kind: Fun, spam: Spam { source: Source(1), hash: ID(438937012895), range: 4027..4072 }, line_data: LineData { line: 192, column: 3, source: Source(1) } }
+Token { kind: Fun, spam: Spam { source: Source(1), hash: ID(438937012895), range: 3713..3754 }, line_data: LineData { line: 182, column: 3, source: Source(1) } }
+Token { kind: Fun, spam: Spam { source: Source(1), hash: ID(438937012895), range: 4111..4153 }, line_data: LineData { line: 194, column: 4, source: Source(1) } }
+Token { kind: Fun, spam: Spam { source: Source(1), hash: ID(438937012895), range: 4226..4269 }, line_data: LineData { line: 198, column: 3, source: Source(1) } }
+Token { kind: Fun, spam: Spam { source: Source(1), hash: ID(438937012895), range: 4005..4050 }, line_data: LineData { line: 191, column: 3, source: Source(1) } }
 function u0:0(i64, i64, i64) fast {
     ss0 = explicit_slot 24
     gv0 = symbol colocated u1:0
     gv1 = symbol colocated u1:1
-    gv2 = symbol colocated u1:2
-    sig0 = (i64) fast
-    sig1 = (i64, i64) -> i64 windows_fastcall
-    sig2 = (i64) fast
-    fn0 = colocated u0:19 sig0
-    fn1 = u0:26 sig1
-    fn2 = colocated u0:19 sig2
+    sig0 = (i64, i64) -> i64 windows_fastcall
+    sig1 = (i64) fast
+    fn0 = u0:26 sig0
+    fn1 = colocated u0:19 sig1
 
 block0(v0: i64, v1: i64, v2: i64):
     v3 = iconst.i64 0
@@ -2514,80 +2506,78 @@ block0(v0: i64, v1: i64, v2: i64):
     jump block1(v4, v5)
 
 block1(v6: i64, v7: i64):
-    v8 = global_value.i64 gv1
-    call fn0(v8)
-    v9 = iconst.i64 1
-    v10 = load.i64 v6+8
-    v11 = iadd v10, v9
-    v12 = load.i64 v6+16
-    v13 = icmp sgt v11, v12
-    brnz v13, block2
+    v8 = iconst.i64 1
+    v9 = load.i64 v6+8
+    v10 = iadd v9, v8
+    v11 = load.i64 v6+16
+    v12 = icmp sgt v10, v11
+    brnz v12, block2
     jump block3
 
 block2:
-    v14 = iconst.i64 2
-    v15 = load.i64 v6+16
-    v16 = imul v15, v14
-    store v16, v6+16
-    v17 = iconst.i64 24
-    v18 = load.i64 v6+16
-    v19 = imul v18, v17
-    v20 = load.i64 v6
-    v21 = call fn1(v20, v19)
-    store v21, v6
+    v13 = iconst.i64 2
+    v14 = load.i64 v6+16
+    v15 = imul v14, v13
+    store v15, v6+16
+    v16 = iconst.i64 24
+    v17 = load.i64 v6+16
+    v18 = imul v17, v16
+    v19 = load.i64 v6
+    v20 = call fn0(v19, v18)
+    store v20, v6
     jump block3
 
 block3:
-    v22 = load.i64 v6+8
-    jump block5(v6, v22)
+    v21 = load.i64 v6+8
+    jump block5(v6, v21)
 
-block5(v23: i64, v24: i64):
-    jump block7(v23, v24)
+block5(v22: i64, v23: i64):
+    jump block7(v22, v23)
 
-block7(v26: i64, v27: i64):
-    jump block11(v26, v27)
+block7(v25: i64, v26: i64):
+    jump block11(v25, v26)
 
-block11(v28: i64, v29: i64):
-    v31 = iconst.i64 0
-    v32 = icmp sge v29, v31
-    v33 = load.i64 v28+8
-    v34 = icmp slt v29, v33
-    v35 = band v32, v34
-    jump block12(v35)
+block11(v27: i64, v28: i64):
+    v30 = iconst.i64 0
+    v31 = icmp sge v28, v30
+    v32 = load.i64 v27+8
+    v33 = icmp slt v28, v32
+    v34 = band v31, v33
+    jump block12(v34)
 
-block12(v30: b1):
-    brnz v30, block8
+block12(v29: b1):
+    brnz v29, block8
     jump block9
 
 block8:
-    v36 = global_value.i64 gv2
-    call fn2(v36)
+    v35 = global_value.i64 gv1
+    call fn1(v35)
     jump block9
 
 block9:
     jump block10
 
 block10:
-    jump block13(v23, v24)
+    jump block13(v22, v23)
 
-block13(v37: i64, v38: i64):
-    v40 = iconst.i64 24
-    v41 = imul v38, v40
-    v42 = load.i64 v37
-    v43 = iadd v42, v41
-    jump block14(v43)
+block13(v36: i64, v37: i64):
+    v39 = iconst.i64 24
+    v40 = imul v37, v39
+    v41 = load.i64 v36
+    v42 = iadd v41, v40
+    jump block14(v42)
 
-block14(v39: i64):
-    jump block6(v39)
+block14(v38: i64):
+    jump block6(v38)
 
-block6(v25: i64):
-    v44 = load.i64 v7
-    store v44, v25
-    v45 = load.i64 v7+8
-    store v45, v25+8
-    v46 = load.i64 v7+16
-    store v46, v25+16
-    store.i64 v11, v6+8
+block6(v24: i64):
+    v43 = load.i64 v7
+    store v43, v24
+    v44 = load.i64 v7+8
+    store v44, v24+8
+    v45 = load.i64 v7+16
+    store v45, v24+16
+    store.i64 v10, v6+8
     jump block4
 
 block4:
@@ -2696,48 +2686,44 @@ fun panic(str: &u8)
     Return(None) |exit(1)
 
 
-Token { kind: Fun, spam: Spam { source: Source(1), hash: ID(438937012895), range: 3735..3776 }, line_data: LineData { line: 183, column: 3, source: Source(1) } }
-Token { kind: Fun, spam: Spam { source: Source(1), hash: ID(438937012895), range: 4133..4175 }, line_data: LineData { line: 195, column: 4, source: Source(1) } }
-Token { kind: Fun, spam: Spam { source: Source(1), hash: ID(438937012895), range: 4248..4291 }, line_data: LineData { line: 199, column: 3, source: Source(1) } }
-Token { kind: Fun, spam: Spam { source: Source(1), hash: ID(438937012895), range: 4027..4072 }, line_data: LineData { line: 192, column: 3, source: Source(1) } }
+Token { kind: Fun, spam: Spam { source: Source(1), hash: ID(438937012895), range: 3713..3754 }, line_data: LineData { line: 182, column: 3, source: Source(1) } }
+Token { kind: Fun, spam: Spam { source: Source(1), hash: ID(438937012895), range: 4111..4153 }, line_data: LineData { line: 194, column: 4, source: Source(1) } }
+Token { kind: Fun, spam: Spam { source: Source(1), hash: ID(438937012895), range: 4226..4269 }, line_data: LineData { line: 198, column: 3, source: Source(1) } }
+Token { kind: Fun, spam: Spam { source: Source(1), hash: ID(438937012895), range: 4005..4050 }, line_data: LineData { line: 191, column: 3, source: Source(1) } }
 Token { kind: Fun, spam: Spam { source: Source(1), hash: ID(438937012895), range: 3208..3236 }, line_data: LineData { line: 161, column: 3, source: Source(1) } }
-Token { kind: Fun, spam: Spam { source: Source(1), hash: ID(438937012895), range: 3735..3776 }, line_data: LineData { line: 183, column: 3, source: Source(1) } }
-Token { kind: Fun, spam: Spam { source: Source(1), hash: ID(438937012895), range: 4133..4175 }, line_data: LineData { line: 195, column: 4, source: Source(1) } }
-Token { kind: Fun, spam: Spam { source: Source(1), hash: ID(438937012895), range: 4248..4291 }, line_data: LineData { line: 199, column: 3, source: Source(1) } }
-Token { kind: Fun, spam: Spam { source: Source(1), hash: ID(438937012895), range: 4027..4072 }, line_data: LineData { line: 192, column: 3, source: Source(1) } }
+Token { kind: Fun, spam: Spam { source: Source(1), hash: ID(438937012895), range: 3713..3754 }, line_data: LineData { line: 182, column: 3, source: Source(1) } }
+Token { kind: Fun, spam: Spam { source: Source(1), hash: ID(438937012895), range: 4111..4153 }, line_data: LineData { line: 194, column: 4, source: Source(1) } }
+Token { kind: Fun, spam: Spam { source: Source(1), hash: ID(438937012895), range: 4226..4269 }, line_data: LineData { line: 198, column: 3, source: Source(1) } }
+Token { kind: Fun, spam: Spam { source: Source(1), hash: ID(438937012895), range: 4005..4050 }, line_data: LineData { line: 191, column: 3, source: Source(1) } }
 Token { kind: Fun, spam: Spam { source: Source(1), hash: ID(438937012895), range: 3208..3236 }, line_data: LineData { line: 161, column: 3, source: Source(1) } }
-Token { kind: Fun, spam: Spam { source: Source(1), hash: ID(438937012895), range: 3735..3776 }, line_data: LineData { line: 183, column: 3, source: Source(1) } }
-Token { kind: Fun, spam: Spam { source: Source(1), hash: ID(438937012895), range: 4133..4175 }, line_data: LineData { line: 195, column: 4, source: Source(1) } }
-Token { kind: Fun, spam: Spam { source: Source(1), hash: ID(438937012895), range: 4248..4291 }, line_data: LineData { line: 199, column: 3, source: Source(1) } }
-Token { kind: Fun, spam: Spam { source: Source(1), hash: ID(438937012895), range: 4027..4072 }, line_data: LineData { line: 192, column: 3, source: Source(1) } }
+Token { kind: Fun, spam: Spam { source: Source(1), hash: ID(438937012895), range: 3713..3754 }, line_data: LineData { line: 182, column: 3, source: Source(1) } }
+Token { kind: Fun, spam: Spam { source: Source(1), hash: ID(438937012895), range: 4111..4153 }, line_data: LineData { line: 194, column: 4, source: Source(1) } }
+Token { kind: Fun, spam: Spam { source: Source(1), hash: ID(438937012895), range: 4226..4269 }, line_data: LineData { line: 198, column: 3, source: Source(1) } }
+Token { kind: Fun, spam: Spam { source: Source(1), hash: ID(438937012895), range: 4005..4050 }, line_data: LineData { line: 191, column: 3, source: Source(1) } }
 Token { kind: Fun, spam: Spam { source: Source(1), hash: ID(438937012895), range: 3208..3236 }, line_data: LineData { line: 161, column: 3, source: Source(1) } }
-Token { kind: Fun, spam: Spam { source: Source(1), hash: ID(438937012895), range: 3735..3776 }, line_data: LineData { line: 183, column: 3, source: Source(1) } }
-Token { kind: Fun, spam: Spam { source: Source(1), hash: ID(438937012895), range: 4133..4175 }, line_data: LineData { line: 195, column: 4, source: Source(1) } }
-Token { kind: Fun, spam: Spam { source: Source(1), hash: ID(438937012895), range: 4248..4291 }, line_data: LineData { line: 199, column: 3, source: Source(1) } }
-Token { kind: Fun, spam: Spam { source: Source(1), hash: ID(438937012895), range: 4027..4072 }, line_data: LineData { line: 192, column: 3, source: Source(1) } }
+Token { kind: Fun, spam: Spam { source: Source(1), hash: ID(438937012895), range: 3713..3754 }, line_data: LineData { line: 182, column: 3, source: Source(1) } }
+Token { kind: Fun, spam: Spam { source: Source(1), hash: ID(438937012895), range: 4111..4153 }, line_data: LineData { line: 194, column: 4, source: Source(1) } }
+Token { kind: Fun, spam: Spam { source: Source(1), hash: ID(438937012895), range: 4226..4269 }, line_data: LineData { line: 198, column: 3, source: Source(1) } }
+Token { kind: Fun, spam: Spam { source: Source(1), hash: ID(438937012895), range: 4005..4050 }, line_data: LineData { line: 191, column: 3, source: Source(1) } }
 Token { kind: Fun, spam: Spam { source: Source(1), hash: ID(438937012895), range: 3208..3236 }, line_data: LineData { line: 161, column: 3, source: Source(1) } }
-Token { kind: Fun, spam: Spam { source: Source(1), hash: ID(438937012895), range: 3735..3776 }, line_data: LineData { line: 183, column: 3, source: Source(1) } }
-Token { kind: Fun, spam: Spam { source: Source(1), hash: ID(438937012895), range: 4133..4175 }, line_data: LineData { line: 195, column: 4, source: Source(1) } }
-Token { kind: Fun, spam: Spam { source: Source(1), hash: ID(438937012895), range: 4248..4291 }, line_data: LineData { line: 199, column: 3, source: Source(1) } }
-Token { kind: Fun, spam: Spam { source: Source(1), hash: ID(438937012895), range: 4027..4072 }, line_data: LineData { line: 192, column: 3, source: Source(1) } }
+Token { kind: Fun, spam: Spam { source: Source(1), hash: ID(438937012895), range: 3713..3754 }, line_data: LineData { line: 182, column: 3, source: Source(1) } }
+Token { kind: Fun, spam: Spam { source: Source(1), hash: ID(438937012895), range: 4111..4153 }, line_data: LineData { line: 194, column: 4, source: Source(1) } }
+Token { kind: Fun, spam: Spam { source: Source(1), hash: ID(438937012895), range: 4226..4269 }, line_data: LineData { line: 198, column: 3, source: Source(1) } }
+Token { kind: Fun, spam: Spam { source: Source(1), hash: ID(438937012895), range: 4005..4050 }, line_data: LineData { line: 191, column: 3, source: Source(1) } }
 function u0:0(i64) fast {
     ss0 = explicit_slot 24
     ss1 = explicit_slot 24
-    gv0 = symbol colocated u1:3
-    gv1 = symbol colocated u1:4
+    gv0 = symbol colocated u1:2
+    gv1 = symbol colocated u1:3
     gv2 = symbol colocated u1:0
-    gv3 = symbol colocated u1:5
+    gv3 = symbol colocated u1:4
     gv4 = symbol colocated u1:0
     gv5 = symbol colocated u1:0
-    gv6 = symbol colocated u1:2
+    gv6 = symbol colocated u1:1
     gv7 = symbol colocated u1:1
-    gv8 = symbol colocated u1:2
+    gv8 = symbol colocated u1:1
     gv9 = symbol colocated u1:1
-    gv10 = symbol colocated u1:2
-    gv11 = symbol colocated u1:1
-    gv12 = symbol colocated u1:2
-    gv13 = symbol colocated u1:1
-    gv14 = symbol colocated u1:2
+    gv10 = symbol colocated u1:1
     sig0 = (i64) windows_fastcall
     sig1 = (i64) windows_fastcall
     sig2 = (i64) windows_fastcall
@@ -2745,22 +2731,18 @@ function u0:0(i64) fast {
     sig4 = (i64) windows_fastcall
     sig5 = (i64) fast
     sig6 = (i64, i64) fast
-    sig7 = (i64) fast
-    sig8 = (i64, i64) -> i64 windows_fastcall
-    sig9 = (i64) fast
-    sig10 = (i64, i64) fast
+    sig7 = (i64, i64) -> i64 windows_fastcall
+    sig8 = (i64) fast
+    sig9 = (i64, i64) fast
+    sig10 = (i64, i64) -> i64 windows_fastcall
     sig11 = (i64) fast
-    sig12 = (i64, i64) -> i64 windows_fastcall
-    sig13 = (i64) fast
-    sig14 = (i64, i64) fast
-    sig15 = (i64) fast
-    sig16 = (i64, i64) -> i64 windows_fastcall
-    sig17 = (i64) fast
-    sig18 = (i64) fast
-    sig19 = (i64, i64) -> i64 windows_fastcall
-    sig20 = (i64) fast
-    sig21 = (i64) windows_fastcall
-    sig22 = (i64) windows_fastcall
+    sig12 = (i64, i64) fast
+    sig13 = (i64, i64) -> i64 windows_fastcall
+    sig14 = (i64) fast
+    sig15 = (i64, i64) -> i64 windows_fastcall
+    sig16 = (i64) fast
+    sig17 = (i64) windows_fastcall
+    sig18 = (i64) windows_fastcall
     fn0 = u0:21 sig0
     fn1 = u0:21 sig1
     fn2 = u0:21 sig2
@@ -2768,27 +2750,23 @@ function u0:0(i64) fast {
     fn4 = u0:20 sig4
     fn5 = colocated u0:19 sig5
     fn6 = colocated u0:4 sig6
-    fn7 = colocated u0:19 sig7
-    fn8 = u0:26 sig8
-    fn9 = colocated u0:19 sig9
-    fn10 = colocated u0:4 sig10
+    fn7 = u0:26 sig7
+    fn8 = colocated u0:19 sig8
+    fn9 = colocated u0:4 sig9
+    fn10 = u0:26 sig10
     fn11 = colocated u0:19 sig11
-    fn12 = u0:26 sig12
-    fn13 = colocated u0:19 sig13
-    fn14 = colocated u0:0 sig14
-    fn15 = colocated u0:19 sig15
-    fn16 = u0:26 sig16
-    fn17 = colocated u0:19 sig17
-    fn18 = colocated u0:19 sig18
-    fn19 = u0:26 sig19
-    fn20 = colocated u0:19 sig20
-    fn21 = u0:21 sig21
-    fn22 = u0:20 sig22
+    fn12 = colocated u0:0 sig12
+    fn13 = u0:26 sig13
+    fn14 = colocated u0:19 sig14
+    fn15 = u0:26 sig15
+    fn16 = colocated u0:19 sig16
+    fn17 = u0:21 sig17
+    fn18 = u0:20 sig18
 
 block0(v0: i64):
-    v216 = iconst.i64 0
-    v11 -> v216
-    v215 -> v216
+    v212 = iconst.i64 0
+    v11 -> v212
+    v211 -> v212
     v1 = global_value.i64 gv0
     call fn0(v1)
     call fn1(v0)
@@ -2818,16 +2796,16 @@ block2:
 
 block3(v13: i64):
     v17 -> v13
+    v215 -> v13
+    v216 -> v13
+    v217 -> v13
+    v218 -> v13
     v219 -> v13
     v220 -> v13
     v221 -> v13
     v222 -> v13
-    v223 -> v13
-    v224 -> v13
-    v225 -> v13
-    v226 -> v13
-    v218 -> v219
-    v217 -> v218
+    v214 -> v215
+    v213 -> v214
     v12 = global_value.i64 gv4
     v14 = load.i64 v12+8
     v15 = icmp sge v13, v14
@@ -2897,325 +2875,317 @@ block8(v20: i64):
     jump block17(v47, v46)
 
 block17(v48: i64, v49: i8):
-    v50 = global_value.i64 gv7
-    call fn7(v50)
-    v51 = iconst.i64 1
-    v52 = load.i64 v48+8
-    v53 = iadd v52, v51
-    v54 = load.i64 v48+16
-    v55 = icmp sgt v53, v54
-    brnz v55, block18
+    v50 = iconst.i64 1
+    v51 = load.i64 v48+8
+    v52 = iadd v51, v50
+    v53 = load.i64 v48+16
+    v54 = icmp sgt v52, v53
+    brnz v54, block18
     jump block19
 
 block18:
-    v56 = iconst.i64 2
-    v57 = load.i64 v48+16
-    v58 = imul v57, v56
-    store v58, v48+16
-    v59 = iconst.i64 1
-    v60 = load.i64 v48+16
-    v61 = imul v60, v59
-    v62 = load.i64 v48
-    v63 = call fn8(v62, v61)
-    store v63, v48
+    v55 = iconst.i64 2
+    v56 = load.i64 v48+16
+    v57 = imul v56, v55
+    store v57, v48+16
+    v58 = iconst.i64 1
+    v59 = load.i64 v48+16
+    v60 = imul v59, v58
+    v61 = load.i64 v48
+    v62 = call fn7(v61, v60)
+    store v62, v48
     jump block19
 
 block19:
-    v64 = load.i64 v48+8
-    jump block21(v48, v64)
+    v63 = load.i64 v48+8
+    jump block21(v48, v63)
 
-block21(v65: i64, v66: i64):
-    jump block23(v65, v66)
+block21(v64: i64, v65: i64):
+    jump block23(v64, v65)
 
-block23(v68: i64, v69: i64):
-    jump block27(v68, v69)
+block23(v67: i64, v68: i64):
+    jump block27(v67, v68)
 
-block27(v70: i64, v71: i64):
-    v73 = iconst.i64 0
-    v74 = icmp sge v71, v73
-    v75 = load.i64 v70+8
-    v76 = icmp slt v71, v75
-    v77 = band v74, v76
-    jump block28(v77)
+block27(v69: i64, v70: i64):
+    v72 = iconst.i64 0
+    v73 = icmp sge v70, v72
+    v74 = load.i64 v69+8
+    v75 = icmp slt v70, v74
+    v76 = band v73, v75
+    jump block28(v76)
 
-block28(v72: b1):
-    brnz v72, block24
+block28(v71: b1):
+    brnz v71, block24
     jump block25
 
 block24:
-    v78 = global_value.i64 gv8
-    call fn9(v78)
+    v77 = global_value.i64 gv7
+    call fn8(v77)
     jump block25
 
 block25:
     jump block26
 
 block26:
-    jump block29(v65, v66)
+    jump block29(v64, v65)
 
-block29(v79: i64, v80: i64):
-    v82 = iconst.i64 1
-    v83 = imul v80, v82
-    v84 = load.i64 v79
-    v85 = iadd v84, v83
-    jump block30(v85)
+block29(v78: i64, v79: i64):
+    v81 = iconst.i64 1
+    v82 = imul v79, v81
+    v83 = load.i64 v78
+    v84 = iadd v83, v82
+    jump block30(v84)
 
-block30(v81: i64):
-    jump block22(v81)
+block30(v80: i64):
+    jump block22(v80)
 
-block22(v67: i64):
-    store.i8 v49, v67
-    store.i64 v53, v48+8
+block22(v66: i64):
+    store.i8 v49, v66
+    store.i64 v52, v48+8
     jump block20
 
 block20:
-    v86 = stack_addr.i64 ss0
-    v87 = stack_load.i64 ss1+8
-    call fn10(v86, v87)
-    v88 = iconst.i32 32
-    v89 = ireduce.i8 v88
-    v90 = stack_addr.i64 ss0
-    jump block31(v90, v89)
+    v85 = stack_addr.i64 ss0
+    v86 = stack_load.i64 ss1+8
+    call fn9(v85, v86)
+    v87 = iconst.i32 32
+    v88 = ireduce.i8 v87
+    v89 = stack_addr.i64 ss0
+    jump block31(v89, v88)
 
-block31(v91: i64, v92: i8):
-    v93 = global_value.i64 gv9
-    call fn11(v93)
-    v94 = iconst.i64 1
-    v95 = load.i64 v91+8
-    v96 = iadd v95, v94
-    v97 = load.i64 v91+16
-    v98 = icmp sgt v96, v97
-    brnz v98, block32
+block31(v90: i64, v91: i8):
+    v92 = iconst.i64 1
+    v93 = load.i64 v90+8
+    v94 = iadd v93, v92
+    v95 = load.i64 v90+16
+    v96 = icmp sgt v94, v95
+    brnz v96, block32
     jump block33
 
 block32:
-    v99 = iconst.i64 2
-    v100 = load.i64 v91+16
-    v101 = imul v100, v99
-    store v101, v91+16
-    v102 = iconst.i64 1
-    v103 = load.i64 v91+16
-    v104 = imul v103, v102
-    v105 = load.i64 v91
-    v106 = call fn12(v105, v104)
-    store v106, v91
+    v97 = iconst.i64 2
+    v98 = load.i64 v90+16
+    v99 = imul v98, v97
+    store v99, v90+16
+    v100 = iconst.i64 1
+    v101 = load.i64 v90+16
+    v102 = imul v101, v100
+    v103 = load.i64 v90
+    v104 = call fn10(v103, v102)
+    store v104, v90
     jump block33
 
 block33:
-    v107 = load.i64 v91+8
-    jump block35(v91, v107)
+    v105 = load.i64 v90+8
+    jump block35(v90, v105)
 
-block35(v108: i64, v109: i64):
-    jump block37(v108, v109)
+block35(v106: i64, v107: i64):
+    jump block37(v106, v107)
 
-block37(v111: i64, v112: i64):
-    jump block41(v111, v112)
+block37(v109: i64, v110: i64):
+    jump block41(v109, v110)
 
-block41(v113: i64, v114: i64):
-    v116 = iconst.i64 0
-    v117 = icmp sge v114, v116
-    v118 = load.i64 v113+8
-    v119 = icmp slt v114, v118
-    v120 = band v117, v119
-    jump block42(v120)
+block41(v111: i64, v112: i64):
+    v114 = iconst.i64 0
+    v115 = icmp sge v112, v114
+    v116 = load.i64 v111+8
+    v117 = icmp slt v112, v116
+    v118 = band v115, v117
+    jump block42(v118)
 
-block42(v115: b1):
-    brnz v115, block38
+block42(v113: b1):
+    brnz v113, block38
     jump block39
 
 block38:
-    v121 = global_value.i64 gv10
-    call fn13(v121)
+    v119 = global_value.i64 gv8
+    call fn11(v119)
     jump block39
 
 block39:
     jump block40
 
 block40:
-    jump block43(v108, v109)
+    jump block43(v106, v107)
 
-block43(v122: i64, v123: i64):
-    v125 = iconst.i64 1
-    v126 = imul v123, v125
-    v127 = load.i64 v122
-    v128 = iadd v127, v126
-    jump block44(v128)
+block43(v120: i64, v121: i64):
+    v123 = iconst.i64 1
+    v124 = imul v121, v123
+    v125 = load.i64 v120
+    v126 = iadd v125, v124
+    jump block44(v126)
 
-block44(v124: i64):
-    jump block36(v124)
+block44(v122: i64):
+    jump block36(v122)
 
-block36(v110: i64):
-    store.i8 v92, v110
-    store.i64 v96, v91+8
+block36(v108: i64):
+    store.i8 v91, v108
+    store.i64 v94, v90+8
     jump block34
 
 block34:
-    v129 = stack_addr.i64 ss0
-    v130 = stack_load.i64 ss1+16
-    call fn14(v129, v130)
-    v131 = iconst.i32 10
-    v132 = ireduce.i8 v131
-    v133 = stack_addr.i64 ss0
-    jump block45(v133, v132)
+    v127 = stack_addr.i64 ss0
+    v128 = stack_load.i64 ss1+16
+    call fn12(v127, v128)
+    v129 = iconst.i32 10
+    v130 = ireduce.i8 v129
+    v131 = stack_addr.i64 ss0
+    jump block45(v131, v130)
 
-block45(v134: i64, v135: i8):
-    v136 = global_value.i64 gv11
-    call fn15(v136)
-    v137 = iconst.i64 1
-    v138 = load.i64 v134+8
-    v139 = iadd v138, v137
-    v140 = load.i64 v134+16
-    v141 = icmp sgt v139, v140
-    brnz v141, block46
+block45(v132: i64, v133: i8):
+    v134 = iconst.i64 1
+    v135 = load.i64 v132+8
+    v136 = iadd v135, v134
+    v137 = load.i64 v132+16
+    v138 = icmp sgt v136, v137
+    brnz v138, block46
     jump block47
 
 block46:
-    v142 = iconst.i64 2
-    v143 = load.i64 v134+16
+    v139 = iconst.i64 2
+    v140 = load.i64 v132+16
+    v141 = imul v140, v139
+    store v141, v132+16
+    v142 = iconst.i64 1
+    v143 = load.i64 v132+16
     v144 = imul v143, v142
-    store v144, v134+16
-    v145 = iconst.i64 1
-    v146 = load.i64 v134+16
-    v147 = imul v146, v145
-    v148 = load.i64 v134
-    v149 = call fn16(v148, v147)
-    store v149, v134
+    v145 = load.i64 v132
+    v146 = call fn13(v145, v144)
+    store v146, v132
     jump block47
 
 block47:
-    v150 = load.i64 v134+8
-    jump block49(v134, v150)
+    v147 = load.i64 v132+8
+    jump block49(v132, v147)
 
-block49(v151: i64, v152: i64):
-    jump block51(v151, v152)
+block49(v148: i64, v149: i64):
+    jump block51(v148, v149)
 
-block51(v154: i64, v155: i64):
-    jump block55(v154, v155)
+block51(v151: i64, v152: i64):
+    jump block55(v151, v152)
 
-block55(v156: i64, v157: i64):
-    v159 = iconst.i64 0
-    v160 = icmp sge v157, v159
-    v161 = load.i64 v156+8
-    v162 = icmp slt v157, v161
-    v163 = band v160, v162
-    jump block56(v163)
+block55(v153: i64, v154: i64):
+    v156 = iconst.i64 0
+    v157 = icmp sge v154, v156
+    v158 = load.i64 v153+8
+    v159 = icmp slt v154, v158
+    v160 = band v157, v159
+    jump block56(v160)
 
-block56(v158: b1):
-    brnz v158, block52
+block56(v155: b1):
+    brnz v155, block52
     jump block53
 
 block52:
-    v164 = global_value.i64 gv12
-    call fn17(v164)
+    v161 = global_value.i64 gv9
+    call fn14(v161)
     jump block53
 
 block53:
     jump block54
 
 block54:
-    jump block57(v151, v152)
+    jump block57(v148, v149)
 
-block57(v165: i64, v166: i64):
-    v168 = iconst.i64 1
-    v169 = imul v166, v168
-    v170 = load.i64 v165
-    v171 = iadd v170, v169
-    jump block58(v171)
+block57(v162: i64, v163: i64):
+    v165 = iconst.i64 1
+    v166 = imul v163, v165
+    v167 = load.i64 v162
+    v168 = iadd v167, v166
+    jump block58(v168)
 
-block58(v167: i64):
-    jump block50(v167)
+block58(v164: i64):
+    jump block50(v164)
 
-block50(v153: i64):
-    store.i8 v135, v153
-    store.i64 v139, v134+8
+block50(v150: i64):
+    store.i8 v133, v150
+    store.i64 v136, v132+8
     jump block48
 
 block48:
-    jump block3(v217)
+    jump block3(v213)
 
 block6:
-    v172 = iconst.i32 0
-    v173 = ireduce.i8 v172
-    v174 = stack_addr.i64 ss0
-    jump block59(v174, v173)
+    v169 = iconst.i32 0
+    v170 = ireduce.i8 v169
+    v171 = stack_addr.i64 ss0
+    jump block59(v171, v170)
 
-block59(v175: i64, v176: i8):
-    v177 = global_value.i64 gv13
-    call fn18(v177)
-    v178 = iconst.i64 1
-    v179 = load.i64 v175+8
-    v180 = iadd v179, v178
-    v181 = load.i64 v175+16
-    v182 = icmp sgt v180, v181
-    brnz v182, block60
+block59(v172: i64, v173: i8):
+    v174 = iconst.i64 1
+    v175 = load.i64 v172+8
+    v176 = iadd v175, v174
+    v177 = load.i64 v172+16
+    v178 = icmp sgt v176, v177
+    brnz v178, block60
     jump block61
 
 block60:
-    v183 = iconst.i64 2
-    v184 = load.i64 v175+16
-    v185 = imul v184, v183
-    store v185, v175+16
-    v186 = iconst.i64 1
-    v187 = load.i64 v175+16
-    v188 = imul v187, v186
-    v189 = load.i64 v175
-    v190 = call fn19(v189, v188)
-    store v190, v175
+    v179 = iconst.i64 2
+    v180 = load.i64 v172+16
+    v181 = imul v180, v179
+    store v181, v172+16
+    v182 = iconst.i64 1
+    v183 = load.i64 v172+16
+    v184 = imul v183, v182
+    v185 = load.i64 v172
+    v186 = call fn15(v185, v184)
+    store v186, v172
     jump block61
 
 block61:
-    v191 = load.i64 v175+8
-    jump block63(v175, v191)
+    v187 = load.i64 v172+8
+    jump block63(v172, v187)
 
-block63(v192: i64, v193: i64):
-    jump block65(v192, v193)
+block63(v188: i64, v189: i64):
+    jump block65(v188, v189)
 
-block65(v195: i64, v196: i64):
-    jump block69(v195, v196)
+block65(v191: i64, v192: i64):
+    jump block69(v191, v192)
 
-block69(v197: i64, v198: i64):
-    v200 = iconst.i64 0
-    v201 = icmp sge v198, v200
-    v202 = load.i64 v197+8
-    v203 = icmp slt v198, v202
-    v204 = band v201, v203
-    jump block70(v204)
+block69(v193: i64, v194: i64):
+    v196 = iconst.i64 0
+    v197 = icmp sge v194, v196
+    v198 = load.i64 v193+8
+    v199 = icmp slt v194, v198
+    v200 = band v197, v199
+    jump block70(v200)
 
-block70(v199: b1):
-    brnz v199, block66
+block70(v195: b1):
+    brnz v195, block66
     jump block67
 
 block66:
-    v205 = global_value.i64 gv14
-    call fn20(v205)
+    v201 = global_value.i64 gv10
+    call fn16(v201)
     jump block67
 
 block67:
     jump block68
 
 block68:
-    jump block71(v192, v193)
+    jump block71(v188, v189)
 
-block71(v206: i64, v207: i64):
-    v209 = iconst.i64 1
-    v210 = imul v207, v209
-    v211 = load.i64 v206
-    v212 = iadd v211, v210
-    jump block72(v212)
+block71(v202: i64, v203: i64):
+    v205 = iconst.i64 1
+    v206 = imul v203, v205
+    v207 = load.i64 v202
+    v208 = iadd v207, v206
+    jump block72(v208)
 
-block72(v208: i64):
-    jump block64(v208)
+block72(v204: i64):
+    jump block64(v204)
 
-block64(v194: i64):
-    store.i8 v176, v194
-    store.i64 v180, v175+8
+block64(v190: i64):
+    store.i8 v173, v190
+    store.i64 v176, v172+8
     jump block62
 
 block62:
-    v213 = stack_load.i64 ss0
-    call fn21(v213)
-    v214 = iconst.i64 1
-    call fn22(v214)
+    v209 = stack_load.i64 ss0
+    call fn17(v209)
+    v210 = iconst.i64 1
+    call fn18(v210)
     return
 }
 
@@ -3278,7 +3248,6 @@ block0(v0: i64, v1: i64):
     return v4
 }
 
-
 fun print(s: &Self, value: &u8)
 
   Inst1[Value(0), Value(1)]
@@ -3333,7 +3302,7 @@ fun print(s: &Self, value: &u8)
 
 
 Token { kind: Fun, spam: Spam { source: Source(1), hash: ID(438937012895), range: 2460..2495 }, line_data: LineData { line: 128, column: 3, source: Source(1) } }
-Token { kind: Fun, spam: Spam { source: Source(1), hash: ID(438937012895), range: 4027..4072 }, line_data: LineData { line: 192, column: 3, source: Source(1) } }
+Token { kind: Fun, spam: Spam { source: Source(1), hash: ID(438937012895), range: 4005..4050 }, line_data: LineData { line: 191, column: 3, source: Source(1) } }
 function u0:0(i64, i64) fast {
     sig0 = (i64, i64) -> i64 windows_fastcall
     sig1 = (i64, i64, i64) windows_fastcall
@@ -3458,30 +3427,27 @@ fun print_int(s: &Self, value: int)
 
 
 Token { kind: Fun, spam: Spam { source: Source(1), hash: ID(438937012895), range: 3208..3236 }, line_data: LineData { line: 161, column: 3, source: Source(1) } }
-Token { kind: Fun, spam: Spam { source: Source(1), hash: ID(438937012895), range: 3735..3776 }, line_data: LineData { line: 183, column: 3, source: Source(1) } }
-Token { kind: Fun, spam: Spam { source: Source(1), hash: ID(438937012895), range: 4133..4175 }, line_data: LineData { line: 195, column: 4, source: Source(1) } }
-Token { kind: Fun, spam: Spam { source: Source(1), hash: ID(438937012895), range: 4248..4291 }, line_data: LineData { line: 199, column: 3, source: Source(1) } }
-Token { kind: Fun, spam: Spam { source: Source(1), hash: ID(438937012895), range: 4027..4072 }, line_data: LineData { line: 192, column: 3, source: Source(1) } }
+Token { kind: Fun, spam: Spam { source: Source(1), hash: ID(438937012895), range: 3713..3754 }, line_data: LineData { line: 182, column: 3, source: Source(1) } }
+Token { kind: Fun, spam: Spam { source: Source(1), hash: ID(438937012895), range: 4111..4153 }, line_data: LineData { line: 194, column: 4, source: Source(1) } }
+Token { kind: Fun, spam: Spam { source: Source(1), hash: ID(438937012895), range: 4226..4269 }, line_data: LineData { line: 198, column: 3, source: Source(1) } }
+Token { kind: Fun, spam: Spam { source: Source(1), hash: ID(438937012895), range: 4005..4050 }, line_data: LineData { line: 191, column: 3, source: Source(1) } }
 function u0:0(i64, i64) fast {
     gv0 = symbol colocated u1:1
-    gv1 = symbol colocated u1:2
-    sig0 = (i64) fast
-    sig1 = (i64, i64) -> i64 windows_fastcall
-    sig2 = (i64) fast
-    fn0 = colocated u0:19 sig0
-    fn1 = u0:26 sig1
-    fn2 = colocated u0:19 sig2
+    sig0 = (i64, i64) -> i64 windows_fastcall
+    sig1 = (i64) fast
+    fn0 = u0:26 sig0
+    fn1 = colocated u0:19 sig1
 
 block0(v0: i64, v1: i64):
-    v58 = iconst.i64 0
-    v57 -> v58
-    v54 = iconst.i64 0
-    v2 -> v54
-    jump block1(v1, v57)
+    v57 = iconst.i64 0
+    v56 -> v57
+    v53 = iconst.i64 0
+    v2 -> v53
+    jump block1(v1, v56)
 
-block1(v4: i64, v56: i64):
+block1(v4: i64, v55: i64):
     v7 -> v4
-    v9 -> v56
+    v9 -> v55
     v3 = iconst.i64 0
     v5 = icmp eq v4, v3
     brnz v5, block2
@@ -3493,18 +3459,18 @@ block2:
 block3:
     v6 = iconst.i64 10
     v8 = srem.i64 v7, v6
-    v63 -> v8
+    v62 -> v8
+    v65 -> v8
     v66 -> v8
-    v67 -> v8
-    v61 -> v63
-    v59 -> v61
+    v60 -> v62
+    v58 -> v60
     v10 = iconst.i64 10
     v11 = sdiv.i64 v7, v10
-    v62 -> v11
+    v61 -> v11
+    v63 -> v11
     v64 -> v11
-    v65 -> v11
-    v60 -> v62
-    v55 -> v60
+    v59 -> v61
+    v54 -> v59
     v12 = ireduce.i32 v8
     v13 = iconst.i32 48
     v14 = iadd v12, v13
@@ -3512,79 +3478,77 @@ block3:
     jump block5(v0, v15)
 
 block5(v16: i64, v17: i8):
-    v18 = global_value.i64 gv0
-    call fn0(v18)
-    v19 = iconst.i64 1
-    v20 = load.i64 v16+8
-    v21 = iadd v20, v19
-    v22 = load.i64 v16+16
-    v23 = icmp sgt v21, v22
-    brnz v23, block6
+    v18 = iconst.i64 1
+    v19 = load.i64 v16+8
+    v20 = iadd v19, v18
+    v21 = load.i64 v16+16
+    v22 = icmp sgt v20, v21
+    brnz v22, block6
     jump block7
 
 block6:
-    v24 = iconst.i64 2
-    v25 = load.i64 v16+16
-    v26 = imul v25, v24
-    store v26, v16+16
-    v27 = iconst.i64 1
-    v28 = load.i64 v16+16
-    v29 = imul v28, v27
-    v30 = load.i64 v16
-    v31 = call fn1(v30, v29)
-    store v31, v16
+    v23 = iconst.i64 2
+    v24 = load.i64 v16+16
+    v25 = imul v24, v23
+    store v25, v16+16
+    v26 = iconst.i64 1
+    v27 = load.i64 v16+16
+    v28 = imul v27, v26
+    v29 = load.i64 v16
+    v30 = call fn0(v29, v28)
+    store v30, v16
     jump block7
 
 block7:
-    v32 = load.i64 v16+8
-    jump block9(v16, v32)
+    v31 = load.i64 v16+8
+    jump block9(v16, v31)
 
-block9(v33: i64, v34: i64):
-    jump block11(v33, v34)
+block9(v32: i64, v33: i64):
+    jump block11(v32, v33)
 
-block11(v36: i64, v37: i64):
-    jump block15(v36, v37)
+block11(v35: i64, v36: i64):
+    jump block15(v35, v36)
 
-block15(v38: i64, v39: i64):
-    v41 = iconst.i64 0
-    v42 = icmp sge v39, v41
-    v43 = load.i64 v38+8
-    v44 = icmp slt v39, v43
-    v45 = band v42, v44
-    jump block16(v45)
+block15(v37: i64, v38: i64):
+    v40 = iconst.i64 0
+    v41 = icmp sge v38, v40
+    v42 = load.i64 v37+8
+    v43 = icmp slt v38, v42
+    v44 = band v41, v43
+    jump block16(v44)
 
-block16(v40: b1):
-    brnz v40, block12
+block16(v39: b1):
+    brnz v39, block12
     jump block13
 
 block12:
-    v46 = global_value.i64 gv1
-    call fn2(v46)
+    v45 = global_value.i64 gv0
+    call fn1(v45)
     jump block13
 
 block13:
     jump block14
 
 block14:
-    jump block17(v33, v34)
+    jump block17(v32, v33)
 
-block17(v47: i64, v48: i64):
-    v50 = iconst.i64 1
-    v51 = imul v48, v50
-    v52 = load.i64 v47
-    v53 = iadd v52, v51
-    jump block18(v53)
+block17(v46: i64, v47: i64):
+    v49 = iconst.i64 1
+    v50 = imul v47, v49
+    v51 = load.i64 v46
+    v52 = iadd v51, v50
+    jump block18(v52)
 
-block18(v49: i64):
-    jump block10(v49)
+block18(v48: i64):
+    jump block10(v48)
 
-block10(v35: i64):
-    store.i8 v17, v35
-    store.i64 v21, v16+8
+block10(v34: i64):
+    store.i8 v17, v34
+    store.i64 v20, v16+8
     jump block8
 
 block8:
-    jump block1(v55, v59)
+    jump block1(v54, v58)
 
 block4:
     return
@@ -3599,9 +3563,9 @@ fun pop_frame
     Return(None) |stacktrace.pop()
 
 
-Token { kind: Fun, spam: Spam { source: Source(1), hash: ID(438937012895), range: 3455..3485 }, line_data: LineData { line: 171, column: 3, source: Source(1) } }
-Token { kind: Fun, spam: Spam { source: Source(1), hash: ID(438937012895), range: 4027..4072 }, line_data: LineData { line: 192, column: 3, source: Source(1) } }
-Token { kind: Fun, spam: Spam { source: Source(1), hash: ID(438937012895), range: 4453..4479 }, line_data: LineData { line: 212, column: 3, source: Source(1) } }
+Token { kind: Fun, spam: Spam { source: Source(1), hash: ID(438937012895), range: 3433..3463 }, line_data: LineData { line: 170, column: 3, source: Source(1) } }
+Token { kind: Fun, spam: Spam { source: Source(1), hash: ID(438937012895), range: 4005..4050 }, line_data: LineData { line: 191, column: 3, source: Source(1) } }
+Token { kind: Fun, spam: Spam { source: Source(1), hash: ID(438937012895), range: 4431..4457 }, line_data: LineData { line: 211, column: 3, source: Source(1) } }
 function u0:0() fast {
     ss0 = explicit_slot 32
     ss1 = explicit_slot 24
@@ -3715,21 +3679,18 @@ fun push_frame(line, column: int, file: &u8)
 
 
 Token { kind: Fun, spam: Spam { source: Source(1), hash: ID(438937012895), range: 3208..3236 }, line_data: LineData { line: 161, column: 3, source: Source(1) } }
-Token { kind: Fun, spam: Spam { source: Source(1), hash: ID(438937012895), range: 3735..3776 }, line_data: LineData { line: 183, column: 3, source: Source(1) } }
-Token { kind: Fun, spam: Spam { source: Source(1), hash: ID(438937012895), range: 4133..4175 }, line_data: LineData { line: 195, column: 4, source: Source(1) } }
-Token { kind: Fun, spam: Spam { source: Source(1), hash: ID(438937012895), range: 4248..4291 }, line_data: LineData { line: 199, column: 3, source: Source(1) } }
-Token { kind: Fun, spam: Spam { source: Source(1), hash: ID(438937012895), range: 4027..4072 }, line_data: LineData { line: 192, column: 3, source: Source(1) } }
+Token { kind: Fun, spam: Spam { source: Source(1), hash: ID(438937012895), range: 3713..3754 }, line_data: LineData { line: 182, column: 3, source: Source(1) } }
+Token { kind: Fun, spam: Spam { source: Source(1), hash: ID(438937012895), range: 4111..4153 }, line_data: LineData { line: 194, column: 4, source: Source(1) } }
+Token { kind: Fun, spam: Spam { source: Source(1), hash: ID(438937012895), range: 4226..4269 }, line_data: LineData { line: 198, column: 3, source: Source(1) } }
+Token { kind: Fun, spam: Spam { source: Source(1), hash: ID(438937012895), range: 4005..4050 }, line_data: LineData { line: 191, column: 3, source: Source(1) } }
 function u0:0(i64, i64, i64) fast {
     ss0 = explicit_slot 24
     gv0 = symbol colocated u1:0
     gv1 = symbol colocated u1:1
-    gv2 = symbol colocated u1:2
-    sig0 = (i64) fast
-    sig1 = (i64, i64) -> i64 windows_fastcall
-    sig2 = (i64) fast
-    fn0 = colocated u0:19 sig0
-    fn1 = u0:26 sig1
-    fn2 = colocated u0:19 sig2
+    sig0 = (i64, i64) -> i64 windows_fastcall
+    sig1 = (i64) fast
+    fn0 = u0:26 sig0
+    fn1 = colocated u0:19 sig1
 
 block0(v0: i64, v1: i64, v2: i64):
     v3 = iconst.i64 0
@@ -3744,80 +3705,78 @@ block0(v0: i64, v1: i64, v2: i64):
     jump block1(v4, v5)
 
 block1(v6: i64, v7: i64):
-    v8 = global_value.i64 gv1
-    call fn0(v8)
-    v9 = iconst.i64 1
-    v10 = load.i64 v6+8
-    v11 = iadd v10, v9
-    v12 = load.i64 v6+16
-    v13 = icmp sgt v11, v12
-    brnz v13, block2
+    v8 = iconst.i64 1
+    v9 = load.i64 v6+8
+    v10 = iadd v9, v8
+    v11 = load.i64 v6+16
+    v12 = icmp sgt v10, v11
+    brnz v12, block2
     jump block3
 
 block2:
-    v14 = iconst.i64 2
-    v15 = load.i64 v6+16
-    v16 = imul v15, v14
-    store v16, v6+16
-    v17 = iconst.i64 24
-    v18 = load.i64 v6+16
-    v19 = imul v18, v17
-    v20 = load.i64 v6
-    v21 = call fn1(v20, v19)
-    store v21, v6
+    v13 = iconst.i64 2
+    v14 = load.i64 v6+16
+    v15 = imul v14, v13
+    store v15, v6+16
+    v16 = iconst.i64 24
+    v17 = load.i64 v6+16
+    v18 = imul v17, v16
+    v19 = load.i64 v6
+    v20 = call fn0(v19, v18)
+    store v20, v6
     jump block3
 
 block3:
-    v22 = load.i64 v6+8
-    jump block5(v6, v22)
+    v21 = load.i64 v6+8
+    jump block5(v6, v21)
 
-block5(v23: i64, v24: i64):
-    jump block7(v23, v24)
+block5(v22: i64, v23: i64):
+    jump block7(v22, v23)
 
-block7(v26: i64, v27: i64):
-    jump block11(v26, v27)
+block7(v25: i64, v26: i64):
+    jump block11(v25, v26)
 
-block11(v28: i64, v29: i64):
-    v31 = iconst.i64 0
-    v32 = icmp sge v29, v31
-    v33 = load.i64 v28+8
-    v34 = icmp slt v29, v33
-    v35 = band v32, v34
-    jump block12(v35)
+block11(v27: i64, v28: i64):
+    v30 = iconst.i64 0
+    v31 = icmp sge v28, v30
+    v32 = load.i64 v27+8
+    v33 = icmp slt v28, v32
+    v34 = band v31, v33
+    jump block12(v34)
 
-block12(v30: b1):
-    brnz v30, block8
+block12(v29: b1):
+    brnz v29, block8
     jump block9
 
 block8:
-    v36 = global_value.i64 gv2
-    call fn2(v36)
+    v35 = global_value.i64 gv1
+    call fn1(v35)
     jump block9
 
 block9:
     jump block10
 
 block10:
-    jump block13(v23, v24)
+    jump block13(v22, v23)
 
-block13(v37: i64, v38: i64):
-    v40 = iconst.i64 24
-    v41 = imul v38, v40
-    v42 = load.i64 v37
-    v43 = iadd v42, v41
-    jump block14(v43)
+block13(v36: i64, v37: i64):
+    v39 = iconst.i64 24
+    v40 = imul v37, v39
+    v41 = load.i64 v36
+    v42 = iadd v41, v40
+    jump block14(v42)
 
-block14(v39: i64):
-    jump block6(v39)
+block14(v38: i64):
+    jump block6(v38)
 
-block6(v25: i64):
-    v44 = load.i64 v7
-    store v44, v25
-    v45 = load.i64 v7+8
-    store v45, v25+8
-    v46 = load.i64 v7+16
-    store v46, v25+16
-    store.i64 v11, v6+8
+block6(v24: i64):
+    v43 = load.i64 v7
+    store v43, v24
+    v44 = load.i64 v7+8
+    store v44, v24+8
+    v45 = load.i64 v7+16
+    store v45, v24+16
+    store.i64 v10, v6+8
     jump block4
 
 block4:
@@ -3926,48 +3885,44 @@ fun panic(str: &u8)
     Return(None) |exit(1)
 
 
-Token { kind: Fun, spam: Spam { source: Source(1), hash: ID(438937012895), range: 3735..3776 }, line_data: LineData { line: 183, column: 3, source: Source(1) } }
-Token { kind: Fun, spam: Spam { source: Source(1), hash: ID(438937012895), range: 4133..4175 }, line_data: LineData { line: 195, column: 4, source: Source(1) } }
-Token { kind: Fun, spam: Spam { source: Source(1), hash: ID(438937012895), range: 4248..4291 }, line_data: LineData { line: 199, column: 3, source: Source(1) } }
-Token { kind: Fun, spam: Spam { source: Source(1), hash: ID(438937012895), range: 4027..4072 }, line_data: LineData { line: 192, column: 3, source: Source(1) } }
+Token { kind: Fun, spam: Spam { source: Source(1), hash: ID(438937012895), range: 3713..3754 }, line_data: LineData { line: 182, column: 3, source: Source(1) } }
+Token { kind: Fun, spam: Spam { source: Source(1), hash: ID(438937012895), range: 4111..4153 }, line_data: LineData { line: 194, column: 4, source: Source(1) } }
+Token { kind: Fun, spam: Spam { source: Source(1), hash: ID(438937012895), range: 4226..4269 }, line_data: LineData { line: 198, column: 3, source: Source(1) } }
+Token { kind: Fun, spam: Spam { source: Source(1), hash: ID(438937012895), range: 4005..4050 }, line_data: LineData { line: 191, column: 3, source: Source(1) } }
 Token { kind: Fun, spam: Spam { source: Source(1), hash: ID(438937012895), range: 3208..3236 }, line_data: LineData { line: 161, column: 3, source: Source(1) } }
-Token { kind: Fun, spam: Spam { source: Source(1), hash: ID(438937012895), range: 3735..3776 }, line_data: LineData { line: 183, column: 3, source: Source(1) } }
-Token { kind: Fun, spam: Spam { source: Source(1), hash: ID(438937012895), range: 4133..4175 }, line_data: LineData { line: 195, column: 4, source: Source(1) } }
-Token { kind: Fun, spam: Spam { source: Source(1), hash: ID(438937012895), range: 4248..4291 }, line_data: LineData { line: 199, column: 3, source: Source(1) } }
-Token { kind: Fun, spam: Spam { source: Source(1), hash: ID(438937012895), range: 4027..4072 }, line_data: LineData { line: 192, column: 3, source: Source(1) } }
+Token { kind: Fun, spam: Spam { source: Source(1), hash: ID(438937012895), range: 3713..3754 }, line_data: LineData { line: 182, column: 3, source: Source(1) } }
+Token { kind: Fun, spam: Spam { source: Source(1), hash: ID(438937012895), range: 4111..4153 }, line_data: LineData { line: 194, column: 4, source: Source(1) } }
+Token { kind: Fun, spam: Spam { source: Source(1), hash: ID(438937012895), range: 4226..4269 }, line_data: LineData { line: 198, column: 3, source: Source(1) } }
+Token { kind: Fun, spam: Spam { source: Source(1), hash: ID(438937012895), range: 4005..4050 }, line_data: LineData { line: 191, column: 3, source: Source(1) } }
 Token { kind: Fun, spam: Spam { source: Source(1), hash: ID(438937012895), range: 3208..3236 }, line_data: LineData { line: 161, column: 3, source: Source(1) } }
-Token { kind: Fun, spam: Spam { source: Source(1), hash: ID(438937012895), range: 3735..3776 }, line_data: LineData { line: 183, column: 3, source: Source(1) } }
-Token { kind: Fun, spam: Spam { source: Source(1), hash: ID(438937012895), range: 4133..4175 }, line_data: LineData { line: 195, column: 4, source: Source(1) } }
-Token { kind: Fun, spam: Spam { source: Source(1), hash: ID(438937012895), range: 4248..4291 }, line_data: LineData { line: 199, column: 3, source: Source(1) } }
-Token { kind: Fun, spam: Spam { source: Source(1), hash: ID(438937012895), range: 4027..4072 }, line_data: LineData { line: 192, column: 3, source: Source(1) } }
+Token { kind: Fun, spam: Spam { source: Source(1), hash: ID(438937012895), range: 3713..3754 }, line_data: LineData { line: 182, column: 3, source: Source(1) } }
+Token { kind: Fun, spam: Spam { source: Source(1), hash: ID(438937012895), range: 4111..4153 }, line_data: LineData { line: 194, column: 4, source: Source(1) } }
+Token { kind: Fun, spam: Spam { source: Source(1), hash: ID(438937012895), range: 4226..4269 }, line_data: LineData { line: 198, column: 3, source: Source(1) } }
+Token { kind: Fun, spam: Spam { source: Source(1), hash: ID(438937012895), range: 4005..4050 }, line_data: LineData { line: 191, column: 3, source: Source(1) } }
 Token { kind: Fun, spam: Spam { source: Source(1), hash: ID(438937012895), range: 3208..3236 }, line_data: LineData { line: 161, column: 3, source: Source(1) } }
-Token { kind: Fun, spam: Spam { source: Source(1), hash: ID(438937012895), range: 3735..3776 }, line_data: LineData { line: 183, column: 3, source: Source(1) } }
-Token { kind: Fun, spam: Spam { source: Source(1), hash: ID(438937012895), range: 4133..4175 }, line_data: LineData { line: 195, column: 4, source: Source(1) } }
-Token { kind: Fun, spam: Spam { source: Source(1), hash: ID(438937012895), range: 4248..4291 }, line_data: LineData { line: 199, column: 3, source: Source(1) } }
-Token { kind: Fun, spam: Spam { source: Source(1), hash: ID(438937012895), range: 4027..4072 }, line_data: LineData { line: 192, column: 3, source: Source(1) } }
+Token { kind: Fun, spam: Spam { source: Source(1), hash: ID(438937012895), range: 3713..3754 }, line_data: LineData { line: 182, column: 3, source: Source(1) } }
+Token { kind: Fun, spam: Spam { source: Source(1), hash: ID(438937012895), range: 4111..4153 }, line_data: LineData { line: 194, column: 4, source: Source(1) } }
+Token { kind: Fun, spam: Spam { source: Source(1), hash: ID(438937012895), range: 4226..4269 }, line_data: LineData { line: 198, column: 3, source: Source(1) } }
+Token { kind: Fun, spam: Spam { source: Source(1), hash: ID(438937012895), range: 4005..4050 }, line_data: LineData { line: 191, column: 3, source: Source(1) } }
 Token { kind: Fun, spam: Spam { source: Source(1), hash: ID(438937012895), range: 3208..3236 }, line_data: LineData { line: 161, column: 3, source: Source(1) } }
-Token { kind: Fun, spam: Spam { source: Source(1), hash: ID(438937012895), range: 3735..3776 }, line_data: LineData { line: 183, column: 3, source: Source(1) } }
-Token { kind: Fun, spam: Spam { source: Source(1), hash: ID(438937012895), range: 4133..4175 }, line_data: LineData { line: 195, column: 4, source: Source(1) } }
-Token { kind: Fun, spam: Spam { source: Source(1), hash: ID(438937012895), range: 4248..4291 }, line_data: LineData { line: 199, column: 3, source: Source(1) } }
-Token { kind: Fun, spam: Spam { source: Source(1), hash: ID(438937012895), range: 4027..4072 }, line_data: LineData { line: 192, column: 3, source: Source(1) } }
+Token { kind: Fun, spam: Spam { source: Source(1), hash: ID(438937012895), range: 3713..3754 }, line_data: LineData { line: 182, column: 3, source: Source(1) } }
+Token { kind: Fun, spam: Spam { source: Source(1), hash: ID(438937012895), range: 4111..4153 }, line_data: LineData { line: 194, column: 4, source: Source(1) } }
+Token { kind: Fun, spam: Spam { source: Source(1), hash: ID(438937012895), range: 4226..4269 }, line_data: LineData { line: 198, column: 3, source: Source(1) } }
+Token { kind: Fun, spam: Spam { source: Source(1), hash: ID(438937012895), range: 4005..4050 }, line_data: LineData { line: 191, column: 3, source: Source(1) } }
 function u0:0(i64) fast {
     ss0 = explicit_slot 24
     ss1 = explicit_slot 24
-    gv0 = symbol colocated u1:3
-    gv1 = symbol colocated u1:4
+    gv0 = symbol colocated u1:2
+    gv1 = symbol colocated u1:3
     gv2 = symbol colocated u1:0
-    gv3 = symbol colocated u1:5
+    gv3 = symbol colocated u1:4
     gv4 = symbol colocated u1:0
     gv5 = symbol colocated u1:0
-    gv6 = symbol colocated u1:2
+    gv6 = symbol colocated u1:1
     gv7 = symbol colocated u1:1
-    gv8 = symbol colocated u1:2
+    gv8 = symbol colocated u1:1
     gv9 = symbol colocated u1:1
-    gv10 = symbol colocated u1:2
-    gv11 = symbol colocated u1:1
-    gv12 = symbol colocated u1:2
-    gv13 = symbol colocated u1:1
-    gv14 = symbol colocated u1:2
+    gv10 = symbol colocated u1:1
     sig0 = (i64) windows_fastcall
     sig1 = (i64) windows_fastcall
     sig2 = (i64) windows_fastcall
@@ -3975,22 +3930,18 @@ function u0:0(i64) fast {
     sig4 = (i64) windows_fastcall
     sig5 = (i64) fast
     sig6 = (i64, i64) fast
-    sig7 = (i64) fast
-    sig8 = (i64, i64) -> i64 windows_fastcall
-    sig9 = (i64) fast
-    sig10 = (i64, i64) fast
+    sig7 = (i64, i64) -> i64 windows_fastcall
+    sig8 = (i64) fast
+    sig9 = (i64, i64) fast
+    sig10 = (i64, i64) -> i64 windows_fastcall
     sig11 = (i64) fast
-    sig12 = (i64, i64) -> i64 windows_fastcall
-    sig13 = (i64) fast
-    sig14 = (i64, i64) fast
-    sig15 = (i64) fast
-    sig16 = (i64, i64) -> i64 windows_fastcall
-    sig17 = (i64) fast
-    sig18 = (i64) fast
-    sig19 = (i64, i64) -> i64 windows_fastcall
-    sig20 = (i64) fast
-    sig21 = (i64) windows_fastcall
-    sig22 = (i64) windows_fastcall
+    sig12 = (i64, i64) fast
+    sig13 = (i64, i64) -> i64 windows_fastcall
+    sig14 = (i64) fast
+    sig15 = (i64, i64) -> i64 windows_fastcall
+    sig16 = (i64) fast
+    sig17 = (i64) windows_fastcall
+    sig18 = (i64) windows_fastcall
     fn0 = u0:21 sig0
     fn1 = u0:21 sig1
     fn2 = u0:21 sig2
@@ -3998,27 +3949,23 @@ function u0:0(i64) fast {
     fn4 = u0:20 sig4
     fn5 = colocated u0:19 sig5
     fn6 = colocated u0:4 sig6
-    fn7 = colocated u0:19 sig7
-    fn8 = u0:26 sig8
-    fn9 = colocated u0:19 sig9
-    fn10 = colocated u0:4 sig10
+    fn7 = u0:26 sig7
+    fn8 = colocated u0:19 sig8
+    fn9 = colocated u0:4 sig9
+    fn10 = u0:26 sig10
     fn11 = colocated u0:19 sig11
-    fn12 = u0:26 sig12
-    fn13 = colocated u0:19 sig13
-    fn14 = colocated u0:0 sig14
-    fn15 = colocated u0:19 sig15
-    fn16 = u0:26 sig16
-    fn17 = colocated u0:19 sig17
-    fn18 = colocated u0:19 sig18
-    fn19 = u0:26 sig19
-    fn20 = colocated u0:19 sig20
-    fn21 = u0:21 sig21
-    fn22 = u0:20 sig22
+    fn12 = colocated u0:0 sig12
+    fn13 = u0:26 sig13
+    fn14 = colocated u0:19 sig14
+    fn15 = u0:26 sig15
+    fn16 = colocated u0:19 sig16
+    fn17 = u0:21 sig17
+    fn18 = u0:20 sig18
 
 block0(v0: i64):
-    v216 = iconst.i64 0
-    v11 -> v216
-    v215 -> v216
+    v212 = iconst.i64 0
+    v11 -> v212
+    v211 -> v212
     v1 = global_value.i64 gv0
     call fn0(v1)
     call fn1(v0)
@@ -4048,16 +3995,16 @@ block2:
 
 block3(v13: i64):
     v17 -> v13
+    v215 -> v13
+    v216 -> v13
+    v217 -> v13
+    v218 -> v13
     v219 -> v13
     v220 -> v13
     v221 -> v13
     v222 -> v13
-    v223 -> v13
-    v224 -> v13
-    v225 -> v13
-    v226 -> v13
-    v218 -> v219
-    v217 -> v218
+    v214 -> v215
+    v213 -> v214
     v12 = global_value.i64 gv4
     v14 = load.i64 v12+8
     v15 = icmp sge v13, v14
@@ -4127,325 +4074,317 @@ block8(v20: i64):
     jump block17(v47, v46)
 
 block17(v48: i64, v49: i8):
-    v50 = global_value.i64 gv7
-    call fn7(v50)
-    v51 = iconst.i64 1
-    v52 = load.i64 v48+8
-    v53 = iadd v52, v51
-    v54 = load.i64 v48+16
-    v55 = icmp sgt v53, v54
-    brnz v55, block18
+    v50 = iconst.i64 1
+    v51 = load.i64 v48+8
+    v52 = iadd v51, v50
+    v53 = load.i64 v48+16
+    v54 = icmp sgt v52, v53
+    brnz v54, block18
     jump block19
 
 block18:
-    v56 = iconst.i64 2
-    v57 = load.i64 v48+16
-    v58 = imul v57, v56
-    store v58, v48+16
-    v59 = iconst.i64 1
-    v60 = load.i64 v48+16
-    v61 = imul v60, v59
-    v62 = load.i64 v48
-    v63 = call fn8(v62, v61)
-    store v63, v48
+    v55 = iconst.i64 2
+    v56 = load.i64 v48+16
+    v57 = imul v56, v55
+    store v57, v48+16
+    v58 = iconst.i64 1
+    v59 = load.i64 v48+16
+    v60 = imul v59, v58
+    v61 = load.i64 v48
+    v62 = call fn7(v61, v60)
+    store v62, v48
     jump block19
 
 block19:
-    v64 = load.i64 v48+8
-    jump block21(v48, v64)
+    v63 = load.i64 v48+8
+    jump block21(v48, v63)
 
-block21(v65: i64, v66: i64):
-    jump block23(v65, v66)
+block21(v64: i64, v65: i64):
+    jump block23(v64, v65)
 
-block23(v68: i64, v69: i64):
-    jump block27(v68, v69)
+block23(v67: i64, v68: i64):
+    jump block27(v67, v68)
 
-block27(v70: i64, v71: i64):
-    v73 = iconst.i64 0
-    v74 = icmp sge v71, v73
-    v75 = load.i64 v70+8
-    v76 = icmp slt v71, v75
-    v77 = band v74, v76
-    jump block28(v77)
+block27(v69: i64, v70: i64):
+    v72 = iconst.i64 0
+    v73 = icmp sge v70, v72
+    v74 = load.i64 v69+8
+    v75 = icmp slt v70, v74
+    v76 = band v73, v75
+    jump block28(v76)
 
-block28(v72: b1):
-    brnz v72, block24
+block28(v71: b1):
+    brnz v71, block24
     jump block25
 
 block24:
-    v78 = global_value.i64 gv8
-    call fn9(v78)
+    v77 = global_value.i64 gv7
+    call fn8(v77)
     jump block25
 
 block25:
     jump block26
 
 block26:
-    jump block29(v65, v66)
+    jump block29(v64, v65)
 
-block29(v79: i64, v80: i64):
-    v82 = iconst.i64 1
-    v83 = imul v80, v82
-    v84 = load.i64 v79
-    v85 = iadd v84, v83
-    jump block30(v85)
+block29(v78: i64, v79: i64):
+    v81 = iconst.i64 1
+    v82 = imul v79, v81
+    v83 = load.i64 v78
+    v84 = iadd v83, v82
+    jump block30(v84)
 
-block30(v81: i64):
-    jump block22(v81)
+block30(v80: i64):
+    jump block22(v80)
 
-block22(v67: i64):
-    store.i8 v49, v67
-    store.i64 v53, v48+8
+block22(v66: i64):
+    store.i8 v49, v66
+    store.i64 v52, v48+8
     jump block20
 
 block20:
-    v86 = stack_addr.i64 ss0
-    v87 = stack_load.i64 ss1+8
-    call fn10(v86, v87)
-    v88 = iconst.i32 32
-    v89 = ireduce.i8 v88
-    v90 = stack_addr.i64 ss0
-    jump block31(v90, v89)
+    v85 = stack_addr.i64 ss0
+    v86 = stack_load.i64 ss1+8
+    call fn9(v85, v86)
+    v87 = iconst.i32 32
+    v88 = ireduce.i8 v87
+    v89 = stack_addr.i64 ss0
+    jump block31(v89, v88)
 
-block31(v91: i64, v92: i8):
-    v93 = global_value.i64 gv9
-    call fn11(v93)
-    v94 = iconst.i64 1
-    v95 = load.i64 v91+8
-    v96 = iadd v95, v94
-    v97 = load.i64 v91+16
-    v98 = icmp sgt v96, v97
-    brnz v98, block32
+block31(v90: i64, v91: i8):
+    v92 = iconst.i64 1
+    v93 = load.i64 v90+8
+    v94 = iadd v93, v92
+    v95 = load.i64 v90+16
+    v96 = icmp sgt v94, v95
+    brnz v96, block32
     jump block33
 
 block32:
-    v99 = iconst.i64 2
-    v100 = load.i64 v91+16
-    v101 = imul v100, v99
-    store v101, v91+16
-    v102 = iconst.i64 1
-    v103 = load.i64 v91+16
-    v104 = imul v103, v102
-    v105 = load.i64 v91
-    v106 = call fn12(v105, v104)
-    store v106, v91
+    v97 = iconst.i64 2
+    v98 = load.i64 v90+16
+    v99 = imul v98, v97
+    store v99, v90+16
+    v100 = iconst.i64 1
+    v101 = load.i64 v90+16
+    v102 = imul v101, v100
+    v103 = load.i64 v90
+    v104 = call fn10(v103, v102)
+    store v104, v90
     jump block33
 
 block33:
-    v107 = load.i64 v91+8
-    jump block35(v91, v107)
+    v105 = load.i64 v90+8
+    jump block35(v90, v105)
 
-block35(v108: i64, v109: i64):
-    jump block37(v108, v109)
+block35(v106: i64, v107: i64):
+    jump block37(v106, v107)
 
-block37(v111: i64, v112: i64):
-    jump block41(v111, v112)
+block37(v109: i64, v110: i64):
+    jump block41(v109, v110)
 
-block41(v113: i64, v114: i64):
-    v116 = iconst.i64 0
-    v117 = icmp sge v114, v116
-    v118 = load.i64 v113+8
-    v119 = icmp slt v114, v118
-    v120 = band v117, v119
-    jump block42(v120)
+block41(v111: i64, v112: i64):
+    v114 = iconst.i64 0
+    v115 = icmp sge v112, v114
+    v116 = load.i64 v111+8
+    v117 = icmp slt v112, v116
+    v118 = band v115, v117
+    jump block42(v118)
 
-block42(v115: b1):
-    brnz v115, block38
+block42(v113: b1):
+    brnz v113, block38
     jump block39
 
 block38:
-    v121 = global_value.i64 gv10
-    call fn13(v121)
+    v119 = global_value.i64 gv8
+    call fn11(v119)
     jump block39
 
 block39:
     jump block40
 
 block40:
-    jump block43(v108, v109)
+    jump block43(v106, v107)
 
-block43(v122: i64, v123: i64):
-    v125 = iconst.i64 1
-    v126 = imul v123, v125
-    v127 = load.i64 v122
-    v128 = iadd v127, v126
-    jump block44(v128)
+block43(v120: i64, v121: i64):
+    v123 = iconst.i64 1
+    v124 = imul v121, v123
+    v125 = load.i64 v120
+    v126 = iadd v125, v124
+    jump block44(v126)
 
-block44(v124: i64):
-    jump block36(v124)
+block44(v122: i64):
+    jump block36(v122)
 
-block36(v110: i64):
-    store.i8 v92, v110
-    store.i64 v96, v91+8
+block36(v108: i64):
+    store.i8 v91, v108
+    store.i64 v94, v90+8
     jump block34
 
 block34:
-    v129 = stack_addr.i64 ss0
-    v130 = stack_load.i64 ss1+16
-    call fn14(v129, v130)
-    v131 = iconst.i32 10
-    v132 = ireduce.i8 v131
-    v133 = stack_addr.i64 ss0
-    jump block45(v133, v132)
+    v127 = stack_addr.i64 ss0
+    v128 = stack_load.i64 ss1+16
+    call fn12(v127, v128)
+    v129 = iconst.i32 10
+    v130 = ireduce.i8 v129
+    v131 = stack_addr.i64 ss0
+    jump block45(v131, v130)
 
-block45(v134: i64, v135: i8):
-    v136 = global_value.i64 gv11
-    call fn15(v136)
-    v137 = iconst.i64 1
-    v138 = load.i64 v134+8
-    v139 = iadd v138, v137
-    v140 = load.i64 v134+16
-    v141 = icmp sgt v139, v140
-    brnz v141, block46
+block45(v132: i64, v133: i8):
+    v134 = iconst.i64 1
+    v135 = load.i64 v132+8
+    v136 = iadd v135, v134
+    v137 = load.i64 v132+16
+    v138 = icmp sgt v136, v137
+    brnz v138, block46
     jump block47
 
 block46:
-    v142 = iconst.i64 2
-    v143 = load.i64 v134+16
+    v139 = iconst.i64 2
+    v140 = load.i64 v132+16
+    v141 = imul v140, v139
+    store v141, v132+16
+    v142 = iconst.i64 1
+    v143 = load.i64 v132+16
     v144 = imul v143, v142
-    store v144, v134+16
-    v145 = iconst.i64 1
-    v146 = load.i64 v134+16
-    v147 = imul v146, v145
-    v148 = load.i64 v134
-    v149 = call fn16(v148, v147)
-    store v149, v134
+    v145 = load.i64 v132
+    v146 = call fn13(v145, v144)
+    store v146, v132
     jump block47
 
 block47:
-    v150 = load.i64 v134+8
-    jump block49(v134, v150)
+    v147 = load.i64 v132+8
+    jump block49(v132, v147)
 
-block49(v151: i64, v152: i64):
-    jump block51(v151, v152)
+block49(v148: i64, v149: i64):
+    jump block51(v148, v149)
 
-block51(v154: i64, v155: i64):
-    jump block55(v154, v155)
+block51(v151: i64, v152: i64):
+    jump block55(v151, v152)
 
-block55(v156: i64, v157: i64):
-    v159 = iconst.i64 0
-    v160 = icmp sge v157, v159
-    v161 = load.i64 v156+8
-    v162 = icmp slt v157, v161
-    v163 = band v160, v162
-    jump block56(v163)
+block55(v153: i64, v154: i64):
+    v156 = iconst.i64 0
+    v157 = icmp sge v154, v156
+    v158 = load.i64 v153+8
+    v159 = icmp slt v154, v158
+    v160 = band v157, v159
+    jump block56(v160)
 
-block56(v158: b1):
-    brnz v158, block52
+block56(v155: b1):
+    brnz v155, block52
     jump block53
 
 block52:
-    v164 = global_value.i64 gv12
-    call fn17(v164)
+    v161 = global_value.i64 gv9
+    call fn14(v161)
     jump block53
 
 block53:
     jump block54
 
 block54:
-    jump block57(v151, v152)
+    jump block57(v148, v149)
 
-block57(v165: i64, v166: i64):
-    v168 = iconst.i64 1
-    v169 = imul v166, v168
-    v170 = load.i64 v165
-    v171 = iadd v170, v169
-    jump block58(v171)
+block57(v162: i64, v163: i64):
+    v165 = iconst.i64 1
+    v166 = imul v163, v165
+    v167 = load.i64 v162
+    v168 = iadd v167, v166
+    jump block58(v168)
 
-block58(v167: i64):
-    jump block50(v167)
+block58(v164: i64):
+    jump block50(v164)
 
-block50(v153: i64):
-    store.i8 v135, v153
-    store.i64 v139, v134+8
+block50(v150: i64):
+    store.i8 v133, v150
+    store.i64 v136, v132+8
     jump block48
 
 block48:
-    jump block3(v217)
+    jump block3(v213)
 
 block6:
-    v172 = iconst.i32 0
-    v173 = ireduce.i8 v172
-    v174 = stack_addr.i64 ss0
-    jump block59(v174, v173)
+    v169 = iconst.i32 0
+    v170 = ireduce.i8 v169
+    v171 = stack_addr.i64 ss0
+    jump block59(v171, v170)
 
-block59(v175: i64, v176: i8):
-    v177 = global_value.i64 gv13
-    call fn18(v177)
-    v178 = iconst.i64 1
-    v179 = load.i64 v175+8
-    v180 = iadd v179, v178
-    v181 = load.i64 v175+16
-    v182 = icmp sgt v180, v181
-    brnz v182, block60
+block59(v172: i64, v173: i8):
+    v174 = iconst.i64 1
+    v175 = load.i64 v172+8
+    v176 = iadd v175, v174
+    v177 = load.i64 v172+16
+    v178 = icmp sgt v176, v177
+    brnz v178, block60
     jump block61
 
 block60:
-    v183 = iconst.i64 2
-    v184 = load.i64 v175+16
-    v185 = imul v184, v183
-    store v185, v175+16
-    v186 = iconst.i64 1
-    v187 = load.i64 v175+16
-    v188 = imul v187, v186
-    v189 = load.i64 v175
-    v190 = call fn19(v189, v188)
-    store v190, v175
+    v179 = iconst.i64 2
+    v180 = load.i64 v172+16
+    v181 = imul v180, v179
+    store v181, v172+16
+    v182 = iconst.i64 1
+    v183 = load.i64 v172+16
+    v184 = imul v183, v182
+    v185 = load.i64 v172
+    v186 = call fn15(v185, v184)
+    store v186, v172
     jump block61
 
 block61:
-    v191 = load.i64 v175+8
-    jump block63(v175, v191)
+    v187 = load.i64 v172+8
+    jump block63(v172, v187)
 
-block63(v192: i64, v193: i64):
-    jump block65(v192, v193)
+block63(v188: i64, v189: i64):
+    jump block65(v188, v189)
 
-block65(v195: i64, v196: i64):
-    jump block69(v195, v196)
+block65(v191: i64, v192: i64):
+    jump block69(v191, v192)
 
-block69(v197: i64, v198: i64):
-    v200 = iconst.i64 0
-    v201 = icmp sge v198, v200
-    v202 = load.i64 v197+8
-    v203 = icmp slt v198, v202
-    v204 = band v201, v203
-    jump block70(v204)
+block69(v193: i64, v194: i64):
+    v196 = iconst.i64 0
+    v197 = icmp sge v194, v196
+    v198 = load.i64 v193+8
+    v199 = icmp slt v194, v198
+    v200 = band v197, v199
+    jump block70(v200)
 
-block70(v199: b1):
-    brnz v199, block66
+block70(v195: b1):
+    brnz v195, block66
     jump block67
 
 block66:
-    v205 = global_value.i64 gv14
-    call fn20(v205)
+    v201 = global_value.i64 gv10
+    call fn16(v201)
     jump block67
 
 block67:
     jump block68
 
 block68:
-    jump block71(v192, v193)
+    jump block71(v188, v189)
 
-block71(v206: i64, v207: i64):
-    v209 = iconst.i64 1
-    v210 = imul v207, v209
-    v211 = load.i64 v206
-    v212 = iadd v211, v210
-    jump block72(v212)
+block71(v202: i64, v203: i64):
+    v205 = iconst.i64 1
+    v206 = imul v203, v205
+    v207 = load.i64 v202
+    v208 = iadd v207, v206
+    jump block72(v208)
 
-block72(v208: i64):
-    jump block64(v208)
+block72(v204: i64):
+    jump block64(v204)
 
-block64(v194: i64):
-    store.i8 v176, v194
-    store.i64 v180, v175+8
+block64(v190: i64):
+    store.i8 v173, v190
+    store.i64 v176, v172+8
     jump block62
 
 block62:
-    v213 = stack_load.i64 ss0
-    call fn21(v213)
-    v214 = iconst.i64 1
-    call fn22(v214)
+    v209 = stack_load.i64 ss0
+    call fn17(v209)
+    v210 = iconst.i64 1
+    call fn18(v210)
     return
 }
 
@@ -4512,7 +4451,6 @@ block0(v0: i64, v1: i64):
     return v4
 }
 
-
 fun print(s: &Self, value: &u8)
 
   Inst1[Value(0), Value(1)]
@@ -4567,7 +4505,7 @@ fun print(s: &Self, value: &u8)
 
 
 Token { kind: Fun, spam: Spam { source: Source(1), hash: ID(438937012895), range: 2460..2495 }, line_data: LineData { line: 128, column: 3, source: Source(1) } }
-Token { kind: Fun, spam: Spam { source: Source(1), hash: ID(438937012895), range: 4027..4072 }, line_data: LineData { line: 192, column: 3, source: Source(1) } }
+Token { kind: Fun, spam: Spam { source: Source(1), hash: ID(438937012895), range: 4005..4050 }, line_data: LineData { line: 191, column: 3, source: Source(1) } }
 function u0:0(i64, i64) fast {
     sig0 = (i64, i64) -> i64 windows_fastcall
     sig1 = (i64, i64, i64) windows_fastcall
@@ -4692,30 +4630,27 @@ fun print_int(s: &Self, value: int)
 
 
 Token { kind: Fun, spam: Spam { source: Source(1), hash: ID(438937012895), range: 3208..3236 }, line_data: LineData { line: 161, column: 3, source: Source(1) } }
-Token { kind: Fun, spam: Spam { source: Source(1), hash: ID(438937012895), range: 3735..3776 }, line_data: LineData { line: 183, column: 3, source: Source(1) } }
-Token { kind: Fun, spam: Spam { source: Source(1), hash: ID(438937012895), range: 4133..4175 }, line_data: LineData { line: 195, column: 4, source: Source(1) } }
-Token { kind: Fun, spam: Spam { source: Source(1), hash: ID(438937012895), range: 4248..4291 }, line_data: LineData { line: 199, column: 3, source: Source(1) } }
-Token { kind: Fun, spam: Spam { source: Source(1), hash: ID(438937012895), range: 4027..4072 }, line_data: LineData { line: 192, column: 3, source: Source(1) } }
+Token { kind: Fun, spam: Spam { source: Source(1), hash: ID(438937012895), range: 3713..3754 }, line_data: LineData { line: 182, column: 3, source: Source(1) } }
+Token { kind: Fun, spam: Spam { source: Source(1), hash: ID(438937012895), range: 4111..4153 }, line_data: LineData { line: 194, column: 4, source: Source(1) } }
+Token { kind: Fun, spam: Spam { source: Source(1), hash: ID(438937012895), range: 4226..4269 }, line_data: LineData { line: 198, column: 3, source: Source(1) } }
+Token { kind: Fun, spam: Spam { source: Source(1), hash: ID(438937012895), range: 4005..4050 }, line_data: LineData { line: 191, column: 3, source: Source(1) } }
 function u0:0(i64, i64) fast {
     gv0 = symbol colocated u1:1
-    gv1 = symbol colocated u1:2
-    sig0 = (i64) fast
-    sig1 = (i64, i64) -> i64 windows_fastcall
-    sig2 = (i64) fast
-    fn0 = colocated u0:19 sig0
-    fn1 = u0:26 sig1
-    fn2 = colocated u0:19 sig2
+    sig0 = (i64, i64) -> i64 windows_fastcall
+    sig1 = (i64) fast
+    fn0 = u0:26 sig0
+    fn1 = colocated u0:19 sig1
 
 block0(v0: i64, v1: i64):
-    v58 = iconst.i64 0
-    v57 -> v58
-    v54 = iconst.i64 0
-    v2 -> v54
-    jump block1(v1, v57)
+    v57 = iconst.i64 0
+    v56 -> v57
+    v53 = iconst.i64 0
+    v2 -> v53
+    jump block1(v1, v56)
 
-block1(v4: i64, v56: i64):
+block1(v4: i64, v55: i64):
     v7 -> v4
-    v9 -> v56
+    v9 -> v55
     v3 = iconst.i64 0
     v5 = icmp eq v4, v3
     brnz v5, block2
@@ -4727,18 +4662,18 @@ block2:
 block3:
     v6 = iconst.i64 10
     v8 = srem.i64 v7, v6
-    v63 -> v8
+    v62 -> v8
+    v65 -> v8
     v66 -> v8
-    v67 -> v8
-    v61 -> v63
-    v59 -> v61
+    v60 -> v62
+    v58 -> v60
     v10 = iconst.i64 10
     v11 = sdiv.i64 v7, v10
-    v62 -> v11
+    v61 -> v11
+    v63 -> v11
     v64 -> v11
-    v65 -> v11
-    v60 -> v62
-    v55 -> v60
+    v59 -> v61
+    v54 -> v59
     v12 = ireduce.i32 v8
     v13 = iconst.i32 48
     v14 = iadd v12, v13
@@ -4746,79 +4681,77 @@ block3:
     jump block5(v0, v15)
 
 block5(v16: i64, v17: i8):
-    v18 = global_value.i64 gv0
-    call fn0(v18)
-    v19 = iconst.i64 1
-    v20 = load.i64 v16+8
-    v21 = iadd v20, v19
-    v22 = load.i64 v16+16
-    v23 = icmp sgt v21, v22
-    brnz v23, block6
+    v18 = iconst.i64 1
+    v19 = load.i64 v16+8
+    v20 = iadd v19, v18
+    v21 = load.i64 v16+16
+    v22 = icmp sgt v20, v21
+    brnz v22, block6
     jump block7
 
 block6:
-    v24 = iconst.i64 2
-    v25 = load.i64 v16+16
-    v26 = imul v25, v24
-    store v26, v16+16
-    v27 = iconst.i64 1
-    v28 = load.i64 v16+16
-    v29 = imul v28, v27
-    v30 = load.i64 v16
-    v31 = call fn1(v30, v29)
-    store v31, v16
+    v23 = iconst.i64 2
+    v24 = load.i64 v16+16
+    v25 = imul v24, v23
+    store v25, v16+16
+    v26 = iconst.i64 1
+    v27 = load.i64 v16+16
+    v28 = imul v27, v26
+    v29 = load.i64 v16
+    v30 = call fn0(v29, v28)
+    store v30, v16
     jump block7
 
 block7:
-    v32 = load.i64 v16+8
-    jump block9(v16, v32)
+    v31 = load.i64 v16+8
+    jump block9(v16, v31)
 
-block9(v33: i64, v34: i64):
-    jump block11(v33, v34)
+block9(v32: i64, v33: i64):
+    jump block11(v32, v33)
 
-block11(v36: i64, v37: i64):
-    jump block15(v36, v37)
+block11(v35: i64, v36: i64):
+    jump block15(v35, v36)
 
-block15(v38: i64, v39: i64):
-    v41 = iconst.i64 0
-    v42 = icmp sge v39, v41
-    v43 = load.i64 v38+8
-    v44 = icmp slt v39, v43
-    v45 = band v42, v44
-    jump block16(v45)
+block15(v37: i64, v38: i64):
+    v40 = iconst.i64 0
+    v41 = icmp sge v38, v40
+    v42 = load.i64 v37+8
+    v43 = icmp slt v38, v42
+    v44 = band v41, v43
+    jump block16(v44)
 
-block16(v40: b1):
-    brnz v40, block12
+block16(v39: b1):
+    brnz v39, block12
     jump block13
 
 block12:
-    v46 = global_value.i64 gv1
-    call fn2(v46)
+    v45 = global_value.i64 gv0
+    call fn1(v45)
     jump block13
 
 block13:
     jump block14
 
 block14:
-    jump block17(v33, v34)
+    jump block17(v32, v33)
 
-block17(v47: i64, v48: i64):
-    v50 = iconst.i64 1
-    v51 = imul v48, v50
-    v52 = load.i64 v47
-    v53 = iadd v52, v51
-    jump block18(v53)
+block17(v46: i64, v47: i64):
+    v49 = iconst.i64 1
+    v50 = imul v47, v49
+    v51 = load.i64 v46
+    v52 = iadd v51, v50
+    jump block18(v52)
 
-block18(v49: i64):
-    jump block10(v49)
+block18(v48: i64):
+    jump block10(v48)
 
-block10(v35: i64):
-    store.i8 v17, v35
-    store.i64 v21, v16+8
+block10(v34: i64):
+    store.i8 v17, v34
+    store.i64 v20, v16+8
     jump block8
 
 block8:
-    jump block1(v55, v59)
+    jump block1(v54, v58)
 
 block4:
     return
@@ -4833,9 +4766,9 @@ fun pop_frame
     Return(None) |stacktrace.pop()
 
 
-Token { kind: Fun, spam: Spam { source: Source(1), hash: ID(438937012895), range: 3455..3485 }, line_data: LineData { line: 171, column: 3, source: Source(1) } }
-Token { kind: Fun, spam: Spam { source: Source(1), hash: ID(438937012895), range: 4027..4072 }, line_data: LineData { line: 192, column: 3, source: Source(1) } }
-Token { kind: Fun, spam: Spam { source: Source(1), hash: ID(438937012895), range: 4453..4479 }, line_data: LineData { line: 212, column: 3, source: Source(1) } }
+Token { kind: Fun, spam: Spam { source: Source(1), hash: ID(438937012895), range: 3433..3463 }, line_data: LineData { line: 170, column: 3, source: Source(1) } }
+Token { kind: Fun, spam: Spam { source: Source(1), hash: ID(438937012895), range: 4005..4050 }, line_data: LineData { line: 191, column: 3, source: Source(1) } }
+Token { kind: Fun, spam: Spam { source: Source(1), hash: ID(438937012895), range: 4431..4457 }, line_data: LineData { line: 211, column: 3, source: Source(1) } }
 function u0:0() fast {
     ss0 = explicit_slot 32
     ss1 = explicit_slot 24
@@ -4949,21 +4882,18 @@ fun push_frame(line, column: int, file: &u8)
 
 
 Token { kind: Fun, spam: Spam { source: Source(1), hash: ID(438937012895), range: 3208..3236 }, line_data: LineData { line: 161, column: 3, source: Source(1) } }
-Token { kind: Fun, spam: Spam { source: Source(1), hash: ID(438937012895), range: 3735..3776 }, line_data: LineData { line: 183, column: 3, source: Source(1) } }
-Token { kind: Fun, spam: Spam { source: Source(1), hash: ID(438937012895), range: 4133..4175 }, line_data: LineData { line: 195, column: 4, source: Source(1) } }
-Token { kind: Fun, spam: Spam { source: Source(1), hash: ID(438937012895), range: 4248..4291 }, line_data: LineData { line: 199, column: 3, source: Source(1) } }
-Token { kind: Fun, spam: Spam { source: Source(1), hash: ID(438937012895), range: 4027..4072 }, line_data: LineData { line: 192, column: 3, source: Source(1) } }
+Token { kind: Fun, spam: Spam { source: Source(1), hash: ID(438937012895), range: 3713..3754 }, line_data: LineData { line: 182, column: 3, source: Source(1) } }
+Token { kind: Fun, spam: Spam { source: Source(1), hash: ID(438937012895), range: 4111..4153 }, line_data: LineData { line: 194, column: 4, source: Source(1) } }
+Token { kind: Fun, spam: Spam { source: Source(1), hash: ID(438937012895), range: 4226..4269 }, line_data: LineData { line: 198, column: 3, source: Source(1) } }
+Token { kind: Fun, spam: Spam { source: Source(1), hash: ID(438937012895), range: 4005..4050 }, line_data: LineData { line: 191, column: 3, source: Source(1) } }
 function u0:0(i64, i64, i64) fast {
     ss0 = explicit_slot 24
     gv0 = symbol colocated u1:0
     gv1 = symbol colocated u1:1
-    gv2 = symbol colocated u1:2
-    sig0 = (i64) fast
-    sig1 = (i64, i64) -> i64 windows_fastcall
-    sig2 = (i64) fast
-    fn0 = colocated u0:19 sig0
-    fn1 = u0:26 sig1
-    fn2 = colocated u0:19 sig2
+    sig0 = (i64, i64) -> i64 windows_fastcall
+    sig1 = (i64) fast
+    fn0 = u0:26 sig0
+    fn1 = colocated u0:19 sig1
 
 block0(v0: i64, v1: i64, v2: i64):
     v3 = iconst.i64 0
@@ -4978,80 +4908,78 @@ block0(v0: i64, v1: i64, v2: i64):
     jump block1(v4, v5)
 
 block1(v6: i64, v7: i64):
-    v8 = global_value.i64 gv1
-    call fn0(v8)
-    v9 = iconst.i64 1
-    v10 = load.i64 v6+8
-    v11 = iadd v10, v9
-    v12 = load.i64 v6+16
-    v13 = icmp sgt v11, v12
-    brnz v13, block2
+    v8 = iconst.i64 1
+    v9 = load.i64 v6+8
+    v10 = iadd v9, v8
+    v11 = load.i64 v6+16
+    v12 = icmp sgt v10, v11
+    brnz v12, block2
     jump block3
 
 block2:
-    v14 = iconst.i64 2
-    v15 = load.i64 v6+16
-    v16 = imul v15, v14
-    store v16, v6+16
-    v17 = iconst.i64 24
-    v18 = load.i64 v6+16
-    v19 = imul v18, v17
-    v20 = load.i64 v6
-    v21 = call fn1(v20, v19)
-    store v21, v6
+    v13 = iconst.i64 2
+    v14 = load.i64 v6+16
+    v15 = imul v14, v13
+    store v15, v6+16
+    v16 = iconst.i64 24
+    v17 = load.i64 v6+16
+    v18 = imul v17, v16
+    v19 = load.i64 v6
+    v20 = call fn0(v19, v18)
+    store v20, v6
     jump block3
 
 block3:
-    v22 = load.i64 v6+8
-    jump block5(v6, v22)
+    v21 = load.i64 v6+8
+    jump block5(v6, v21)
 
-block5(v23: i64, v24: i64):
-    jump block7(v23, v24)
+block5(v22: i64, v23: i64):
+    jump block7(v22, v23)
 
-block7(v26: i64, v27: i64):
-    jump block11(v26, v27)
+block7(v25: i64, v26: i64):
+    jump block11(v25, v26)
 
-block11(v28: i64, v29: i64):
-    v31 = iconst.i64 0
-    v32 = icmp sge v29, v31
-    v33 = load.i64 v28+8
-    v34 = icmp slt v29, v33
-    v35 = band v32, v34
-    jump block12(v35)
+block11(v27: i64, v28: i64):
+    v30 = iconst.i64 0
+    v31 = icmp sge v28, v30
+    v32 = load.i64 v27+8
+    v33 = icmp slt v28, v32
+    v34 = band v31, v33
+    jump block12(v34)
 
-block12(v30: b1):
-    brnz v30, block8
+block12(v29: b1):
+    brnz v29, block8
     jump block9
 
 block8:
-    v36 = global_value.i64 gv2
-    call fn2(v36)
+    v35 = global_value.i64 gv1
+    call fn1(v35)
     jump block9
 
 block9:
     jump block10
 
 block10:
-    jump block13(v23, v24)
+    jump block13(v22, v23)
 
-block13(v37: i64, v38: i64):
-    v40 = iconst.i64 24
-    v41 = imul v38, v40
-    v42 = load.i64 v37
-    v43 = iadd v42, v41
-    jump block14(v43)
+block13(v36: i64, v37: i64):
+    v39 = iconst.i64 24
+    v40 = imul v37, v39
+    v41 = load.i64 v36
+    v42 = iadd v41, v40
+    jump block14(v42)
 
-block14(v39: i64):
-    jump block6(v39)
+block14(v38: i64):
+    jump block6(v38)
 
-block6(v25: i64):
-    v44 = load.i64 v7
-    store v44, v25
-    v45 = load.i64 v7+8
-    store v45, v25+8
-    v46 = load.i64 v7+16
-    store v46, v25+16
-    store.i64 v11, v6+8
+block6(v24: i64):
+    v43 = load.i64 v7
+    store v43, v24
+    v44 = load.i64 v7+8
+    store v44, v24+8
+    v45 = load.i64 v7+16
+    store v45, v24+16
+    store.i64 v10, v6+8
     jump block4
 
 block4:
@@ -5160,48 +5088,44 @@ fun panic(str: &u8)
     Return(None) |exit(1)
 
 
-Token { kind: Fun, spam: Spam { source: Source(1), hash: ID(438937012895), range: 3735..3776 }, line_data: LineData { line: 183, column: 3, source: Source(1) } }
-Token { kind: Fun, spam: Spam { source: Source(1), hash: ID(438937012895), range: 4133..4175 }, line_data: LineData { line: 195, column: 4, source: Source(1) } }
-Token { kind: Fun, spam: Spam { source: Source(1), hash: ID(438937012895), range: 4248..4291 }, line_data: LineData { line: 199, column: 3, source: Source(1) } }
-Token { kind: Fun, spam: Spam { source: Source(1), hash: ID(438937012895), range: 4027..4072 }, line_data: LineData { line: 192, column: 3, source: Source(1) } }
+Token { kind: Fun, spam: Spam { source: Source(1), hash: ID(438937012895), range: 3713..3754 }, line_data: LineData { line: 182, column: 3, source: Source(1) } }
+Token { kind: Fun, spam: Spam { source: Source(1), hash: ID(438937012895), range: 4111..4153 }, line_data: LineData { line: 194, column: 4, source: Source(1) } }
+Token { kind: Fun, spam: Spam { source: Source(1), hash: ID(438937012895), range: 4226..4269 }, line_data: LineData { line: 198, column: 3, source: Source(1) } }
+Token { kind: Fun, spam: Spam { source: Source(1), hash: ID(438937012895), range: 4005..4050 }, line_data: LineData { line: 191, column: 3, source: Source(1) } }
 Token { kind: Fun, spam: Spam { source: Source(1), hash: ID(438937012895), range: 3208..3236 }, line_data: LineData { line: 161, column: 3, source: Source(1) } }
-Token { kind: Fun, spam: Spam { source: Source(1), hash: ID(438937012895), range: 3735..3776 }, line_data: LineData { line: 183, column: 3, source: Source(1) } }
-Token { kind: Fun, spam: Spam { source: Source(1), hash: ID(438937012895), range: 4133..4175 }, line_data: LineData { line: 195, column: 4, source: Source(1) } }
-Token { kind: Fun, spam: Spam { source: Source(1), hash: ID(438937012895), range: 4248..4291 }, line_data: LineData { line: 199, column: 3, source: Source(1) } }
-Token { kind: Fun, spam: Spam { source: Source(1), hash: ID(438937012895), range: 4027..4072 }, line_data: LineData { line: 192, column: 3, source: Source(1) } }
+Token { kind: Fun, spam: Spam { source: Source(1), hash: ID(438937012895), range: 3713..3754 }, line_data: LineData { line: 182, column: 3, source: Source(1) } }
+Token { kind: Fun, spam: Spam { source: Source(1), hash: ID(438937012895), range: 4111..4153 }, line_data: LineData { line: 194, column: 4, source: Source(1) } }
+Token { kind: Fun, spam: Spam { source: Source(1), hash: ID(438937012895), range: 4226..4269 }, line_data: LineData { line: 198, column: 3, source: Source(1) } }
+Token { kind: Fun, spam: Spam { source: Source(1), hash: ID(438937012895), range: 4005..4050 }, line_data: LineData { line: 191, column: 3, source: Source(1) } }
 Token { kind: Fun, spam: Spam { source: Source(1), hash: ID(438937012895), range: 3208..3236 }, line_data: LineData { line: 161, column: 3, source: Source(1) } }
-Token { kind: Fun, spam: Spam { source: Source(1), hash: ID(438937012895), range: 3735..3776 }, line_data: LineData { line: 183, column: 3, source: Source(1) } }
-Token { kind: Fun, spam: Spam { source: Source(1), hash: ID(438937012895), range: 4133..4175 }, line_data: LineData { line: 195, column: 4, source: Source(1) } }
-Token { kind: Fun, spam: Spam { source: Source(1), hash: ID(438937012895), range: 4248..4291 }, line_data: LineData { line: 199, column: 3, source: Source(1) } }
-Token { kind: Fun, spam: Spam { source: Source(1), hash: ID(438937012895), range: 4027..4072 }, line_data: LineData { line: 192, column: 3, source: Source(1) } }
+Token { kind: Fun, spam: Spam { source: Source(1), hash: ID(438937012895), range: 3713..3754 }, line_data: LineData { line: 182, column: 3, source: Source(1) } }
+Token { kind: Fun, spam: Spam { source: Source(1), hash: ID(438937012895), range: 4111..4153 }, line_data: LineData { line: 194, column: 4, source: Source(1) } }
+Token { kind: Fun, spam: Spam { source: Source(1), hash: ID(438937012895), range: 4226..4269 }, line_data: LineData { line: 198, column: 3, source: Source(1) } }
+Token { kind: Fun, spam: Spam { source: Source(1), hash: ID(438937012895), range: 4005..4050 }, line_data: LineData { line: 191, column: 3, source: Source(1) } }
 Token { kind: Fun, spam: Spam { source: Source(1), hash: ID(438937012895), range: 3208..3236 }, line_data: LineData { line: 161, column: 3, source: Source(1) } }
-Token { kind: Fun, spam: Spam { source: Source(1), hash: ID(438937012895), range: 3735..3776 }, line_data: LineData { line: 183, column: 3, source: Source(1) } }
-Token { kind: Fun, spam: Spam { source: Source(1), hash: ID(438937012895), range: 4133..4175 }, line_data: LineData { line: 195, column: 4, source: Source(1) } }
-Token { kind: Fun, spam: Spam { source: Source(1), hash: ID(438937012895), range: 4248..4291 }, line_data: LineData { line: 199, column: 3, source: Source(1) } }
-Token { kind: Fun, spam: Spam { source: Source(1), hash: ID(438937012895), range: 4027..4072 }, line_data: LineData { line: 192, column: 3, source: Source(1) } }
+Token { kind: Fun, spam: Spam { source: Source(1), hash: ID(438937012895), range: 3713..3754 }, line_data: LineData { line: 182, column: 3, source: Source(1) } }
+Token { kind: Fun, spam: Spam { source: Source(1), hash: ID(438937012895), range: 4111..4153 }, line_data: LineData { line: 194, column: 4, source: Source(1) } }
+Token { kind: Fun, spam: Spam { source: Source(1), hash: ID(438937012895), range: 4226..4269 }, line_data: LineData { line: 198, column: 3, source: Source(1) } }
+Token { kind: Fun, spam: Spam { source: Source(1), hash: ID(438937012895), range: 4005..4050 }, line_data: LineData { line: 191, column: 3, source: Source(1) } }
 Token { kind: Fun, spam: Spam { source: Source(1), hash: ID(438937012895), range: 3208..3236 }, line_data: LineData { line: 161, column: 3, source: Source(1) } }
-Token { kind: Fun, spam: Spam { source: Source(1), hash: ID(438937012895), range: 3735..3776 }, line_data: LineData { line: 183, column: 3, source: Source(1) } }
-Token { kind: Fun, spam: Spam { source: Source(1), hash: ID(438937012895), range: 4133..4175 }, line_data: LineData { line: 195, column: 4, source: Source(1) } }
-Token { kind: Fun, spam: Spam { source: Source(1), hash: ID(438937012895), range: 4248..4291 }, line_data: LineData { line: 199, column: 3, source: Source(1) } }
-Token { kind: Fun, spam: Spam { source: Source(1), hash: ID(438937012895), range: 4027..4072 }, line_data: LineData { line: 192, column: 3, source: Source(1) } }
+Token { kind: Fun, spam: Spam { source: Source(1), hash: ID(438937012895), range: 3713..3754 }, line_data: LineData { line: 182, column: 3, source: Source(1) } }
+Token { kind: Fun, spam: Spam { source: Source(1), hash: ID(438937012895), range: 4111..4153 }, line_data: LineData { line: 194, column: 4, source: Source(1) } }
+Token { kind: Fun, spam: Spam { source: Source(1), hash: ID(438937012895), range: 4226..4269 }, line_data: LineData { line: 198, column: 3, source: Source(1) } }
+Token { kind: Fun, spam: Spam { source: Source(1), hash: ID(438937012895), range: 4005..4050 }, line_data: LineData { line: 191, column: 3, source: Source(1) } }
 function u0:0(i64) fast {
     ss0 = explicit_slot 24
     ss1 = explicit_slot 24
-    gv0 = symbol colocated u1:3
-    gv1 = symbol colocated u1:4
+    gv0 = symbol colocated u1:2
+    gv1 = symbol colocated u1:3
     gv2 = symbol colocated u1:0
-    gv3 = symbol colocated u1:5
+    gv3 = symbol colocated u1:4
     gv4 = symbol colocated u1:0
     gv5 = symbol colocated u1:0
-    gv6 = symbol colocated u1:2
+    gv6 = symbol colocated u1:1
     gv7 = symbol colocated u1:1
-    gv8 = symbol colocated u1:2
+    gv8 = symbol colocated u1:1
     gv9 = symbol colocated u1:1
-    gv10 = symbol colocated u1:2
-    gv11 = symbol colocated u1:1
-    gv12 = symbol colocated u1:2
-    gv13 = symbol colocated u1:1
-    gv14 = symbol colocated u1:2
+    gv10 = symbol colocated u1:1
     sig0 = (i64) windows_fastcall
     sig1 = (i64) windows_fastcall
     sig2 = (i64) windows_fastcall
@@ -5209,22 +5133,18 @@ function u0:0(i64) fast {
     sig4 = (i64) windows_fastcall
     sig5 = (i64) fast
     sig6 = (i64, i64) fast
-    sig7 = (i64) fast
-    sig8 = (i64, i64) -> i64 windows_fastcall
-    sig9 = (i64) fast
-    sig10 = (i64, i64) fast
+    sig7 = (i64, i64) -> i64 windows_fastcall
+    sig8 = (i64) fast
+    sig9 = (i64, i64) fast
+    sig10 = (i64, i64) -> i64 windows_fastcall
     sig11 = (i64) fast
-    sig12 = (i64, i64) -> i64 windows_fastcall
-    sig13 = (i64) fast
-    sig14 = (i64, i64) fast
-    sig15 = (i64) fast
-    sig16 = (i64, i64) -> i64 windows_fastcall
-    sig17 = (i64) fast
-    sig18 = (i64) fast
-    sig19 = (i64, i64) -> i64 windows_fastcall
-    sig20 = (i64) fast
-    sig21 = (i64) windows_fastcall
-    sig22 = (i64) windows_fastcall
+    sig12 = (i64, i64) fast
+    sig13 = (i64, i64) -> i64 windows_fastcall
+    sig14 = (i64) fast
+    sig15 = (i64, i64) -> i64 windows_fastcall
+    sig16 = (i64) fast
+    sig17 = (i64) windows_fastcall
+    sig18 = (i64) windows_fastcall
     fn0 = u0:21 sig0
     fn1 = u0:21 sig1
     fn2 = u0:21 sig2
@@ -5232,27 +5152,23 @@ function u0:0(i64) fast {
     fn4 = u0:20 sig4
     fn5 = colocated u0:19 sig5
     fn6 = colocated u0:4 sig6
-    fn7 = colocated u0:19 sig7
-    fn8 = u0:26 sig8
-    fn9 = colocated u0:19 sig9
-    fn10 = colocated u0:4 sig10
+    fn7 = u0:26 sig7
+    fn8 = colocated u0:19 sig8
+    fn9 = colocated u0:4 sig9
+    fn10 = u0:26 sig10
     fn11 = colocated u0:19 sig11
-    fn12 = u0:26 sig12
-    fn13 = colocated u0:19 sig13
-    fn14 = colocated u0:0 sig14
-    fn15 = colocated u0:19 sig15
-    fn16 = u0:26 sig16
-    fn17 = colocated u0:19 sig17
-    fn18 = colocated u0:19 sig18
-    fn19 = u0:26 sig19
-    fn20 = colocated u0:19 sig20
-    fn21 = u0:21 sig21
-    fn22 = u0:20 sig22
+    fn12 = colocated u0:0 sig12
+    fn13 = u0:26 sig13
+    fn14 = colocated u0:19 sig14
+    fn15 = u0:26 sig15
+    fn16 = colocated u0:19 sig16
+    fn17 = u0:21 sig17
+    fn18 = u0:20 sig18
 
 block0(v0: i64):
-    v216 = iconst.i64 0
-    v11 -> v216
-    v215 -> v216
+    v212 = iconst.i64 0
+    v11 -> v212
+    v211 -> v212
     v1 = global_value.i64 gv0
     call fn0(v1)
     call fn1(v0)
@@ -5282,16 +5198,16 @@ block2:
 
 block3(v13: i64):
     v17 -> v13
+    v215 -> v13
+    v216 -> v13
+    v217 -> v13
+    v218 -> v13
     v219 -> v13
     v220 -> v13
     v221 -> v13
     v222 -> v13
-    v223 -> v13
-    v224 -> v13
-    v225 -> v13
-    v226 -> v13
-    v218 -> v219
-    v217 -> v218
+    v214 -> v215
+    v213 -> v214
     v12 = global_value.i64 gv4
     v14 = load.i64 v12+8
     v15 = icmp sge v13, v14
@@ -5361,325 +5277,317 @@ block8(v20: i64):
     jump block17(v47, v46)
 
 block17(v48: i64, v49: i8):
-    v50 = global_value.i64 gv7
-    call fn7(v50)
-    v51 = iconst.i64 1
-    v52 = load.i64 v48+8
-    v53 = iadd v52, v51
-    v54 = load.i64 v48+16
-    v55 = icmp sgt v53, v54
-    brnz v55, block18
+    v50 = iconst.i64 1
+    v51 = load.i64 v48+8
+    v52 = iadd v51, v50
+    v53 = load.i64 v48+16
+    v54 = icmp sgt v52, v53
+    brnz v54, block18
     jump block19
 
 block18:
-    v56 = iconst.i64 2
-    v57 = load.i64 v48+16
-    v58 = imul v57, v56
-    store v58, v48+16
-    v59 = iconst.i64 1
-    v60 = load.i64 v48+16
-    v61 = imul v60, v59
-    v62 = load.i64 v48
-    v63 = call fn8(v62, v61)
-    store v63, v48
+    v55 = iconst.i64 2
+    v56 = load.i64 v48+16
+    v57 = imul v56, v55
+    store v57, v48+16
+    v58 = iconst.i64 1
+    v59 = load.i64 v48+16
+    v60 = imul v59, v58
+    v61 = load.i64 v48
+    v62 = call fn7(v61, v60)
+    store v62, v48
     jump block19
 
 block19:
-    v64 = load.i64 v48+8
-    jump block21(v48, v64)
+    v63 = load.i64 v48+8
+    jump block21(v48, v63)
 
-block21(v65: i64, v66: i64):
-    jump block23(v65, v66)
+block21(v64: i64, v65: i64):
+    jump block23(v64, v65)
 
-block23(v68: i64, v69: i64):
-    jump block27(v68, v69)
+block23(v67: i64, v68: i64):
+    jump block27(v67, v68)
 
-block27(v70: i64, v71: i64):
-    v73 = iconst.i64 0
-    v74 = icmp sge v71, v73
-    v75 = load.i64 v70+8
-    v76 = icmp slt v71, v75
-    v77 = band v74, v76
-    jump block28(v77)
+block27(v69: i64, v70: i64):
+    v72 = iconst.i64 0
+    v73 = icmp sge v70, v72
+    v74 = load.i64 v69+8
+    v75 = icmp slt v70, v74
+    v76 = band v73, v75
+    jump block28(v76)
 
-block28(v72: b1):
-    brnz v72, block24
+block28(v71: b1):
+    brnz v71, block24
     jump block25
 
 block24:
-    v78 = global_value.i64 gv8
-    call fn9(v78)
+    v77 = global_value.i64 gv7
+    call fn8(v77)
     jump block25
 
 block25:
     jump block26
 
 block26:
-    jump block29(v65, v66)
+    jump block29(v64, v65)
 
-block29(v79: i64, v80: i64):
-    v82 = iconst.i64 1
-    v83 = imul v80, v82
-    v84 = load.i64 v79
-    v85 = iadd v84, v83
-    jump block30(v85)
+block29(v78: i64, v79: i64):
+    v81 = iconst.i64 1
+    v82 = imul v79, v81
+    v83 = load.i64 v78
+    v84 = iadd v83, v82
+    jump block30(v84)
 
-block30(v81: i64):
-    jump block22(v81)
+block30(v80: i64):
+    jump block22(v80)
 
-block22(v67: i64):
-    store.i8 v49, v67
-    store.i64 v53, v48+8
+block22(v66: i64):
+    store.i8 v49, v66
+    store.i64 v52, v48+8
     jump block20
 
 block20:
-    v86 = stack_addr.i64 ss0
-    v87 = stack_load.i64 ss1+8
-    call fn10(v86, v87)
-    v88 = iconst.i32 32
-    v89 = ireduce.i8 v88
-    v90 = stack_addr.i64 ss0
-    jump block31(v90, v89)
+    v85 = stack_addr.i64 ss0
+    v86 = stack_load.i64 ss1+8
+    call fn9(v85, v86)
+    v87 = iconst.i32 32
+    v88 = ireduce.i8 v87
+    v89 = stack_addr.i64 ss0
+    jump block31(v89, v88)
 
-block31(v91: i64, v92: i8):
-    v93 = global_value.i64 gv9
-    call fn11(v93)
-    v94 = iconst.i64 1
-    v95 = load.i64 v91+8
-    v96 = iadd v95, v94
-    v97 = load.i64 v91+16
-    v98 = icmp sgt v96, v97
-    brnz v98, block32
+block31(v90: i64, v91: i8):
+    v92 = iconst.i64 1
+    v93 = load.i64 v90+8
+    v94 = iadd v93, v92
+    v95 = load.i64 v90+16
+    v96 = icmp sgt v94, v95
+    brnz v96, block32
     jump block33
 
 block32:
-    v99 = iconst.i64 2
-    v100 = load.i64 v91+16
-    v101 = imul v100, v99
-    store v101, v91+16
-    v102 = iconst.i64 1
-    v103 = load.i64 v91+16
-    v104 = imul v103, v102
-    v105 = load.i64 v91
-    v106 = call fn12(v105, v104)
-    store v106, v91
+    v97 = iconst.i64 2
+    v98 = load.i64 v90+16
+    v99 = imul v98, v97
+    store v99, v90+16
+    v100 = iconst.i64 1
+    v101 = load.i64 v90+16
+    v102 = imul v101, v100
+    v103 = load.i64 v90
+    v104 = call fn10(v103, v102)
+    store v104, v90
     jump block33
 
 block33:
-    v107 = load.i64 v91+8
-    jump block35(v91, v107)
+    v105 = load.i64 v90+8
+    jump block35(v90, v105)
 
-block35(v108: i64, v109: i64):
-    jump block37(v108, v109)
+block35(v106: i64, v107: i64):
+    jump block37(v106, v107)
 
-block37(v111: i64, v112: i64):
-    jump block41(v111, v112)
+block37(v109: i64, v110: i64):
+    jump block41(v109, v110)
 
-block41(v113: i64, v114: i64):
-    v116 = iconst.i64 0
-    v117 = icmp sge v114, v116
-    v118 = load.i64 v113+8
-    v119 = icmp slt v114, v118
-    v120 = band v117, v119
-    jump block42(v120)
+block41(v111: i64, v112: i64):
+    v114 = iconst.i64 0
+    v115 = icmp sge v112, v114
+    v116 = load.i64 v111+8
+    v117 = icmp slt v112, v116
+    v118 = band v115, v117
+    jump block42(v118)
 
-block42(v115: b1):
-    brnz v115, block38
+block42(v113: b1):
+    brnz v113, block38
     jump block39
 
 block38:
-    v121 = global_value.i64 gv10
-    call fn13(v121)
+    v119 = global_value.i64 gv8
+    call fn11(v119)
     jump block39
 
 block39:
     jump block40
 
 block40:
-    jump block43(v108, v109)
+    jump block43(v106, v107)
 
-block43(v122: i64, v123: i64):
-    v125 = iconst.i64 1
-    v126 = imul v123, v125
-    v127 = load.i64 v122
-    v128 = iadd v127, v126
-    jump block44(v128)
+block43(v120: i64, v121: i64):
+    v123 = iconst.i64 1
+    v124 = imul v121, v123
+    v125 = load.i64 v120
+    v126 = iadd v125, v124
+    jump block44(v126)
 
-block44(v124: i64):
-    jump block36(v124)
+block44(v122: i64):
+    jump block36(v122)
 
-block36(v110: i64):
-    store.i8 v92, v110
-    store.i64 v96, v91+8
+block36(v108: i64):
+    store.i8 v91, v108
+    store.i64 v94, v90+8
     jump block34
 
 block34:
-    v129 = stack_addr.i64 ss0
-    v130 = stack_load.i64 ss1+16
-    call fn14(v129, v130)
-    v131 = iconst.i32 10
-    v132 = ireduce.i8 v131
-    v133 = stack_addr.i64 ss0
-    jump block45(v133, v132)
+    v127 = stack_addr.i64 ss0
+    v128 = stack_load.i64 ss1+16
+    call fn12(v127, v128)
+    v129 = iconst.i32 10
+    v130 = ireduce.i8 v129
+    v131 = stack_addr.i64 ss0
+    jump block45(v131, v130)
 
-block45(v134: i64, v135: i8):
-    v136 = global_value.i64 gv11
-    call fn15(v136)
-    v137 = iconst.i64 1
-    v138 = load.i64 v134+8
-    v139 = iadd v138, v137
-    v140 = load.i64 v134+16
-    v141 = icmp sgt v139, v140
-    brnz v141, block46
+block45(v132: i64, v133: i8):
+    v134 = iconst.i64 1
+    v135 = load.i64 v132+8
+    v136 = iadd v135, v134
+    v137 = load.i64 v132+16
+    v138 = icmp sgt v136, v137
+    brnz v138, block46
     jump block47
 
 block46:
-    v142 = iconst.i64 2
-    v143 = load.i64 v134+16
+    v139 = iconst.i64 2
+    v140 = load.i64 v132+16
+    v141 = imul v140, v139
+    store v141, v132+16
+    v142 = iconst.i64 1
+    v143 = load.i64 v132+16
     v144 = imul v143, v142
-    store v144, v134+16
-    v145 = iconst.i64 1
-    v146 = load.i64 v134+16
-    v147 = imul v146, v145
-    v148 = load.i64 v134
-    v149 = call fn16(v148, v147)
-    store v149, v134
+    v145 = load.i64 v132
+    v146 = call fn13(v145, v144)
+    store v146, v132
     jump block47
 
 block47:
-    v150 = load.i64 v134+8
-    jump block49(v134, v150)
+    v147 = load.i64 v132+8
+    jump block49(v132, v147)
 
-block49(v151: i64, v152: i64):
-    jump block51(v151, v152)
+block49(v148: i64, v149: i64):
+    jump block51(v148, v149)
 
-block51(v154: i64, v155: i64):
-    jump block55(v154, v155)
+block51(v151: i64, v152: i64):
+    jump block55(v151, v152)
 
-block55(v156: i64, v157: i64):
-    v159 = iconst.i64 0
-    v160 = icmp sge v157, v159
-    v161 = load.i64 v156+8
-    v162 = icmp slt v157, v161
-    v163 = band v160, v162
-    jump block56(v163)
+block55(v153: i64, v154: i64):
+    v156 = iconst.i64 0
+    v157 = icmp sge v154, v156
+    v158 = load.i64 v153+8
+    v159 = icmp slt v154, v158
+    v160 = band v157, v159
+    jump block56(v160)
 
-block56(v158: b1):
-    brnz v158, block52
+block56(v155: b1):
+    brnz v155, block52
     jump block53
 
 block52:
-    v164 = global_value.i64 gv12
-    call fn17(v164)
+    v161 = global_value.i64 gv9
+    call fn14(v161)
     jump block53
 
 block53:
     jump block54
 
 block54:
-    jump block57(v151, v152)
+    jump block57(v148, v149)
 
-block57(v165: i64, v166: i64):
-    v168 = iconst.i64 1
-    v169 = imul v166, v168
-    v170 = load.i64 v165
-    v171 = iadd v170, v169
-    jump block58(v171)
+block57(v162: i64, v163: i64):
+    v165 = iconst.i64 1
+    v166 = imul v163, v165
+    v167 = load.i64 v162
+    v168 = iadd v167, v166
+    jump block58(v168)
 
-block58(v167: i64):
-    jump block50(v167)
+block58(v164: i64):
+    jump block50(v164)
 
-block50(v153: i64):
-    store.i8 v135, v153
-    store.i64 v139, v134+8
+block50(v150: i64):
+    store.i8 v133, v150
+    store.i64 v136, v132+8
     jump block48
 
 block48:
-    jump block3(v217)
+    jump block3(v213)
 
 block6:
-    v172 = iconst.i32 0
-    v173 = ireduce.i8 v172
-    v174 = stack_addr.i64 ss0
-    jump block59(v174, v173)
+    v169 = iconst.i32 0
+    v170 = ireduce.i8 v169
+    v171 = stack_addr.i64 ss0
+    jump block59(v171, v170)
 
-block59(v175: i64, v176: i8):
-    v177 = global_value.i64 gv13
-    call fn18(v177)
-    v178 = iconst.i64 1
-    v179 = load.i64 v175+8
-    v180 = iadd v179, v178
-    v181 = load.i64 v175+16
-    v182 = icmp sgt v180, v181
-    brnz v182, block60
+block59(v172: i64, v173: i8):
+    v174 = iconst.i64 1
+    v175 = load.i64 v172+8
+    v176 = iadd v175, v174
+    v177 = load.i64 v172+16
+    v178 = icmp sgt v176, v177
+    brnz v178, block60
     jump block61
 
 block60:
-    v183 = iconst.i64 2
-    v184 = load.i64 v175+16
-    v185 = imul v184, v183
-    store v185, v175+16
-    v186 = iconst.i64 1
-    v187 = load.i64 v175+16
-    v188 = imul v187, v186
-    v189 = load.i64 v175
-    v190 = call fn19(v189, v188)
-    store v190, v175
+    v179 = iconst.i64 2
+    v180 = load.i64 v172+16
+    v181 = imul v180, v179
+    store v181, v172+16
+    v182 = iconst.i64 1
+    v183 = load.i64 v172+16
+    v184 = imul v183, v182
+    v185 = load.i64 v172
+    v186 = call fn15(v185, v184)
+    store v186, v172
     jump block61
 
 block61:
-    v191 = load.i64 v175+8
-    jump block63(v175, v191)
+    v187 = load.i64 v172+8
+    jump block63(v172, v187)
 
-block63(v192: i64, v193: i64):
-    jump block65(v192, v193)
+block63(v188: i64, v189: i64):
+    jump block65(v188, v189)
 
-block65(v195: i64, v196: i64):
-    jump block69(v195, v196)
+block65(v191: i64, v192: i64):
+    jump block69(v191, v192)
 
-block69(v197: i64, v198: i64):
-    v200 = iconst.i64 0
-    v201 = icmp sge v198, v200
-    v202 = load.i64 v197+8
-    v203 = icmp slt v198, v202
-    v204 = band v201, v203
-    jump block70(v204)
+block69(v193: i64, v194: i64):
+    v196 = iconst.i64 0
+    v197 = icmp sge v194, v196
+    v198 = load.i64 v193+8
+    v199 = icmp slt v194, v198
+    v200 = band v197, v199
+    jump block70(v200)
 
-block70(v199: b1):
-    brnz v199, block66
+block70(v195: b1):
+    brnz v195, block66
     jump block67
 
 block66:
-    v205 = global_value.i64 gv14
-    call fn20(v205)
+    v201 = global_value.i64 gv10
+    call fn16(v201)
     jump block67
 
 block67:
     jump block68
 
 block68:
-    jump block71(v192, v193)
+    jump block71(v188, v189)
 
-block71(v206: i64, v207: i64):
-    v209 = iconst.i64 1
-    v210 = imul v207, v209
-    v211 = load.i64 v206
-    v212 = iadd v211, v210
-    jump block72(v212)
+block71(v202: i64, v203: i64):
+    v205 = iconst.i64 1
+    v206 = imul v203, v205
+    v207 = load.i64 v202
+    v208 = iadd v207, v206
+    jump block72(v208)
 
-block72(v208: i64):
-    jump block64(v208)
+block72(v204: i64):
+    jump block64(v204)
 
-block64(v194: i64):
-    store.i8 v176, v194
-    store.i64 v180, v175+8
+block64(v190: i64):
+    store.i8 v173, v190
+    store.i64 v176, v172+8
     jump block62
 
 block62:
-    v213 = stack_load.i64 ss0
-    call fn21(v213)
-    v214 = iconst.i64 1
-    call fn22(v214)
+    v209 = stack_load.i64 ss0
+    call fn17(v209)
+    v210 = iconst.i64 1
+    call fn18(v210)
     return
 }
 
@@ -5746,7 +5654,6 @@ block0(v0: i64, v1: i64):
     return v4
 }
 
-
 fun print(s: &Self, value: &u8)
 
   Inst1[Value(0), Value(1)]
@@ -5801,7 +5708,7 @@ fun print(s: &Self, value: &u8)
 
 
 Token { kind: Fun, spam: Spam { source: Source(1), hash: ID(438937012895), range: 2460..2495 }, line_data: LineData { line: 128, column: 3, source: Source(1) } }
-Token { kind: Fun, spam: Spam { source: Source(1), hash: ID(438937012895), range: 4027..4072 }, line_data: LineData { line: 192, column: 3, source: Source(1) } }
+Token { kind: Fun, spam: Spam { source: Source(1), hash: ID(438937012895), range: 4005..4050 }, line_data: LineData { line: 191, column: 3, source: Source(1) } }
 function u0:0(i64, i64) fast {
     sig0 = (i64, i64) -> i64 windows_fastcall
     sig1 = (i64, i64, i64) windows_fastcall
@@ -5926,30 +5833,27 @@ fun print_int(s: &Self, value: int)
 
 
 Token { kind: Fun, spam: Spam { source: Source(1), hash: ID(438937012895), range: 3208..3236 }, line_data: LineData { line: 161, column: 3, source: Source(1) } }
-Token { kind: Fun, spam: Spam { source: Source(1), hash: ID(438937012895), range: 3735..3776 }, line_data: LineData { line: 183, column: 3, source: Source(1) } }
-Token { kind: Fun, spam: Spam { source: Source(1), hash: ID(438937012895), range: 4133..4175 }, line_data: LineData { line: 195, column: 4, source: Source(1) } }
-Token { kind: Fun, spam: Spam { source: Source(1), hash: ID(438937012895), range: 4248..4291 }, line_data: LineData { line: 199, column: 3, source: Source(1) } }
-Token { kind: Fun, spam: Spam { source: Source(1), hash: ID(438937012895), range: 4027..4072 }, line_data: LineData { line: 192, column: 3, source: Source(1) } }
+Token { kind: Fun, spam: Spam { source: Source(1), hash: ID(438937012895), range: 3713..3754 }, line_data: LineData { line: 182, column: 3, source: Source(1) } }
+Token { kind: Fun, spam: Spam { source: Source(1), hash: ID(438937012895), range: 4111..4153 }, line_data: LineData { line: 194, column: 4, source: Source(1) } }
+Token { kind: Fun, spam: Spam { source: Source(1), hash: ID(438937012895), range: 4226..4269 }, line_data: LineData { line: 198, column: 3, source: Source(1) } }
+Token { kind: Fun, spam: Spam { source: Source(1), hash: ID(438937012895), range: 4005..4050 }, line_data: LineData { line: 191, column: 3, source: Source(1) } }
 function u0:0(i64, i64) fast {
     gv0 = symbol colocated u1:1
-    gv1 = symbol colocated u1:2
-    sig0 = (i64) fast
-    sig1 = (i64, i64) -> i64 windows_fastcall
-    sig2 = (i64) fast
-    fn0 = colocated u0:19 sig0
-    fn1 = u0:26 sig1
-    fn2 = colocated u0:19 sig2
+    sig0 = (i64, i64) -> i64 windows_fastcall
+    sig1 = (i64) fast
+    fn0 = u0:26 sig0
+    fn1 = colocated u0:19 sig1
 
 block0(v0: i64, v1: i64):
-    v58 = iconst.i64 0
-    v57 -> v58
-    v54 = iconst.i64 0
-    v2 -> v54
-    jump block1(v1, v57)
+    v57 = iconst.i64 0
+    v56 -> v57
+    v53 = iconst.i64 0
+    v2 -> v53
+    jump block1(v1, v56)
 
-block1(v4: i64, v56: i64):
+block1(v4: i64, v55: i64):
     v7 -> v4
-    v9 -> v56
+    v9 -> v55
     v3 = iconst.i64 0
     v5 = icmp eq v4, v3
     brnz v5, block2
@@ -5961,18 +5865,18 @@ block2:
 block3:
     v6 = iconst.i64 10
     v8 = srem.i64 v7, v6
-    v63 -> v8
+    v62 -> v8
+    v65 -> v8
     v66 -> v8
-    v67 -> v8
-    v61 -> v63
-    v59 -> v61
+    v60 -> v62
+    v58 -> v60
     v10 = iconst.i64 10
     v11 = sdiv.i64 v7, v10
-    v62 -> v11
+    v61 -> v11
+    v63 -> v11
     v64 -> v11
-    v65 -> v11
-    v60 -> v62
-    v55 -> v60
+    v59 -> v61
+    v54 -> v59
     v12 = ireduce.i32 v8
     v13 = iconst.i32 48
     v14 = iadd v12, v13
@@ -5980,79 +5884,77 @@ block3:
     jump block5(v0, v15)
 
 block5(v16: i64, v17: i8):
-    v18 = global_value.i64 gv0
-    call fn0(v18)
-    v19 = iconst.i64 1
-    v20 = load.i64 v16+8
-    v21 = iadd v20, v19
-    v22 = load.i64 v16+16
-    v23 = icmp sgt v21, v22
-    brnz v23, block6
+    v18 = iconst.i64 1
+    v19 = load.i64 v16+8
+    v20 = iadd v19, v18
+    v21 = load.i64 v16+16
+    v22 = icmp sgt v20, v21
+    brnz v22, block6
     jump block7
 
 block6:
-    v24 = iconst.i64 2
-    v25 = load.i64 v16+16
-    v26 = imul v25, v24
-    store v26, v16+16
-    v27 = iconst.i64 1
-    v28 = load.i64 v16+16
-    v29 = imul v28, v27
-    v30 = load.i64 v16
-    v31 = call fn1(v30, v29)
-    store v31, v16
+    v23 = iconst.i64 2
+    v24 = load.i64 v16+16
+    v25 = imul v24, v23
+    store v25, v16+16
+    v26 = iconst.i64 1
+    v27 = load.i64 v16+16
+    v28 = imul v27, v26
+    v29 = load.i64 v16
+    v30 = call fn0(v29, v28)
+    store v30, v16
     jump block7
 
 block7:
-    v32 = load.i64 v16+8
-    jump block9(v16, v32)
+    v31 = load.i64 v16+8
+    jump block9(v16, v31)
 
-block9(v33: i64, v34: i64):
-    jump block11(v33, v34)
+block9(v32: i64, v33: i64):
+    jump block11(v32, v33)
 
-block11(v36: i64, v37: i64):
-    jump block15(v36, v37)
+block11(v35: i64, v36: i64):
+    jump block15(v35, v36)
 
-block15(v38: i64, v39: i64):
-    v41 = iconst.i64 0
-    v42 = icmp sge v39, v41
-    v43 = load.i64 v38+8
-    v44 = icmp slt v39, v43
-    v45 = band v42, v44
-    jump block16(v45)
+block15(v37: i64, v38: i64):
+    v40 = iconst.i64 0
+    v41 = icmp sge v38, v40
+    v42 = load.i64 v37+8
+    v43 = icmp slt v38, v42
+    v44 = band v41, v43
+    jump block16(v44)
 
-block16(v40: b1):
-    brnz v40, block12
+block16(v39: b1):
+    brnz v39, block12
     jump block13
 
 block12:
-    v46 = global_value.i64 gv1
-    call fn2(v46)
+    v45 = global_value.i64 gv0
+    call fn1(v45)
     jump block13
 
 block13:
     jump block14
 
 block14:
-    jump block17(v33, v34)
+    jump block17(v32, v33)
 
-block17(v47: i64, v48: i64):
-    v50 = iconst.i64 1
-    v51 = imul v48, v50
-    v52 = load.i64 v47
-    v53 = iadd v52, v51
-    jump block18(v53)
+block17(v46: i64, v47: i64):
+    v49 = iconst.i64 1
+    v50 = imul v47, v49
+    v51 = load.i64 v46
+    v52 = iadd v51, v50
+    jump block18(v52)
 
-block18(v49: i64):
-    jump block10(v49)
+block18(v48: i64):
+    jump block10(v48)
 
-block10(v35: i64):
-    store.i8 v17, v35
-    store.i64 v21, v16+8
+block10(v34: i64):
+    store.i8 v17, v34
+    store.i64 v20, v16+8
     jump block8
 
 block8:
-    jump block1(v55, v59)
+    jump block1(v54, v58)
 
 block4:
     return
@@ -6067,9 +5969,9 @@ fun pop_frame
     Return(None) |stacktrace.pop()
 
 
-Token { kind: Fun, spam: Spam { source: Source(1), hash: ID(438937012895), range: 3455..3485 }, line_data: LineData { line: 171, column: 3, source: Source(1) } }
-Token { kind: Fun, spam: Spam { source: Source(1), hash: ID(438937012895), range: 4027..4072 }, line_data: LineData { line: 192, column: 3, source: Source(1) } }
-Token { kind: Fun, spam: Spam { source: Source(1), hash: ID(438937012895), range: 4453..4479 }, line_data: LineData { line: 212, column: 3, source: Source(1) } }
+Token { kind: Fun, spam: Spam { source: Source(1), hash: ID(438937012895), range: 3433..3463 }, line_data: LineData { line: 170, column: 3, source: Source(1) } }
+Token { kind: Fun, spam: Spam { source: Source(1), hash: ID(438937012895), range: 4005..4050 }, line_data: LineData { line: 191, column: 3, source: Source(1) } }
+Token { kind: Fun, spam: Spam { source: Source(1), hash: ID(438937012895), range: 4431..4457 }, line_data: LineData { line: 211, column: 3, source: Source(1) } }
 function u0:0() fast {
     ss0 = explicit_slot 32
     ss1 = explicit_slot 24
@@ -6183,21 +6085,18 @@ fun push_frame(line, column: int, file: &u8)
 
 
 Token { kind: Fun, spam: Spam { source: Source(1), hash: ID(438937012895), range: 3208..3236 }, line_data: LineData { line: 161, column: 3, source: Source(1) } }
-Token { kind: Fun, spam: Spam { source: Source(1), hash: ID(438937012895), range: 3735..3776 }, line_data: LineData { line: 183, column: 3, source: Source(1) } }
-Token { kind: Fun, spam: Spam { source: Source(1), hash: ID(438937012895), range: 4133..4175 }, line_data: LineData { line: 195, column: 4, source: Source(1) } }
-Token { kind: Fun, spam: Spam { source: Source(1), hash: ID(438937012895), range: 4248..4291 }, line_data: LineData { line: 199, column: 3, source: Source(1) } }
-Token { kind: Fun, spam: Spam { source: Source(1), hash: ID(438937012895), range: 4027..4072 }, line_data: LineData { line: 192, column: 3, source: Source(1) } }
+Token { kind: Fun, spam: Spam { source: Source(1), hash: ID(438937012895), range: 3713..3754 }, line_data: LineData { line: 182, column: 3, source: Source(1) } }
+Token { kind: Fun, spam: Spam { source: Source(1), hash: ID(438937012895), range: 4111..4153 }, line_data: LineData { line: 194, column: 4, source: Source(1) } }
+Token { kind: Fun, spam: Spam { source: Source(1), hash: ID(438937012895), range: 4226..4269 }, line_data: LineData { line: 198, column: 3, source: Source(1) } }
+Token { kind: Fun, spam: Spam { source: Source(1), hash: ID(438937012895), range: 4005..4050 }, line_data: LineData { line: 191, column: 3, source: Source(1) } }
 function u0:0(i64, i64, i64) fast {
     ss0 = explicit_slot 24
     gv0 = symbol colocated u1:0
     gv1 = symbol colocated u1:1
-    gv2 = symbol colocated u1:2
-    sig0 = (i64) fast
-    sig1 = (i64, i64) -> i64 windows_fastcall
-    sig2 = (i64) fast
-    fn0 = colocated u0:19 sig0
-    fn1 = u0:26 sig1
-    fn2 = colocated u0:19 sig2
+    sig0 = (i64, i64) -> i64 windows_fastcall
+    sig1 = (i64) fast
+    fn0 = u0:26 sig0
+    fn1 = colocated u0:19 sig1
 
 block0(v0: i64, v1: i64, v2: i64):
     v3 = iconst.i64 0
@@ -6212,80 +6111,78 @@ block0(v0: i64, v1: i64, v2: i64):
     jump block1(v4, v5)
 
 block1(v6: i64, v7: i64):
-    v8 = global_value.i64 gv1
-    call fn0(v8)
-    v9 = iconst.i64 1
-    v10 = load.i64 v6+8
-    v11 = iadd v10, v9
-    v12 = load.i64 v6+16
-    v13 = icmp sgt v11, v12
-    brnz v13, block2
+    v8 = iconst.i64 1
+    v9 = load.i64 v6+8
+    v10 = iadd v9, v8
+    v11 = load.i64 v6+16
+    v12 = icmp sgt v10, v11
+    brnz v12, block2
     jump block3
 
 block2:
-    v14 = iconst.i64 2
-    v15 = load.i64 v6+16
-    v16 = imul v15, v14
-    store v16, v6+16
-    v17 = iconst.i64 24
-    v18 = load.i64 v6+16
-    v19 = imul v18, v17
-    v20 = load.i64 v6
-    v21 = call fn1(v20, v19)
-    store v21, v6
+    v13 = iconst.i64 2
+    v14 = load.i64 v6+16
+    v15 = imul v14, v13
+    store v15, v6+16
+    v16 = iconst.i64 24
+    v17 = load.i64 v6+16
+    v18 = imul v17, v16
+    v19 = load.i64 v6
+    v20 = call fn0(v19, v18)
+    store v20, v6
     jump block3
 
 block3:
-    v22 = load.i64 v6+8
-    jump block5(v6, v22)
+    v21 = load.i64 v6+8
+    jump block5(v6, v21)
 
-block5(v23: i64, v24: i64):
-    jump block7(v23, v24)
+block5(v22: i64, v23: i64):
+    jump block7(v22, v23)
 
-block7(v26: i64, v27: i64):
-    jump block11(v26, v27)
+block7(v25: i64, v26: i64):
+    jump block11(v25, v26)
 
-block11(v28: i64, v29: i64):
-    v31 = iconst.i64 0
-    v32 = icmp sge v29, v31
-    v33 = load.i64 v28+8
-    v34 = icmp slt v29, v33
-    v35 = band v32, v34
-    jump block12(v35)
+block11(v27: i64, v28: i64):
+    v30 = iconst.i64 0
+    v31 = icmp sge v28, v30
+    v32 = load.i64 v27+8
+    v33 = icmp slt v28, v32
+    v34 = band v31, v33
+    jump block12(v34)
 
-block12(v30: b1):
-    brnz v30, block8
+block12(v29: b1):
+    brnz v29, block8
     jump block9
 
 block8:
-    v36 = global_value.i64 gv2
-    call fn2(v36)
+    v35 = global_value.i64 gv1
+    call fn1(v35)
     jump block9
 
 block9:
     jump block10
 
 block10:
-    jump block13(v23, v24)
+    jump block13(v22, v23)
 
-block13(v37: i64, v38: i64):
-    v40 = iconst.i64 24
-    v41 = imul v38, v40
-    v42 = load.i64 v37
-    v43 = iadd v42, v41
-    jump block14(v43)
+block13(v36: i64, v37: i64):
+    v39 = iconst.i64 24
+    v40 = imul v37, v39
+    v41 = load.i64 v36
+    v42 = iadd v41, v40
+    jump block14(v42)
 
-block14(v39: i64):
-    jump block6(v39)
+block14(v38: i64):
+    jump block6(v38)
 
-block6(v25: i64):
-    v44 = load.i64 v7
-    store v44, v25
-    v45 = load.i64 v7+8
-    store v45, v25+8
-    v46 = load.i64 v7+16
-    store v46, v25+16
-    store.i64 v11, v6+8
+block6(v24: i64):
+    v43 = load.i64 v7
+    store v43, v24
+    v44 = load.i64 v7+8
+    store v44, v24+8
+    v45 = load.i64 v7+16
+    store v45, v24+16
+    store.i64 v10, v6+8
     jump block4
 
 block4:
@@ -6394,48 +6291,44 @@ fun panic(str: &u8)
     Return(None) |exit(1)
 
 
-Token { kind: Fun, spam: Spam { source: Source(1), hash: ID(438937012895), range: 3735..3776 }, line_data: LineData { line: 183, column: 3, source: Source(1) } }
-Token { kind: Fun, spam: Spam { source: Source(1), hash: ID(438937012895), range: 4133..4175 }, line_data: LineData { line: 195, column: 4, source: Source(1) } }
-Token { kind: Fun, spam: Spam { source: Source(1), hash: ID(438937012895), range: 4248..4291 }, line_data: LineData { line: 199, column: 3, source: Source(1) } }
-Token { kind: Fun, spam: Spam { source: Source(1), hash: ID(438937012895), range: 4027..4072 }, line_data: LineData { line: 192, column: 3, source: Source(1) } }
+Token { kind: Fun, spam: Spam { source: Source(1), hash: ID(438937012895), range: 3713..3754 }, line_data: LineData { line: 182, column: 3, source: Source(1) } }
+Token { kind: Fun, spam: Spam { source: Source(1), hash: ID(438937012895), range: 4111..4153 }, line_data: LineData { line: 194, column: 4, source: Source(1) } }
+Token { kind: Fun, spam: Spam { source: Source(1), hash: ID(438937012895), range: 4226..4269 }, line_data: LineData { line: 198, column: 3, source: Source(1) } }
+Token { kind: Fun, spam: Spam { source: Source(1), hash: ID(438937012895), range: 4005..4050 }, line_data: LineData { line: 191, column: 3, source: Source(1) } }
 Token { kind: Fun, spam: Spam { source: Source(1), hash: ID(438937012895), range: 3208..3236 }, line_data: LineData { line: 161, column: 3, source: Source(1) } }
-Token { kind: Fun, spam: Spam { source: Source(1), hash: ID(438937012895), range: 3735..3776 }, line_data: LineData { line: 183, column: 3, source: Source(1) } }
-Token { kind: Fun, spam: Spam { source: Source(1), hash: ID(438937012895), range: 4133..4175 }, line_data: LineData { line: 195, column: 4, source: Source(1) } }
-Token { kind: Fun, spam: Spam { source: Source(1), hash: ID(438937012895), range: 4248..4291 }, line_data: LineData { line: 199, column: 3, source: Source(1) } }
-Token { kind: Fun, spam: Spam { source: Source(1), hash: ID(438937012895), range: 4027..4072 }, line_data: LineData { line: 192, column: 3, source: Source(1) } }
+Token { kind: Fun, spam: Spam { source: Source(1), hash: ID(438937012895), range: 3713..3754 }, line_data: LineData { line: 182, column: 3, source: Source(1) } }
+Token { kind: Fun, spam: Spam { source: Source(1), hash: ID(438937012895), range: 4111..4153 }, line_data: LineData { line: 194, column: 4, source: Source(1) } }
+Token { kind: Fun, spam: Spam { source: Source(1), hash: ID(438937012895), range: 4226..4269 }, line_data: LineData { line: 198, column: 3, source: Source(1) } }
+Token { kind: Fun, spam: Spam { source: Source(1), hash: ID(438937012895), range: 4005..4050 }, line_data: LineData { line: 191, column: 3, source: Source(1) } }
 Token { kind: Fun, spam: Spam { source: Source(1), hash: ID(438937012895), range: 3208..3236 }, line_data: LineData { line: 161, column: 3, source: Source(1) } }
-Token { kind: Fun, spam: Spam { source: Source(1), hash: ID(438937012895), range: 3735..3776 }, line_data: LineData { line: 183, column: 3, source: Source(1) } }
-Token { kind: Fun, spam: Spam { source: Source(1), hash: ID(438937012895), range: 4133..4175 }, line_data: LineData { line: 195, column: 4, source: Source(1) } }
-Token { kind: Fun, spam: Spam { source: Source(1), hash: ID(438937012895), range: 4248..4291 }, line_data: LineData { line: 199, column: 3, source: Source(1) } }
-Token { kind: Fun, spam: Spam { source: Source(1), hash: ID(438937012895), range: 4027..4072 }, line_data: LineData { line: 192, column: 3, source: Source(1) } }
+Token { kind: Fun, spam: Spam { source: Source(1), hash: ID(438937012895), range: 3713..3754 }, line_data: LineData { line: 182, column: 3, source: Source(1) } }
+Token { kind: Fun, spam: Spam { source: Source(1), hash: ID(438937012895), range: 4111..4153 }, line_data: LineData { line: 194, column: 4, source: Source(1) } }
+Token { kind: Fun, spam: Spam { source: Source(1), hash: ID(438937012895), range: 4226..4269 }, line_data: LineData { line: 198, column: 3, source: Source(1) } }
+Token { kind: Fun, spam: Spam { source: Source(1), hash: ID(438937012895), range: 4005..4050 }, line_data: LineData { line: 191, column: 3, source: Source(1) } }
 Token { kind: Fun, spam: Spam { source: Source(1), hash: ID(438937012895), range: 3208..3236 }, line_data: LineData { line: 161, column: 3, source: Source(1) } }
-Token { kind: Fun, spam: Spam { source: Source(1), hash: ID(438937012895), range: 3735..3776 }, line_data: LineData { line: 183, column: 3, source: Source(1) } }
-Token { kind: Fun, spam: Spam { source: Source(1), hash: ID(438937012895), range: 4133..4175 }, line_data: LineData { line: 195, column: 4, source: Source(1) } }
-Token { kind: Fun, spam: Spam { source: Source(1), hash: ID(438937012895), range: 4248..4291 }, line_data: LineData { line: 199, column: 3, source: Source(1) } }
-Token { kind: Fun, spam: Spam { source: Source(1), hash: ID(438937012895), range: 4027..4072 }, line_data: LineData { line: 192, column: 3, source: Source(1) } }
+Token { kind: Fun, spam: Spam { source: Source(1), hash: ID(438937012895), range: 3713..3754 }, line_data: LineData { line: 182, column: 3, source: Source(1) } }
+Token { kind: Fun, spam: Spam { source: Source(1), hash: ID(438937012895), range: 4111..4153 }, line_data: LineData { line: 194, column: 4, source: Source(1) } }
+Token { kind: Fun, spam: Spam { source: Source(1), hash: ID(438937012895), range: 4226..4269 }, line_data: LineData { line: 198, column: 3, source: Source(1) } }
+Token { kind: Fun, spam: Spam { source: Source(1), hash: ID(438937012895), range: 4005..4050 }, line_data: LineData { line: 191, column: 3, source: Source(1) } }
 Token { kind: Fun, spam: Spam { source: Source(1), hash: ID(438937012895), range: 3208..3236 }, line_data: LineData { line: 161, column: 3, source: Source(1) } }
-Token { kind: Fun, spam: Spam { source: Source(1), hash: ID(438937012895), range: 3735..3776 }, line_data: LineData { line: 183, column: 3, source: Source(1) } }
-Token { kind: Fun, spam: Spam { source: Source(1), hash: ID(438937012895), range: 4133..4175 }, line_data: LineData { line: 195, column: 4, source: Source(1) } }
-Token { kind: Fun, spam: Spam { source: Source(1), hash: ID(438937012895), range: 4248..4291 }, line_data: LineData { line: 199, column: 3, source: Source(1) } }
-Token { kind: Fun, spam: Spam { source: Source(1), hash: ID(438937012895), range: 4027..4072 }, line_data: LineData { line: 192, column: 3, source: Source(1) } }
+Token { kind: Fun, spam: Spam { source: Source(1), hash: ID(438937012895), range: 3713..3754 }, line_data: LineData { line: 182, column: 3, source: Source(1) } }
+Token { kind: Fun, spam: Spam { source: Source(1), hash: ID(438937012895), range: 4111..4153 }, line_data: LineData { line: 194, column: 4, source: Source(1) } }
+Token { kind: Fun, spam: Spam { source: Source(1), hash: ID(438937012895), range: 4226..4269 }, line_data: LineData { line: 198, column: 3, source: Source(1) } }
+Token { kind: Fun, spam: Spam { source: Source(1), hash: ID(438937012895), range: 4005..4050 }, line_data: LineData { line: 191, column: 3, source: Source(1) } }
 function u0:0(i64) fast {
     ss0 = explicit_slot 24
     ss1 = explicit_slot 24
-    gv0 = symbol colocated u1:3
-    gv1 = symbol colocated u1:4
+    gv0 = symbol colocated u1:2
+    gv1 = symbol colocated u1:3
     gv2 = symbol colocated u1:0
-    gv3 = symbol colocated u1:5
+    gv3 = symbol colocated u1:4
     gv4 = symbol colocated u1:0
     gv5 = symbol colocated u1:0
-    gv6 = symbol colocated u1:2
+    gv6 = symbol colocated u1:1
     gv7 = symbol colocated u1:1
-    gv8 = symbol colocated u1:2
+    gv8 = symbol colocated u1:1
     gv9 = symbol colocated u1:1
-    gv10 = symbol colocated u1:2
-    gv11 = symbol colocated u1:1
-    gv12 = symbol colocated u1:2
-    gv13 = symbol colocated u1:1
-    gv14 = symbol colocated u1:2
+    gv10 = symbol colocated u1:1
     sig0 = (i64) windows_fastcall
     sig1 = (i64) windows_fastcall
     sig2 = (i64) windows_fastcall
@@ -6443,22 +6336,18 @@ function u0:0(i64) fast {
     sig4 = (i64) windows_fastcall
     sig5 = (i64) fast
     sig6 = (i64, i64) fast
-    sig7 = (i64) fast
-    sig8 = (i64, i64) -> i64 windows_fastcall
-    sig9 = (i64) fast
-    sig10 = (i64, i64) fast
+    sig7 = (i64, i64) -> i64 windows_fastcall
+    sig8 = (i64) fast
+    sig9 = (i64, i64) fast
+    sig10 = (i64, i64) -> i64 windows_fastcall
     sig11 = (i64) fast
-    sig12 = (i64, i64) -> i64 windows_fastcall
-    sig13 = (i64) fast
-    sig14 = (i64, i64) fast
-    sig15 = (i64) fast
-    sig16 = (i64, i64) -> i64 windows_fastcall
-    sig17 = (i64) fast
-    sig18 = (i64) fast
-    sig19 = (i64, i64) -> i64 windows_fastcall
-    sig20 = (i64) fast
-    sig21 = (i64) windows_fastcall
-    sig22 = (i64) windows_fastcall
+    sig12 = (i64, i64) fast
+    sig13 = (i64, i64) -> i64 windows_fastcall
+    sig14 = (i64) fast
+    sig15 = (i64, i64) -> i64 windows_fastcall
+    sig16 = (i64) fast
+    sig17 = (i64) windows_fastcall
+    sig18 = (i64) windows_fastcall
     fn0 = u0:21 sig0
     fn1 = u0:21 sig1
     fn2 = u0:21 sig2
@@ -6466,27 +6355,23 @@ function u0:0(i64) fast {
     fn4 = u0:20 sig4
     fn5 = colocated u0:19 sig5
     fn6 = colocated u0:4 sig6
-    fn7 = colocated u0:19 sig7
-    fn8 = u0:26 sig8
-    fn9 = colocated u0:19 sig9
-    fn10 = colocated u0:4 sig10
+    fn7 = u0:26 sig7
+    fn8 = colocated u0:19 sig8
+    fn9 = colocated u0:4 sig9
+    fn10 = u0:26 sig10
     fn11 = colocated u0:19 sig11
-    fn12 = u0:26 sig12
-    fn13 = colocated u0:19 sig13
-    fn14 = colocated u0:0 sig14
-    fn15 = colocated u0:19 sig15
-    fn16 = u0:26 sig16
-    fn17 = colocated u0:19 sig17
-    fn18 = colocated u0:19 sig18
-    fn19 = u0:26 sig19
-    fn20 = colocated u0:19 sig20
-    fn21 = u0:21 sig21
-    fn22 = u0:20 sig22
+    fn12 = colocated u0:0 sig12
+    fn13 = u0:26 sig13
+    fn14 = colocated u0:19 sig14
+    fn15 = u0:26 sig15
+    fn16 = colocated u0:19 sig16
+    fn17 = u0:21 sig17
+    fn18 = u0:20 sig18
 
 block0(v0: i64):
-    v216 = iconst.i64 0
-    v11 -> v216
-    v215 -> v216
+    v212 = iconst.i64 0
+    v11 -> v212
+    v211 -> v212
     v1 = global_value.i64 gv0
     call fn0(v1)
     call fn1(v0)
@@ -6516,16 +6401,16 @@ block2:
 
 block3(v13: i64):
     v17 -> v13
+    v215 -> v13
+    v216 -> v13
+    v217 -> v13
+    v218 -> v13
     v219 -> v13
     v220 -> v13
     v221 -> v13
     v222 -> v13
-    v223 -> v13
-    v224 -> v13
-    v225 -> v13
-    v226 -> v13
-    v218 -> v219
-    v217 -> v218
+    v214 -> v215
+    v213 -> v214
     v12 = global_value.i64 gv4
     v14 = load.i64 v12+8
     v15 = icmp sge v13, v14
@@ -6595,325 +6480,317 @@ block8(v20: i64):
     jump block17(v47, v46)
 
 block17(v48: i64, v49: i8):
-    v50 = global_value.i64 gv7
-    call fn7(v50)
-    v51 = iconst.i64 1
-    v52 = load.i64 v48+8
-    v53 = iadd v52, v51
-    v54 = load.i64 v48+16
-    v55 = icmp sgt v53, v54
-    brnz v55, block18
+    v50 = iconst.i64 1
+    v51 = load.i64 v48+8
+    v52 = iadd v51, v50
+    v53 = load.i64 v48+16
+    v54 = icmp sgt v52, v53
+    brnz v54, block18
     jump block19
 
 block18:
-    v56 = iconst.i64 2
-    v57 = load.i64 v48+16
-    v58 = imul v57, v56
-    store v58, v48+16
-    v59 = iconst.i64 1
-    v60 = load.i64 v48+16
-    v61 = imul v60, v59
-    v62 = load.i64 v48
-    v63 = call fn8(v62, v61)
-    store v63, v48
+    v55 = iconst.i64 2
+    v56 = load.i64 v48+16
+    v57 = imul v56, v55
+    store v57, v48+16
+    v58 = iconst.i64 1
+    v59 = load.i64 v48+16
+    v60 = imul v59, v58
+    v61 = load.i64 v48
+    v62 = call fn7(v61, v60)
+    store v62, v48
     jump block19
 
 block19:
-    v64 = load.i64 v48+8
-    jump block21(v48, v64)
+    v63 = load.i64 v48+8
+    jump block21(v48, v63)
 
-block21(v65: i64, v66: i64):
-    jump block23(v65, v66)
+block21(v64: i64, v65: i64):
+    jump block23(v64, v65)
 
-block23(v68: i64, v69: i64):
-    jump block27(v68, v69)
+block23(v67: i64, v68: i64):
+    jump block27(v67, v68)
 
-block27(v70: i64, v71: i64):
-    v73 = iconst.i64 0
-    v74 = icmp sge v71, v73
-    v75 = load.i64 v70+8
-    v76 = icmp slt v71, v75
-    v77 = band v74, v76
-    jump block28(v77)
+block27(v69: i64, v70: i64):
+    v72 = iconst.i64 0
+    v73 = icmp sge v70, v72
+    v74 = load.i64 v69+8
+    v75 = icmp slt v70, v74
+    v76 = band v73, v75
+    jump block28(v76)
 
-block28(v72: b1):
-    brnz v72, block24
+block28(v71: b1):
+    brnz v71, block24
     jump block25
 
 block24:
-    v78 = global_value.i64 gv8
-    call fn9(v78)
+    v77 = global_value.i64 gv7
+    call fn8(v77)
     jump block25
 
 block25:
     jump block26
 
 block26:
-    jump block29(v65, v66)
+    jump block29(v64, v65)
 
-block29(v79: i64, v80: i64):
-    v82 = iconst.i64 1
-    v83 = imul v80, v82
-    v84 = load.i64 v79
-    v85 = iadd v84, v83
-    jump block30(v85)
+block29(v78: i64, v79: i64):
+    v81 = iconst.i64 1
+    v82 = imul v79, v81
+    v83 = load.i64 v78
+    v84 = iadd v83, v82
+    jump block30(v84)
 
-block30(v81: i64):
-    jump block22(v81)
+block30(v80: i64):
+    jump block22(v80)
 
-block22(v67: i64):
-    store.i8 v49, v67
-    store.i64 v53, v48+8
+block22(v66: i64):
+    store.i8 v49, v66
+    store.i64 v52, v48+8
     jump block20
 
 block20:
-    v86 = stack_addr.i64 ss0
-    v87 = stack_load.i64 ss1+8
-    call fn10(v86, v87)
-    v88 = iconst.i32 32
-    v89 = ireduce.i8 v88
-    v90 = stack_addr.i64 ss0
-    jump block31(v90, v89)
+    v85 = stack_addr.i64 ss0
+    v86 = stack_load.i64 ss1+8
+    call fn9(v85, v86)
+    v87 = iconst.i32 32
+    v88 = ireduce.i8 v87
+    v89 = stack_addr.i64 ss0
+    jump block31(v89, v88)
 
-block31(v91: i64, v92: i8):
-    v93 = global_value.i64 gv9
-    call fn11(v93)
-    v94 = iconst.i64 1
-    v95 = load.i64 v91+8
-    v96 = iadd v95, v94
-    v97 = load.i64 v91+16
-    v98 = icmp sgt v96, v97
-    brnz v98, block32
+block31(v90: i64, v91: i8):
+    v92 = iconst.i64 1
+    v93 = load.i64 v90+8
+    v94 = iadd v93, v92
+    v95 = load.i64 v90+16
+    v96 = icmp sgt v94, v95
+    brnz v96, block32
     jump block33
 
 block32:
-    v99 = iconst.i64 2
-    v100 = load.i64 v91+16
-    v101 = imul v100, v99
-    store v101, v91+16
-    v102 = iconst.i64 1
-    v103 = load.i64 v91+16
-    v104 = imul v103, v102
-    v105 = load.i64 v91
-    v106 = call fn12(v105, v104)
-    store v106, v91
+    v97 = iconst.i64 2
+    v98 = load.i64 v90+16
+    v99 = imul v98, v97
+    store v99, v90+16
+    v100 = iconst.i64 1
+    v101 = load.i64 v90+16
+    v102 = imul v101, v100
+    v103 = load.i64 v90
+    v104 = call fn10(v103, v102)
+    store v104, v90
     jump block33
 
 block33:
-    v107 = load.i64 v91+8
-    jump block35(v91, v107)
+    v105 = load.i64 v90+8
+    jump block35(v90, v105)
 
-block35(v108: i64, v109: i64):
-    jump block37(v108, v109)
+block35(v106: i64, v107: i64):
+    jump block37(v106, v107)
 
-block37(v111: i64, v112: i64):
-    jump block41(v111, v112)
+block37(v109: i64, v110: i64):
+    jump block41(v109, v110)
 
-block41(v113: i64, v114: i64):
-    v116 = iconst.i64 0
-    v117 = icmp sge v114, v116
-    v118 = load.i64 v113+8
-    v119 = icmp slt v114, v118
-    v120 = band v117, v119
-    jump block42(v120)
+block41(v111: i64, v112: i64):
+    v114 = iconst.i64 0
+    v115 = icmp sge v112, v114
+    v116 = load.i64 v111+8
+    v117 = icmp slt v112, v116
+    v118 = band v115, v117
+    jump block42(v118)
 
-block42(v115: b1):
-    brnz v115, block38
+block42(v113: b1):
+    brnz v113, block38
     jump block39
 
 block38:
-    v121 = global_value.i64 gv10
-    call fn13(v121)
+    v119 = global_value.i64 gv8
+    call fn11(v119)
     jump block39
 
 block39:
     jump block40
 
 block40:
-    jump block43(v108, v109)
+    jump block43(v106, v107)
 
-block43(v122: i64, v123: i64):
-    v125 = iconst.i64 1
-    v126 = imul v123, v125
-    v127 = load.i64 v122
-    v128 = iadd v127, v126
-    jump block44(v128)
+block43(v120: i64, v121: i64):
+    v123 = iconst.i64 1
+    v124 = imul v121, v123
+    v125 = load.i64 v120
+    v126 = iadd v125, v124
+    jump block44(v126)
 
-block44(v124: i64):
-    jump block36(v124)
+block44(v122: i64):
+    jump block36(v122)
 
-block36(v110: i64):
-    store.i8 v92, v110
-    store.i64 v96, v91+8
+block36(v108: i64):
+    store.i8 v91, v108
+    store.i64 v94, v90+8
     jump block34
 
 block34:
-    v129 = stack_addr.i64 ss0
-    v130 = stack_load.i64 ss1+16
-    call fn14(v129, v130)
-    v131 = iconst.i32 10
-    v132 = ireduce.i8 v131
-    v133 = stack_addr.i64 ss0
-    jump block45(v133, v132)
+    v127 = stack_addr.i64 ss0
+    v128 = stack_load.i64 ss1+16
+    call fn12(v127, v128)
+    v129 = iconst.i32 10
+    v130 = ireduce.i8 v129
+    v131 = stack_addr.i64 ss0
+    jump block45(v131, v130)
 
-block45(v134: i64, v135: i8):
-    v136 = global_value.i64 gv11
-    call fn15(v136)
-    v137 = iconst.i64 1
-    v138 = load.i64 v134+8
-    v139 = iadd v138, v137
-    v140 = load.i64 v134+16
-    v141 = icmp sgt v139, v140
-    brnz v141, block46
+block45(v132: i64, v133: i8):
+    v134 = iconst.i64 1
+    v135 = load.i64 v132+8
+    v136 = iadd v135, v134
+    v137 = load.i64 v132+16
+    v138 = icmp sgt v136, v137
+    brnz v138, block46
     jump block47
 
 block46:
-    v142 = iconst.i64 2
-    v143 = load.i64 v134+16
+    v139 = iconst.i64 2
+    v140 = load.i64 v132+16
+    v141 = imul v140, v139
+    store v141, v132+16
+    v142 = iconst.i64 1
+    v143 = load.i64 v132+16
     v144 = imul v143, v142
-    store v144, v134+16
-    v145 = iconst.i64 1
-    v146 = load.i64 v134+16
-    v147 = imul v146, v145
-    v148 = load.i64 v134
-    v149 = call fn16(v148, v147)
-    store v149, v134
+    v145 = load.i64 v132
+    v146 = call fn13(v145, v144)
+    store v146, v132
     jump block47
 
 block47:
-    v150 = load.i64 v134+8
-    jump block49(v134, v150)
+    v147 = load.i64 v132+8
+    jump block49(v132, v147)
 
-block49(v151: i64, v152: i64):
-    jump block51(v151, v152)
+block49(v148: i64, v149: i64):
+    jump block51(v148, v149)
 
-block51(v154: i64, v155: i64):
-    jump block55(v154, v155)
+block51(v151: i64, v152: i64):
+    jump block55(v151, v152)
 
-block55(v156: i64, v157: i64):
-    v159 = iconst.i64 0
-    v160 = icmp sge v157, v159
-    v161 = load.i64 v156+8
-    v162 = icmp slt v157, v161
-    v163 = band v160, v162
-    jump block56(v163)
+block55(v153: i64, v154: i64):
+    v156 = iconst.i64 0
+    v157 = icmp sge v154, v156
+    v158 = load.i64 v153+8
+    v159 = icmp slt v154, v158
+    v160 = band v157, v159
+    jump block56(v160)
 
-block56(v158: b1):
-    brnz v158, block52
+block56(v155: b1):
+    brnz v155, block52
     jump block53
 
 block52:
-    v164 = global_value.i64 gv12
-    call fn17(v164)
+    v161 = global_value.i64 gv9
+    call fn14(v161)
     jump block53
 
 block53:
     jump block54
 
 block54:
-    jump block57(v151, v152)
+    jump block57(v148, v149)
 
-block57(v165: i64, v166: i64):
-    v168 = iconst.i64 1
-    v169 = imul v166, v168
-    v170 = load.i64 v165
-    v171 = iadd v170, v169
-    jump block58(v171)
+block57(v162: i64, v163: i64):
+    v165 = iconst.i64 1
+    v166 = imul v163, v165
+    v167 = load.i64 v162
+    v168 = iadd v167, v166
+    jump block58(v168)
 
-block58(v167: i64):
-    jump block50(v167)
+block58(v164: i64):
+    jump block50(v164)
 
-block50(v153: i64):
-    store.i8 v135, v153
-    store.i64 v139, v134+8
+block50(v150: i64):
+    store.i8 v133, v150
+    store.i64 v136, v132+8
     jump block48
 
 block48:
-    jump block3(v217)
+    jump block3(v213)
 
 block6:
-    v172 = iconst.i32 0
-    v173 = ireduce.i8 v172
-    v174 = stack_addr.i64 ss0
-    jump block59(v174, v173)
+    v169 = iconst.i32 0
+    v170 = ireduce.i8 v169
+    v171 = stack_addr.i64 ss0
+    jump block59(v171, v170)
 
-block59(v175: i64, v176: i8):
-    v177 = global_value.i64 gv13
-    call fn18(v177)
-    v178 = iconst.i64 1
-    v179 = load.i64 v175+8
-    v180 = iadd v179, v178
-    v181 = load.i64 v175+16
-    v182 = icmp sgt v180, v181
-    brnz v182, block60
+block59(v172: i64, v173: i8):
+    v174 = iconst.i64 1
+    v175 = load.i64 v172+8
+    v176 = iadd v175, v174
+    v177 = load.i64 v172+16
+    v178 = icmp sgt v176, v177
+    brnz v178, block60
     jump block61
 
 block60:
-    v183 = iconst.i64 2
-    v184 = load.i64 v175+16
-    v185 = imul v184, v183
-    store v185, v175+16
-    v186 = iconst.i64 1
-    v187 = load.i64 v175+16
-    v188 = imul v187, v186
-    v189 = load.i64 v175
-    v190 = call fn19(v189, v188)
-    store v190, v175
+    v179 = iconst.i64 2
+    v180 = load.i64 v172+16
+    v181 = imul v180, v179
+    store v181, v172+16
+    v182 = iconst.i64 1
+    v183 = load.i64 v172+16
+    v184 = imul v183, v182
+    v185 = load.i64 v172
+    v186 = call fn15(v185, v184)
+    store v186, v172
     jump block61
 
 block61:
-    v191 = load.i64 v175+8
-    jump block63(v175, v191)
+    v187 = load.i64 v172+8
+    jump block63(v172, v187)
 
-block63(v192: i64, v193: i64):
-    jump block65(v192, v193)
+block63(v188: i64, v189: i64):
+    jump block65(v188, v189)
 
-block65(v195: i64, v196: i64):
-    jump block69(v195, v196)
+block65(v191: i64, v192: i64):
+    jump block69(v191, v192)
 
-block69(v197: i64, v198: i64):
-    v200 = iconst.i64 0
-    v201 = icmp sge v198, v200
-    v202 = load.i64 v197+8
-    v203 = icmp slt v198, v202
-    v204 = band v201, v203
-    jump block70(v204)
+block69(v193: i64, v194: i64):
+    v196 = iconst.i64 0
+    v197 = icmp sge v194, v196
+    v198 = load.i64 v193+8
+    v199 = icmp slt v194, v198
+    v200 = band v197, v199
+    jump block70(v200)
 
-block70(v199: b1):
-    brnz v199, block66
+block70(v195: b1):
+    brnz v195, block66
     jump block67
 
 block66:
-    v205 = global_value.i64 gv14
-    call fn20(v205)
+    v201 = global_value.i64 gv10
+    call fn16(v201)
     jump block67
 
 block67:
     jump block68
 
 block68:
-    jump block71(v192, v193)
+    jump block71(v188, v189)
 
-block71(v206: i64, v207: i64):
-    v209 = iconst.i64 1
-    v210 = imul v207, v209
-    v211 = load.i64 v206
-    v212 = iadd v211, v210
-    jump block72(v212)
+block71(v202: i64, v203: i64):
+    v205 = iconst.i64 1
+    v206 = imul v203, v205
+    v207 = load.i64 v202
+    v208 = iadd v207, v206
+    jump block72(v208)
 
-block72(v208: i64):
-    jump block64(v208)
+block72(v204: i64):
+    jump block64(v204)
 
-block64(v194: i64):
-    store.i8 v176, v194
-    store.i64 v180, v175+8
+block64(v190: i64):
+    store.i8 v173, v190
+    store.i64 v176, v172+8
     jump block62
 
 block62:
-    v213 = stack_load.i64 ss0
-    call fn21(v213)
-    v214 = iconst.i64 1
-    call fn22(v214)
+    v209 = stack_load.i64 ss0
+    call fn17(v209)
+    v210 = iconst.i64 1
+    call fn18(v210)
     return
 }
 
@@ -7004,7 +6881,6 @@ block0(v0: i64, v1: i64):
     return v4
 }
 
-
 fun print(s: &Self, value: &u8)
 
   Inst1[Value(0), Value(1)]
@@ -7059,7 +6935,7 @@ fun print(s: &Self, value: &u8)
 
 
 Token { kind: Fun, spam: Spam { source: Source(1), hash: ID(438937012895), range: 2460..2495 }, line_data: LineData { line: 128, column: 3, source: Source(1) } }
-Token { kind: Fun, spam: Spam { source: Source(1), hash: ID(438937012895), range: 4027..4072 }, line_data: LineData { line: 192, column: 3, source: Source(1) } }
+Token { kind: Fun, spam: Spam { source: Source(1), hash: ID(438937012895), range: 4005..4050 }, line_data: LineData { line: 191, column: 3, source: Source(1) } }
 function u0:0(i64, i64) fast {
     sig0 = (i64, i64) -> i64 windows_fastcall
     sig1 = (i64, i64, i64) windows_fastcall
@@ -7184,30 +7060,27 @@ fun print_int(s: &Self, value: int)
 
 
 Token { kind: Fun, spam: Spam { source: Source(1), hash: ID(438937012895), range: 3208..3236 }, line_data: LineData { line: 161, column: 3, source: Source(1) } }
-Token { kind: Fun, spam: Spam { source: Source(1), hash: ID(438937012895), range: 3735..3776 }, line_data: LineData { line: 183, column: 3, source: Source(1) } }
-Token { kind: Fun, spam: Spam { source: Source(1), hash: ID(438937012895), range: 4133..4175 }, line_data: LineData { line: 195, column: 4, source: Source(1) } }
-Token { kind: Fun, spam: Spam { source: Source(1), hash: ID(438937012895), range: 4248..4291 }, line_data: LineData { line: 199, column: 3, source: Source(1) } }
-Token { kind: Fun, spam: Spam { source: Source(1), hash: ID(438937012895), range: 4027..4072 }, line_data: LineData { line: 192, column: 3, source: Source(1) } }
+Token { kind: Fun, spam: Spam { source: Source(1), hash: ID(438937012895), range: 3713..3754 }, line_data: LineData { line: 182, column: 3, source: Source(1) } }
+Token { kind: Fun, spam: Spam { source: Source(1), hash: ID(438937012895), range: 4111..4153 }, line_data: LineData { line: 194, column: 4, source: Source(1) } }
+Token { kind: Fun, spam: Spam { source: Source(1), hash: ID(438937012895), range: 4226..4269 }, line_data: LineData { line: 198, column: 3, source: Source(1) } }
+Token { kind: Fun, spam: Spam { source: Source(1), hash: ID(438937012895), range: 4005..4050 }, line_data: LineData { line: 191, column: 3, source: Source(1) } }
 function u0:0(i64, i64) fast {
     gv0 = symbol colocated u1:1
-    gv1 = symbol colocated u1:2
-    sig0 = (i64) fast
-    sig1 = (i64, i64) -> i64 windows_fastcall
-    sig2 = (i64) fast
-    fn0 = colocated u0:19 sig0
-    fn1 = u0:26 sig1
-    fn2 = colocated u0:19 sig2
+    sig0 = (i64, i64) -> i64 windows_fastcall
+    sig1 = (i64) fast
+    fn0 = u0:26 sig0
+    fn1 = colocated u0:19 sig1
 
 block0(v0: i64, v1: i64):
-    v58 = iconst.i64 0
-    v57 -> v58
-    v54 = iconst.i64 0
-    v2 -> v54
-    jump block1(v1, v57)
+    v57 = iconst.i64 0
+    v56 -> v57
+    v53 = iconst.i64 0
+    v2 -> v53
+    jump block1(v1, v56)
 
-block1(v4: i64, v56: i64):
+block1(v4: i64, v55: i64):
     v7 -> v4
-    v9 -> v56
+    v9 -> v55
     v3 = iconst.i64 0
     v5 = icmp eq v4, v3
     brnz v5, block2
@@ -7219,18 +7092,18 @@ block2:
 block3:
     v6 = iconst.i64 10
     v8 = srem.i64 v7, v6
-    v63 -> v8
+    v62 -> v8
+    v65 -> v8
     v66 -> v8
-    v67 -> v8
-    v61 -> v63
-    v59 -> v61
+    v60 -> v62
+    v58 -> v60
     v10 = iconst.i64 10
     v11 = sdiv.i64 v7, v10
-    v62 -> v11
+    v61 -> v11
+    v63 -> v11
     v64 -> v11
-    v65 -> v11
-    v60 -> v62
-    v55 -> v60
+    v59 -> v61
+    v54 -> v59
     v12 = ireduce.i32 v8
     v13 = iconst.i32 48
     v14 = iadd v12, v13
@@ -7238,79 +7111,77 @@ block3:
     jump block5(v0, v15)
 
 block5(v16: i64, v17: i8):
-    v18 = global_value.i64 gv0
-    call fn0(v18)
-    v19 = iconst.i64 1
-    v20 = load.i64 v16+8
-    v21 = iadd v20, v19
-    v22 = load.i64 v16+16
-    v23 = icmp sgt v21, v22
-    brnz v23, block6
+    v18 = iconst.i64 1
+    v19 = load.i64 v16+8
+    v20 = iadd v19, v18
+    v21 = load.i64 v16+16
+    v22 = icmp sgt v20, v21
+    brnz v22, block6
     jump block7
 
 block6:
-    v24 = iconst.i64 2
-    v25 = load.i64 v16+16
-    v26 = imul v25, v24
-    store v26, v16+16
-    v27 = iconst.i64 1
-    v28 = load.i64 v16+16
-    v29 = imul v28, v27
-    v30 = load.i64 v16
-    v31 = call fn1(v30, v29)
-    store v31, v16
+    v23 = iconst.i64 2
+    v24 = load.i64 v16+16
+    v25 = imul v24, v23
+    store v25, v16+16
+    v26 = iconst.i64 1
+    v27 = load.i64 v16+16
+    v28 = imul v27, v26
+    v29 = load.i64 v16
+    v30 = call fn0(v29, v28)
+    store v30, v16
     jump block7
 
 block7:
-    v32 = load.i64 v16+8
-    jump block9(v16, v32)
+    v31 = load.i64 v16+8
+    jump block9(v16, v31)
 
-block9(v33: i64, v34: i64):
-    jump block11(v33, v34)
+block9(v32: i64, v33: i64):
+    jump block11(v32, v33)
 
-block11(v36: i64, v37: i64):
-    jump block15(v36, v37)
+block11(v35: i64, v36: i64):
+    jump block15(v35, v36)
 
-block15(v38: i64, v39: i64):
-    v41 = iconst.i64 0
-    v42 = icmp sge v39, v41
-    v43 = load.i64 v38+8
-    v44 = icmp slt v39, v43
-    v45 = band v42, v44
-    jump block16(v45)
+block15(v37: i64, v38: i64):
+    v40 = iconst.i64 0
+    v41 = icmp sge v38, v40
+    v42 = load.i64 v37+8
+    v43 = icmp slt v38, v42
+    v44 = band v41, v43
+    jump block16(v44)
 
-block16(v40: b1):
-    brnz v40, block12
+block16(v39: b1):
+    brnz v39, block12
     jump block13
 
 block12:
-    v46 = global_value.i64 gv1
-    call fn2(v46)
+    v45 = global_value.i64 gv0
+    call fn1(v45)
     jump block13
 
 block13:
     jump block14
 
 block14:
-    jump block17(v33, v34)
+    jump block17(v32, v33)
 
-block17(v47: i64, v48: i64):
-    v50 = iconst.i64 1
-    v51 = imul v48, v50
-    v52 = load.i64 v47
-    v53 = iadd v52, v51
-    jump block18(v53)
+block17(v46: i64, v47: i64):
+    v49 = iconst.i64 1
+    v50 = imul v47, v49
+    v51 = load.i64 v46
+    v52 = iadd v51, v50
+    jump block18(v52)
 
-block18(v49: i64):
-    jump block10(v49)
+block18(v48: i64):
+    jump block10(v48)
 
-block10(v35: i64):
-    store.i8 v17, v35
-    store.i64 v21, v16+8
+block10(v34: i64):
+    store.i8 v17, v34
+    store.i64 v20, v16+8
     jump block8
 
 block8:
-    jump block1(v55, v59)
+    jump block1(v54, v58)
 
 block4:
     return
@@ -7325,9 +7196,9 @@ fun pop_frame
     Return(None) |stacktrace.pop()
 
 
-Token { kind: Fun, spam: Spam { source: Source(1), hash: ID(438937012895), range: 3455..3485 }, line_data: LineData { line: 171, column: 3, source: Source(1) } }
-Token { kind: Fun, spam: Spam { source: Source(1), hash: ID(438937012895), range: 4027..4072 }, line_data: LineData { line: 192, column: 3, source: Source(1) } }
-Token { kind: Fun, spam: Spam { source: Source(1), hash: ID(438937012895), range: 4453..4479 }, line_data: LineData { line: 212, column: 3, source: Source(1) } }
+Token { kind: Fun, spam: Spam { source: Source(1), hash: ID(438937012895), range: 3433..3463 }, line_data: LineData { line: 170, column: 3, source: Source(1) } }
+Token { kind: Fun, spam: Spam { source: Source(1), hash: ID(438937012895), range: 4005..4050 }, line_data: LineData { line: 191, column: 3, source: Source(1) } }
+Token { kind: Fun, spam: Spam { source: Source(1), hash: ID(438937012895), range: 4431..4457 }, line_data: LineData { line: 211, column: 3, source: Source(1) } }
 function u0:0() fast {
     ss0 = explicit_slot 32
     ss1 = explicit_slot 24
@@ -7441,21 +7312,18 @@ fun push_frame(line, column: int, file: &u8)
 
 
 Token { kind: Fun, spam: Spam { source: Source(1), hash: ID(438937012895), range: 3208..3236 }, line_data: LineData { line: 161, column: 3, source: Source(1) } }
-Token { kind: Fun, spam: Spam { source: Source(1), hash: ID(438937012895), range: 3735..3776 }, line_data: LineData { line: 183, column: 3, source: Source(1) } }
-Token { kind: Fun, spam: Spam { source: Source(1), hash: ID(438937012895), range: 4133..4175 }, line_data: LineData { line: 195, column: 4, source: Source(1) } }
-Token { kind: Fun, spam: Spam { source: Source(1), hash: ID(438937012895), range: 4248..4291 }, line_data: LineData { line: 199, column: 3, source: Source(1) } }
-Token { kind: Fun, spam: Spam { source: Source(1), hash: ID(438937012895), range: 4027..4072 }, line_data: LineData { line: 192, column: 3, source: Source(1) } }
+Token { kind: Fun, spam: Spam { source: Source(1), hash: ID(438937012895), range: 3713..3754 }, line_data: LineData { line: 182, column: 3, source: Source(1) } }
+Token { kind: Fun, spam: Spam { source: Source(1), hash: ID(438937012895), range: 4111..4153 }, line_data: LineData { line: 194, column: 4, source: Source(1) } }
+Token { kind: Fun, spam: Spam { source: Source(1), hash: ID(438937012895), range: 4226..4269 }, line_data: LineData { line: 198, column: 3, source: Source(1) } }
+Token { kind: Fun, spam: Spam { source: Source(1), hash: ID(438937012895), range: 4005..4050 }, line_data: LineData { line: 191, column: 3, source: Source(1) } }
 function u0:0(i64, i64, i64) fast {
     ss0 = explicit_slot 24
     gv0 = symbol colocated u1:0
     gv1 = symbol colocated u1:1
-    gv2 = symbol colocated u1:2
-    sig0 = (i64) fast
-    sig1 = (i64, i64) -> i64 windows_fastcall
-    sig2 = (i64) fast
-    fn0 = colocated u0:19 sig0
-    fn1 = u0:26 sig1
-    fn2 = colocated u0:19 sig2
+    sig0 = (i64, i64) -> i64 windows_fastcall
+    sig1 = (i64) fast
+    fn0 = u0:26 sig0
+    fn1 = colocated u0:19 sig1
 
 block0(v0: i64, v1: i64, v2: i64):
     v3 = iconst.i64 0
@@ -7470,80 +7338,78 @@ block0(v0: i64, v1: i64, v2: i64):
     jump block1(v4, v5)
 
 block1(v6: i64, v7: i64):
-    v8 = global_value.i64 gv1
-    call fn0(v8)
-    v9 = iconst.i64 1
-    v10 = load.i64 v6+8
-    v11 = iadd v10, v9
-    v12 = load.i64 v6+16
-    v13 = icmp sgt v11, v12
-    brnz v13, block2
+    v8 = iconst.i64 1
+    v9 = load.i64 v6+8
+    v10 = iadd v9, v8
+    v11 = load.i64 v6+16
+    v12 = icmp sgt v10, v11
+    brnz v12, block2
     jump block3
 
 block2:
-    v14 = iconst.i64 2
-    v15 = load.i64 v6+16
-    v16 = imul v15, v14
-    store v16, v6+16
-    v17 = iconst.i64 24
-    v18 = load.i64 v6+16
-    v19 = imul v18, v17
-    v20 = load.i64 v6
-    v21 = call fn1(v20, v19)
-    store v21, v6
+    v13 = iconst.i64 2
+    v14 = load.i64 v6+16
+    v15 = imul v14, v13
+    store v15, v6+16
+    v16 = iconst.i64 24
+    v17 = load.i64 v6+16
+    v18 = imul v17, v16
+    v19 = load.i64 v6
+    v20 = call fn0(v19, v18)
+    store v20, v6
     jump block3
 
 block3:
-    v22 = load.i64 v6+8
-    jump block5(v6, v22)
+    v21 = load.i64 v6+8
+    jump block5(v6, v21)
 
-block5(v23: i64, v24: i64):
-    jump block7(v23, v24)
+block5(v22: i64, v23: i64):
+    jump block7(v22, v23)
 
-block7(v26: i64, v27: i64):
-    jump block11(v26, v27)
+block7(v25: i64, v26: i64):
+    jump block11(v25, v26)
 
-block11(v28: i64, v29: i64):
-    v31 = iconst.i64 0
-    v32 = icmp sge v29, v31
-    v33 = load.i64 v28+8
-    v34 = icmp slt v29, v33
-    v35 = band v32, v34
-    jump block12(v35)
+block11(v27: i64, v28: i64):
+    v30 = iconst.i64 0
+    v31 = icmp sge v28, v30
+    v32 = load.i64 v27+8
+    v33 = icmp slt v28, v32
+    v34 = band v31, v33
+    jump block12(v34)
 
-block12(v30: b1):
-    brnz v30, block8
+block12(v29: b1):
+    brnz v29, block8
     jump block9
 
 block8:
-    v36 = global_value.i64 gv2
-    call fn2(v36)
+    v35 = global_value.i64 gv1
+    call fn1(v35)
     jump block9
 
 block9:
     jump block10
 
 block10:
-    jump block13(v23, v24)
+    jump block13(v22, v23)
 
-block13(v37: i64, v38: i64):
-    v40 = iconst.i64 24
-    v41 = imul v38, v40
-    v42 = load.i64 v37
-    v43 = iadd v42, v41
-    jump block14(v43)
+block13(v36: i64, v37: i64):
+    v39 = iconst.i64 24
+    v40 = imul v37, v39
+    v41 = load.i64 v36
+    v42 = iadd v41, v40
+    jump block14(v42)
 
-block14(v39: i64):
-    jump block6(v39)
+block14(v38: i64):
+    jump block6(v38)
 
-block6(v25: i64):
-    v44 = load.i64 v7
-    store v44, v25
-    v45 = load.i64 v7+8
-    store v45, v25+8
-    v46 = load.i64 v7+16
-    store v46, v25+16
-    store.i64 v11, v6+8
+block6(v24: i64):
+    v43 = load.i64 v7
+    store v43, v24
+    v44 = load.i64 v7+8
+    store v44, v24+8
+    v45 = load.i64 v7+16
+    store v45, v24+16
+    store.i64 v10, v6+8
     jump block4
 
 block4:
@@ -7652,48 +7518,44 @@ fun panic(str: &u8)
     Return(None) |exit(1)
 
 
-Token { kind: Fun, spam: Spam { source: Source(1), hash: ID(438937012895), range: 3735..3776 }, line_data: LineData { line: 183, column: 3, source: Source(1) } }
-Token { kind: Fun, spam: Spam { source: Source(1), hash: ID(438937012895), range: 4133..4175 }, line_data: LineData { line: 195, column: 4, source: Source(1) } }
-Token { kind: Fun, spam: Spam { source: Source(1), hash: ID(438937012895), range: 4248..4291 }, line_data: LineData { line: 199, column: 3, source: Source(1) } }
-Token { kind: Fun, spam: Spam { source: Source(1), hash: ID(438937012895), range: 4027..4072 }, line_data: LineData { line: 192, column: 3, source: Source(1) } }
+Token { kind: Fun, spam: Spam { source: Source(1), hash: ID(438937012895), range: 3713..3754 }, line_data: LineData { line: 182, column: 3, source: Source(1) } }
+Token { kind: Fun, spam: Spam { source: Source(1), hash: ID(438937012895), range: 4111..4153 }, line_data: LineData { line: 194, column: 4, source: Source(1) } }
+Token { kind: Fun, spam: Spam { source: Source(1), hash: ID(438937012895), range: 4226..4269 }, line_data: LineData { line: 198, column: 3, source: Source(1) } }
+Token { kind: Fun, spam: Spam { source: Source(1), hash: ID(438937012895), range: 4005..4050 }, line_data: LineData { line: 191, column: 3, source: Source(1) } }
 Token { kind: Fun, spam: Spam { source: Source(1), hash: ID(438937012895), range: 3208..3236 }, line_data: LineData { line: 161, column: 3, source: Source(1) } }
-Token { kind: Fun, spam: Spam { source: Source(1), hash: ID(438937012895), range: 3735..3776 }, line_data: LineData { line: 183, column: 3, source: Source(1) } }
-Token { kind: Fun, spam: Spam { source: Source(1), hash: ID(438937012895), range: 4133..4175 }, line_data: LineData { line: 195, column: 4, source: Source(1) } }
-Token { kind: Fun, spam: Spam { source: Source(1), hash: ID(438937012895), range: 4248..4291 }, line_data: LineData { line: 199, column: 3, source: Source(1) } }
-Token { kind: Fun, spam: Spam { source: Source(1), hash: ID(438937012895), range: 4027..4072 }, line_data: LineData { line: 192, column: 3, source: Source(1) } }
+Token { kind: Fun, spam: Spam { source: Source(1), hash: ID(438937012895), range: 3713..3754 }, line_data: LineData { line: 182, column: 3, source: Source(1) } }
+Token { kind: Fun, spam: Spam { source: Source(1), hash: ID(438937012895), range: 4111..4153 }, line_data: LineData { line: 194, column: 4, source: Source(1) } }
+Token { kind: Fun, spam: Spam { source: Source(1), hash: ID(438937012895), range: 4226..4269 }, line_data: LineData { line: 198, column: 3, source: Source(1) } }
+Token { kind: Fun, spam: Spam { source: Source(1), hash: ID(438937012895), range: 4005..4050 }, line_data: LineData { line: 191, column: 3, source: Source(1) } }
 Token { kind: Fun, spam: Spam { source: Source(1), hash: ID(438937012895), range: 3208..3236 }, line_data: LineData { line: 161, column: 3, source: Source(1) } }
-Token { kind: Fun, spam: Spam { source: Source(1), hash: ID(438937012895), range: 3735..3776 }, line_data: LineData { line: 183, column: 3, source: Source(1) } }
-Token { kind: Fun, spam: Spam { source: Source(1), hash: ID(438937012895), range: 4133..4175 }, line_data: LineData { line: 195, column: 4, source: Source(1) } }
-Token { kind: Fun, spam: Spam { source: Source(1), hash: ID(438937012895), range: 4248..4291 }, line_data: LineData { line: 199, column: 3, source: Source(1) } }
-Token { kind: Fun, spam: Spam { source: Source(1), hash: ID(438937012895), range: 4027..4072 }, line_data: LineData { line: 192, column: 3, source: Source(1) } }
+Token { kind: Fun, spam: Spam { source: Source(1), hash: ID(438937012895), range: 3713..3754 }, line_data: LineData { line: 182, column: 3, source: Source(1) } }
+Token { kind: Fun, spam: Spam { source: Source(1), hash: ID(438937012895), range: 4111..4153 }, line_data: LineData { line: 194, column: 4, source: Source(1) } }
+Token { kind: Fun, spam: Spam { source: Source(1), hash: ID(438937012895), range: 4226..4269 }, line_data: LineData { line: 198, column: 3, source: Source(1) } }
+Token { kind: Fun, spam: Spam { source: Source(1), hash: ID(438937012895), range: 4005..4050 }, line_data: LineData { line: 191, column: 3, source: Source(1) } }
 Token { kind: Fun, spam: Spam { source: Source(1), hash: ID(438937012895), range: 3208..3236 }, line_data: LineData { line: 161, column: 3, source: Source(1) } }
-Token { kind: Fun, spam: Spam { source: Source(1), hash: ID(438937012895), range: 3735..3776 }, line_data: LineData { line: 183, column: 3, source: Source(1) } }
-Token { kind: Fun, spam: Spam { source: Source(1), hash: ID(438937012895), range: 4133..4175 }, line_data: LineData { line: 195, column: 4, source: Source(1) } }
-Token { kind: Fun, spam: Spam { source: Source(1), hash: ID(438937012895), range: 4248..4291 }, line_data: LineData { line: 199, column: 3, source: Source(1) } }
-Token { kind: Fun, spam: Spam { source: Source(1), hash: ID(438937012895), range: 4027..4072 }, line_data: LineData { line: 192, column: 3, source: Source(1) } }
+Token { kind: Fun, spam: Spam { source: Source(1), hash: ID(438937012895), range: 3713..3754 }, line_data: LineData { line: 182, column: 3, source: Source(1) } }
+Token { kind: Fun, spam: Spam { source: Source(1), hash: ID(438937012895), range: 4111..4153 }, line_data: LineData { line: 194, column: 4, source: Source(1) } }
+Token { kind: Fun, spam: Spam { source: Source(1), hash: ID(438937012895), range: 4226..4269 }, line_data: LineData { line: 198, column: 3, source: Source(1) } }
+Token { kind: Fun, spam: Spam { source: Source(1), hash: ID(438937012895), range: 4005..4050 }, line_data: LineData { line: 191, column: 3, source: Source(1) } }
 Token { kind: Fun, spam: Spam { source: Source(1), hash: ID(438937012895), range: 3208..3236 }, line_data: LineData { line: 161, column: 3, source: Source(1) } }
-Token { kind: Fun, spam: Spam { source: Source(1), hash: ID(438937012895), range: 3735..3776 }, line_data: LineData { line: 183, column: 3, source: Source(1) } }
-Token { kind: Fun, spam: Spam { source: Source(1), hash: ID(438937012895), range: 4133..4175 }, line_data: LineData { line: 195, column: 4, source: Source(1) } }
-Token { kind: Fun, spam: Spam { source: Source(1), hash: ID(438937012895), range: 4248..4291 }, line_data: LineData { line: 199, column: 3, source: Source(1) } }
-Token { kind: Fun, spam: Spam { source: Source(1), hash: ID(438937012895), range: 4027..4072 }, line_data: LineData { line: 192, column: 3, source: Source(1) } }
+Token { kind: Fun, spam: Spam { source: Source(1), hash: ID(438937012895), range: 3713..3754 }, line_data: LineData { line: 182, column: 3, source: Source(1) } }
+Token { kind: Fun, spam: Spam { source: Source(1), hash: ID(438937012895), range: 4111..4153 }, line_data: LineData { line: 194, column: 4, source: Source(1) } }
+Token { kind: Fun, spam: Spam { source: Source(1), hash: ID(438937012895), range: 4226..4269 }, line_data: LineData { line: 198, column: 3, source: Source(1) } }
+Token { kind: Fun, spam: Spam { source: Source(1), hash: ID(438937012895), range: 4005..4050 }, line_data: LineData { line: 191, column: 3, source: Source(1) } }
 function u0:0(i64) fast {
     ss0 = explicit_slot 24
     ss1 = explicit_slot 24
-    gv0 = symbol colocated u1:3
-    gv1 = symbol colocated u1:4
+    gv0 = symbol colocated u1:2
+    gv1 = symbol colocated u1:3
     gv2 = symbol colocated u1:0
-    gv3 = symbol colocated u1:5
+    gv3 = symbol colocated u1:4
     gv4 = symbol colocated u1:0
     gv5 = symbol colocated u1:0
-    gv6 = symbol colocated u1:2
+    gv6 = symbol colocated u1:1
     gv7 = symbol colocated u1:1
-    gv8 = symbol colocated u1:2
+    gv8 = symbol colocated u1:1
     gv9 = symbol colocated u1:1
-    gv10 = symbol colocated u1:2
-    gv11 = symbol colocated u1:1
-    gv12 = symbol colocated u1:2
-    gv13 = symbol colocated u1:1
-    gv14 = symbol colocated u1:2
+    gv10 = symbol colocated u1:1
     sig0 = (i64) windows_fastcall
     sig1 = (i64) windows_fastcall
     sig2 = (i64) windows_fastcall
@@ -7701,22 +7563,18 @@ function u0:0(i64) fast {
     sig4 = (i64) windows_fastcall
     sig5 = (i64) fast
     sig6 = (i64, i64) fast
-    sig7 = (i64) fast
-    sig8 = (i64, i64) -> i64 windows_fastcall
-    sig9 = (i64) fast
-    sig10 = (i64, i64) fast
+    sig7 = (i64, i64) -> i64 windows_fastcall
+    sig8 = (i64) fast
+    sig9 = (i64, i64) fast
+    sig10 = (i64, i64) -> i64 windows_fastcall
     sig11 = (i64) fast
-    sig12 = (i64, i64) -> i64 windows_fastcall
-    sig13 = (i64) fast
-    sig14 = (i64, i64) fast
-    sig15 = (i64) fast
-    sig16 = (i64, i64) -> i64 windows_fastcall
-    sig17 = (i64) fast
-    sig18 = (i64) fast
-    sig19 = (i64, i64) -> i64 windows_fastcall
-    sig20 = (i64) fast
-    sig21 = (i64) windows_fastcall
-    sig22 = (i64) windows_fastcall
+    sig12 = (i64, i64) fast
+    sig13 = (i64, i64) -> i64 windows_fastcall
+    sig14 = (i64) fast
+    sig15 = (i64, i64) -> i64 windows_fastcall
+    sig16 = (i64) fast
+    sig17 = (i64) windows_fastcall
+    sig18 = (i64) windows_fastcall
     fn0 = u0:21 sig0
     fn1 = u0:21 sig1
     fn2 = u0:21 sig2
@@ -7724,27 +7582,23 @@ function u0:0(i64) fast {
     fn4 = u0:20 sig4
     fn5 = colocated u0:19 sig5
     fn6 = colocated u0:4 sig6
-    fn7 = colocated u0:19 sig7
-    fn8 = u0:26 sig8
-    fn9 = colocated u0:19 sig9
-    fn10 = colocated u0:4 sig10
+    fn7 = u0:26 sig7
+    fn8 = colocated u0:19 sig8
+    fn9 = colocated u0:4 sig9
+    fn10 = u0:26 sig10
     fn11 = colocated u0:19 sig11
-    fn12 = u0:26 sig12
-    fn13 = colocated u0:19 sig13
-    fn14 = colocated u0:0 sig14
-    fn15 = colocated u0:19 sig15
-    fn16 = u0:26 sig16
-    fn17 = colocated u0:19 sig17
-    fn18 = colocated u0:19 sig18
-    fn19 = u0:26 sig19
-    fn20 = colocated u0:19 sig20
-    fn21 = u0:21 sig21
-    fn22 = u0:20 sig22
+    fn12 = colocated u0:0 sig12
+    fn13 = u0:26 sig13
+    fn14 = colocated u0:19 sig14
+    fn15 = u0:26 sig15
+    fn16 = colocated u0:19 sig16
+    fn17 = u0:21 sig17
+    fn18 = u0:20 sig18
 
 block0(v0: i64):
-    v216 = iconst.i64 0
-    v11 -> v216
-    v215 -> v216
+    v212 = iconst.i64 0
+    v11 -> v212
+    v211 -> v212
     v1 = global_value.i64 gv0
     call fn0(v1)
     call fn1(v0)
@@ -7774,16 +7628,16 @@ block2:
 
 block3(v13: i64):
     v17 -> v13
+    v215 -> v13
+    v216 -> v13
+    v217 -> v13
+    v218 -> v13
     v219 -> v13
     v220 -> v13
     v221 -> v13
     v222 -> v13
-    v223 -> v13
-    v224 -> v13
-    v225 -> v13
-    v226 -> v13
-    v218 -> v219
-    v217 -> v218
+    v214 -> v215
+    v213 -> v214
     v12 = global_value.i64 gv4
     v14 = load.i64 v12+8
     v15 = icmp sge v13, v14
@@ -7853,325 +7707,317 @@ block8(v20: i64):
     jump block17(v47, v46)
 
 block17(v48: i64, v49: i8):
-    v50 = global_value.i64 gv7
-    call fn7(v50)
-    v51 = iconst.i64 1
-    v52 = load.i64 v48+8
-    v53 = iadd v52, v51
-    v54 = load.i64 v48+16
-    v55 = icmp sgt v53, v54
-    brnz v55, block18
+    v50 = iconst.i64 1
+    v51 = load.i64 v48+8
+    v52 = iadd v51, v50
+    v53 = load.i64 v48+16
+    v54 = icmp sgt v52, v53
+    brnz v54, block18
     jump block19
 
 block18:
-    v56 = iconst.i64 2
-    v57 = load.i64 v48+16
-    v58 = imul v57, v56
-    store v58, v48+16
-    v59 = iconst.i64 1
-    v60 = load.i64 v48+16
-    v61 = imul v60, v59
-    v62 = load.i64 v48
-    v63 = call fn8(v62, v61)
-    store v63, v48
+    v55 = iconst.i64 2
+    v56 = load.i64 v48+16
+    v57 = imul v56, v55
+    store v57, v48+16
+    v58 = iconst.i64 1
+    v59 = load.i64 v48+16
+    v60 = imul v59, v58
+    v61 = load.i64 v48
+    v62 = call fn7(v61, v60)
+    store v62, v48
     jump block19
 
 block19:
-    v64 = load.i64 v48+8
-    jump block21(v48, v64)
+    v63 = load.i64 v48+8
+    jump block21(v48, v63)
 
-block21(v65: i64, v66: i64):
-    jump block23(v65, v66)
+block21(v64: i64, v65: i64):
+    jump block23(v64, v65)
 
-block23(v68: i64, v69: i64):
-    jump block27(v68, v69)
+block23(v67: i64, v68: i64):
+    jump block27(v67, v68)
 
-block27(v70: i64, v71: i64):
-    v73 = iconst.i64 0
-    v74 = icmp sge v71, v73
-    v75 = load.i64 v70+8
-    v76 = icmp slt v71, v75
-    v77 = band v74, v76
-    jump block28(v77)
+block27(v69: i64, v70: i64):
+    v72 = iconst.i64 0
+    v73 = icmp sge v70, v72
+    v74 = load.i64 v69+8
+    v75 = icmp slt v70, v74
+    v76 = band v73, v75
+    jump block28(v76)
 
-block28(v72: b1):
-    brnz v72, block24
+block28(v71: b1):
+    brnz v71, block24
     jump block25
 
 block24:
-    v78 = global_value.i64 gv8
-    call fn9(v78)
+    v77 = global_value.i64 gv7
+    call fn8(v77)
     jump block25
 
 block25:
     jump block26
 
 block26:
-    jump block29(v65, v66)
+    jump block29(v64, v65)
 
-block29(v79: i64, v80: i64):
-    v82 = iconst.i64 1
-    v83 = imul v80, v82
-    v84 = load.i64 v79
-    v85 = iadd v84, v83
-    jump block30(v85)
+block29(v78: i64, v79: i64):
+    v81 = iconst.i64 1
+    v82 = imul v79, v81
+    v83 = load.i64 v78
+    v84 = iadd v83, v82
+    jump block30(v84)
 
-block30(v81: i64):
-    jump block22(v81)
+block30(v80: i64):
+    jump block22(v80)
 
-block22(v67: i64):
-    store.i8 v49, v67
-    store.i64 v53, v48+8
+block22(v66: i64):
+    store.i8 v49, v66
+    store.i64 v52, v48+8
     jump block20
 
 block20:
-    v86 = stack_addr.i64 ss0
-    v87 = stack_load.i64 ss1+8
-    call fn10(v86, v87)
-    v88 = iconst.i32 32
-    v89 = ireduce.i8 v88
-    v90 = stack_addr.i64 ss0
-    jump block31(v90, v89)
+    v85 = stack_addr.i64 ss0
+    v86 = stack_load.i64 ss1+8
+    call fn9(v85, v86)
+    v87 = iconst.i32 32
+    v88 = ireduce.i8 v87
+    v89 = stack_addr.i64 ss0
+    jump block31(v89, v88)
 
-block31(v91: i64, v92: i8):
-    v93 = global_value.i64 gv9
-    call fn11(v93)
-    v94 = iconst.i64 1
-    v95 = load.i64 v91+8
-    v96 = iadd v95, v94
-    v97 = load.i64 v91+16
-    v98 = icmp sgt v96, v97
-    brnz v98, block32
+block31(v90: i64, v91: i8):
+    v92 = iconst.i64 1
+    v93 = load.i64 v90+8
+    v94 = iadd v93, v92
+    v95 = load.i64 v90+16
+    v96 = icmp sgt v94, v95
+    brnz v96, block32
     jump block33
 
 block32:
-    v99 = iconst.i64 2
-    v100 = load.i64 v91+16
-    v101 = imul v100, v99
-    store v101, v91+16
-    v102 = iconst.i64 1
-    v103 = load.i64 v91+16
-    v104 = imul v103, v102
-    v105 = load.i64 v91
-    v106 = call fn12(v105, v104)
-    store v106, v91
+    v97 = iconst.i64 2
+    v98 = load.i64 v90+16
+    v99 = imul v98, v97
+    store v99, v90+16
+    v100 = iconst.i64 1
+    v101 = load.i64 v90+16
+    v102 = imul v101, v100
+    v103 = load.i64 v90
+    v104 = call fn10(v103, v102)
+    store v104, v90
     jump block33
 
 block33:
-    v107 = load.i64 v91+8
-    jump block35(v91, v107)
+    v105 = load.i64 v90+8
+    jump block35(v90, v105)
 
-block35(v108: i64, v109: i64):
-    jump block37(v108, v109)
+block35(v106: i64, v107: i64):
+    jump block37(v106, v107)
 
-block37(v111: i64, v112: i64):
-    jump block41(v111, v112)
+block37(v109: i64, v110: i64):
+    jump block41(v109, v110)
 
-block41(v113: i64, v114: i64):
-    v116 = iconst.i64 0
-    v117 = icmp sge v114, v116
-    v118 = load.i64 v113+8
-    v119 = icmp slt v114, v118
-    v120 = band v117, v119
-    jump block42(v120)
+block41(v111: i64, v112: i64):
+    v114 = iconst.i64 0
+    v115 = icmp sge v112, v114
+    v116 = load.i64 v111+8
+    v117 = icmp slt v112, v116
+    v118 = band v115, v117
+    jump block42(v118)
 
-block42(v115: b1):
-    brnz v115, block38
+block42(v113: b1):
+    brnz v113, block38
     jump block39
 
 block38:
-    v121 = global_value.i64 gv10
-    call fn13(v121)
+    v119 = global_value.i64 gv8
+    call fn11(v119)
     jump block39
 
 block39:
     jump block40
 
 block40:
-    jump block43(v108, v109)
+    jump block43(v106, v107)
 
-block43(v122: i64, v123: i64):
-    v125 = iconst.i64 1
-    v126 = imul v123, v125
-    v127 = load.i64 v122
-    v128 = iadd v127, v126
-    jump block44(v128)
+block43(v120: i64, v121: i64):
+    v123 = iconst.i64 1
+    v124 = imul v121, v123
+    v125 = load.i64 v120
+    v126 = iadd v125, v124
+    jump block44(v126)
 
-block44(v124: i64):
-    jump block36(v124)
+block44(v122: i64):
+    jump block36(v122)
 
-block36(v110: i64):
-    store.i8 v92, v110
-    store.i64 v96, v91+8
+block36(v108: i64):
+    store.i8 v91, v108
+    store.i64 v94, v90+8
     jump block34
 
 block34:
-    v129 = stack_addr.i64 ss0
-    v130 = stack_load.i64 ss1+16
-    call fn14(v129, v130)
-    v131 = iconst.i32 10
-    v132 = ireduce.i8 v131
-    v133 = stack_addr.i64 ss0
-    jump block45(v133, v132)
+    v127 = stack_addr.i64 ss0
+    v128 = stack_load.i64 ss1+16
+    call fn12(v127, v128)
+    v129 = iconst.i32 10
+    v130 = ireduce.i8 v129
+    v131 = stack_addr.i64 ss0
+    jump block45(v131, v130)
 
-block45(v134: i64, v135: i8):
-    v136 = global_value.i64 gv11
-    call fn15(v136)
-    v137 = iconst.i64 1
-    v138 = load.i64 v134+8
-    v139 = iadd v138, v137
-    v140 = load.i64 v134+16
-    v141 = icmp sgt v139, v140
-    brnz v141, block46
+block45(v132: i64, v133: i8):
+    v134 = iconst.i64 1
+    v135 = load.i64 v132+8
+    v136 = iadd v135, v134
+    v137 = load.i64 v132+16
+    v138 = icmp sgt v136, v137
+    brnz v138, block46
     jump block47
 
 block46:
-    v142 = iconst.i64 2
-    v143 = load.i64 v134+16
+    v139 = iconst.i64 2
+    v140 = load.i64 v132+16
+    v141 = imul v140, v139
+    store v141, v132+16
+    v142 = iconst.i64 1
+    v143 = load.i64 v132+16
     v144 = imul v143, v142
-    store v144, v134+16
-    v145 = iconst.i64 1
-    v146 = load.i64 v134+16
-    v147 = imul v146, v145
-    v148 = load.i64 v134
-    v149 = call fn16(v148, v147)
-    store v149, v134
+    v145 = load.i64 v132
+    v146 = call fn13(v145, v144)
+    store v146, v132
     jump block47
 
 block47:
-    v150 = load.i64 v134+8
-    jump block49(v134, v150)
+    v147 = load.i64 v132+8
+    jump block49(v132, v147)
 
-block49(v151: i64, v152: i64):
-    jump block51(v151, v152)
+block49(v148: i64, v149: i64):
+    jump block51(v148, v149)
 
-block51(v154: i64, v155: i64):
-    jump block55(v154, v155)
+block51(v151: i64, v152: i64):
+    jump block55(v151, v152)
 
-block55(v156: i64, v157: i64):
-    v159 = iconst.i64 0
-    v160 = icmp sge v157, v159
-    v161 = load.i64 v156+8
-    v162 = icmp slt v157, v161
-    v163 = band v160, v162
-    jump block56(v163)
+block55(v153: i64, v154: i64):
+    v156 = iconst.i64 0
+    v157 = icmp sge v154, v156
+    v158 = load.i64 v153+8
+    v159 = icmp slt v154, v158
+    v160 = band v157, v159
+    jump block56(v160)
 
-block56(v158: b1):
-    brnz v158, block52
+block56(v155: b1):
+    brnz v155, block52
     jump block53
 
 block52:
-    v164 = global_value.i64 gv12
-    call fn17(v164)
+    v161 = global_value.i64 gv9
+    call fn14(v161)
     jump block53
 
 block53:
     jump block54
 
 block54:
-    jump block57(v151, v152)
+    jump block57(v148, v149)
 
-block57(v165: i64, v166: i64):
-    v168 = iconst.i64 1
-    v169 = imul v166, v168
-    v170 = load.i64 v165
-    v171 = iadd v170, v169
-    jump block58(v171)
+block57(v162: i64, v163: i64):
+    v165 = iconst.i64 1
+    v166 = imul v163, v165
+    v167 = load.i64 v162
+    v168 = iadd v167, v166
+    jump block58(v168)
 
-block58(v167: i64):
-    jump block50(v167)
+block58(v164: i64):
+    jump block50(v164)
 
-block50(v153: i64):
-    store.i8 v135, v153
-    store.i64 v139, v134+8
+block50(v150: i64):
+    store.i8 v133, v150
+    store.i64 v136, v132+8
     jump block48
 
 block48:
-    jump block3(v217)
+    jump block3(v213)
 
 block6:
-    v172 = iconst.i32 0
-    v173 = ireduce.i8 v172
-    v174 = stack_addr.i64 ss0
-    jump block59(v174, v173)
+    v169 = iconst.i32 0
+    v170 = ireduce.i8 v169
+    v171 = stack_addr.i64 ss0
+    jump block59(v171, v170)
 
-block59(v175: i64, v176: i8):
-    v177 = global_value.i64 gv13
-    call fn18(v177)
-    v178 = iconst.i64 1
-    v179 = load.i64 v175+8
-    v180 = iadd v179, v178
-    v181 = load.i64 v175+16
-    v182 = icmp sgt v180, v181
-    brnz v182, block60
+block59(v172: i64, v173: i8):
+    v174 = iconst.i64 1
+    v175 = load.i64 v172+8
+    v176 = iadd v175, v174
+    v177 = load.i64 v172+16
+    v178 = icmp sgt v176, v177
+    brnz v178, block60
     jump block61
 
 block60:
-    v183 = iconst.i64 2
-    v184 = load.i64 v175+16
-    v185 = imul v184, v183
-    store v185, v175+16
-    v186 = iconst.i64 1
-    v187 = load.i64 v175+16
-    v188 = imul v187, v186
-    v189 = load.i64 v175
-    v190 = call fn19(v189, v188)
-    store v190, v175
+    v179 = iconst.i64 2
+    v180 = load.i64 v172+16
+    v181 = imul v180, v179
+    store v181, v172+16
+    v182 = iconst.i64 1
+    v183 = load.i64 v172+16
+    v184 = imul v183, v182
+    v185 = load.i64 v172
+    v186 = call fn15(v185, v184)
+    store v186, v172
     jump block61
 
 block61:
-    v191 = load.i64 v175+8
-    jump block63(v175, v191)
+    v187 = load.i64 v172+8
+    jump block63(v172, v187)
 
-block63(v192: i64, v193: i64):
-    jump block65(v192, v193)
+block63(v188: i64, v189: i64):
+    jump block65(v188, v189)
 
-block65(v195: i64, v196: i64):
-    jump block69(v195, v196)
+block65(v191: i64, v192: i64):
+    jump block69(v191, v192)
 
-block69(v197: i64, v198: i64):
-    v200 = iconst.i64 0
-    v201 = icmp sge v198, v200
-    v202 = load.i64 v197+8
-    v203 = icmp slt v198, v202
-    v204 = band v201, v203
-    jump block70(v204)
+block69(v193: i64, v194: i64):
+    v196 = iconst.i64 0
+    v197 = icmp sge v194, v196
+    v198 = load.i64 v193+8
+    v199 = icmp slt v194, v198
+    v200 = band v197, v199
+    jump block70(v200)
 
-block70(v199: b1):
-    brnz v199, block66
+block70(v195: b1):
+    brnz v195, block66
     jump block67
 
 block66:
-    v205 = global_value.i64 gv14
-    call fn20(v205)
+    v201 = global_value.i64 gv10
+    call fn16(v201)
     jump block67
 
 block67:
     jump block68
 
 block68:
-    jump block71(v192, v193)
+    jump block71(v188, v189)
 
-block71(v206: i64, v207: i64):
-    v209 = iconst.i64 1
-    v210 = imul v207, v209
-    v211 = load.i64 v206
-    v212 = iadd v211, v210
-    jump block72(v212)
+block71(v202: i64, v203: i64):
+    v205 = iconst.i64 1
+    v206 = imul v203, v205
+    v207 = load.i64 v202
+    v208 = iadd v207, v206
+    jump block72(v208)
 
-block72(v208: i64):
-    jump block64(v208)
+block72(v204: i64):
+    jump block64(v204)
 
-block64(v194: i64):
-    store.i8 v176, v194
-    store.i64 v180, v175+8
+block64(v190: i64):
+    store.i8 v173, v190
+    store.i64 v176, v172+8
     jump block62
 
 block62:
-    v213 = stack_load.i64 ss0
-    call fn21(v213)
-    v214 = iconst.i64 1
-    call fn22(v214)
+    v209 = stack_load.i64 ss0
+    call fn17(v209)
+    v210 = iconst.i64 1
+    call fn18(v210)
     return
 }
 
@@ -8206,13 +8052,13 @@ fun main -> int
     Value(1): int = VarDecl(Value(0)) |v = 10
     Value(3): int = Lit(Int(24, 0)) |fib_loop(v)
     Value(4): int = Lit(Int(10, 0)) |fib_loop(v)
-    Value(5): &u8 = Lit(String(Spam { source: Source(0), hash: ID(3362311186304783455), range: 4574..4602 })) |fib_loop(v)
+    Value(5): &u8 = Lit(String(Spam { source: Source(0), hash: ID(3362311186304783455), range: 3990..4018 })) |fib_loop(v)
     Call(Fun(446), [Value(3), Value(4), Value(5)]) |fib_loop(v)
     Value(2): int = Call(Fun(489), [Value(1)]) |fib_loop(v)
     Call(Fun(447), []) |fib_loop(v)
     Value(7): int = Lit(Int(24, 0)) |fib(v)
     Value(8): int = Lit(Int(24, 0)) |fib(v)
-    Value(9): &u8 = Lit(String(Spam { source: Source(0), hash: ID(3362311186304783455), range: 4602..4630 })) |fib(v)
+    Value(9): &u8 = Lit(String(Spam { source: Source(0), hash: ID(3362311186304783455), range: 4018..4046 })) |fib(v)
     Call(Fun(446), [Value(7), Value(8), Value(9)]) |fib(v)
     Value(6): int = Call(Fun(488), [Value(1)]) |fib(v)
     Call(Fun(447), []) |fib(v)
@@ -8221,8 +8067,8 @@ fun main -> int
 
 
 function u0:0() -> i64 fast {
-    gv0 = symbol colocated u1:6
-    gv1 = symbol colocated u1:6
+    gv0 = symbol colocated u1:5
+    gv1 = symbol colocated u1:5
     sig0 = (i64, i64, i64) fast
     sig1 = (i64) -> i64 fast
     sig2 = () fast
@@ -8356,7 +8202,7 @@ fun fib(v: int) -> int
     Value(6): int = Call(Fun(270), [Value(0), Value(5)]) |v - 1
     Value(8): int = Lit(Int(6, 0)) |fib(v - 1)
     Value(9): int = Lit(Int(5, 0)) |fib(v - 1)
-    Value(10): &u8 = Lit(String(Spam { source: Source(0), hash: ID(3362311186304783455), range: 4630..4658 })) |fib(v - 1)
+    Value(10): &u8 = Lit(String(Spam { source: Source(0), hash: ID(3362311186304783455), range: 4046..4074 })) |fib(v - 1)
     Call(Fun(446), [Value(8), Value(9), Value(10)]) |fib(v - 1)
     Value(7): int = Call(Fun(488), [Value(6)]) |fib(v - 1)
     Call(Fun(447), []) |fib(v - 1)
@@ -8364,7 +8210,7 @@ fun fib(v: int) -> int
     Value(12): int = Call(Fun(270), [Value(0), Value(11)]) |v - 2
     Value(14): int = Lit(Int(6, 0)) |fib(v - 2)
     Value(15): int = Lit(Int(18, 0)) |fib(v - 2)
-    Value(16): &u8 = Lit(String(Spam { source: Source(0), hash: ID(3362311186304783455), range: 4658..4686 })) |fib(v - 2)
+    Value(16): &u8 = Lit(String(Spam { source: Source(0), hash: ID(3362311186304783455), range: 4074..4102 })) |fib(v - 2)
     Call(Fun(446), [Value(14), Value(15), Value(16)]) |fib(v - 2)
     Value(13): int = Call(Fun(488), [Value(12)]) |fib(v - 2)
     Call(Fun(447), []) |fib(v - 2)
@@ -8379,8 +8225,8 @@ fun fib(v: int) -> int
 
 
 function u0:0(i64) -> i64 fast {
-    gv0 = symbol colocated u1:6
-    gv1 = symbol colocated u1:6
+    gv0 = symbol colocated u1:5
+    gv1 = symbol colocated u1:5
     sig0 = (i64, i64, i64) fast
     sig1 = (i64) -> i64 fast
     sig2 = () fast
@@ -8450,4 +8296,3 @@ block0(v0: i64, v1: i64):
     return v4
 }
 
-root.mfroot.mfroot.mfroot.mf
