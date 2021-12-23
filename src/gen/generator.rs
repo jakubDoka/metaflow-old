@@ -15,14 +15,15 @@ use cranelift_module::{DataContext, DataId, FuncOrDataId, Linkage, Module};
 use std::ops::{Deref, DerefMut};
 
 use crate::{
+    collector::Collector,
     functions::{
         self, FContext, FKind, FParser, FState, FinalValue, Fun, GKind, IKind, Inst, InstEnt,
         Program, RFun, Value, ValueEnt,
     },
-    lexer::{Spam, TKind as LTKind, Token},
+    lexer::{Span, TKind as LTKind, Token},
     module_tree::Mod,
     types::{self, ptr_ty, TKind, Type, TypeDisplay, TypeEnt},
-    util::{pool::PoolRef, sdbm::SdbmHash, storage::IndexPointer}, collector::Collector,
+    util::{pool::PoolRef, sdbm::SdbmHash, storage::IndexPointer},
 };
 
 use super::{GEKind, GError};
@@ -39,7 +40,12 @@ pub struct Generator<'a> {
 }
 
 impl<'a> Generator<'a> {
-    pub fn new(program: &'a mut Program, state: &'a mut GState, context: &'a mut GContext, collector: &'a mut Collector) -> Self {
+    pub fn new(
+        program: &'a mut Program,
+        state: &'a mut GState,
+        context: &'a mut GContext,
+        collector: &'a mut Collector,
+    ) -> Self {
         Self {
             program,
             state,
@@ -51,7 +57,7 @@ impl<'a> Generator<'a> {
     pub fn generate(&mut self, module: Mod) -> Result {
         FParser::new(self.program, self.state, self.context, self.collector)
             .parse(module)
-            .map_err(|err| GError::new(GEKind::FunError(err), Token::default()))?;
+            .map_err(|err| GError::new(GEKind::FError(err), Token::default()))?;
 
         self.make_globals()?;
 
@@ -63,7 +69,7 @@ impl<'a> Generator<'a> {
     pub fn finalize(&mut self) -> Result {
         FParser::new(self.program, self.state, self.context, self.collector)
             .finalize()
-            .map_err(|err| GError::new(GEKind::FunError(err), Token::default()))?;
+            .map_err(|err| GError::new(GEKind::FError(err), Token::default()))?;
 
         self.make_bodies()?;
 
@@ -85,6 +91,7 @@ impl<'a> Generator<'a> {
                 std::mem::transmute::<&DataContext, &DataContext>(&self.context.data_context)
             };
             self.program.module.define_data(id, ctx).unwrap();
+            self.context.data_context.clear();
         }
 
         self.state.resolved_globals = resolved;
@@ -194,6 +201,7 @@ impl<'a> Generator<'a> {
                                 args.iter()
                                     .map(|arg| self.unwrap_val(*current_fun, *arg, builder)),
                             );
+                            println!("{:?}", self.state.funs[id].hint);
                             let next_fun = self.state.funs[id].kind.unwrap_represented();
                             let blocks = self.collect_blocks(next_fun, builder);
                             builder.ins().jump(blocks[0].1, &*arg_buffer);
@@ -253,7 +261,11 @@ impl<'a> Generator<'a> {
             let args = std::mem::take(&mut block.args);
             for &arg in args.iter() {
                 let value = builder.append_block_param(cr_block, self.repr_of_val(fun, arg));
-                self.wrap_val(fun, arg, value);
+                if self.value(fun, arg).on_stack {
+                    self.value_mut(fun, arg).value = FinalValue::Pointer(value)
+                } else {
+                    self.wrap_val(fun, arg, value);
+                }
             }
             self.inst_mut(fun, current).kind.block_mut().args = args;
 
@@ -404,8 +416,12 @@ impl<'a> Generator<'a> {
                         LTKind::Bool(val) => builder.ins().bconst(B1, *val),
                         LTKind::Char(val) => builder.ins().iconst(I32, *val as i64),
                         LTKind::String(data) => {
-                            let data = data.clone();
-                            let data = self.make_static_data(&data, false, false);
+                            let data = unsafe {
+                                std::mem::transmute::<&[u8], &[u8]>(
+                                    self.state.display(data).as_bytes(),
+                                )
+                            };
+                            let data = self.make_static_data(data, false, false);
                             let value =
                                 self.program.module.declare_data_in_func(data, builder.func);
                             builder.ins().global_value(repr, value)
@@ -526,7 +542,7 @@ impl<'a> Generator<'a> {
     fn call_builtin(
         &mut self,
         fun: RFun,
-        name: Spam,
+        name: Span,
         return_type: Option<Type>,
         args: &[Value],
         target: Option<Value>,
@@ -766,10 +782,20 @@ impl<'a> Generator<'a> {
                 match source_v.value {
                     FinalValue::Zero => static_stack_memset(slot, target.offset, 0, size, builder),
                     FinalValue::Value(value) => {
+                        let value = if target.ty == self.state.builtin_repo.bool {
+                            builder.ins().bint(I8, value)
+                        } else {
+                            value
+                        };
                         builder.ins().stack_store(value, slot, target.offset as i32);
                     }
                     FinalValue::Var(var) => {
                         let value = builder.use_var(var);
+                        let value = if target.ty == self.state.builtin_repo.bool {
+                            builder.ins().bint(I8, value)
+                        } else {
+                            value
+                        };
                         builder.ins().stack_store(value, slot, target.offset as i32);
                     }
                     FinalValue::StackSlot(other) => static_stack_memmove(
@@ -821,7 +847,7 @@ impl<'a> Generator<'a> {
                 if source_v.value == FinalValue::Zero {
                     static_memset(pointer, target.offset, 0, self.ty(ty).size, builder);
                 } else {
-                    let value = self.unwrap_val(fun, source, builder);
+                    let mut value = self.unwrap_val(fun, source, builder);
                     if source_v.on_stack {
                         static_memmove(
                             pointer,
@@ -832,6 +858,9 @@ impl<'a> Generator<'a> {
                             builder,
                         );
                     } else {
+                        if target.ty == self.state.builtin_repo.bool {
+                            value = builder.ins().bint(I8, value)
+                        }
                         builder
                             .ins()
                             .store(MemFlags::new(), value, pointer, target.offset as i32);
@@ -848,18 +877,24 @@ impl<'a> Generator<'a> {
         &mut self,
         fun: RFun,
         target: Value,
-        source: CrValue,
+        mut source: CrValue,
         builder: &mut FunctionBuilder,
     ) {
         let target = &self.value(fun, target);
 
         match target.value {
             FinalValue::StackSlot(slot) => {
+                if target.ty == self.state.builtin_repo.bool {
+                    source = builder.ins().bint(I8, source)
+                }
                 builder
                     .ins()
                     .stack_store(source, slot, target.offset as i32);
             }
             FinalValue::Pointer(pointer) => {
+                if target.ty == self.state.builtin_repo.bool {
+                    source = builder.ins().bint(I8, source)
+                }
                 builder
                     .ins()
                     .store(MemFlags::new(), source, pointer, target.offset as i32);
@@ -941,9 +976,16 @@ impl<'a> Generator<'a> {
             }
             FinalValue::StackSlot(slot) => {
                 if !assign && (!value.on_stack || !self.on_stack(value.ty)) {
-                    builder
-                        .ins()
-                        .stack_load(self.repr(value.ty), slot, value.offset as i32)
+                    if value.ty == self.state.builtin_repo.bool {
+                        let value = builder
+                            .ins()
+                            .stack_load(I8, slot, value.offset as i32);
+                        builder.ins().icmp_imm(IntCC::NotEqual, value, 0)
+                    } else {
+                        builder
+                            .ins()
+                            .stack_load(self.repr(value.ty), slot, value.offset as i32)
+                    }
                 } else {
                     builder
                         .ins()
@@ -995,7 +1037,9 @@ impl<'a> Generator<'a> {
                 .declare_data(name, Linkage::Export, mutable, tls)
                 .unwrap();
             let context = unsafe {
-                std::mem::transmute::<_, &mut DataContext>(&mut self.context.data_context)
+                std::mem::transmute::<&mut DataContext, &mut DataContext>(
+                    &mut self.context.data_context,
+                )
             };
             context.define(data.deref().to_owned().into_boxed_slice());
             self.program.module.define_data(data_id, context).unwrap();

@@ -1,0 +1,25 @@
+
+fun fib(v: int) -> int:
+  return if v < 2:
+    1
+  else:
+    fib(v - 1) + fib(v - 2)
+
+fun fib_loop(v: int) -> int:
+  var
+    a, b, c = 1
+    v = v
+  loop'a:
+    c = a + b
+    a = b
+    b = c
+    v = v - 1
+    if v == 1:
+      break'a
+  return c
+
+attr entry
+fun main -> int:
+  let v = 10
+  return fib_loop(v) - fib(v)
+        

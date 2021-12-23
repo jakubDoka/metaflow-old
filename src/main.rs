@@ -1,5 +1,7 @@
 #![allow(dead_code)]
 #![feature(vec_into_raw_parts)]
+
+use gen::GErrorDisplay;
 extern crate cranelift_codegen;
 extern crate cranelift_frontend;
 
@@ -24,7 +26,7 @@ fn main() {
 }
 
 fn run() {
-    /*let args = match cli::Arguments::new(std::env::args()) {
+    let args = match cli::Arguments::new(std::env::args()) {
         Ok(args) => args,
         Err(e) => {
             println!("{:?}", e);
@@ -34,8 +36,11 @@ fn run() {
 
     match gen::compile(args) {
         Ok(_) => println!("Successfully compiled"),
-        Err(err) => println!("Failed to compile: {:?}", err),
-    };*/
+        Err((state, err)) => println!(
+            "Failed to compile:\n {}",
+            GErrorDisplay::new(state.as_ref(), &err)
+        ),
+    };
 }
 
 #[repr(C)]

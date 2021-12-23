@@ -1,10 +1,9 @@
 use std::fmt::Write;
 use std::ops::{Deref, DerefMut};
-use std::rc::Rc;
 
 use crate::ast::{AError, AErrorDisplay, AKind, AParser, Ast, Vis};
 use crate::collector::{Attrs, Collector, Item};
-use crate::lexer::{LineData, Spam, TKind as LTKind, Token, TokenDisplay};
+use crate::lexer::{Span, TKind as LTKind, Token, TokenDisplay};
 use crate::module_tree::{self, MTContext, MTParser, MTState, Mod, TreeStorage};
 use crate::util::sdbm::ID;
 use crate::util::storage::{IndexPointer, List, ReusableList, Table};
@@ -208,7 +207,7 @@ impl<'a> TParser<'a> {
             }
             for (a, &param) in header[1..].iter().zip(params[1..].iter()) {
                 let id = TYPE_SALT
-                    .add(ID::new(self.state.display(&a.token.spam)))
+                    .add(ID::new(self.state.display(&a.token.span)))
                     .add(module_id);
 
                 let sha = self.state.types.link(id, param);
@@ -228,7 +227,7 @@ impl<'a> TParser<'a> {
             let hint = field_line.token.clone();
 
             for field in field_line[..field_line.len() - 1].iter() {
-                let id = field.token.spam.hash;
+                let id = field.token.span.hash;
                 let field = SField {
                     embedded,
                     vis,
@@ -325,7 +324,7 @@ impl<'a> TParser<'a> {
             id,
             module,
             visibility: Vis::None,
-            name: ast.token.spam.clone(),
+            name: ast.token.span.clone(),
             attrs: Attrs::default(),
             size,
             align: size,
@@ -450,14 +449,14 @@ impl<'a> TParser<'a> {
             .find_dep(module, &ast[0].token)
             .ok_or_else(|| TError::new(TEKind::UnknownModule, ast.token.clone()))?;
         let module_id = self.state.modules[module].id;
-        let id = TYPE_SALT.add(ast[1].token.spam.hash);
+        let id = TYPE_SALT.add(ast[1].token.span.hash);
         self.type_index(id.add(module_id))
             .map(|id| (module, id))
             .ok_or_else(|| TError::new(TEKind::UnknownType, ast[0].token.clone()))
     }
 
     fn resolve_simple_type(&mut self, module: Mod, name: &Token) -> Result<(Mod, Type)> {
-        let id = TYPE_SALT.add(name.spam.hash);
+        let id = TYPE_SALT.add(name.span.hash);
 
         let mut buffer = self.context.pool.get();
         self.state.collect_scopes(module, &mut buffer);
@@ -504,14 +503,14 @@ impl<'a> TParser<'a> {
                     };
 
                     let hint = ast[0].token.clone();
-                    let id = TYPE_SALT.add(ident.token.spam.hash).add(module_name);
+                    let id = TYPE_SALT.add(ident.token.span.hash).add(module_name);
                     let datatype = TypeEnt {
                         visibility,
                         id,
                         params: vec![],
                         module,
                         kind,
-                        name: ident.token.spam.clone(),
+                        name: ident.token.span.clone(),
                         attrs,
                         hint: hint.clone(),
                         size: 0,
@@ -546,17 +545,19 @@ impl<'a> TParser<'a> {
             return index;
         }
 
+        let size = ptr_ty().bytes() as u32;
+
         let pointer_type = TypeEnt {
             visibility: Vis::Public,
             id,
             params: vec![],
             kind: TKind::Pointer(ty),
-            name: Spam::default(),
+            name: Span::default(),
             hint: Token::default(),
             module,
             attrs: Attrs::default(),
-            size: 8,
-            align: 8,
+            size,
+            align: size,
         };
 
         let (_, ty) = self.state.types.insert(id, pointer_type);
@@ -595,7 +596,12 @@ impl<'a> TParser<'a> {
 
     pub fn constant_of(&mut self, constant: TypeConst) -> Type {
         self.context.constant_buffer.clear();
-        write!(self.context.constant_buffer, "{}", constant).unwrap();
+        write!(
+            self.context.constant_buffer,
+            "{}",
+            TypeConstDisplay::new(self.state, &constant)
+        )
+        .unwrap();
 
         let id = TYPE_SALT.add(ID::new(&self.context.constant_buffer));
 
@@ -673,7 +679,7 @@ pub struct TypeEnt {
     pub visibility: Vis,
     pub params: Vec<Type>,
     pub kind: TKind,
-    pub name: Spam,
+    pub name: Span,
     pub hint: Token,
     pub attrs: Attrs,
     pub size: u32,
@@ -688,7 +694,7 @@ impl Default for TypeEnt {
             visibility: Vis::Public,
             params: vec![],
             kind: TKind::Unresolved(GAst::new(0)),
-            name: Spam::default(),
+            name: Span::default(),
             hint: Token::default(),
             attrs: Attrs::default(),
             size: 0,
@@ -754,19 +760,28 @@ pub enum TypeConst {
     Int(i64),
     Float(f64),
     Char(char),
-    String(Rc<Vec<u8>>),
+    String(Span),
 }
 
-impl std::fmt::Display for TypeConst {
+pub struct TypeConstDisplay<'a> {
+    state: &'a TState,
+    constant: &'a TypeConst,
+}
+
+impl<'a> TypeConstDisplay<'a> {
+    pub fn new(state: &'a TState, constant: &'a TypeConst) -> Self {
+        Self { state, constant }
+    }
+}
+
+impl std::fmt::Display for TypeConstDisplay<'_> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
+        match self.constant {
             TypeConst::Bool(b) => write!(f, "{}", b),
             TypeConst::Int(i) => write!(f, "{}", i),
             TypeConst::Float(float) => write!(f, "{}", float),
             TypeConst::Char(c) => write!(f, "'{}'", c),
-            TypeConst::String(s) => {
-                write!(f, "\"{}\"", unsafe { std::str::from_utf8_unchecked(s) })
-            }
+            TypeConst::String(s) => write!(f, "\"{}\"", self.state.display(s)),
         }
     }
 }
@@ -866,7 +881,7 @@ macro_rules! define_repo {
                 let builtin_id = state.modules[module].id;
 
                 $(
-                    let name = state.builtin_spam(stringify!($name));
+                    let name = state.builtin_span(stringify!($name));
                     let id = TYPE_SALT.add(ID::new(stringify!($name))).add(builtin_id);
                     let type_ent = TypeEnt {
                         id,
@@ -875,7 +890,7 @@ macro_rules! define_repo {
                         size: $size,
                         align: $size.min(8),
                         module,
-                        hint: Token::new(LTKind::Ident, name.clone(), LineData::default()),
+                        hint: Token::new(LTKind::Ident, name.clone()),
                         name,
                         params: vec![],
                         attrs: Attrs::default(),
@@ -945,7 +960,7 @@ impl<'a> std::fmt::Display for TypeDisplay<'a> {
                 write!(f, "{}", self.state.display(&ty.name))
             }
             TKind::Const(value) => {
-                write!(f, "{}", value)
+                write!(f, "{}", TypeConstDisplay::new(self.state, value))
             }
             TKind::Array(id, len) => {
                 write!(f, "[{}, {}]", Self::new(self.state, *id), len)
@@ -1084,7 +1099,7 @@ pub fn test() {
 
         let mut ast = AParser::new(&mut state, &mut ast, &mut context)
             .parse()
-            .map_err(|err| TError::new(TEKind::AError(err), Token::default()))
+            .map_err(|err| panic!("\n{}", AErrorDisplay::new(&state, &err)))
             .unwrap();
 
         collector.clear(&mut context);
@@ -1094,7 +1109,7 @@ pub fn test() {
 
         TParser::new(&mut state, &mut context, &mut collector)
             .parse(module)
-            .map_err(|e| println!("{}", TErrorDisplay::new(&mut state, &e)))
+            .map_err(|e| panic!("\n{}", TErrorDisplay::new(&mut state, &e)))
             .unwrap();
     }
 }

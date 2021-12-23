@@ -6,6 +6,7 @@
         "bfuns",
         "binemit",
         "bint",
+        "bitcast",
         "bnot",
         "brnz",
         "bstate",

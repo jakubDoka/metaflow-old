@@ -5,7 +5,7 @@ use std::str::FromStr;
 use crate::ast::{AKind, AParser, Ast, AstDisplay, Vis};
 use crate::collector::{Attrs, Collector, Item, Scope};
 use crate::lexer::TKind as LTKind;
-use crate::lexer::{Spam, Token, TokenDisplay};
+use crate::lexer::{Span, Token, TokenDisplay};
 use crate::module_tree::*;
 use crate::types::Type;
 use crate::types::*;
@@ -167,6 +167,7 @@ impl<'a> FParser<'a> {
         let ast = std::mem::take(&mut self.state.asts[n_ent_ast]);
 
         if ast[1].is_empty() {
+            self.state.asts[n_ent_ast] = ast;
             return Ok(());
         }
 
@@ -182,7 +183,7 @@ impl<'a> FParser<'a> {
             let id = TYPE_SALT
                 .add(self.state.self_hash)
                 .add(self.state.modules[module].id);
-            
+
             shadowed.push((id, self.state.types.link(id, ty)));
         }
 
@@ -275,7 +276,7 @@ impl<'a> FParser<'a> {
             if let Some(attr) = self.collector.attr(&attrs, self.state.linkage_hash) {
                 assert_attr_len(attr, 1)?;
 
-                let linkage = match self.state.display(&attr[1].token.spam) {
+                let linkage = match self.state.display(&attr[1].token.span) {
                     "import" => Linkage::Import,
                     "local" => Linkage::Local,
                     "export" => Linkage::Export,
@@ -285,7 +286,7 @@ impl<'a> FParser<'a> {
                 };
 
                 if attr.len() > 2 {
-                    (linkage, self.state.display(&attr[2].token.spam))
+                    (linkage, self.state.display(&attr[2].token.span))
                 } else if linkage == Linkage::Import {
                     (linkage, self.state.display(&self.state.funs[fun].name))
                 } else {
@@ -297,7 +298,7 @@ impl<'a> FParser<'a> {
 
         let call_conv = if let Some(attr) = self.collector.attr(&attrs, self.state.call_conv_hash) {
             assert_attr_len(attr, 1)?;
-            let conv = self.state.display(&attr[1].token.spam);
+            let conv = self.state.display(&attr[1].token.span);
             if conv == "platform" {
                 let triple = self.program.module.isa().triple();
                 CallConv::triple_default(triple)
@@ -578,7 +579,7 @@ impl<'a> FParser<'a> {
             if var_line[2].kind == AKind::None {
                 for name in var_line[0].iter() {
                     let ty = ty.unwrap();
-                    let name = name.token.spam.hash;
+                    let name = name.token.span.hash;
 
                     let temp_value = self.state.bstate.body.values.add(ValueEnt::temp(ty));
 
@@ -598,7 +599,7 @@ impl<'a> FParser<'a> {
                 }
             } else {
                 for (name, raw_value) in var_line[0].iter().zip(var_line[2].iter()) {
-                    let name = name.token.spam.hash;
+                    let name = name.token.span.hash;
                     let value = self.expr(fun, raw_value)?;
                     let actual_datatype = self.value(value).ty;
 
@@ -648,9 +649,9 @@ impl<'a> FParser<'a> {
         let target = self.expr(fun, &ast[0])?;
         let index = self.expr(fun, &ast[1])?;
         let args = &[target, index];
-        let spam = self.state.index_spam.clone();
+        let span = self.state.index_span.clone();
         let result = self
-            .call_low(fun, None, None, &spam, &[], args, &ast.token)?
+            .call_low(fun, None, None, &span, &[], args, &ast.token)?
             .ok_or_else(|| FError::new(FEKind::ExpectedValue, ast.token.clone()))?;
 
         let result = self.deref_expr_low(result, &ast.token)?;
@@ -766,7 +767,7 @@ impl<'a> FParser<'a> {
             fun,
             None,
             None,
-            &ast[0].token.spam,
+            &ast[0].token.span,
             &[],
             &values,
             &ast.token,
@@ -776,7 +777,7 @@ impl<'a> FParser<'a> {
     fn dot_expr(&mut self, fun: Fun, ast: &Ast) -> ExprResult {
         let header = self.expr(fun, &ast[0])?;
         let mutable = self.value(header).mutable;
-        let field = ast[1].token.spam.hash;
+        let field = ast[1].token.span.hash;
 
         let inst = self.add_inst(InstEnt::new(IKind::NoOp, None, &Token::default()));
         let value = self.new_anonymous_value(self.state.builtin_repo.bool, mutable);
@@ -826,7 +827,7 @@ impl<'a> FParser<'a> {
     }
 
     fn loop_expr(&mut self, fun: Fun, ast: &Ast) -> ExprResult {
-        let name = ast[0].token.spam.hash;
+        let name = ast[0].token.span.hash;
 
         let start_block = self.new_block();
         let end_block = self.new_block();
@@ -999,7 +1000,7 @@ impl<'a> FParser<'a> {
         };
 
         let (module, caller, name) = if name.kind == AKind::Ident {
-            (None, None, name.token.spam.clone())
+            (None, None, name.token.span.clone())
         } else {
             match &name[..] {
                 [module_name, caller_name, name] => {
@@ -1014,7 +1015,7 @@ impl<'a> FParser<'a> {
                     (
                         Some(self.state.modules[dep].id),
                         Some(caller),
-                        name.token.spam.clone(),
+                        name.token.span.clone(),
                     )
                 }
                 [something, name] => {
@@ -1022,11 +1023,11 @@ impl<'a> FParser<'a> {
                         (
                             Some(self.state.modules[dep].id),
                             None,
-                            name.token.spam.clone(),
+                            name.token.span.clone(),
                         )
                     } else {
                         let caller = self.parse_type(module, something)?;
-                        (None, Some(caller), name.token.spam.clone())
+                        (None, Some(caller), name.token.span.clone())
                     }
                 }
                 _ => unreachable!(),
@@ -1045,7 +1046,7 @@ impl<'a> FParser<'a> {
             Some(caller)
         };
 
-        self.call_low(
+        let result = self.call_low(
             fun,
             module,
             caller,
@@ -1053,7 +1054,9 @@ impl<'a> FParser<'a> {
             &generic_params,
             &values,
             &ast.token,
-        )
+        );
+
+        result
     }
 
     fn call_low(
@@ -1061,7 +1064,7 @@ impl<'a> FParser<'a> {
         fun: Fun,
         module_id: Option<ID>,
         caller: Option<Option<Type>>,
-        name: &Spam,
+        name: &Span,
         params: &[Type],
         original_values: &[Value],
         token: &Token,
@@ -1106,14 +1109,14 @@ impl<'a> FParser<'a> {
                 }
                 match self.ty(ty).kind {
                     TKind::Structure(id) => {
-                        fields.extend(self
-                            .state
-                            .stypes[id]
-                            .fields
-                            .iter()
-                            .filter(|f| f.embedded)
-                            .map(|f| (Some(f.id), f.ty)));
-                    },
+                        fields.extend(
+                            self.state.stypes[id]
+                                .fields
+                                .iter()
+                                .filter(|f| f.embedded)
+                                .map(|f| (Some(f.id), f.ty)),
+                        );
+                    }
                     _ => (),
                 }
                 i += 1;
@@ -1133,8 +1136,7 @@ impl<'a> FParser<'a> {
                     token.clone(),
                 )
             })?;
-        
-        
+
         let other_fun = if let FKind::Generic(g) = self.state.funs[other_fun].kind {
             if caller.is_none() {
                 let result = self.create(other_fun, g, params, &types)?;
@@ -1142,7 +1144,8 @@ impl<'a> FParser<'a> {
                 result.or(self.create(other_fun, g, params, &types)?)
             } else {
                 self.create(other_fun, g, params, &types)?
-            }.ok_or_else(|| {
+            }
+            .ok_or_else(|| {
                 FError::new(
                     FEKind::GenericMismatch(name.clone(), types.to_vec()),
                     token.clone(),
@@ -1151,7 +1154,6 @@ impl<'a> FParser<'a> {
         } else {
             other_fun
         };
-
 
         let return_type = self.return_type_of(other_fun);
 
@@ -1172,7 +1174,7 @@ impl<'a> FParser<'a> {
                 self.field_access(values[0], field, temp, token)?;
                 values[0] = temp;
             }
-    
+
             let first_arg_ty = match &self.state.funs[other_fun].kind {
                 &FKind::Represented(r) => {
                     let r = &self.state.rfuns[r];
@@ -1182,14 +1184,12 @@ impl<'a> FParser<'a> {
                     let n = &self.state.nfuns[n];
                     n.sig.args[0].ty
                 }
-                &FKind::Builtin(arg, _) => {
-                    arg.unwrap()
-                },
+                &FKind::Builtin(arg, _) => arg.unwrap(),
                 kind => unreachable!("{:?}", kind),
             };
 
             let first_real_arg_ty = self.value(values[0]).ty;
-    
+
             if first_real_arg_ty != first_arg_ty {
                 if self.base_of(first_real_arg_ty) == Some(first_arg_ty) {
                     values[0] = self.deref_expr_low(values[0], token)?;
@@ -1199,12 +1199,64 @@ impl<'a> FParser<'a> {
                 debug_assert!(self.value(values[0]).ty == first_arg_ty);
             }
         }
+        
+        let do_stacktrace = self.program.stacktrace && 
+            !self.state.funs[fun].untraced && 
+            !matches!(self.state.funs[other_fun].kind, FKind::Builtin(..));
+
+        if do_stacktrace {
+            let push = FUN_SALT
+                .add(ID::new("push_frame"))
+                .add(ID(3))
+                .add(ID(0))
+                .add(self.state.modules[self.state.builtin_module].id);
+            let push = self.state.funs.index(push).unwrap().clone();
+            let line = self.new_temp_value(self.state.builtin_repo.int);
+            self.add_inst(InstEnt::new(
+                IKind::Lit(LTKind::Int(token.span.line as i64, 0)),
+                Some(line),
+                &token,
+            ));
+            let column = self.new_temp_value(self.state.builtin_repo.int);
+            self.add_inst(InstEnt::new(
+                IKind::Lit(LTKind::Int(token.span.column as i64, 0)),
+                Some(column),
+                &token,
+            ));
+            let file_name = unsafe {
+                std::mem::transmute::<&str, &str>(&self.state.sources[token.span.source].name)
+            };
+            let span = self.state.builtin_span(file_name);
+            let ptr = self.pointer_of(self.state.builtin_repo.u8);
+            let file_name = self.new_temp_value(ptr);
+            self.add_inst(InstEnt::new(
+                IKind::Lit(LTKind::String(span)),
+                Some(file_name),
+                &token,
+            ));
+
+            self.add_inst(InstEnt::new(
+                IKind::Call(push, vec![line, column, file_name]),
+                None,
+                &token,
+            ));
+        }
 
         self.add_inst(InstEnt::new(
             IKind::Call(other_fun, values.clone()),
             value,
             token,
         ));
+
+        if do_stacktrace {
+            let pop = FUN_SALT
+                .add(ID::new("pop_frame"))
+                .add(ID(0))
+                .add(ID(0))
+                .add(self.state.modules[self.state.builtin_module].id);
+            let pop = self.state.funs.index(pop).unwrap().clone();
+            self.add_inst(InstEnt::new(IKind::Call(pop, vec![]), None, &token));
+        }
 
         Ok(value)
     }
@@ -1241,6 +1293,7 @@ impl<'a> FParser<'a> {
 
     fn return_type_of(&self, fun: Fun) -> Option<Type> {
         match &self.state.funs[fun].kind {
+            &FKind::Represented(r) => self.state.rfuns[r].signature.ret_ty,
             &FKind::Normal(nid) => self.state.nfuns[nid].sig.ret_ty,
             &FKind::Builtin(_, ret_ty) => ret_ty,
             i => unreachable!("{:?}", i),
@@ -1251,7 +1304,7 @@ impl<'a> FParser<'a> {
         if ast.kind == AKind::Ident {
             let ident = &ast.token;
             let value = self
-                .find_variable(ident.spam.hash)
+                .find_variable(ident.span.hash)
                 .or_else(|| self.find_constant_parameter(fun, ident));
 
             if value.is_some() {
@@ -1284,14 +1337,14 @@ impl<'a> FParser<'a> {
                 )
             })?;
             let id = GLOBAL_SALT
-                .add(token.spam.hash)
+                .add(token.span.hash)
                 .add(self.state.modules[module].id);
             found = self.state.globals.index(id).map(|v| v.clone());
         } else {
             let mut buffer = self.context.pool.get();
             self.state.collect_scopes(module, &mut buffer);
             for (_, module_id) in buffer.drain(..) {
-                let id = GLOBAL_SALT.add(token.spam.hash).add(module_id);
+                let id = GLOBAL_SALT.add(token.span.hash).add(module_id);
                 if let Some(&value) = self.state.globals.index(id) {
                     if let Some(found) = found {
                         return Err(FError::new(
@@ -1324,14 +1377,13 @@ impl<'a> FParser<'a> {
 
     fn find_constant_parameter(&mut self, fun: Fun, token: &Token) -> Option<Value> {
         let name = TYPE_SALT
-            .add(token.spam.hash)
+            .add(token.span.hash)
             .add(self.state.modules[self.state.funs[fun].module].id);
         if let Some(&(_, ty)) = self.state.funs[fun]
             .params
             .iter()
             .find(|&(p, _)| *p == name)
         {
-
             let ty = &self.ty(ty).kind;
             match ty {
                 TKind::Const(t) => {
@@ -1397,7 +1449,7 @@ impl<'a> FParser<'a> {
     }
 
     fn binary_op(&mut self, fun: Fun, ast: &Ast) -> ExprResult {
-        match self.state.display(&ast[0].token.spam) {
+        match self.state.display(&ast[0].token.span) {
             "=" => return self.assignment(fun, ast),
             "as" => return self.bit_cast(fun, ast),
             _ => (),
@@ -1413,7 +1465,7 @@ impl<'a> FParser<'a> {
             fun,
             None,
             None,
-            &ast[0].token.spam,
+            &ast[0].token.span,
             &[],
             &buffer,
             &ast.token,
@@ -1449,7 +1501,7 @@ impl<'a> FParser<'a> {
         value: Value,
         token: &Token,
     ) -> Result<Type> {
-        let mutable = self.value(header).mutable;
+        let mutable = self.value(header).mutable || self.base_of(self.value(header).ty).is_some();
         let header_datatype = self.value(header).ty;
         let mut path = vec![];
         if !self.find_field(header_datatype, field, &mut path) {
@@ -1498,6 +1550,7 @@ impl<'a> FParser<'a> {
 
         let val = self.value_mut(value);
         val.inst = Some(inst);
+        val.mutable = mutable;
         val.offset = offset;
         val.ty = current_type;
 
@@ -1692,6 +1745,7 @@ impl<'a> FParser<'a> {
         let fun_ent = &self.state.funs[fun];
         let g_ent = &self.state.gfuns[g];
         let module = fun_ent.module;
+        let untraced = fun_ent.untraced;
         let fun_module_id = self.state.modules[module].id;
         let mut id = FUN_SALT.add(fun_ent.name.hash);
         let vis = fun_ent.vis;
@@ -1700,6 +1754,7 @@ impl<'a> FParser<'a> {
         let attrs = fun_ent.attrs.clone();
         let scope = fun_ent.scope;
         let ast_id = g_ent.ast;
+    
 
         let mut shadowed = self.context.pool.get();
         let mut final_params = self.context.pool.get();
@@ -1727,7 +1782,7 @@ impl<'a> FParser<'a> {
         let signature = self.parse_signature(module, &ast[0])?;
         id = id.add(ID(signature.args.len() as u64));
         for final_param in final_params.iter() {
-            id = id.add(final_param.0);
+            id = id.add(self.ty(final_param.1).id);
         }
         id = id.add(self.state.modules[module].id);
         self.state.asts[ast_id] = ast;
@@ -1757,6 +1812,7 @@ impl<'a> FParser<'a> {
             attrs,
             kind,
             scope,
+            untraced,
         };
 
         let (shadowed, id) = self.state.funs.insert(id, new_fun_ent);
@@ -1843,7 +1899,7 @@ impl<'a> FParser<'a> {
                 .zip(values.drain(..).chain(std::iter::repeat(Ast::none())))
             {
                 let hint = name.token.clone();
-                let id = GLOBAL_SALT.add(hint.spam.hash).add(scope_id).add(module_id);
+                let id = GLOBAL_SALT.add(hint.span.hash).add(scope_id).add(module_id);
 
                 let g_ent = GlobalEnt {
                     vis,
@@ -1884,19 +1940,22 @@ impl<'a> FParser<'a> {
 
         let (caller, generic) = if let Some(scope_id) = scope {
             let raw_ty = std::mem::take(&mut self.collector.scopes[scope_id].ty);
+            let generic = self.collector.scopes[scope_id].params.len() > 0;
             let ty = match raw_ty.kind {
                 AKind::Ident => self.parse_type(module, &raw_ty)?,
                 AKind::Instantiation => self.parse_type(module, &raw_ty[0])?,
                 AKind::Array => self.state.builtin_repo.array,
                 _ => unreachable!(),
             };
-            let id = TYPE_SALT.add(self.state.self_hash).add(module_id);
-            shadowed = Some((id, self.state.types.link(id, ty)));
+
+            if !generic {
+                let ty = self.parse_type(module, &raw_ty)?;
+                let id = TYPE_SALT.add(self.state.self_hash).add(module_id);
+                shadowed = Some((id, self.state.types.link(id, ty)));
+            };
+
             self.collector.scopes[scope_id].ty = raw_ty;
-            (
-                self.ty(ty).id,
-                self.collector.scopes[scope_id].params.len() > 0,
-            )
+            (self.ty(ty).id, generic)
         } else {
             (ID(0), false)
         };
@@ -1913,11 +1972,11 @@ impl<'a> FParser<'a> {
             let signature = self.parse_signature(module, header)?;
 
             let fun_id = FUN_SALT
-                .add(name.token.spam.hash)
+                .add(name.token.span.hash)
                 .add(ID(signature.args.len() as u64))
                 .add(caller);
 
-            let name = name.token.spam.clone();
+            let name = name.token.span.clone();
 
             let ast = self.state.asts.add(ast);
             let n_ent = NFunEnt {
@@ -1941,7 +2000,7 @@ impl<'a> FParser<'a> {
             let mut params = self.context.pool.get();
             if name.kind == AKind::Instantiation {
                 for param in name[1..].iter() {
-                    params.push(param.token.spam.hash);
+                    params.push(param.token.span.hash);
                 }
             }
 
@@ -1962,7 +2021,7 @@ impl<'a> FParser<'a> {
             }
 
             let id = FUN_SALT
-                .add(nm.token.spam.hash)
+                .add(nm.token.span.hash)
                 .add(ID(arg_count as u64))
                 .add(caller);
 
@@ -1972,7 +2031,7 @@ impl<'a> FParser<'a> {
                 arg_count,
             };
 
-            let nm = nm.token.spam.clone();
+            let nm = nm.token.span.clone();
 
             let g_ent = GFunEnt {
                 signature,
@@ -2006,6 +2065,7 @@ impl<'a> FParser<'a> {
             params: vec![],
             kind,
             name,
+            untraced: self.collector.attr(&attrs, self.state.untraced_hash).is_some(),
             attrs,
             scope,
         };
@@ -2042,7 +2102,7 @@ impl<'a> FParser<'a> {
         for arg_section in &header[1..header.len() - 1] {
             let ty = self.parse_type(module, &arg_section[arg_section.len() - 1])?;
             for arg in arg_section[0..arg_section.len() - 1].iter() {
-                let id = arg.token.spam.hash;
+                let id = arg.token.span.hash;
                 let val_ent = ValueEnt {
                     id,
                     ty,
@@ -2089,7 +2149,7 @@ impl<'a> FParser<'a> {
             let ast = *ast;
             match &ast.kind {
                 AKind::Ident => {
-                    if ast.token.spam.hash == self.state.self_hash && scope.is_some() {
+                    if ast.token.span.hash == self.state.self_hash && scope.is_some() {
                         let ast = unsafe {
                             std::mem::transmute::<&Ast, &Ast>(
                                 &self.collector.scopes[scope.unwrap()].ty,
@@ -2097,7 +2157,7 @@ impl<'a> FParser<'a> {
                         };
                         stack.push((ast, false));
                     } else {
-                        let id = ast.token.spam.hash;
+                        let id = ast.token.span.hash;
                         if let Some(index) = params.iter().position(|&p| p == id) {
                             buffer.push(GenericElement::Parameter(index));
                         } else {
@@ -2177,11 +2237,11 @@ impl<'a> FParser<'a> {
     }
 
     fn find_loop(&self, token: &Token) -> std::result::Result<Loop, bool> {
-        if token.spam.range.len() == 0 {
+        if token.span.range.len() == 0 {
             return self.state.bstate.loops.last().cloned().ok_or(true);
         }
 
-        let name = token.spam.hash;
+        let name = token.span.hash;
 
         self.state
             .bstate
@@ -2410,7 +2470,7 @@ crate::def_displayer!(
                 "unknown field for type '{}', type has this fields (embedded included):",
                 TypeDisplay::new(&self.state, ty)
             )?;
-            let mut frontier = vec![(ty, Spam::default(), true)];
+            let mut frontier = vec![(ty, Span::default(), true)];
             let mut i = 0;
             while i < frontier.len() {
                 let (ty, _, embedded) = frontier[i];
@@ -2420,7 +2480,7 @@ crate::def_displayer!(
                 match self.state.types[ty].kind {
                     TKind::Structure(sty) => {
                         for f in self.state.stypes[sty].fields.iter() {
-                            frontier.push((f.ty, f.hint.spam.clone(), f.embedded));
+                            frontier.push((f.ty, f.hint.span.clone(), f.embedded));
                         }
                     },
                     _ => (),
@@ -2539,8 +2599,8 @@ pub enum FEKind {
     AssignToImmutable,
     ExpectedValue,
     TypeMismatch(Type, Type),
-    FunctionNotFound(Spam, Vec<Type>),
-    GenericMismatch(Spam, Vec<Type>),
+    FunctionNotFound(Span, Vec<Type>),
+    GenericMismatch(Span, Vec<Type>),
     UnexpectedValue,
     UnexpectedReturnValue,
     UnexpectedAuto,
@@ -2574,9 +2634,10 @@ pub struct FunEnt {
     pub hint: Token,
     pub params: Vec<(ID, Type)>,
     pub kind: FKind,
-    pub name: Spam,
+    pub name: Span,
     pub attrs: Attrs,
     pub scope: Option<Scope>,
+    pub untraced: bool,
 }
 
 #[derive(Debug, Default, Clone)]
@@ -2843,14 +2904,15 @@ impl Default for FinalValue {
 
 pub struct Program {
     pub module: ObjectModule,
+    pub stacktrace: bool,
 }
 
 impl Program {
-    pub fn new(module: ObjectModule) -> Self {
+    pub fn new(module: ObjectModule, stacktrace: bool) -> Self {
         unsafe {
             POINTER_TYPE = module.isa().pointer_type();
         }
-        Self { module }
+        Self { module, stacktrace }
     }
 }
 
@@ -2860,7 +2922,7 @@ impl Default for Program {
         let isa = cranelift_native::builder().unwrap().finish(flags);
         let builder =
             ObjectBuilder::new(isa, "all", cranelift_module::default_libcall_names()).unwrap();
-        Self::new(ObjectModule::new(builder))
+        Self::new(ObjectModule::new(builder), true)
     }
 }
 
@@ -2909,7 +2971,7 @@ pub struct FState {
     pub resolved_globals: Vec<Global>,
     pub unresolved: Vec<Fun>,
     pub represented: Vec<Fun>,
-    pub index_spam: Spam,
+    pub index_span: Span,
 
     pub linkage_hash: ID,
     pub entry_hash: ID,
@@ -2918,6 +2980,7 @@ pub struct FState {
     pub tls_hash: ID,
     pub thread_local_hash: ID,
     pub self_hash: ID,
+    pub untraced_hash: ID,
 }
 
 crate::inherit!(FState, t_state, TState);
@@ -2932,7 +2995,7 @@ impl Default for FState {
             rfuns: List::new(),
             unresolved: Vec::new(),
             represented: Vec::new(),
-            index_spam: Spam::default(),
+            index_span: Span::default(),
             globals: Table::new(),
             bstate: BodyState::default(),
             main_bstate: BodyState::default(),
@@ -2947,6 +3010,7 @@ impl Default for FState {
             tls_hash: ID::new("tls"),
             thread_local_hash: ID::new("thread_local"),
             self_hash: ID::new("Self"),
+            untraced_hash: ID::new("untraced"),
         };
 
         let count = state
@@ -3017,15 +3081,16 @@ impl Default for FState {
             hint: Token::default(),
             attrs: Attrs::default(),
             params: Vec::new(),
-            name: state.builtin_spam("main"),
+            name: state.builtin_span("main"),
             scope: None,
+            untraced: true,
         };
 
         state.main_fun = state.funs.add_hidden(main_fun);
 
-        let spam = state.builtin_spam("__index__");
+        let span = state.builtin_span("__index__");
 
-        state.index_spam = spam;
+        state.index_span = span;
 
         let module_id = state.modules[state.builtin_module].id;
 
@@ -3034,7 +3099,7 @@ impl Default for FState {
         fn create_builtin_fun(
             state: &mut FState,
             module: ID,
-            name: Spam,
+            name: Span,
             args: &[Type],
             ret_ty: Option<Type>,
         ) {
@@ -3053,6 +3118,7 @@ impl Default for FState {
                 kind: FKind::Builtin(args.first().cloned(), ret_ty),
                 attrs: Attrs::default(),
                 scope: None,
+                untraced: true,
             };
             assert!(state.funs.insert(id, fun_ent).0.is_none());
         }
@@ -3096,7 +3162,7 @@ impl Default for FState {
 
         for &(operators, types) in builtin_unary_ops.iter() {
             for op in operators.split(' ') {
-                let op = state.builtin_spam(op);
+                let op = state.builtin_span(op);
                 for &datatype in types.iter() {
                     create_builtin_fun(
                         &mut state,
@@ -3110,7 +3176,7 @@ impl Default for FState {
         }
 
         let builtin_bin_ops = [
-            ("+ - * / == != >= <= > < ^ | & >> <<", integer_types),
+            ("+ - * / % == != >= <= > < ^ | & >> <<", integer_types),
             (
                 "+ - * / == != >= <= > <",
                 &[state.builtin_repo.f32, state.builtin_repo.f64][..],
@@ -3120,7 +3186,7 @@ impl Default for FState {
 
         for &(operators, types) in builtin_bin_ops.iter() {
             for op in operators.split(' ') {
-                let op_spam = state.builtin_spam(op);
+                let op_span = state.builtin_span(op);
                 for &ty in types.iter() {
                     let return_type = if matches!(op, "==" | "!=" | ">" | "<" | ">=" | "<=") {
                         state.builtin_repo.bool
@@ -3130,7 +3196,7 @@ impl Default for FState {
                     create_builtin_fun(
                         &mut state,
                         module_id,
-                        op_spam.clone(),
+                        op_span.clone(),
                         &[ty, ty],
                         Some(return_type),
                     );
@@ -3201,7 +3267,7 @@ impl std::fmt::Display for FunDisplay<'_> {
 
         let r_ent = &self.state.rfuns[rid];
 
-        writeln!(f, "{}", self.state.display(&fun.hint.spam))?;
+        writeln!(f, "{}", self.state.display(&fun.hint.span))?;
         writeln!(f)?;
 
         for (i, inst) in r_ent.body.insts.iter() {
@@ -3221,14 +3287,14 @@ impl std::fmt::Display for FunDisplay<'_> {
                             value,
                             ty,
                             inst.kind,
-                            self.state.display(&inst.hint.spam)
+                            self.state.display(&inst.hint.span)
                         )?;
                     } else {
                         writeln!(
                             f,
                             "    {:?} |{}",
                             inst.kind,
-                            self.state.display(&inst.hint.spam)
+                            self.state.display(&inst.hint.span)
                         )?;
                     }
                 }

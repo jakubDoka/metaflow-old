@@ -14,16 +14,16 @@ use crate::{
     cli::Arguments,
     functions::{FError, FErrorDisplay, Program},
     lexer::{Token, TokenDisplay},
-    module_tree::{MTError, MTErrorDisplay, MTParser}, collector::Collector, ast::AParser, types::{TError, TEKind},
+    module_tree::{MTError, MTErrorDisplay, MTParser}, collector::Collector, ast::{AParser, AErrorDisplay, AError},
 };
 
 use super::*;
 
-type Result<T> = std::result::Result<T, GError>;
+type Result<T> = std::result::Result<T, (Option<GState>, GError)>;
 
 pub fn compile(args: Arguments) -> Result<()> {
     if args.len() < 1 {
-        return Err(GEKind::NoFiles.into());
+        return Err((None, GEKind::NoFiles.into()));
     }
 
     let obj_file = generate_obj_file(&args)?;
@@ -43,7 +43,7 @@ pub fn compile(args: Arguments) -> Result<()> {
 
     let obj_name = format!("{}.o", output_name);
 
-    std::fs::write(&obj_name, obj_file).map_err(|e| GEKind::IoError(e).into())?;
+    std::fs::write(&obj_name, obj_file).map_err(|e| (None, GEKind::IoError(e).into()))?;
 
     if args.enabled("obj") {
         return Ok(());
@@ -65,13 +65,13 @@ pub fn compile(args: Arguments) -> Result<()> {
                     .chain(link_with),
             )
             .status()
-            .map_err(|e| GEKind::IoError(e).into())?
+            .map_err(|e| (None, GEKind::IoError(e).into()))?
             .code()
             .unwrap(),
         0,
     );
 
-    std::fs::remove_file(&obj_name).map_err(|e| GEKind::IoError(e).into())?;
+    std::fs::remove_file(&obj_name).map_err(|e| (None, GEKind::IoError(e).into()))?;
 
     Ok(())
 }
@@ -87,23 +87,21 @@ pub fn generate_obj_file(args: &Arguments) -> Result<Vec<u8>> {
             } else {
                 settings.enable(flag)
             }
-            .map_err(|e| GEKind::CompilationFlagError(e).into())?;
+            .map_err(|e| (None, GEKind::CompilationFlagError(e).into()))?;
         }
     }
-
-    //let const_fold = args.enabled("const-fold") || args.enabled("cf");
 
     if let Some(opt_level) = args.get_flag("opt_level").or(args.get_flag("ol")) {
         settings
             .set("opt_level", opt_level)
-            .map_err(|e| GEKind::CompilationFlagError(e).into())?;
+            .map_err(|e| (None, GEKind::CompilationFlagError(e).into()))?;
     }
 
     let flags = settings::Flags::new(settings);
 
     let isa = if let Some(triplet) = args.get_flag("triplet") {
         isa::lookup_by_name(triplet)
-            .map_err(|e| GEKind::InvalidTriplet(e).into())?
+            .map_err(|e| (None, GEKind::InvalidTriplet(e).into()))?
             .finish(flags)
     } else {
         cranelift_native::builder().unwrap().finish(flags)
@@ -112,66 +110,89 @@ pub fn generate_obj_file(args: &Arguments) -> Result<Vec<u8>> {
     let builder =
         ObjectBuilder::new(isa, "all", cranelift_module::default_libcall_names()).unwrap();
 
-    let mut program = Program::new(ObjectModule::new(builder));
+    let stacktrace = args.enabled("trace");
+
+    let mut program = Program::new(ObjectModule::new(builder), stacktrace);
 
     let mut state = GState::default();
     let mut context = GContext::default();
 
-    MTParser::new(&mut state, &mut context)
-        .parse(&args[0])
-        .map_err(|err| GEKind::MTError(err).into())?;
+    if let Err(e) = MTParser::new(&mut state, &mut context).parse(&args[0]) {
+        return Err((Some(state), GEKind::MTError(e).into()));
+    }
       
     let mut collector = Collector::default();
 
     for module in std::mem::take(&mut state.module_order).drain(..).rev() {
         let mut ast = std::mem::take(&mut state.modules[module].ast);
 
-        let mut ast = AParser::new(&mut state, &mut ast, &mut context)
-            .parse()
-            .map_err(|err| TError::new(TEKind::AError(err), Token::default()))
-            .unwrap();
+        let result = AParser::new(&mut state, &mut ast, &mut context).parse();
+        let mut ast = match result {
+            Ok(ast) => ast,
+            Err(e) => return Err((Some(state), GEKind::AError(e).into())),
+        };
 
         collector.clear(&mut context);
         collector.parse(&mut state, &mut ast);
 
         context.recycle(ast);
 
-        Generator::new(&mut program, &mut state, &mut context, &mut collector)
-            .generate(module)
-            .map_err(|e| println!("{}", GErrorDisplay::new(&mut state, &e)))
-            .unwrap();
+        if let Err(e) = Generator::new(&mut program, &mut state, &mut context, &mut collector)
+            .generate(module) {
+            return Err((Some(state), e));
+        }
+      
     }
 
-    Generator::new(&mut program, &mut state, &mut context, &mut collector).finalize()?;
+    Generator::new(&mut program, &mut state, &mut context, &mut collector)
+        .finalize()
+        .map_err(|err| (Some(state), err))?;
 
     Ok(program.module.finish().emit().unwrap())
 }
 
-crate::def_displayer!(
-    GErrorDisplay,
-    GState,
-    GError,
-    |self, f| {
-        GEKind::FunError(error) => {
-            write!(f, "{}", FErrorDisplay::new(&self.state, error))?;
-        },
-        GEKind::MTError(error) => {
-            write!(f, "{}", MTErrorDisplay::new(&self.state, error))?;
-        },
-        GEKind::IoError(err) => {
-            writeln!(f, "{}", err)?;
-        },
-        GEKind::InvalidTriplet(error) => {
-            writeln!(f, "invalid triplet: {}", error)?;
-        },
-        GEKind::CompilationFlagError(err) => {
-            writeln!(f, "invalid compilation flag: {}", err)?;
-        },
-        GEKind::NoFiles => {
-            writeln!(f, "first argument is missing <FILE>")?;
-        },
-    }
-);
+pub struct GErrorDisplay<'a> {
+  pub state: Option<&'a GState>,
+  pub error: &'a GError,
+}
+
+impl<'a> GErrorDisplay<'a> {
+  pub fn new(state: Option<&'a GState>, error: &'a GError) -> Self {
+      Self { state, error }
+  }
+}
+
+impl std::fmt::Display for GErrorDisplay<'_> {
+  fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+      writeln!(f, "{}", TokenDisplay::new(&self.state.unwrap(), &self.error.token))?;
+
+      match &self.error.kind {
+          GEKind::FError(error) => {
+              write!(f, "{}", FErrorDisplay::new(&self.state.unwrap(), error))?;
+          },
+          GEKind::MTError(error) => {
+              write!(f, "{}", MTErrorDisplay::new(&self.state.unwrap(), error))?;
+          },
+          GEKind::AError(error) => {
+              write!(f, "{}", AErrorDisplay::new(&self.state.unwrap(), error))?;
+          },
+          GEKind::IoError(err) => {
+              writeln!(f, "{}", err)?;
+          },
+          GEKind::InvalidTriplet(error) => {
+              writeln!(f, "invalid triplet: {}", error)?;
+          },
+          GEKind::CompilationFlagError(err) => {
+              writeln!(f, "invalid compilation flag: {}", err)?;
+          },
+          GEKind::NoFiles => {
+              writeln!(f, "first argument is missing <FILE>")?;
+          },
+      }
+
+      Ok(())
+  }
+}
 
 #[derive(Debug)]
 pub struct GError {
@@ -188,7 +209,8 @@ impl GError {
 #[derive(Debug)]
 pub enum GEKind {
     MTError(MTError),
-    FunError(FError),
+    FError(FError),
+    AError(AError),
     IoError(std::io::Error),
     InvalidTriplet(LookupError),
     CompilationFlagError(SetError),
@@ -238,29 +260,44 @@ fun main -> int:
         0,
     );
     test_sippet(
-        r#"
-fun fib(v: i32) -> i32:
-  return if v < 2i32:
-    1i32
-  else:
-    fib(v - 1i32) + fib(v - 2i32)
+      r#"
+attr entry
+fun main -> int:
+  goo()
+  return 1
 
-fun fib_loop(v: i32) -> i32:
+fun goo:
+  foo()
+
+fun foo:
+  panic("foo")
+      "#,
+      1,
+    );
+    test_sippet(
+        r#"
+fun fib(v: int) -> int:
+  return if v < 2:
+    1
+  else:
+    fib(v - 1) + fib(v - 2)
+
+fun fib_loop(v: int) -> int:
   var
-    a, b, c = 1i32
+    a, b, c = 1
     v = v
   loop'a:
     c = a + b
     a = b
     b = c
-    v = v - 1i32
-    if v == 1i32:
+    v = v - 1
+    if v == 1:
       break'a
   return c
 
 attr entry
-fun main -> i32:
-  let v = 10i32
+fun main -> int:
+  let v = 10
   return fib_loop(v) - fib(v)
         "#,
         0,
@@ -511,11 +548,16 @@ fun main -> int:
 pub fn test_sippet(sippet: &str, exit_code: i32) {
     std::fs::write("src/gen/test_project/root.mf", sippet).unwrap();
 
-    let args = Arguments::from_str("root src/gen/test_project").unwrap();
+    let args = Arguments::from_str("root src/gen/test_project -trace").unwrap();
 
-    compile(args).unwrap();
 
-    let output = Command::new(".\\test_project.exe").output().unwrap();
+    compile(args)
+      .map_err(|(state, e)| panic!("{}", GErrorDisplay::new(state.as_ref(), &e)))
+      .unwrap();
 
-    assert_eq!(output.status.code().unwrap(), exit_code);
+    println!("output:");
+    let output = Command::new(".\\test_project.exe").status().unwrap();
+    println!(":end");
+
+    assert_eq!(output.code().unwrap(), exit_code);
 }

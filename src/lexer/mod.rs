@@ -1,8 +1,7 @@
-use crate::util::{sdbm::ID, storage::IndexPointer};
+use crate::util::{sdbm::ID, storage::{IndexPointer, Map}};
 use std::{
     fmt::{Debug, Display},
     ops::Range,
-    rc::Rc,
 };
 
 use crate::util::storage::List;
@@ -13,15 +12,19 @@ type Result<T = Token> = std::result::Result<T, LError>;
 pub struct Lexer<'a> {
     source: &'a str,
     state: &'a mut LState,
+    main_state: &'a mut LMainState,
 }
 
 impl<'a> Lexer<'a> {
-    pub fn new(source: &'a str, state: &'a mut LState) -> Self {
-        Lexer { source, state }
+    pub fn new(source: &'a str, state: &'a mut LState, main_state: &'a mut LMainState) -> Self {
+        Lexer {
+            source,
+            state,
+            main_state,
+        }
     }
 
     fn ident(&mut self) -> Result<Token> {
-        let line_data = self.line_data();
         let start = self.state.progress;
         loop {
             let char = self.peek().unwrap_or('\0');
@@ -31,7 +34,7 @@ impl<'a> Lexer<'a> {
             self.advance();
         }
         let end = self.state.progress;
-        let value = self.sub(start..end);
+        let value = self.span(start..end);
         let kind = match &self.source[start..end] {
             "priv" => TKind::Priv,
             "pub" => TKind::Pub,
@@ -56,28 +59,26 @@ impl<'a> Lexer<'a> {
             "false" => TKind::Bool(false),
             _ => TKind::Ident,
         };
-        Ok(Token::new(kind, value, line_data))
+        Ok(Token::new(kind, value))
     }
 
     fn op(&mut self) -> Result<Token> {
-        let line_data = self.line_data();
         let start = self.state.progress;
         while self.peek().unwrap_or('\0').is_operator() {
             self.advance();
         }
         let end = self.state.progress;
-        let value = self.sub(start..end);
+        let value = self.span(start..end);
         let kind = match &self.source[start..end] {
             ":" => TKind::Colon,
             "::" => TKind::DoubleColon,
             "->" => TKind::RArrow,
             _ => TKind::Op,
         };
-        Ok(Token::new(kind, value, line_data))
+        Ok(Token::new(kind, value))
     }
 
     fn indent(&mut self) -> Result<Token> {
-        let line_data = self.line_data();
         let start = self.state.progress;
         self.advance();
         let mut indentation = 0;
@@ -98,13 +99,12 @@ impl<'a> Lexer<'a> {
             }
         }
         let end = self.state.progress;
-        let value = self.sub(start..end);
-        Ok(Token::new(TKind::Indent(indentation / 2), value, line_data))
+        let value = self.span(start..end);
+        Ok(Token::new(TKind::Indent(indentation / 2), value))
     }
 
     fn number(&mut self) -> Result {
         let start = self.state.progress;
-        let line_data = self.line_data();
         let number = self.parse_number_err(10)?.0;
         let is_float = self.peek() == Some('.');
         let (fraction, exponent) = if is_float {
@@ -134,17 +134,16 @@ impl<'a> Lexer<'a> {
             }
         };
         let end = self.state.progress;
-        let value = self.sub(start..end);
-        Ok(Token::new(kind, value, line_data))
+        let value = self.span(start..end);
+        Ok(Token::new(kind, value))
     }
 
     fn parse_number_err(&mut self, base: u64) -> Result<(u64, u64)> {
         let start = self.state.progress;
         self.parse_number(base).ok_or_else(|| {
-            let line_data = self.line_data();
             let end = self.state.progress;
-            let value = self.sub(start..end);
-            LError::new(LEKind::InvalidCharacter, value, line_data)
+            let value = self.span(start..end);
+            LError::new(LEKind::InvalidCharacter, value)
         })
     }
 
@@ -167,10 +166,9 @@ impl<'a> Lexer<'a> {
     }
 
     fn char_or_label(&mut self) -> Result {
-        let line_data = self.line_data();
         let start = self.state.progress;
         self.advance();
-        let current = self.advance().unwrap_or('\0');
+        let current = self.peek().unwrap_or('\0');
 
         let (char, may_be_label) = if current == '\\' {
             let start = self.state.progress;
@@ -181,14 +179,14 @@ impl<'a> Lexer<'a> {
                         let end = self.state.progress;
                         return Err(LError::new(
                             LEKind::InvalidCharacter,
-                            self.sub(start..end),
-                            line_data,
+                            self.span(start..end),
                         ));
                     }
                 },
                 false,
             )
         } else {
+            self.advance();
             (current, true)
         };
 
@@ -197,47 +195,44 @@ impl<'a> Lexer<'a> {
         if !may_be_label && next != '\'' {
             return Err(LError::new(
                 LEKind::UnclosedCharacter,
-                self.sub(start..self.state.progress),
-                line_data,
+                self.span(start..self.state.progress),
             ));
         }
 
         if next == '\'' {
             self.advance();
             let end = self.state.progress;
-            let value = self.sub(start..end);
-            Ok(Token::new(TKind::Char(char), value, line_data))
+            let value = self.span(start..end);
+            Ok(Token::new(TKind::Char(char), value))
         } else {
             while self.peek().unwrap_or('\0').is_alphanumeric() {
                 self.advance();
             }
             let end = self.state.progress;
-            let value = self.sub(start..end);
-            Ok(Token::new(TKind::Label, value, line_data))
+            let value = self.span(start..end);
+            Ok(Token::new(TKind::Label, value))
         }
     }
 
     fn string(&mut self) -> Result<Token> {
-        let line_data = self.line_data();
         let start = self.state.progress;
         self.advance();
-        let mut string_data = vec![];
+        let mut string_data = std::mem::take(&mut self.main_state.string_lit_buffer);
+        string_data.clear();
+
         loop {
             match self.peek() {
                 Some('\\') => {
                     let start = self.state.progress;
                     match self.char_escape() {
                         Some(ch) => {
-                            let len = string_data.len();
-                            string_data.resize(len + ch.len_utf8(), 0);
-                            ch.encode_utf8(&mut string_data[len..]);
+                            string_data.push(ch);
                         }
                         None => {
                             let end = self.state.progress;
                             return Err(LError::new(
                                 LEKind::InvalidCharacter,
-                                self.sub(start..end),
-                                line_data,
+                                self.span(start..end),
                             ));
                         }
                     }
@@ -248,30 +243,27 @@ impl<'a> Lexer<'a> {
                 }
                 Some(_) => {
                     let ch = self.advance().unwrap();
-                    let len = string_data.len();
-                    string_data.resize(len + ch.len_utf8(), 0);
-                    ch.encode_utf8(&mut string_data[len..]);
+                    string_data.push(ch);
                 }
                 None => {
                     return Err(LError::new(
                         LEKind::UnclosedString,
-                        self.sub(start..self.state.progress),
-                        line_data,
+                        self.span(start..self.state.progress),
                     ));
                 }
             }
         }
 
-        string_data.push(0);
+        string_data.push('\x00');
+
+        let span = self.main_state.builtin_span(&string_data);
+
+        self.main_state.string_lit_buffer = string_data;
 
         // note: we don't care if string has incorrect encoding
         let end = self.state.progress;
-        let value = self.sub(start..end);
-        Ok(Token::new(
-            TKind::String(Rc::new(string_data)),
-            value,
-            line_data,
-        ))
+        let value = self.span(start..end);
+        Ok(Token::new(TKind::String(span), value))
     }
 
     fn char_escape(&mut self) -> Option<char> {
@@ -314,10 +306,6 @@ impl<'a> Lexer<'a> {
         })
     }
 
-    fn line_data(&self) -> LineData {
-        LineData::new(self.state.line, self.column(), self.state.source)
-    }
-
     pub fn peek(&self) -> Option<char> {
         self.source[self.state.progress..].chars().next()
     }
@@ -341,16 +329,18 @@ impl<'a> Lexer<'a> {
         char
     }
 
-    pub fn sub(&self, range: Range<usize>) -> Spam {
-        Spam::new(
+    pub fn span(&self, range: Range<usize>) -> Span {
+        Span::new(
             self.state.source,
             ID::new(&self.source[range.clone()]),
-            range,
+            range.clone(),
+            range.start - self.state.last_n_line,
+            self.column(),
         )
     }
 
     pub fn column(&self) -> usize {
-        self.state.progress - self.state.last_n_line
+        self.state.progress 
     }
 
     pub fn next(&mut self) -> Result {
@@ -365,7 +355,6 @@ impl<'a> Lexer<'a> {
             return self.number();
         }
 
-        let line_data = self.line_data();
         let start = self.state.progress;
 
         let kind = match char {
@@ -391,15 +380,14 @@ impl<'a> Lexer<'a> {
             _ => {
                 return Err(LError::new(
                     LEKind::UnknownCharacter,
-                    self.sub(start..start + 1),
-                    line_data,
+                    self.span(start..start + 1),
                 ))
             }
         };
 
         self.advance();
         let end = self.state.progress;
-        Ok(Token::new(kind, self.sub(start..end), line_data))
+        Ok(Token::new(kind, self.span(start..end)))
     }
 }
 
@@ -439,35 +427,39 @@ impl LState {
 pub struct LMainState {
     pub sources: List<Source, SourceEnt>,
     pub builtin_source: Source,
+    pub builtin_spans: Map<Range<usize>>,
+    pub string_lit_buffer: String,
 }
 
 impl LMainState {
     pub fn new() -> Self {
         let mut sources = List::new();
         let builtin_source = sources.add(SourceEnt {
-            name: String::from("builtin_spams.mf"),
+            name: String::from("builtin_spans.mf"),
             content: String::new(),
         });
 
         LMainState {
             sources,
             builtin_source,
+            string_lit_buffer: String::new(),
+            builtin_spans: Map::new(),
         }
     }
 
-    pub fn display(&self, spam: &Spam) -> &str {
-        &self.sources[spam.source].content[spam.range.clone()]
+    pub fn display(&self, span: &Span) -> &str {
+        &self.sources[span.source].content[span.range.clone()]
     }
 
-    pub fn join_spams(&self, spam: &mut Spam, other: &Spam, trim: bool) {
-        if spam.range.end == other.range.end {
+    pub fn join_spans(&self, span: &mut Span, other: &Span, trim: bool) {
+        if span.range.end == other.range.end {
             return;
         }
 
         debug_assert!(
-            spam.source == other.source && spam.range.end <= other.range.start,
+            span.source == other.source && span.range.end <= other.range.start,
             "{:?} {:?}",
-            spam,
+            span,
             other,
         );
 
@@ -477,30 +469,42 @@ impl LMainState {
             other.range.end
         };
 
-        spam.range.end = spam.range.start
-            + self.sources[spam.source].content[spam.range.start..end]
+        span.range.end = span.range.start
+            + self.sources[span.source].content[span.range.start..end]
                 .trim_end()
                 .len();
     }
 
-    pub fn builtin_spam(&mut self, name: &str) -> Spam {
+    pub fn builtin_span(&mut self, name: &str) -> Span {
+        let hash = ID::new(name);
         let builtin = &mut self.sources[self.builtin_source].content;
-        let start = builtin.len();
-        builtin.push_str(name);
-        let end = builtin.len();
-        Spam::new(self.builtin_source, ID::new(name), start..end)
+        let range = if let Some(range) = self.builtin_spans.get(hash) {
+            range.clone()
+        } else {
+            let start = builtin.len();
+            builtin.push_str(name);
+            let end = builtin.len();
+            let range = start..end;
+            self.builtin_spans.insert(hash, range.clone());
+            range
+        };
+        Span::new(self.builtin_source, hash, range, 0, 0)
     }
 
-    pub fn new_spam(&self, source: Source, range: Range<usize>) -> Spam {
-        Spam::new(
-            source,
-            ID::new(&self.sources[source].content[range.clone()]),
-            range,
+    pub fn slice_span(&self, span: &Span, range: Range<usize>) -> Span {
+        let new_range = span.range.start + range.start..span.range.start + range.end;
+        let hash = ID::new(&self.sources[span.source].content[new_range.clone()]);
+        Span::new(span.source, hash, new_range, span.line, span.column)
+    }
+
+    pub fn lexer_for<'a>(&'a mut self, state: &'a mut LState) -> Lexer<'a> {
+        Lexer::new(
+            unsafe {
+                std::mem::transmute::<&str, &str>(self.sources[state.source].content.as_str())
+            },
+            state,
+            self,
         )
-    }
-
-    pub fn lexer_for<'a>(&'a self, state: &'a mut LState) -> Lexer<'a> {
-        Lexer::new(self.sources[state.source].content.as_str(), state)
     }
 }
 
@@ -521,38 +525,35 @@ pub struct SourceEnt {
 #[derive(Debug, Clone, Default)]
 pub struct Token {
     pub kind: TKind,
-    pub spam: Spam,
-    pub line_data: LineData,
+    pub span: Span,
 }
 
 impl Token {
-    pub fn new(kind: TKind, spam: Spam, line_data: LineData) -> Self {
+    pub fn new(kind: TKind, span: Span) -> Self {
         Token {
             kind,
-            spam,
-            line_data,
+            span,
         }
     }
 
     pub fn eof() -> Self {
         Token {
             kind: TKind::Eof,
-            spam: Spam::default(),
-            line_data: LineData::default(),
+            span: Span::default(),
         }
     }
 }
 
 impl std::fmt::Display for Token {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{} {:?}", self.kind, self.spam)?;
+        write!(f, "{} {:?}", self.kind, self.span)?;
         Ok(())
     }
 }
 
 impl PartialEq<Token> for Token {
     fn eq(&self, other: &Token) -> bool {
-        self.kind == other.kind && self.spam == other.spam
+        self.kind == other.kind && self.span == other.span
     }
 }
 
@@ -562,7 +563,7 @@ impl PartialEq<TKind> for Token {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, PartialOrd)]
+#[derive(Debug, Clone, PartialEq)]
 pub enum TKind {
     Pub,
     Priv,
@@ -605,7 +606,7 @@ pub enum TKind {
     Float(f64, u16),
     Bool(bool),
     Char(char),
-    String(Rc<Vec<u8>>),
+    String(Span),
 
     Indent(usize),
 
@@ -690,8 +691,8 @@ impl std::fmt::Display for TokenDisplay<'_> {
             return Ok(());
         }
 
-        let mut range = self.token.spam.range.clone();
-        let string = &self.state.sources[self.token.spam.source].content;
+        let mut range = self.token.span.range.clone();
+        let string = &self.state.sources[self.token.span.source].content;
         if string[range.start..range.end].starts_with("\n") {
             range.start += 1;
         }
@@ -699,7 +700,7 @@ impl std::fmt::Display for TokenDisplay<'_> {
         writeln!(
             f,
             "|> {}",
-            LineDataDisplay::new(self.state, &self.token.line_data)
+            SpanDisplay::new(self.state, &self.token.span)
         )?;
 
         let end = string[range.end..]
@@ -777,13 +778,12 @@ pub struct LError {
 }
 
 impl LError {
-    pub fn new(kind: LEKind, spam: Spam, line_data: LineData) -> Self {
+    pub fn new(kind: LEKind, span: Span) -> Self {
         Self {
             kind,
             token: Token {
                 kind: TKind::Error,
-                spam,
-                line_data,
+                span: span,
             },
         }
     }
@@ -797,18 +797,18 @@ pub enum LEKind {
     UnclosedString,
 }
 
-pub struct LineDataDisplay<'a> {
+pub struct SpanDisplay<'a> {
     state: &'a LMainState,
-    data: &'a LineData,
+    data: &'a Span,
 }
 
-impl<'a> LineDataDisplay<'a> {
-    pub fn new(state: &'a LMainState, data: &'a LineData) -> Self {
+impl<'a> SpanDisplay<'a> {
+    pub fn new(state: &'a LMainState, data: &'a Span) -> Self {
         Self { state, data }
     }
 }
 
-impl Display for LineDataDisplay<'_> {
+impl Display for SpanDisplay<'_> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(
             f,
@@ -818,41 +818,27 @@ impl Display for LineDataDisplay<'_> {
     }
 }
 
-#[derive(Debug, Clone, Default)]
-pub struct LineData {
-    pub line: usize,
-    pub column: usize,
-    pub source: Source,
-}
-
-impl LineData {
-    pub fn new(line: usize, column: usize, source: Source) -> Self {
-        Self {
-            line,
-            column,
-            source,
-        }
-    }
-}
-
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
-pub struct Spam {
+pub struct Span {
     pub source: Source,
     pub hash: ID,
     pub range: Range<usize>,
+    pub line: usize,
+    pub column: usize,
 }
 
-impl Spam {
-    pub fn new(source: Source, hash: ID, range: Range<usize>) -> Self {
+impl Span {
+    pub fn new(source: Source, hash: ID, range: Range<usize>, line: usize, column: usize) -> Self {
         Self {
             source,
             range,
             hash,
+            line,
+            column,
         }
     }
 }
 
-//#[cfg(feature = "testing")]
 pub fn test() {
     let mut main_state = LMainState::new();
     let source_ent = SourceEnt {

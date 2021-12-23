@@ -40,17 +40,17 @@ impl<'a> AParser<'a> {
                     return Err(self.unexpected_str("every item in manifest starts with identifier"))
                 }
             }
-            let name = self.state.token.spam.clone();
+            let name = self.state.token.span.clone();
             self.next()?;
             match self.state.token.kind {
-                TKind::Op if self.state.token.spam.hash == self.main_state.equal_sign => {
+                TKind::Op if self.state.token.span.hash == self.main_state.equal_sign => {
                     self.next()?;
 
                     if !matches!(self.state.token.kind, TKind::String(_)) {
                         return Err(self.unexpected_str("expected string literal"));
                     }
 
-                    let mut value = self.state.token.spam.clone();
+                    let mut value = self.state.token.span.clone();
                     value.range.start += 1;
                     value.range.end -= 1;
 
@@ -65,13 +65,13 @@ impl<'a> AParser<'a> {
                             let mut token = s.state.token.clone();
 
                             s.expect_str(TKind::Ident, "expected dependency name")?;
-                            let name = s.state.token.spam.clone();
+                            let name = s.state.token.span.clone();
                             s.next()?;
 
                             if !matches!(s.state.token.kind, TKind::String(_)) {
                                 return Err(s.unexpected_str("expected string literal as repository link with version or local path"));
                             }
-                            let mut path_and_version = s.state.token.spam.clone();
+                            let mut path_and_version = s.state.token.span.clone();
                             path_and_version.range.start += 1;
                             path_and_version.range.end -= 1;
                             s.next()?;
@@ -83,15 +83,9 @@ impl<'a> AParser<'a> {
                                 .map(|i| (i, i + 1))
                                 .unwrap_or((path_and_version.range.len(), path_and_version.range.len()));
 
-                            let path = s.main_state.new_spam(
-                                path_and_version.source,
-                                path_and_version.range.start..path_and_version.range.start + path_end
-                            );
+                            let path = s.main_state.slice_span(&path_and_version, 0..path_end);
 
-                            let version = s.main_state.new_spam(
-                                path_and_version.source,
-                                path_and_version.range.start + version_start..path_and_version.range.end
-                            );
+                            let version = s.main_state.slice_span(&path_and_version, version_start..path_and_version.range.len());
 
                             s.join_token(&mut token);
 
@@ -144,7 +138,7 @@ impl<'a> AParser<'a> {
         let mut token = self.state.token.clone();
 
         let nickname = if self.state.token == TKind::Ident {
-            let nickname = self.state.token.spam.clone();
+            let nickname = self.state.token.span.clone();
             self.next()?;
             Some(nickname)
         } else {
@@ -152,7 +146,7 @@ impl<'a> AParser<'a> {
         };
 
         let path = if let TKind::String(_) = self.state.token.kind {
-            let mut path = self.state.token.spam.clone();
+            let mut path = self.state.token.span.clone();
             path.range.start += 1;
             path.range.end -= 1;
             path
@@ -221,7 +215,12 @@ impl<'a> AParser<'a> {
         self.expect_str(TKind::Colon, "expected ':' after 'impl' type")?;
         self.next()?;
         self.walk_block(|s| {
-            body.push(s.fun(false)?);
+            match s.state.token.kind {
+                TKind::Fun => body.push(s.fun(false)?),
+                TKind::Attr => body.push(s.attr()?),
+                TKind::Var | TKind::Let => body.push(s.var_statement(true)?),
+                _ => return Err(s.unexpected_str("expected 'fun' or 'attr' or 'let' or 'var'")),
+            }
             Ok(())
         })?;
         ast.push(body);
@@ -307,7 +306,7 @@ impl<'a> AParser<'a> {
                 Self::attr_element,
             )?,
             TKind::Op => {
-                if self.state.token.spam.hash == self.main_state.equal_sign {
+                if self.state.token.span.hash == self.main_state.equal_sign {
                     ast.kind = AKind::AttributeAssign;
                     self.next()?;
                     ast.push(self.expr()?);
@@ -448,7 +447,7 @@ impl<'a> AParser<'a> {
             Ast::none()
         };
 
-        let values = if self.state.token.spam.hash == self.main_state.equal_sign {
+        let values = if self.state.token.span.hash == self.main_state.equal_sign {
             let mut values = self.ast(AKind::Group);
             self.next()?;
             self.list(
@@ -524,7 +523,7 @@ impl<'a> AParser<'a> {
         let mut result = previous;
         while self.state.token == TKind::Op {
             let op = self.state.token.clone();
-            let pre = precedence(self.main_state.display(&op.spam));
+            let pre = precedence(self.main_state.display(&op.span));
 
             self.next()?;
             self.ignore_newlines()?;
@@ -532,7 +531,7 @@ impl<'a> AParser<'a> {
             let mut next = self.simple_expr()?;
 
             if self.state.token == TKind::Op {
-                let dif = pre - precedence(self.main_state.display(&self.state.token.spam));
+                let dif = pre - precedence(self.main_state.display(&self.state.token.span));
 
                 if dif > 0 {
                     next = self.expr_low(next)?;
@@ -545,25 +544,21 @@ impl<'a> AParser<'a> {
 
             // this handles the '{op}=' sugar
             result = if pre == ASSIGN_PRECEDENCE
-                && op.spam.range.len() != 1
-                && self.main_state.display(&op.spam).chars().last().unwrap() == '='
+                && op.span.range.len() != 1
+                && self.main_state.display(&op.span).chars().last().unwrap() == '='
             {
                 let operator = Ast::new(
                     AKind::Ident,
                     Token::new(
                         TKind::Op,
-                        self.main_state
-                            .new_spam(op.spam.source, op.spam.range.start..op.spam.range.end - 1),
-                        op.line_data.clone(),
+                        self.main_state.slice_span(&op.span, 0..op.span.range.len() - 1),
                     ),
                 );
                 let eq = Ast::new(
                     AKind::Ident,
                     Token::new(
                         TKind::Op,
-                        self.main_state
-                            .new_spam(op.spam.source, op.spam.range.end - 1..op.spam.range.end),
-                        op.line_data.clone(),
+                        self.main_state.slice_span(&op.span, op.span.range.len() - 1..op.span.range.len()),
                     ),
                 );
 
@@ -614,7 +609,7 @@ impl<'a> AParser<'a> {
             TKind::Loop => return self.loop_expr(),
             TKind::Op => {
                 let mut ast = self.ast(AKind::UnaryOp);
-                match self.main_state.display(&self.state.token.spam) {
+                match self.main_state.display(&self.state.token.span) {
                     "&" => {
                         self.next()?;
                         ast.kind = AKind::Ref;
@@ -1013,7 +1008,7 @@ impl<'a> AParser<'a> {
 
     fn join_token_with(&self, token: &mut Token, other: &Token, trim: bool) {
         self.main_state
-            .join_spams(&mut token.spam, &other.spam, trim);
+            .join_spans(&mut token.span, &other.span, trim);
     }
 }
 
@@ -1071,7 +1066,7 @@ impl Default for AMainState {
 }
 
 impl AMainState {
-    pub fn a_state_for(&self, source: Source) -> AState {
+    pub fn a_state_for(&mut self, source: Source) -> AState {
         let mut l_state = LState::new(source);
         let mut lexer = self.lexer_for(&mut l_state);
         let token = lexer.next().unwrap();
@@ -1085,7 +1080,7 @@ impl AMainState {
         }
     }
 
-    pub fn attr_of(&self, manifest: &Manifest, name: &str) -> Option<Spam> {
+    pub fn attr_of(&self, manifest: &Manifest, name: &str) -> Option<Span> {
         manifest
             .attrs
             .iter()
@@ -1105,14 +1100,14 @@ pub struct AState {
 
 #[derive(Clone, Debug, Default)]
 pub struct Import {
-    pub nickname: Option<Spam>,
-    pub path: Spam,
+    pub nickname: Option<Span>,
+    pub path: Span,
     pub token: Token,
 }
 
 #[derive(Clone, Debug, Default)]
 pub struct Manifest {
-    pub attrs: Vec<(Spam, Spam)>,
+    pub attrs: Vec<(Span, Span)>,
     pub deps: Vec<Dep>,
 }
 
@@ -1125,9 +1120,9 @@ impl Manifest {
 
 #[derive(Clone, Debug, Default)]
 pub struct Dep {
-    pub path: Spam,
-    pub name: Spam,
-    pub version: Spam,
+    pub path: Span,
+    pub name: Span,
+    pub version: Span,
     pub external: bool,
     pub token: Token,
 }
@@ -1206,7 +1201,7 @@ impl<'a> AstDisplay<'a> {
             f,
             "{:?} {:?}",
             ast.kind,
-            self.state.display(&ast.token.spam)
+            self.state.display(&ast.token.span)
         )?;
         if ast.children.len() > 0 {
             write!(f, ":\n")?;

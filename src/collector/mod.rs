@@ -5,7 +5,7 @@ use crate::{
     util::{
         sdbm::ID,
         storage::{IndexPointer, List, ReusableList},
-    }, lexer::TokenDisplay,
+    },
 };
 
 crate::index_pointer!(Attr);
@@ -51,16 +51,14 @@ impl Collector {
                         attrs: Attrs(start..end, false),
                         ast: item,
                     };
-                    
+
                     match item.ast.kind {
                         AKind::Impl(_) => {
                             let scope = ScopeEnt {
                                 attributes: self.to_permanent(item.attrs),
                                 params: item.ast[0]
                                     .iter()
-                                    .map(|param| {
-                                        param.token.spam.hash
-                                    })
+                                    .map(|param| param.token.span.hash)
                                     .collect(),
                                 ty: std::mem::take(&mut item.ast[1]),
                             };
@@ -77,7 +75,7 @@ impl Collector {
                 }
                 AKind::Attribute => {
                     for mut attr in item.drain(..) {
-                        let hash = attr[0].token.spam.hash;
+                        let hash = attr[0].token.span.hash;
                         if hash == self.pop_hash {
                             let frame = self.frames.pop().unwrap_or(0);
                             self.stack.truncate(frame);
@@ -104,7 +102,7 @@ impl Collector {
     pub fn attr_id(&self, attrs: &Attrs, hash: ID) -> Option<Attr> {
         self.attrs(attrs)
             .iter()
-            .find(|&&attr| self.attributes[attr].0[0].token.spam.hash == hash)
+            .find(|&&attr| self.attributes[attr].0[0].token.span.hash == hash)
             .copied()
     }
 

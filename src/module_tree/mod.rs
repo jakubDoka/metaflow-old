@@ -2,7 +2,7 @@ use std::ops::{Deref, DerefMut};
 use std::path::{Path, PathBuf};
 
 use crate::ast::{AContext, AError, AErrorDisplay, AMainState, AParser, AState, Dep};
-use crate::lexer::{SourceEnt, Spam, TokenDisplay};
+use crate::lexer::{SourceEnt, Span, TokenDisplay};
 use crate::util::pool::{Pool, PoolRef};
 use crate::util::sdbm::ID;
 use crate::util::storage::{IndexPointer, Table};
@@ -118,7 +118,7 @@ impl<'a> MTParser<'a> {
 
     fn load_module(
         &mut self,
-        root_spam: Spam,
+        root_span: Span,
         token: Token,
         manifest_id: Manifest,
         path_buffer: &mut PathBuf,
@@ -129,17 +129,15 @@ impl<'a> MTParser<'a> {
         let manifest_name = self.state.display(&manifest.name);
         path_buffer.push(Path::new(manifest_name));
 
-        let root = self.state.display(&root_spam);
+        let root = self.state.display(&root_span);
 
         let module_path = Path::new(root);
 
         let name_len = module_path.file_stem().unwrap().len();
         let whole_len = module_path.file_name().unwrap().len();
 
-        let name = self.state.new_spam(
-            root_spam.source,
-            root_spam.range.end - whole_len..root_spam.range.end + whole_len - name_len,
-        );
+        let len = root_span.range.len();
+        let name = self.state.slice_span(&root_span, len - whole_len..len - name_len + whole_len);
 
         let module_path = module_path
             .strip_prefix(
@@ -250,11 +248,11 @@ impl<'a> MTParser<'a> {
                 .parse_manifest()
                 .map_err(Into::into)?;
 
-            let root_file_spam = self
+            let root_file_span = self
                 .state
                 .attr_of(&manifest, "root")
-                .unwrap_or_else(|| self.state.builtin_spam("main.mf"));
-            let root_file = self.state.display(&root_file_spam);
+                .unwrap_or_else(|| self.state.builtin_span("main.mf"));
+            let root_file = self.state.display(&root_file_span);
 
             let parent_len = Path::new(root_file).parent().unwrap().as_os_str().len();
 
@@ -264,16 +262,9 @@ impl<'a> MTParser<'a> {
                 .len();
             let whole_len = Path::new(root_file).file_name().unwrap().len();
 
-            let name = self.state.new_spam(
-                root_file_spam.source,
-                root_file_spam.range.end - whole_len
-                    ..root_file_spam.range.end - whole_len + name_len,
-            );
-
-            let root_path = self.state.new_spam(
-                root_file_spam.source,
-                root_file_spam.range.start..root_file_spam.range.start + parent_len,
-            );
+            let len = root_file_span.range.len();
+            let name = self.state.slice_span(&root_file_span, len - whole_len..len - name_len + whole_len);
+            let root_path = self.state.slice_span(&root_file_span, 0..parent_len);
 
             let manifest_ent = &mut self.state.manifests[manifest_id];
             manifest_ent.name = name;
@@ -472,8 +463,8 @@ crate::index_pointer!(Manifest);
 pub struct ManifestEnt {
     pub id: ID,
     pub base_path: String,
-    pub name: Spam,
-    pub root_path: Spam,
+    pub name: Span,
+    pub root_path: Span,
     pub deps: Vec<(ID, Manifest)>,
 }
 
@@ -531,7 +522,7 @@ impl MTState {
     }
 
     pub fn find_dep(&self, inside: Mod, name: &Token) -> Option<Mod> {
-        let id = MOD_SALT.add(name.spam.hash);
+        let id = MOD_SALT.add(name.span.hash);
         self.modules[inside]
             .dependency
             .iter()
@@ -553,7 +544,7 @@ crate::index_pointer!(Mod);
 #[derive(Debug, Clone, Default)]
 pub struct ModEnt {
     pub id: ID,
-    pub name: Spam,
+    pub name: Span,
     pub dependency: Vec<(ID, Mod)>,
     pub dependant: Vec<Mod>,
     pub ast: AState,

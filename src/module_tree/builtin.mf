@@ -1,5 +1,6 @@
 
-attr push(linkage(import), call_conv(platform))
+attr push(untraced)
+attr push(linkage(import), call_conv(platform), untraced)
 
 attr linkage(import, malloc)
 fun alloc(size: int) -> &u8
@@ -10,10 +11,67 @@ fun free(ptr: &u8)
 
 fun memset(ptr: &u8, value: u8, size: int)
 
+fun memmove(dest: &u8, src: &u8, size: int)
+
+fun memcpy(dest: &u8, src: &u8, size: int)
+
 attr linkage(import, printf)
 fun print(str: &u8)
 
+fun exit(code: int)
+
 attr pop()
+
+var stacktrace: Seq[StackFrame]
+
+struct StackFrame:
+  line, column: int
+  file: &u8
+
+fun panic(str: &u8):
+  print("panic: ")
+  print(str)
+  print("\n")
+
+  if stacktrace.len == 0:
+    print("no stacktrace available, use '-trace' when building to generate stactrace\n")
+    exit(1)
+    return
+
+  var 
+    buffer: Seq[u8]
+    i: int
+  
+  loop:
+    if i >= stacktrace.len:
+      break
+    
+    var frame = stacktrace[i]
+    
+    buffer.print_int(frame.line)
+    buffer.push(':'.u8())
+    buffer.print_int(frame.column)
+    buffer.push(' '.u8())
+    buffer.print(frame.file)
+    buffer.push('\n'.u8())
+
+    i += 1
+
+  buffer.push('\x00'.u8())
+
+  print(buffer.data)
+
+  exit(1)
+
+fun push_frame(line, column: int, file: &u8):
+  var frame: StackFrame
+  frame.line = line
+  frame.column = column
+  frame.file = file
+  stacktrace.push(frame)
+
+fun pop_frame:
+  stacktrace.pop()
 
 fun new[T] -> &T:
   let new = alloc(sizeof::[T]())
@@ -29,55 +87,157 @@ impl[T, L] [T, L]:
   fun len(array: &Self) -> int:
     L
 
+impl Seq[u8]:
+  fun print_int(s: &Self, value: int):
+    var value = value
+    loop:
+      if value == 0:
+        break
+      var digit = value % 10
+      value = value / 10
+      s.push((digit.u32() + '0').u8())
+  
+  fun print(s: &Self, value: &u8):
+    var i = 0
+    loop:
+      let value = *((value as int + i) as &u8)
+      if value == 0u8:
+        break
+      i += 1
+    
+    s.reserve(i)
+    memcpy(s.get_unchecked(s.len), value, i)
+    s.len += i
+
+struct Seq[T]:
+  priv data: &T
+  priv len: int
+  priv cap: int
+
+impl[T] Seq[T]:
+  attr push()
+
+  fun extend(s, other: &Self):
+    let new_len = s.len + other.len
+    s.reserve(new_len)
+    memcpy(
+      s.get_unchecked(s.len) as &u8, 
+      other.get_unchecked(0) as &u8, 
+      other.len * sizeof::[T]()
+    )
+    s.len = new_len
+
+  fun reserve(s: &Self, new_cap: int):
+    if s.cap > new_cap:
+      return
+    s.data = realloc(s.data, new_cap * sizeof::[T]())
+    s.cap = new_cap
+  
+  fun insert(s: &Self, index: int, value: T):
+    if index < 0 | index > s.len:
+      panic("index out of range")
+    s.push(value)
+
+    memmove(
+      s.get_unchecked(index + 1) as &u8, 
+      s.get_unchecked(index) as &u8, 
+      (s.len - index) * sizeof::[T]()
+    )
+
+    s[index] = value
+  
+  fun remove(s: &Self, index: int) -> T:
+    s.assert_in_bounds(index)
+    let value = s[index]
+
+    memcpy(
+      s.get_unchecked(index) as &u8, 
+      s.get_unchecked(index + 1) as &u8, 
+      (s.len - index - 1) * sizeof::[T]()
+    )
+
+    s.len -= 1
+
+    value
+  
+  fun push(s: &Self, value: T):
+    let new_len = s.len + 1
+    if new_len > s.cap:
+      s.cap = s.len * 2
+      s.data = realloc(s.data, s.cap * sizeof::[T]()) as &T
+      pass
+    *s.get_unchecked(s.len) = value
+    s.len = new_len
+  
+  fun pop(s: &Self) -> Option[T]:
+    if s.len == 0:
+      return
+    let value = *s.get_unchecked(s.len - 1)
+    s.len -= 1
+    Option::some(value)
+  
+  fun get(s: &Self, index: int) -> Option[&T]:
+    if !s.in_bounds(index):
+      return
+    Option::some(s[index])
+
+  fun __index__(s: &Self, index: int) -> &T:
+    s.assert_in_bounds(index)
+    s.get_unchecked(index)
+  
+  fun set_len(s: &Self, new_len: int):
+    if new_len > s.cap | new_len < 0:
+      panic("invalid length, must be positive and less or equal to capacity")
+    s.len = new_len
+  
+  fun get_unchecked(s: &Self, index: int) -> &T:
+    (s.data as int + index * sizeof::[T]()) as &T
+  
+   fun assert_in_bounds(s: &Self, index: int):
+    if !s.in_bounds(index):
+      panic("index out of bounds")
+  
+  fun in_bounds(s: &Self, index: int) -> bool:
+    index >= 0 & index < s.len
+  
+  attr pop()
+
+
 struct Option[T]:
   priv value: T
   priv is_some: bool
 
-fun some[T](value: T) -> Option[T]:
-  var option: Option[T]
-  option.value = value
-  option.is_some = true
-  option
+impl[T] Option[T]:
+  attr push()
 
-fun is_some[T](option: Option[T]) -> bool:
-  option.is_some
+  fun some(value: T) -> Self:
+    var option: Self
+    option.value = value
+    option.is_some = true
+    option
 
-fun is_none[T](option: Option[T]) -> bool:
-  !option.is_some
+  fun is_some(option: &Self) -> bool:
+    option.is_some
 
-struct Seq[T]:
-  data: &T
-  len: int
-  cap: int
+  fun is_none(option: &Self) -> bool:
+    !option.is_some
 
-fun get[T](s: &Seq[T], index: int) -> Option[&T]:
-  if index < 0 || index >= seq.len:
-    return
-  some(s[index])
+  fun get(option: &Self) -> &T:
+    if option.is_some:
+      &option.value
+    else:
+      panic("no value in option")
+  
+  fun unwrap(option: Self) -> T:
+    if option.is_some:
+      option.value
+    else:
+      panic("no value in option")
+  
+  fun get_unchecked(option: &Self) -> &T:
+    &option.value
+  
+  fun unwrap_unchecked(option: Self) -> T:
+    option.value
 
-fun __index__[T](seq: &Seq[T], index: int) -> &T:
-  (seq.data as int + index * sizeof::[T]()) as &T
-
-fun reserve[T](s: &Seq[T], new_cap: int):
-  if s.cap > new_cap:
-    return
-  s.data = realloc(s.data, new_cap * sizeof::[T]())
-  s.cap = new_cap
-
-fun add[T](s: &Seq[T], value: T):
-  let new_len = s.len + 1
-  if new_len > s.cap:
-    s.data = realloc(s.data, s.len * 2 * sizeof::[T]())
-  s[s.len] = value
-  s.len = new_len
-
-fun extend[T, L](s: &Seq[T], array: &[T, L]):
-  let new_len = s.len + L
-  if new_len > s.cap:
-    s.reserve(new_len)
-  var i = s.len
-  loop:
-    if i == new_len:
-      break
-    s[i] = array[i - s.len]
-  s.len = new_len
+  attr pop()
