@@ -775,6 +775,7 @@ impl<'a> FParser<'a> {
     }
 
     fn dot_expr(&mut self, fun: Fun, ast: &Ast) -> ExprResult {
+        let module = self.state.funs[fun].module;
         let header = self.expr(fun, &ast[0])?;
         let mutable = self.value(header).mutable;
         let field = ast[1].token.span.hash;
@@ -782,7 +783,7 @@ impl<'a> FParser<'a> {
         let inst = self.add_inst(InstEnt::new(IKind::NoOp, None, &Token::default()));
         let value = self.new_anonymous_value(self.state.builtin_repo.bool, mutable);
         self.value_mut(value).inst = Some(inst);
-        let ty = self.field_access(header, field, value, &ast.token)?;
+        let ty = self.field_access(header, field, value, &ast.token, module)?;
         self.state.bstate.body.insts.remove(inst);
         self.value_mut(value).ty = ty;
         Ok(Some(value))
@@ -1171,7 +1172,7 @@ impl<'a> FParser<'a> {
         if caller.is_none() {
             if let Some(field) = field {
                 let temp = self.new_temp_value(self.state.builtin_repo.bool);
-                self.field_access(values[0], field, temp, token)?;
+                self.field_access(values[0], field, temp, token, module)?;
                 values[0] = temp;
             }
 
@@ -1239,6 +1240,17 @@ impl<'a> FParser<'a> {
                 IKind::Call(push, vec![line, column, file_name]),
                 None,
                 &token,
+            ));
+        }
+
+        if !self.state.can_access(
+            self.state.funs[fun].module, 
+            self.state.funs[other_fun].module, 
+            self.state.funs[other_fun].vis
+        ) {
+            return Err(FError::new(
+                FEKind::VisibilityViolation,
+                token.clone(),
             ));
         }
 
@@ -1500,6 +1512,7 @@ impl<'a> FParser<'a> {
         field: ID,
         value: Value,
         token: &Token,
+        module: Mod,
     ) -> Result<Type> {
         let mutable = self.value(header).mutable || self.base_of(self.value(header).ty).is_some();
         let header_datatype = self.value(header).ty;
@@ -1514,9 +1527,16 @@ impl<'a> FParser<'a> {
         let mut offset = 0;
         let mut current_type = header_datatype;
         for &i in path.iter().rev() {
-            match &self.ty(current_type).kind {
+            let ty = self.ty(current_type);
+            match &ty.kind {
                 &TKind::Structure(sid) => {
                     let field = &self.state.stypes[sid].fields[i];
+                    if !self.state.can_access(module, ty.module, field.vis) {
+                        return Err(FError::new(
+                            FEKind::FieldVisibilityViolation,
+                            token.clone(),
+                        ));
+                    } 
                     offset += field.offset;
                     current_type = field.ty;
                 }
@@ -1524,10 +1544,16 @@ impl<'a> FParser<'a> {
                     let value = self.new_anonymous_value(current_type, mutable);
                     self.value_mut(value).offset = offset;
                     self.add_inst(InstEnt::new(IKind::Offset(header), Some(value), &token));
-
-                    match &self.ty(pointed).kind {
+                    let ty = self.ty(pointed);
+                    match &ty.kind {
                         &TKind::Structure(sid) => {
                             let field = &self.state.stypes[sid].fields[i];
+                            if !self.state.can_access(module, ty.module, field.vis) {
+                                return Err(FError::new(
+                                    FEKind::FieldVisibilityViolation,
+                                    token.clone(),
+                                ));
+                            } 
                             offset = field.offset;
                             current_type = field.ty;
                             let loaded = self.new_anonymous_value(pointed, mutable);
@@ -2565,6 +2591,12 @@ crate::def_displayer!(
         FEKind::InvalidDotCall => {
             writeln!(f, "call cannot have explicit caller type and be a dot call")?;
         },
+        FEKind::VisibilityViolation => {
+            writeln!(f, "function visibility disallows access, {}", crate::types::VISIBILITY_MESSAGE)?;
+        },
+        FEKind::FieldVisibilityViolation => {
+            writeln!(f, "field visibility disallows access, {}", crate::types::VISIBILITY_MESSAGE)?;
+        },
     }
 );
 
@@ -2582,6 +2614,8 @@ impl FError {
 
 #[derive(Debug)]
 pub enum FEKind {
+    FieldVisibilityViolation,
+    VisibilityViolation,
     InvalidDotCall,
     UnknownModule,
     VarInsideGenericScope(Token),
@@ -3326,7 +3360,7 @@ pub fn test() {
             .unwrap();
 
         collector.clear(&mut context);
-        collector.parse(&mut state, &mut ast);
+        collector.parse(&mut state, &mut ast, Vis::None);
 
         context.recycle(ast);
 

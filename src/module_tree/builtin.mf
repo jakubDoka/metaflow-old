@@ -1,42 +1,44 @@
 
 attr push(untraced)
+
 attr push(linkage(import), call_conv(platform), untraced)
 
 attr linkage(import, malloc)
-fun alloc(size: int) -> &u8
+fun pub alloc(size: int) -> &u8
 
-fun realloc(ptr: &u8, size: int) -> &u8
+fun pub realloc(ptr: &u8, size: int) -> &u8
 
-fun free(ptr: &u8)
+fun pub free(ptr: &u8)
 
-fun memset(ptr: &u8, value: u8, size: int)
+fun pub memset(ptr: &u8, value: u8, size: int)
 
-fun memmove(dest: &u8, src: &u8, size: int)
+fun pub memmove(dest: &u8, src: &u8, size: int)
 
-fun memcpy(dest: &u8, src: &u8, size: int)
+fun pub memcpy(dest: &u8, src: &u8, size: int)
 
 attr linkage(import, printf)
-fun print(str: &u8)
+fun pub print(str: &u8)
 
-fun exit(code: int)
+fun pub exit(code: int)
 
 attr pop()
 
-var stacktrace: Seq[StackFrame]
+var pub stacktrace: Seq[StackFrame]
 
-struct StackFrame:
-  line, column: int
-  file: &u8
+struct pub StackFrame:
+  pub line, column: int
+  pub file: &u8
 
-fun assert(cond: bool):
+attr inline
+fun pub assert(cond: bool):
   if !cond: panic("assertion failed")
 
 ##[
   interupts the program with 1 exit code and prints 
-  collected stacktrace if any along with the message 
+  collected stacktrace if any, along with the message 
 ]#
 attr terminating
-fun panic(msg: &u8):
+fun pub panic(msg: &u8):
   print("panic: ")
   print(msg)
   print("\n")
@@ -71,31 +73,54 @@ fun panic(msg: &u8):
 
   exit(1)
 
-fun push_frame(line, column: int, file: &u8):
+fun pub push_frame(line, column: int, file: &u8):
   var frame: StackFrame
   frame.line = line
   frame.column = column
   frame.file = file
   stacktrace.push(frame)
 
-fun pop_frame:
+fun pub pop_frame:
   stacktrace.pop()
 
-fun new[T] -> &T:
+## allocates the given type on heap and returns a pointer
+## to the allocated memory, memory is zero initialized
+fun pub new[T] -> &T:
   let new = alloc(sizeof::[T]())
   memset(new, 0, sizeof::[T]())
   new as &T
 
-fun sizeof[T] -> int
+## drops the given pointer assumint it was previously allocated with
+## 'new' function
+fun pub drop[T](ptr: &T):
+  free(ptr as &u8)
 
-impl[T, L] [T, L]:
-  fun __index__(p: &Self, index: int) -> &T:
-    (p as int + index * sizeof::[T]()) as &T
+## returns size of T in bytes
+fun pub sizeof[T] -> int
+
+impl pub [T, L] [T, L]:
+  attr push(inline)
+
+  fun __index__(a: &Self, index: int) -> &T:
+    if index < 0 | index >= L:
+      panic("index out of bounds")
+    a.get_unchecked(index)
+
+  fun get_unchecked(a: &Self, index: int) -> &T:
+    (a as int + index * sizeof::[T]()) as &T
+
+  fun to_seq(a: &Self) -> Seq[T]:
+    var seq: Seq[T]
+    seq.reserve(L)
+    *(seq.data as &Self) = *a
+    seq
 
   fun len(array: &Self) -> int:
     L
+  
+  attr pop()
 
-impl Seq[u8]:
+impl pub Seq[u8]:
   fun print_int(s: &Self, value: int):
     var value = value
     loop:
@@ -117,13 +142,13 @@ impl Seq[u8]:
     memcpy(s.get_unchecked(s.len), value, i)
     s.len += i
 
-struct Seq[T]:
-  priv data: &T
-  priv len: int
-  priv cap: int
+struct pub Seq[T]:
+  data: &T
+  len: int
+  cap: int
 
-impl[T] Seq[T]:
-  attr push()
+impl pub [T] Seq[T]:
+  attr push(inline)
 
   fun extend(s, other: &Self):
     let new_len = s.len + other.len
@@ -211,12 +236,12 @@ impl[T] Seq[T]:
   attr pop()
 
 
-struct Option[T]:
+struct pub Option[T]:
   priv value: T
   priv is_some: bool
 
-impl[T] Option[T]:
-  attr push()
+impl pub [T] Option[T]:
+  attr push(inline)
 
   fun some(value: T) -> Self:
     var option: Self

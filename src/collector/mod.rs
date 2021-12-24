@@ -1,7 +1,7 @@
 use std::ops::Range;
 
 use crate::{
-    ast::{AContext, AKind, AMainState, Ast, AstDisplay},
+    ast::{AContext, AKind, AMainState, Ast, AstDisplay, Vis},
     util::{
         sdbm::ID,
         storage::{IndexPointer, List, ReusableList},
@@ -35,7 +35,7 @@ pub struct Collector {
 }
 
 impl Collector {
-    pub fn parse(&mut self, l_state: &AMainState, ast: &mut Ast) {
+    pub fn parse(&mut self, l_state: &AMainState, ast: &mut Ast, vis: Vis) {
         for mut item in ast.drain(..) {
             match item.kind {
                 AKind::Fun(_)
@@ -53,7 +53,7 @@ impl Collector {
                     };
 
                     match item.ast.kind {
-                        AKind::Impl(_) => {
+                        AKind::Impl(vis) => {
                             let scope = ScopeEnt {
                                 attributes: self.to_permanent(item.attrs),
                                 params: item.ast[0]
@@ -64,11 +64,17 @@ impl Collector {
                             };
                             let scope = self.scopes.add(scope);
                             self.scope = Some(scope);
-                            self.parse(l_state, &mut item.ast[2]);
+                            self.parse(l_state, &mut item.ast[2], vis);
                             self.scope = None;
                         }
-                        AKind::Fun(_) => self.functions.push(item),
-                        AKind::VarStatement(_, _) => self.globals.push(item),
+                        AKind::Fun(fun_vis) => {
+                            item.ast.kind = AKind::Fun(vis.join(fun_vis));
+                            self.functions.push(item)
+                        },
+                        AKind::VarStatement(var_vis, mutable) => {
+                            item.ast.kind = AKind::VarStatement(vis.join(var_vis), mutable);
+                            self.globals.push(item)
+                        },
                         AKind::StructDeclaration(_) => self.types.push(item),
                         _ => unreachable!(),
                     }

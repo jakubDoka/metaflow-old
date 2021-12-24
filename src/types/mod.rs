@@ -14,6 +14,9 @@ type Result<T = ()> = std::result::Result<T, TError>;
 
 pub const TYPE_SALT: ID = ID(0x9e3779b97f4a7c15);
 
+pub const VISIBILITY_MESSAGE: &str = 
+"removing 'priv' in case of different module but same package or adding 'pub' in case of different package can help";
+
 pub static mut POINTER_TYPE: CrType = INVALID;
 
 pub fn ptr_ty() -> CrType {
@@ -268,7 +271,7 @@ impl<'a> TParser<'a> {
     }
 
     fn resolve_type(&mut self, module: Mod, ast: &Ast, depth: usize) -> Result<(Mod, Type)> {
-        match ast.kind {
+        let (ty_module, ty) = match ast.kind {
             AKind::Ident => self.resolve_simple_type(module, &ast.token),
             AKind::Path => self.resolve_explicit_package_type(module, ast),
             AKind::Instantiation => self.resolve_instance(module, ast, depth),
@@ -277,7 +280,16 @@ impl<'a> TParser<'a> {
             AKind::Lit => self.resolve_constant(module, &ast.token),
             AKind::Fun(..) => self.resolve_function_pointer(module, ast, depth),
             _ => unreachable!("{:?}", ast.kind),
+        }?;
+
+        if !self.state.can_access(module, ty_module, self.state.types[ty].vis) {
+            return Err(TError::new(
+                TEKind::VisibilityViolation,
+                ast.token.clone(),
+            ));
         }
+
+        Ok((module, ty))
     }
 
     fn resolve_function_pointer(
@@ -323,7 +335,7 @@ impl<'a> TParser<'a> {
             hint: ast.token.clone(),
             id,
             module,
-            visibility: Vis::None,
+            vis: Vis::None,
             name: ast.token.span.clone(),
             attrs: Attrs::default(),
             size,
@@ -425,7 +437,7 @@ impl<'a> TParser<'a> {
         let type_ent = TypeEnt {
             id,
             module,
-            visibility: ty_ent.visibility,
+            vis: ty_ent.vis,
             params: params.clone(),
             kind: TKind::Unresolved(ast_id),
             name: ty_ent.name.clone(),
@@ -505,7 +517,7 @@ impl<'a> TParser<'a> {
                     let hint = ast[0].token.clone();
                     let id = TYPE_SALT.add(ident.token.span.hash).add(module_name);
                     let datatype = TypeEnt {
-                        visibility,
+                        vis: visibility,
                         id,
                         params: vec![],
                         module,
@@ -548,7 +560,7 @@ impl<'a> TParser<'a> {
         let size = ptr_ty().bytes() as u32;
 
         let pointer_type = TypeEnt {
-            visibility: Vis::Public,
+            vis: Vis::Public,
             id,
             params: vec![],
             kind: TKind::Pointer(ty),
@@ -579,7 +591,7 @@ impl<'a> TParser<'a> {
 
         let ty_ent = TypeEnt {
             id,
-            visibility: Vis::Public,
+            vis: Vis::Public,
             kind: TKind::Array(element, length as u32),
 
             size: self.state.types[element].size * length as u32,
@@ -611,7 +623,7 @@ impl<'a> TParser<'a> {
 
         let ty_ent = TypeEnt {
             id,
-            visibility: Vis::Public,
+            vis: Vis::Public,
             kind: TKind::Const(constant),
 
             ..Default::default()
@@ -676,7 +688,7 @@ crate::index_pointer!(Type);
 pub struct TypeEnt {
     pub id: ID,
     pub module: Mod,
-    pub visibility: Vis,
+    pub vis: Vis,
     pub params: Vec<Type>,
     pub kind: TKind,
     pub name: Span,
@@ -691,7 +703,7 @@ impl Default for TypeEnt {
         Self {
             id: ID::new(""),
             module: Mod::new(0),
-            visibility: Vis::Public,
+            vis: Vis::Public,
             params: vec![],
             kind: TKind::Unresolved(GAst::new(0)),
             name: Span::default(),
@@ -885,7 +897,7 @@ macro_rules! define_repo {
                     let id = TYPE_SALT.add(ID::new(stringify!($name))).add(builtin_id);
                     let type_ent = TypeEnt {
                         id,
-                        visibility: Vis::Public,
+                        vis: Vis::Public,
                         kind: TKind::Builtin($repr),
                         size: $size,
                         align: $size.min(8),
@@ -990,6 +1002,9 @@ crate::def_displayer!(
     TState,
     TError,
     |self, f| {
+        TEKind::VisibilityViolation => {
+            write!(f, "visibility of the type disallows the access, {}", VISIBILITY_MESSAGE)?;
+        },
         TEKind::InstancingNonGeneric(origin) => {
             writeln!(
                 f,
@@ -1068,6 +1083,7 @@ impl TError {
 
 #[derive(Debug)]
 pub enum TEKind {
+    VisibilityViolation,
     InstancingNonGeneric(Token),
     AError(AError),
     UnexpectedAst(String),
@@ -1103,7 +1119,7 @@ pub fn test() {
             .unwrap();
 
         collector.clear(&mut context);
-        collector.parse(&mut state, &mut ast);
+        collector.parse(&mut state, &mut ast, Vis::None);
 
         context.recycle(ast);
 

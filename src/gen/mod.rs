@@ -14,7 +14,7 @@ use crate::{
     cli::Arguments,
     functions::{FError, FErrorDisplay, Program},
     lexer::{Token, TokenDisplay},
-    module_tree::{MTError, MTErrorDisplay, MTParser}, collector::Collector, ast::{AParser, AErrorDisplay, AError},
+    module_tree::{MTError, MTErrorDisplay, MTParser}, collector::Collector, ast::{AParser, AErrorDisplay, AError, Vis},
 };
 
 use super::*;
@@ -133,7 +133,7 @@ pub fn generate_obj_file(args: &Arguments) -> Result<Vec<u8>> {
         };
 
         collector.clear(&mut context);
-        collector.parse(&mut state, &mut ast);
+        collector.parse(&mut state, &mut ast, Vis::None);
 
         context.recycle(ast);
 

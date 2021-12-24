@@ -1,7 +1,7 @@
 use std::ops::{Deref, DerefMut};
 use std::path::{Path, PathBuf};
 
-use crate::ast::{AContext, AError, AErrorDisplay, AMainState, AParser, AState, Dep};
+use crate::ast::{AContext, AError, AErrorDisplay, AMainState, AParser, AState, Dep, Vis};
 use crate::lexer::{SourceEnt, Span, TokenDisplay};
 use crate::util::pool::{Pool, PoolRef};
 use crate::util::sdbm::ID;
@@ -523,6 +523,15 @@ impl MTState {
             .iter()
             .find(|&(m_id, _)| *m_id == id)
             .map(|&(_, id)| id)
+    }
+
+    pub fn can_access(&self, from: Mod, to: Mod, vis: Vis) -> bool {
+        matches!(
+            (from == to, self.modules[from].manifest == self.modules[to].manifest, vis),
+            (true, ..) |
+            (_, true, Vis::None | Vis::Public) |
+            (.., Vis::Public)
+        )
     }
 }
 

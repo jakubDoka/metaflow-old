@@ -1296,6 +1296,16 @@ pub enum Vis {
     Private,
 }
 
+impl Vis {
+    pub fn join(self, other: Self) -> Self {
+        match (self, other) {
+            (_, Vis::Public) | (Vis::Public, Vis::None) => Vis::Public,
+            (_, Vis::Private) | (Vis::Private, Vis::None) => Vis::Private,
+            (Vis::None, Vis::None) => Vis::None,
+        }
+    }
+}
+
 impl Default for Vis {
     fn default() -> Self {
         Vis::Public
