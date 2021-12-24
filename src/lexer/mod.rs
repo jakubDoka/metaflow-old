@@ -214,6 +214,61 @@ impl<'a> Lexer<'a> {
         }
     }
 
+    fn comment(&mut self) -> Result {
+        let start = self.state.progress;
+        self.advance();
+        let is_doc = self.peek() == Some('#');
+        if is_doc {
+            self.advance();
+        }
+
+        if self.peek() == Some('[') {
+            let mut depth = 0;
+            loop {
+                match self.peek() {
+                    Some(']') => {
+                        self.advance();
+                        if self.peek() == Some('#') {
+                            self.advance();
+                            if depth == 0 {
+                                break;
+                            }
+                            depth -= 1;
+                        }
+                    }
+                    Some('#') => {
+                        self.advance();
+                        if self.peek() == Some('[') {
+                            self.advance();
+                            depth += 1;
+                        }
+                    }
+                    Some(_) => {
+                        self.advance();
+                    },
+                    None => break,
+                }
+            }
+        } else {
+            loop {
+                match self.peek() {
+                    Some('\n') | None => break,
+                    Some(_) => {
+                        self.advance();
+                    },
+                }
+            }
+        }
+
+        let end = self.state.progress;
+        let value = self.span(start..end);
+
+        Ok(Token::new(
+            TKind::Comment(is_doc),
+            value,
+        ))
+    }
+
     fn string(&mut self) -> Result<Token> {
         let start = self.state.progress;
         self.advance();
@@ -270,7 +325,7 @@ impl<'a> Lexer<'a> {
         self.advance();
         let current = self.advance().unwrap_or('\0');
         Some(match current {
-            'a' | 'b' | 'e' | 'f' | 'n' | 'r' | 't' | 'v' | '\\' | '\'' | '"' => match current {
+            'a' | 'b' | 'e' | 'f' | 'n' | 'r' | 't' | 'v' | '\\' | '\'' | '"' | '0' => match current {
                 'a' => '\x07',
                 'b' => '\x08',
                 'e' => '\x1b',
@@ -279,6 +334,7 @@ impl<'a> Lexer<'a> {
                 'n' => '\n',
                 'r' => '\r',
                 't' => '\t',
+                '0' => '\0',
                 _ => current,
             },
             '0'..='7' => {
@@ -314,7 +370,6 @@ impl<'a> Lexer<'a> {
         self.source[self.state.progress..].chars().nth(n)
     }
 
-    #[inline]
     pub fn advance(&mut self) -> Option<char> {
         let char = self.peek();
 
@@ -334,60 +389,64 @@ impl<'a> Lexer<'a> {
             self.state.source,
             ID::new(&self.source[range.clone()]),
             range.clone(),
-            range.start - self.state.last_n_line,
-            self.column(),
+            self.state.line,
+            range.end - self.state.last_n_line,
         )
     }
 
-    pub fn column(&self) -> usize {
-        self.state.progress 
-    }
-
     pub fn next(&mut self) -> Result {
-        let char = self.peek().unwrap_or('\0');
-        if char.is_alphabetic() || char == '_' {
-            return self.ident();
-        }
-        if char.is_operator() {
-            return self.op();
-        }
-        if char.is_numeric() {
-            return self.number();
-        }
-
-        let start = self.state.progress;
-
-        let kind = match char {
-            '\n' => return self.indent(),
-            ' ' | '\r' | '\t' => {
-                while matches!(self.peek(), Some(' ' | '\t' | '\r')) {
-                    self.advance();
+        loop {
+            let char = self.peek().unwrap_or('\0');
+            if char.is_alphabetic() || char == '_' {
+                return self.ident();
+            }
+            if char.is_operator() {
+                return self.op();
+            }
+            if char.is_numeric() {
+                return self.number();
+            }
+    
+            let start = self.state.progress;
+    
+            let kind = match char {
+                '\n' => return self.indent(),
+                ' ' | '\r' | '\t' => {
+                    while matches!(self.peek(), Some(' ' | '\t' | '\r')) {
+                        self.advance();
+                    }
+                    continue;
                 }
-                return self.next();
-            }
-            '\'' => return self.char_or_label(),
-            '"' => return self.string(),
-            '#' => TKind::Hash,
-            ',' => TKind::Comma,
-            '(' => TKind::LPar,
-            ')' => TKind::RPar,
-            '{' => TKind::LCurly,
-            '}' => TKind::RCurly,
-            '[' => TKind::LBra,
-            ']' => TKind::RBra,
-            '.' => TKind::Dot,
-            '\0' => TKind::Eof,
-            _ => {
-                return Err(LError::new(
-                    LEKind::UnknownCharacter,
-                    self.span(start..start + 1),
-                ))
-            }
-        };
-
-        self.advance();
-        let end = self.state.progress;
-        Ok(Token::new(kind, self.span(start..end)))
+                '\'' => return self.char_or_label(),
+                '"' => return self.string(),
+                '#' => {
+                    let comment = self.comment()?;
+                    if comment.kind == TKind::Comment(false) {
+                        continue;
+                    }
+                    return Ok(comment);
+                }    
+                ',' => TKind::Comma,
+                '(' => TKind::LPar,
+                ')' => TKind::RPar,
+                '{' => TKind::LCurly,
+                '}' => TKind::RCurly,
+                '[' => TKind::LBra,
+                ']' => TKind::RBra,
+                '.' => TKind::Dot,
+                '\0' => TKind::Eof,
+                _ => {
+                    return Err(LError::new(
+                        LEKind::UnknownCharacter,
+                        self.span(start..start + 1),
+                    ))
+                }
+            };
+    
+            self.advance();
+            let end = self.state.progress;
+            return Ok(Token::new(kind, self.span(start..end)))
+        }
     }
 }
 
@@ -598,7 +657,6 @@ pub enum TKind {
     DoubleColon,
     Comma,
     RArrow,
-    Hash,
     Dot,
 
     Int(i64, u16),
@@ -608,6 +666,7 @@ pub enum TKind {
     Char(char),
     String(Span),
 
+    Comment(bool),
     Indent(usize),
 
     Group,
@@ -652,8 +711,8 @@ impl std::fmt::Display for TKind {
             TKind::Comma => "','",
             TKind::RArrow => "'->'",
             TKind::Dot => "'.'",
-            TKind::Hash => "'#'",
             TKind::Indent(_) => "indentation",
+            TKind::Comment(_) => "comment",
             TKind::Int(..) => "integer",
             TKind::Uint(..) => "unsigned integer",
             TKind::Float(..) => "float",

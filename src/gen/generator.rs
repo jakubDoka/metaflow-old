@@ -5,7 +5,7 @@ use cranelift_codegen::{
         condcodes::{FloatCC, IntCC},
         types::*,
         Block as CrBlock, InstBuilder, MemFlags, Signature, StackSlot, StackSlotData,
-        StackSlotKind, Type as CrType, Value as CrValue,
+        StackSlotKind, Type as CrType, Value as CrValue, FuncRef, GlobalValue,
     },
     isa::CallConv,
     Context,
@@ -23,7 +23,7 @@ use crate::{
     lexer::{Span, TKind as LTKind, Token},
     module_tree::Mod,
     types::{self, ptr_ty, TKind, Type, TypeDisplay, TypeEnt},
-    util::{pool::PoolRef, sdbm::SdbmHash, storage::IndexPointer},
+    util::{pool::PoolRef, sdbm::{SdbmHash, ID}, storage::{IndexPointer, Map}},
 };
 
 use super::{GEKind, GError};
@@ -34,7 +34,7 @@ pub const STRING_SALT: u64 = 0xDEADBEEF; // just a random number
 
 pub struct Generator<'a> {
     program: &'a mut Program,
-    state: &'a mut FState,
+    state: &'a mut GState,
     context: &'a mut GContext,
     collector: &'a mut Collector,
 }
@@ -107,7 +107,10 @@ impl<'a> Generator<'a> {
 
         for fun in represented.drain(..) {
             crate::test_println!("{}", crate::functions::FunDisplay::new(&self.state, fun));
-
+            
+            self.state.imported_funs.clear();
+            self.state.imported_globals.clear();
+            
             let fun = &self.state.funs[fun];
             let rid = fun.kind.unwrap_represented();
             let fun_id = self.state.rfuns[rid].id;
@@ -323,6 +326,7 @@ impl<'a> Generator<'a> {
                         let r_ent = &self.state.rfuns[rid];
                         let inline = r_ent.inline;
                         let fun_id = r_ent.id;
+                        let map_id = ID(fun_id.as_u32() as u64);
 
                         let mut struct_return = false;
 
@@ -342,10 +346,16 @@ impl<'a> Generator<'a> {
                         if inline {
                             return Ok(Some(current));
                         } else {
-                            let fun_ref = self
-                                .program
-                                .module
-                                .declare_func_in_func(fun_id, builder.func);
+                            let fun_ref = if let Some(&fun_ref) = self.state.imported_funs.get(map_id) {
+                                fun_ref
+                            } else {
+                                let fun_ref = self
+                                    .program
+                                    .module
+                                    .declare_func_in_func(fun_id, builder.func);
+                                self.state.imported_funs.insert(map_id, fun_ref);
+                                fun_ref
+                            };
 
                             call_buffer.clear();
                             call_buffer.extend(
@@ -422,8 +432,14 @@ impl<'a> Generator<'a> {
                                 )
                             };
                             let data = self.make_static_data(data, false, false);
-                            let value =
-                                self.program.module.declare_data_in_func(data, builder.func);
+                            let map_id = ID(data.as_u32() as u64);
+                            let value = if let Some(&value) = self.state.imported_globals.get(map_id) {
+                                value
+                            } else {
+                                let value = self.program.module.declare_data_in_func(data, builder.func);
+                                self.state.imported_globals.insert(map_id, value);
+                                value
+                            };
                             builder.ins().global_value(repr, value)
                         }
                         lit => todo!("{}", lit),
@@ -504,7 +520,15 @@ impl<'a> Generator<'a> {
                         &GKind::Represented(id, ty) => (id, ty),
                         _ => unreachable!(),
                     };
-                    let data = self.program.module.declare_data_in_func(id, builder.func);
+                    let map_id = ID(id.as_u32() as u64);
+                    
+                    let data = if let Some(&data) = self.state.imported_globals.get(map_id) {
+                        data
+                    } else { 
+                        let data = self.program.module.declare_data_in_func(id, builder.func);
+                        self.state.imported_globals.insert(map_id, data);
+                        data
+                    };
                     let val = builder.ins().global_value(self.repr(ty), data);
                     let value = self.value_mut(fun, value.unwrap());
                     value.value = FinalValue::Pointer(val);
@@ -1078,6 +1102,8 @@ impl SdbmHash for &[u8] {
 #[derive(Default)]
 pub struct GState {
     pub f_state: FState,
+    pub imported_funs: Map<FuncRef>,
+    pub imported_globals: Map<GlobalValue>,
 }
 
 crate::inherit!(GState, f_state, FState);

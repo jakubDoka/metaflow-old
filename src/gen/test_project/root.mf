@@ -1,3 +1,25 @@
+attr entry
+fun main -> int:
+  assert(1 - 1 == 0)
+  assert(1 + 1 == 2)
+  assert((if 1 == 1: 1 else: 0) == 1)
+  assert(fib(10) == fib_loop(10))
+
+  test_case_1()
+  test_case_2()
+  test_case_3()
+  test_case_4()
+  test_case_5()
+  test_case_6()
+  test_case_7()
+  test_case_8()
+  test_case_9()
+  test_case_10()
+  test_case_11()
+  test_case_12()
+  test_case_13()
+
+  return 0
 
 fun fib(v: int) -> int:
   return if v < 2:
@@ -17,9 +39,180 @@ fun fib_loop(v: int) -> int:
     if v == 1:
       break'a
   return c
+    
+struct Point:
+  x, y: int
 
-attr entry
-fun main -> int:
-  let v = 10
-  return fib_loop(v) - fib(v)
+struct Point3:
+  embed point: Point
+  z: int
+
+struct Rect:
+  mi: Point
+  ma: Point
+
+
+fun test_case_1:
+  var
+    p: Point
+    p3: Point3
+    r: Rect
+
+  p.x = 1
+  p3.point = p
+  p3.y = 2
+  r.mi = p3.point
+
+  assert(r.mi.x - r.mi.y + 1 == 0)
+    
+impl Point:
+  fun set(p: Self, x: int, y: int) -> Self:
+    var p = p
+    p.x = x
+    p.y = y
+    return p
+
+
+fun test_case_2:
+  var p, q: Point
+  p = p.set(1, 2)
+  assert(p.x + p.y == 3)
+
+fun test_case_3:
+  var a: int
+  ++a
+  --a
+  assert(bool::int(!true) + ~1 + 2 + abs -1 - 1 + a == 0)
         
+    
+
+fun test_case_4:
+  var a = 1.0
+  loop:
+    a = a + 1.0
+    if a > 100.0:
+      break
+  assert(f64::int(a) == 101)
+        
+    
+attr linkage(import), call_conv(platform)
+fun putchar(c: i32)
+
+fun test_case_5:
+  var
+    a = "Hello, World!"
+    b = a as uint
+  loop:
+    let char = *(b as &u8)
+    if char == 0u8:
+      break
+    putchar(char.i32())
+    b += 1 as uint
+    
+impl Point:
+  fun init(v: &Point, x: int, y: int) -> Point:
+    (*v).x = x
+    (*v).y = y
+    pass
+
+fun test_case_6:
+  var p: Point
+  p.init(2, 2)
+  assert(p.x + p.y == 4)
+        
+    
+struct Cell[T]:
+  priv embed p: &T
+
+fun test_case_7:
+  var 
+    p: Point
+    c: Cell[Point]
+  c.p = &p
+  
+  c.x = 1
+  c.y = 2
+
+  assert(c.x + c.y == 3)
+    
+struct EightBytes:
+  a, b, c, d, e, f, g, h: i8
+  
+fun test_case_8:
+  var eb: EightBytes
+  eb.a = 1i8
+  eb.b = 2i8
+  eb.c = 3i8
+  eb.d = 4i8
+  eb.e = 5i8
+  eb.f = 6i8
+  eb.g = 7i8
+  eb.h = 8i8
+
+  assert(eb.a + eb.h + eb.g + eb.f + eb.e + eb.d + eb.c + eb.b == 4i8 * 9i8)
+    
+
+fun test_case_9:
+  let array = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]
+  var 
+    i = 0
+    sum = 0
+  
+  loop:
+    if i >= array.len():
+      break
+    sum += array[i]
+    i += 1
+
+  assert(sum == 11 * 5)
+        
+    
+
+var storage: [int, 10]
+
+fun test_case_10:
+  let array = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]
+  var 
+    i = 0
+    sum = 0
+  
+  loop:
+    if i >= array.len():
+      break
+    sum += array[i]
+    storage[i] = array[i]
+    i += 1
+
+  assert(sum == 11 * 5)
+
+fun test_case_11:
+  var a = 1
+  var b = &a
+  *b = 0
+  assert(a == 0)
+    
+let a = 1
+
+
+fun test_case_12:
+  assert(a == 1)
+    
+    
+attr inline
+fun something(a, b: int) -> int:
+  return (a + b) - 2 * a
+
+attr inline
+fun even_worse(a, b: int) -> int:
+  if a > b:
+    return something(a, b)
+  else:
+    return something(b, a)
+
+
+fun test_case_13:
+  assert(even_worse(1, 1) == 0)
+    
+fun assert(cond: bool):
+  builtin::assert(cond)
+  print("ok\n")

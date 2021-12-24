@@ -28,9 +28,17 @@ struct StackFrame:
   line, column: int
   file: &u8
 
-fun panic(str: &u8):
+fun assert(cond: bool):
+  if !cond: panic("assertion failed")
+
+##[
+  interupts the program with 1 exit code and prints 
+  collected stacktrace if any along with the message 
+]#
+attr terminating
+fun panic(msg: &u8):
   print("panic: ")
-  print(str)
+  print(msg)
   print("\n")
 
   if stacktrace.len == 0:
@@ -57,7 +65,7 @@ fun panic(str: &u8):
 
     i += 1
 
-  buffer.push('\x00'.u8())
+  buffer.push('\0'.u8())
 
   print(buffer.data)
 

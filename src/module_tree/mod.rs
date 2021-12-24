@@ -50,6 +50,7 @@ impl<'a> MTParser<'a> {
                 .take_imports(&mut imports)
                 .map_err(Into::into)?;
             for import in imports.drain(..) {
+                
                 let path = self.state.display(&import.path);
                 let head = Path::new(path)
                     .components()
@@ -59,24 +60,22 @@ impl<'a> MTParser<'a> {
                     .to_str()
                     .unwrap();
                 let id = ID::new(head);
-                let manifest = self.state.manifests[module.manifest]
-                    .deps
-                    .iter()
-                    .find(|dep| dep.0 == id)
-                    .map(|dep| dep.1)
-                    .or_else(|| {
-                        if head
-                            == self
-                                .state
-                                .display(&self.state.manifests[module.manifest].name)
-                        {
-                            Some(module.manifest)
-                        } else {
-                            None
-                        }
-                    })
-                    .ok_or_else(|| MTError::new(MTEKind::ImportNotFound, import.token.clone()))?
-                    .clone();
+                let manifest = &self.state.manifests[module.manifest];
+                println!("{}", module.manifest);
+                let manifest = if id == manifest.name.hash {
+                    module.manifest
+                } else {
+                    manifest
+                        .deps
+                        .iter()
+                        .find(|dep| {
+                            println!("{:?}", dep);
+                            dep.0 == id
+                        })
+                        .map(|dep| dep.1)
+                        .ok_or_else(|| MTError::new(MTEKind::ImportNotFound, import.token.clone()))?
+                        .clone()
+                };  
 
                 let dependency = self.load_module(
                     import.path,
@@ -148,10 +147,6 @@ impl<'a> MTParser<'a> {
                     .unwrap_or(""),
             )
             .unwrap();
-
-        if module_path == Path::new("") && manifest_name != root {
-            return Err(MTError::new(MTEKind::DisplacedModule, token));
-        }
 
         path_buffer.push(module_path);
         path_buffer.set_extension(SOURCE_EXT);
@@ -263,7 +258,7 @@ impl<'a> MTParser<'a> {
             let whole_len = Path::new(root_file).file_name().unwrap().len();
 
             let len = root_file_span.range.len();
-            let name = self.state.slice_span(&root_file_span, len - whole_len..len - name_len + whole_len);
+            let name = self.state.slice_span(&root_file_span, len - whole_len..len - whole_len + name_len);
             let root_path = self.state.slice_span(&root_file_span, 0..parent_len);
 
             let manifest_ent = &mut self.state.manifests[manifest_id];
@@ -571,9 +566,6 @@ crate::def_displayer!(
                 "root of import not found inside manifest, nor it is root of current project"
             )?;
         },
-        MTEKind::DisplacedModule => {
-            writeln!(f, "module violates project structure, all submodules have to be placed in directory with the name of root module that are in same directory as root module")?;
-        },
         MTEKind::FileReadError(path, error) => {
             writeln!(f, "error reading module '{}', this may be due to invalid project structure, original error: {}", path.as_os_str().to_str().unwrap(), error)?;
         },
@@ -643,7 +635,6 @@ pub enum MTEKind {
     MissingPathStem,
     MissingCache,
     ImportNotFound,
-    DisplacedModule,
     FileReadError(PathBuf, std::io::Error),
     ManifestReadError(PathBuf, std::io::Error),
     AError(AError),
@@ -660,5 +651,6 @@ pub fn test() {
 
     MTParser::new(&mut state, &mut context)
         .parse("src/module_tree/test_project")
+        .map_err(|e| panic!("{}", MTErrorDisplay::new(&state, &e)))
         .unwrap();
 }

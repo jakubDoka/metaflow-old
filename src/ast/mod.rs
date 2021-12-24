@@ -175,10 +175,15 @@ impl<'a> AParser<'a> {
                 TKind::Attr => ast.push(self.attr()?),
                 TKind::Struct => ast.push(self.struct_declaration()?),
                 TKind::Var | TKind::Let => ast.push(self.var_statement(true)?),
+                TKind::Comment(_) => {
+                    let ast = ast.push(self.ast(AKind::Comment));
+                    self.next()?;
+                    ast
+                },
                 TKind::Indent(_) => self.next()?,
                 _ => {
                     return Err(self.unexpected_str(
-                        "expected 'fun' or 'attr' or 'struct' or 'let' or 'var' or 'impl'",
+                        "expected 'fun' or 'attr' or 'struct' or 'let' or 'var' or 'impl' or '##'",
                     ))
                 }
             }
@@ -219,7 +224,12 @@ impl<'a> AParser<'a> {
                 TKind::Fun => body.push(s.fun(false)?),
                 TKind::Attr => body.push(s.attr()?),
                 TKind::Var | TKind::Let => body.push(s.var_statement(true)?),
-                _ => return Err(s.unexpected_str("expected 'fun' or 'attr' or 'let' or 'var'")),
+                TKind::Comment(_) => {
+                    let ast = ast.push(s.ast(AKind::Comment));
+                    s.next()?;
+                    ast
+                },
+                _ => return Err(s.unexpected_str("expected 'fun' or 'attr' or 'let' or 'var' or '##'")),
             }
             Ok(())
         })?;
@@ -1227,6 +1237,8 @@ pub enum AKind {
     UseStatement(bool),
 
     Path,
+
+    Comment,
 
     Fun(Vis),
     Impl(Vis),

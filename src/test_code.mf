@@ -2,9 +2,15 @@
 var something = [1, 2, 3]
 let hello = "hello"
 
-fun something -> fun(int, int) -> int:
-  return fun(a, b: int) -> int: a + b
 
+## doc comment
+fun something -> fun(int, int) -> int:
+  # ignored commend
+  return fun(a, b: #[ even more ignored commend ]# int) -> int: a + b
+
+##[
+  multiline doc comment
+]#
 struct Scope
 
 impl Scope:

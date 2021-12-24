@@ -90,6 +90,10 @@ impl Collector {
                         }
                     }
                 }
+                AKind::Comment => {
+                    let id = self.attributes.add((item, false));
+                    self.ordering.push(id);
+                }
                 _ => unreachable!("{}", AstDisplay::new(l_state, &item)),
             }
         }
@@ -102,7 +106,10 @@ impl Collector {
     pub fn attr_id(&self, attrs: &Attrs, hash: ID) -> Option<Attr> {
         self.attrs(attrs)
             .iter()
-            .find(|&&attr| self.attributes[attr].0[0].token.span.hash == hash)
+            .find(|&&attr| 
+                self.attributes[attr].0.kind != AKind::Comment && 
+                self.attributes[attr].0[0].token.span.hash == hash
+            )
             .copied()
     }
 
