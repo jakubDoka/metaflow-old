@@ -15,7 +15,7 @@
         "languages": [{
             "id": "metaflow",
             "aliases": ["metaflow", "metaflow"],
-            "extensions": [".mf"],
+            "extensions": [".mf", ".mfm"],
             "configuration": "./language-configuration.json"
         }],
         "grammars": [{

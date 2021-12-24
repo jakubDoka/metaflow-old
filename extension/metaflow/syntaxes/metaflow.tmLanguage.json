@@ -16,6 +16,12 @@
 		},
 		{
 			"include": "#types"
+		},
+		{
+			"include": "#comments"
+		},
+		{
+			"include": "#character"
 		}
 	],
 	"repository": {
@@ -48,7 +54,15 @@
 				},
 				{
 					"name": "keyword.other",
-					"match": "\\b(pub|priv|use|fun|attr|pass|var|let|struct|embed)\\b"
+					"match": "\\b(pub|priv|use|fun|attr|pass|var|let|struct|embed|impl)\\b"
+				}
+			]
+		},
+		"character": {
+			"patterns": [
+				{
+					"name": "constant.character",
+					"match": "'([^\\\\']|\\\\(\\\\|'|a|b|e|f|v|n|r|t|0|[0-7]{3}|x[0-9a-fA-F]{2}|u[0-9a-fA-F]{4}|U[0-9a-fA-F]{8}))'"
 				}
 			]
 		},
@@ -60,8 +74,7 @@
 					"end": "\"",
 					"patterns": [
 						{
-							"name": "constant.character.escape.metaflow",
-							"match": "\\\\(\\\\|'|\"|a|b|e|f|v|n|r|t|[0-7]{3}|x[0-9a-fA-F]{2}|u[0-9a-fA-F]{4}|U[0-9a-fA-F]{8})"
+							"include": "#character"
 						}
 					]
 				},
@@ -69,10 +82,7 @@
 					"name": "constant.boolean",			
 					"match": "\\b(true|false)\\b"
 				},
-				{
-					"name": "constant.character",
-					"match": "'([^\\\\']|\\\\(\\\\|'|a|b|e|f|v|n|r|t|[0-7]{3}|x[0-9a-fA-F]{2}|u[0-9a-fA-F]{4}|U[0-9a-fA-F]{8}))'"
-				},
+				
 				{
 					"label": "label",
 					"match": "'[a-zA-Z_][a-zA-Z0-9_]*\\b"
@@ -80,6 +90,40 @@
 				{
 					"name": "constant.numeric",
 					"match": "\\b(0x[0-9A-Fa-f_]+|0b[01_]+|0o[0-7_]+|[0-9_]+(\\.[0-9_]+)?)(u(8|16|32|64|)|i(|8|16|32|64|)|f(32|64|)|)\\b"
+				}
+			]
+		},
+		"comments": {
+			"patterns": [
+				{
+					"name": "comment.block.documentation",
+					"begin": "##\\[",
+					"end": "\\]#",
+					"patterns": [
+						{
+							"include": "#comments"
+						}
+					]
+				},
+				{
+					"name": "comment.line.documentation",
+					"begin": "##",
+					"end": "$"
+				},
+				{
+					"name": "comment.block",
+					"begin": "#\\[",
+					"end": "\\]#",
+					"patterns": [
+						{
+							"include": "#comments"
+						}
+					]
+				},
+				{
+					"name": "comment.line",
+					"begin": "#",
+					"end": "$"
 				}
 			]
 		}
