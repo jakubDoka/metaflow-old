@@ -89,6 +89,7 @@
         "ushr",
         "vals",
         "wasmtime",
+        "xffff",
         "zeroinit"
     ]
 }

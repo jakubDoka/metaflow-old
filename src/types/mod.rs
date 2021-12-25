@@ -623,7 +623,9 @@ impl<'a> TParser<'a> {
         ret: Option<Type>,
         call_conv: CallConv,
     ) -> Type {
-        let mut id = TYPE_SALT.add(ID::new("fun"));
+        let mut id = TYPE_SALT
+            .add(ID::new("fun"))
+            .add(ID(unsafe { std::mem::transmute::<_, u8>(call_conv) } as u64));
 
         for arg in args.iter() {
             id = id.add(self.state.types[*arg].id);

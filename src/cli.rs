@@ -2,7 +2,7 @@ use std::ops::Deref;
 
 #[derive(Debug)]
 pub struct Arguments {
-    filename: String,
+    _filename: String,
     flags: Vec<String>,
     field_flags: Vec<(String, String)>,
     args: Vec<String>,
@@ -11,7 +11,7 @@ pub struct Arguments {
 impl Arguments {
     pub fn new<T: Iterator<Item = String>>(mut args: T) -> Result<Arguments, ArgumentError> {
         let mut result = Arguments {
-            filename: args.next().ok_or(ArgumentError::MissingFilename)?,
+            _filename: args.next().ok_or(ArgumentError::MissingFilename)?,
             flags: vec![],
             field_flags: vec![],
             args: vec![],

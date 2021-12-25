@@ -374,14 +374,7 @@ impl<'a> FParser<'a> {
             }
         }
 
-        let inline = if let Some(attr) = self.collector.attr(&attrs, self.state.inline_hash) {
-            if self.state.bstate.body.recursive {
-                return Err(FError::new(FEKind::RecursiveInline, attr.token.clone()));
-            }
-            true
-        } else {
-            false
-        };
+        let inline = self.collector.attr(&attrs, self.state.inline_hash).is_some();
 
         let alias = if fun_id == ID(0) { "main" } else { alias };
 
@@ -402,9 +395,7 @@ impl<'a> FParser<'a> {
         let f = self.state.rfuns.add(r_ent);
         self.fun_mut(fun).kind = FKind::Represented(f);
 
-        if !inline {
-            self.state.represented.push(fun);
-        }
+        self.state.represented.push(fun);
 
         Ok(())
     }
@@ -1173,8 +1164,6 @@ impl<'a> FParser<'a> {
 
         let return_type = self.signature_of(other_fun).ret_ty;
 
-        self.state.bstate.body.recursive |= fun == other_fun;
-
         let value = return_type.map(|t| {
             let on_stack = self.ty(t).on_stack();
             let value = self.new_anonymous_value(t, on_stack);
@@ -1621,14 +1610,6 @@ impl<'a> FParser<'a> {
         Ok(current_type)
     }
 
-    fn inst_of(&mut self, value: Value) -> Inst {
-        // if inst is none then this is function parameter and its safe to put it
-        // at the beginning of the entry block
-        self.value(value)
-            .inst
-            .unwrap_or(self.state.bstate.body.insts.first().unwrap())
-    }
-
     pub fn add_variable(&mut self, name: ID, ty: Type, mutable: bool) -> Value {
         let val = self.new_value(name, ty, mutable);
         self.state.bstate.vars.push(val);
@@ -1806,20 +1787,22 @@ impl<'a> FParser<'a> {
             i += length + 1;
         }
 
-        let fun_ent = &self.fun(fun);
-        let g_ent = &self.state.gfuns[g];
-        let module = fun_ent.module;
-        let untraced = fun_ent.untraced;
-        let call_conv = fun_ent.call_conv;
-        let fun_module_id = self.state.modules[module].id;
-        let mut id = FUN_SALT.add(fun_ent.name.hash);
-        let vis = fun_ent.vis;
-        let name = fun_ent.name.clone();
+        let fun_ent = self.fun(fun);
+        let &FunEnt {
+            module,
+            untraced,
+            call_conv,
+            vis,
+            scope,
+            ..
+        } = fun_ent;
         let hint = fun_ent.hint.clone();
         let attrs = fun_ent.attrs.clone();
-        let scope = fun_ent.scope;
+        let name = fun_ent.name.clone();
+        let g_ent = &self.state.gfuns[g];
+        let fun_module_id = self.state.modules[module].id;
+        let mut id = FUN_SALT.add(fun_ent.name.hash);
         let ast_id = g_ent.ast;
-
         let mut shadowed = self.context.pool.get();
         let mut final_params = self.context.pool.get();
 
@@ -2365,11 +2348,6 @@ impl<'a> FParser<'a> {
         matches!(self.ty(ty).kind, TKind::Pointer(..))
     }
 
-    #[inline]
-    fn pass_mutability(&mut self, from: Value, to: Value) {
-        self.value_mut(to).mutable = self.value(from).mutable;
-    }
-
     fn push_scope(&mut self) {
         self.state.bstate.frames.push(self.state.bstate.vars.len());
     }
@@ -2444,11 +2422,6 @@ impl<'a> FParser<'a> {
 
     fn clear_vars(&mut self) {
         self.state.bstate.vars.clear();
-    }
-
-    fn generic_base_id(&self, values: Value) -> ID {
-        let ty = self.value(values).ty;
-        self.ty(self.ty(ty).base().unwrap_or(ty)).id
     }
 
     fn fun(&self, fun: Fun) -> &FunEnt {
@@ -2826,7 +2799,6 @@ impl Default for FunEnt {
 pub struct FunBody {
     pub values: List<Value, ValueEnt>,
     pub insts: LinkedList<Inst, InstEnt>,
-    pub recursive: bool,
 }
 
 impl FunBody {
@@ -2842,7 +2814,6 @@ pub enum FKind {
     Generic(GFun),
     Normal(NFun),
     Represented(RFun),
-    Compiled(CFun),
 }
 
 impl Default for FKind {
@@ -2869,13 +2840,6 @@ impl FKind {
     pub fn unwrap_represented(&self) -> RFun {
         match self {
             FKind::Represented(r) => *r,
-            _ => panic!("{:?}", self),
-        }
-    }
-
-    pub fn unwrap_compiled(&self) -> CFun {
-        match self {
-            FKind::Compiled(c) => *c,
             _ => panic!("{:?}", self),
         }
     }

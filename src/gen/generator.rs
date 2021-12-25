@@ -4,10 +4,9 @@ use cranelift_codegen::{
     ir::{
         condcodes::{FloatCC, IntCC},
         types::*,
-        Block as CrBlock, FuncRef, GlobalValue, InstBuilder, MemFlags, SigRef, Signature,
+        Block as CrBlock, FuncRef, GlobalValue, InstBuilder, MemFlags, SigRef,
         StackSlot, StackSlotData, StackSlotKind, Type as CrType, Value as CrValue,
     },
-    isa::CallConv,
     Context,
 };
 use cranelift_frontend::{FunctionBuilder, FunctionBuilderContext, Variable as CrVar};
@@ -114,6 +113,7 @@ impl<'a> Generator<'a> {
 
             self.state.imported_funs.clear();
             self.state.imported_globals.clear();
+            self.state.imported_signatures.clear();
 
             let fun = &self.state.funs[fun];
             let rid = fun.kind.unwrap_represented();
@@ -133,9 +133,9 @@ impl<'a> Generator<'a> {
                 continue;
             }
 
-            ctx.func.signature = std::mem::replace(
+            std::mem::swap(
+                &mut ctx.func.signature,
                 &mut self.state.rfuns[rid].ir_signature,
-                Signature::new(CallConv::Fast),
             );
             let mut builder = FunctionBuilder::new(&mut ctx.func, &mut fun_ctx);
 
@@ -165,6 +165,11 @@ impl<'a> Generator<'a> {
                     &mut NullStackMapSink {},
                 )
                 .unwrap();
+            
+            std::mem::swap(
+                &mut self.state.rfuns[rid].ir_signature,
+                &mut ctx.func.signature,
+            );
 
             ctx.clear();
         }
@@ -181,13 +186,14 @@ impl<'a> Generator<'a> {
             self.collect_blocks(fun, builder),
             0,
             Option::<Inst>::None,
-            Option::<CrBlock>::None,
+            InlineState::None,
         ));
         let mut arg_buffer = self.context.pool.get();
 
-        'o: while let Some((current_fun, blocks, current_block, current_inst, return_block)) =
+        'o: while let Some((current_fun_ref, blocks, current_block, current_inst, return_block)) =
             stack.last_mut()
         {
+            let current_fun = *current_fun_ref;
             while *current_block < blocks.len() {
                 let block = if let &mut Some(current_inst) = current_inst {
                     current_inst
@@ -198,18 +204,24 @@ impl<'a> Generator<'a> {
                 };
 
                 if let Some(inlined_fun) =
-                    self.block(*current_fun, block, *return_block, builder)?
+                    self.block(current_fun, block, *return_block, builder)?
                 {
-                    match &self.inst(*current_fun, inlined_fun).kind {
+                    match &self.inst(current_fun, inlined_fun).kind {
                         IKind::Call(id, args) => {
                             let id = *id;
                             arg_buffer.clear();
                             arg_buffer.extend(
                                 args.iter()
-                                    .map(|arg| self.unwrap_val(*current_fun, *arg, builder)),
+                                    .map(|arg| self.unwrap_val(current_fun, *arg, builder)),
                             );
-                            println!("{:?}", self.state.funs[id].hint);
                             let next_fun = self.state.funs[id].kind.unwrap_represented();
+                            if stack.iter().any(|i| i.0 == next_fun) {
+                                self.block(current_fun, block, InlineState::Broken, builder)?;
+                                let len = stack.len();
+                                stack[len - 1].2 += 1;
+                                stack[len - 1].3 = None;
+                                continue 'o;
+                            } 
                             let blocks = self.collect_blocks(next_fun, builder);
                             builder.ins().jump(blocks[0].1, &*arg_buffer);
                             let return_block = builder.create_block();
@@ -218,17 +230,18 @@ impl<'a> Generator<'a> {
                                 let value = builder
                                     .append_block_param(return_block, sig.returns[0].value_type);
                                 let return_value =
-                                    self.inst(*current_fun, inlined_fun).value.unwrap();
-                                self.wrap_val(*current_fun, return_value, value);
+                                self.inst(current_fun, inlined_fun).value.unwrap();
+                                self.wrap_val(current_fun, return_value, value);
                             }
-                            *current_inst = Some(
-                                self.state.rfuns[*current_fun]
+                            let len = stack.len();
+                            stack[len - 1].3 = Some(
+                                self.state.rfuns[current_fun]
                                     .body
                                     .insts
                                     .next(inlined_fun)
                                     .unwrap(),
                             );
-                            stack.push((next_fun, blocks, 0, None, Some(return_block)));
+                            stack.push((next_fun, blocks, 0, None, InlineState::At(return_block)));
                             continue 'o;
                         }
                         _ => unreachable!(),
@@ -238,7 +251,7 @@ impl<'a> Generator<'a> {
                 *current_inst = None;
             }
 
-            if let &mut Some(return_block) = return_block {
+            if let &mut InlineState::At(return_block) = return_block {
                 builder.switch_to_block(return_block);
             }
 
@@ -299,7 +312,7 @@ impl<'a> Generator<'a> {
         &mut self,
         fun: RFun,
         mut current: Inst,
-        return_block: Option<CrBlock>,
+        inline_state: InlineState,
         builder: &mut FunctionBuilder,
     ) -> Result<Option<Inst>> {
         let mut call_buffer = self.context.pool.get();
@@ -329,7 +342,7 @@ impl<'a> Generator<'a> {
                     } else {
                         let rid = other.kind.unwrap_represented();
                         let r_ent = &self.state.rfuns[rid];
-                        let inline = r_ent.inline;
+                        let inline = r_ent.inline && inline_state != InlineState::Broken;
                         let fun_id = r_ent.id;
                         let map_id = ID(fun_id.as_u32() as u64);
 
@@ -456,7 +469,7 @@ impl<'a> Generator<'a> {
                     self.value_mut(fun, value).value = FinalValue::Value(lit);
                 }
                 IKind::Return(value) => {
-                    if let Some(return_block) = return_block {
+                    if let InlineState::At(return_block) = inline_state {
                         if let Some(value) = value {
                             let value = self.unwrap_val(fun, *value, builder);
                             builder.ins().jump(return_block, &[value]);
@@ -1015,11 +1028,6 @@ impl<'a> Generator<'a> {
         self.value_mut(fun, target).value = FinalValue::Value(value);
     }
 
-    #[inline]
-    fn wrap_slot(&mut self, fun: RFun, target: Value, value: StackSlot) {
-        self.value_mut(fun, target).value = FinalValue::StackSlot(value);
-    }
-
     fn unwrap_val(&self, fun: RFun, value: Value, builder: &mut FunctionBuilder) -> CrValue {
         self.unwrap_val_low(fun, value, builder, false)
     }
@@ -1171,6 +1179,13 @@ impl SdbmHash for &[u8] {
     fn bytes(&self) -> &[u8] {
         self
     }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum InlineState {
+    None,
+    At(CrBlock),
+    Broken,
 }
 
 #[derive(Default)]

@@ -1,4 +1,3 @@
-#![allow(dead_code)]
 #![feature(vec_into_raw_parts)]
 
 use gen::GErrorDisplay;
@@ -41,22 +40,6 @@ fn run() {
             GErrorDisplay::new(state.as_ref(), &err)
         ),
     };
-}
-
-#[repr(C)]
-struct AlignmentTest {
-    a: u8,
-    b: u8,
-    c: u8,
-    d: u16,
-}
-
-//#[repr(C)]
-enum Foo {
-    A,
-    B,
-    C,
-    D,
 }
 
 #[cfg(feature = "testing")]

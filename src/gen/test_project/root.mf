@@ -222,3 +222,11 @@ fun test_case_14:
 fun assert(cond: bool):
   builtin::assert(cond)
   print("ok\n")
+
+attr inline
+fun calls_b:
+  calls_a()
+
+attr inline
+fun calls_a:
+  calls_b()

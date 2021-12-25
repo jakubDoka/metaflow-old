@@ -1,5 +1,5 @@
-Ok(Arguments { filename: "file", flags: ["flag", "flag"], field_flags: [("flag", "value")], args: ["arg", "arg"] })
-Ok(Arguments { filename: "file", flags: [], field_flags: [], args: ["string value"] })
+Ok(Arguments { _filename: "file", flags: ["flag", "flag"], field_flags: [("flag", "value")], args: ["arg", "arg"] })
+Ok(Arguments { _filename: "file", flags: [], field_flags: [], args: ["string value"] })
 Dummy1
 [(Dummy(1), 0)]
 0
@@ -2169,8 +2169,6 @@ fun print(s: &Self, value: &u8)
     Return(None) |s.len += i
 
 
-Token { kind: Fun, span: Span { source: Source(1), hash: ID(438937012895), range: 3356..3391, line: 163, column: 6 } }
-Token { kind: Fun, span: Span { source: Source(1), hash: ID(438937012895), range: 4930..4975, line: 226, column: 6 } }
 function u0:0(i64, i64) fast {
     sig0 = (i64, i64) -> i64 windows_fastcall
     sig1 = (i64, i64, i64) windows_fastcall
@@ -2243,8 +2241,85 @@ block10(v24: i64):
     return
 }
 
+fun get_unchecked(s: &Self, index: int) -> &T
+
+  Inst1[Value(0), Value(1)]
+    Value(3): &Seq[u8] = Offset(Value(0)) |s.data
+    Value(4): Seq[u8] = Deref(Value(3), false) |s.data
+    Value(2): &u8 = Offset(Value(4)) |s.data
+    Value(5): int = Cast(Value(2)) |s.data as int
+    Value(6): int = Call(Fun(479), []) |sizeof::[T]()
+    Value(7): int = Call(Fun(280), [Value(1), Value(6)]) |index * sizeof::[T]()
+    Value(8): int = Call(Fun(260), [Value(5), Value(7)]) |(s.data as int + index * sizeof::[T]())
+    Value(9): &u8 = Cast(Value(8)) |(s.data as int + index * sizeof::[T]()) as &T
+    Return(Some(Value(9))) |(s.data as int + index * sizeof::[T]()) as &T
+
+
+function u0:0(i64, i64) -> i64 fast {
+block0(v0: i64, v1: i64):
+    v2 = iconst.i64 1
+    v3 = imul v1, v2
+    v4 = load.i64 v0
+    v5 = iadd v4, v3
+    return v5
+}
+
 fun pub sizeof[T] -> int
 
+
+fun reserve(s: &Self, new_cap: int)
+
+  Inst1[Value(0), Value(1)]
+    Value(3): &Seq[u8] = Offset(Value(0)) |s.cap
+    Value(4): Seq[u8] = Deref(Value(3), false) |s.cap
+    Value(2): int = Offset(Value(4)) |s.cap
+    Value(5): bool = Call(Fun(350), [Value(2), Value(1)]) |s.cap > new_cap
+    JumpIfTrue(Value(5), Inst(6), []) |s.cap > new_cap
+    Jump(Inst(8), []) |
+
+  Inst6[]
+    Return(None) |return
+
+  Inst8[]
+    Value(7): &Seq[u8] = Offset(Value(0)) |s.data
+    Value(8): Seq[u8] = Deref(Value(7), false) |s.data
+    Value(6): &u8 = Offset(Value(8)) |s.data
+    Value(10): &Seq[u8] = Offset(Value(0)) |s.data
+    Value(11): Seq[u8] = Deref(Value(10), false) |s.data
+    Value(9): &u8 = Offset(Value(11)) |s.data
+    Value(12): int = Call(Fun(479), []) |sizeof::[T]()
+    Value(13): int = Call(Fun(280), [Value(1), Value(12)]) |new_cap * sizeof::[T]()
+    Value(14): &u8 = Call(Fun(438), [Value(9), Value(13)]) |realloc(s.data, new_cap * sizeof::[T]())
+    Value(14): &u8 = Assign(Value(6)) |s.data = realloc(s.data, new_cap * sizeof::[T]())
+    Value(16): &Seq[u8] = Offset(Value(0)) |s.cap
+    Value(17): Seq[u8] = Deref(Value(16), false) |s.cap
+    Value(15): int = Offset(Value(17)) |s.cap
+    Value(1): int = Assign(Value(15)) |s.cap = new_cap
+    Return(None) |s.cap = new_cap
+
+
+function u0:0(i64, i64) fast {
+    sig0 = (i64, i64) -> i64 windows_fastcall
+    fn0 = u0:24 sig0
+
+block0(v0: i64, v1: i64):
+    v2 = load.i64 v0+16
+    v3 = icmp sgt v2, v1
+    brnz v3, block1
+    jump block2
+
+block1:
+    return
+
+block2:
+    v4 = iconst.i64 1
+    v5 = imul.i64 v1, v4
+    v6 = load.i64 v0
+    v7 = call fn0(v6, v5)
+    store v7, v0
+    store.i64 v1, v0+16
+    return
+}
 
 fun print_int(s: &Self, value: int)
 
@@ -2294,8 +2369,6 @@ fun print_int(s: &Self, value: int)
       s.push((digit.u32() + '0').u8())
 
 
-Token { kind: Fun, span: Span { source: Source(1), hash: ID(438937012895), range: 4104..4132, line: 196, column: 6 } }
-Token { kind: Fun, span: Span { source: Source(1), hash: ID(438937012895), range: 4930..4975, line: 226, column: 6 } }
 function u0:0(i64, i64) fast {
     sig0 = (i64, i64) -> i64 windows_fastcall
     fn0 = u0:24 sig0
@@ -2380,6 +2453,109 @@ block4:
     return
 }
 
+fun push(s: &Self, value: T)
+
+  Inst1[Value(0), Value(1)]
+    Value(3): &Seq[u8] = Offset(Value(0)) |s.len
+    Value(4): Seq[u8] = Deref(Value(3), false) |s.len
+    Value(2): int = Offset(Value(4)) |s.len
+    Value(5): int = Lit(Int(1, 0)) |1
+    Value(6): int = Call(Fun(260), [Value(2), Value(5)]) |s.len + 1
+    Value(7): int = VarDecl(Value(6)) |new_len = s.len + 1
+    Value(9): &Seq[u8] = Offset(Value(0)) |s.cap
+    Value(10): Seq[u8] = Deref(Value(9), false) |s.cap
+    Value(8): int = Offset(Value(10)) |s.cap
+    Value(11): bool = Call(Fun(350), [Value(7), Value(8)]) |new_len > s.cap
+    JumpIfTrue(Value(11), Inst(12), []) |new_len > s.cap
+    Jump(Inst(14), []) |
+
+  Inst12[]
+    Value(13): &Seq[u8] = Offset(Value(0)) |s.cap
+    Value(14): Seq[u8] = Deref(Value(13), false) |s.cap
+    Value(12): int = Offset(Value(14)) |s.cap
+    Value(16): &Seq[u8] = Offset(Value(0)) |s.len
+    Value(17): Seq[u8] = Deref(Value(16), false) |s.len
+    Value(15): int = Offset(Value(17)) |s.len
+    Value(18): int = Lit(Int(2, 0)) |2
+    Value(19): int = Call(Fun(280), [Value(15), Value(18)]) |s.len * 2
+    Value(19): int = Assign(Value(12)) |s.cap = s.len * 2
+    Value(21): &Seq[u8] = Offset(Value(0)) |s.data
+    Value(22): Seq[u8] = Deref(Value(21), false) |s.data
+    Value(20): &u8 = Offset(Value(22)) |s.data
+    Value(24): &Seq[u8] = Offset(Value(0)) |s.data
+    Value(25): Seq[u8] = Deref(Value(24), false) |s.data
+    Value(23): &u8 = Offset(Value(25)) |s.data
+    Value(26): &u8 = Cast(Value(23)) |s.data as &u8
+    Value(28): &Seq[u8] = Offset(Value(0)) |s.cap
+    Value(29): Seq[u8] = Deref(Value(28), false) |s.cap
+    Value(27): int = Offset(Value(29)) |s.cap
+    Value(30): int = Call(Fun(479), []) |sizeof::[T]()
+    Value(31): int = Call(Fun(280), [Value(27), Value(30)]) |s.cap * sizeof::[T]()
+    Value(32): &u8 = Call(Fun(438), [Value(26), Value(31)]) |realloc(s.data as &u8, s.cap * sizeof::[T]())
+    Value(33): &u8 = Cast(Value(32)) |realloc(s.data as &u8, s.cap * sizeof::[T]()) as &T
+    Value(33): &u8 = Assign(Value(20)) |s.data = realloc(s.data as &u8, s.cap * sizeof::[T]()) as &T
+    Jump(Inst(14), []) |if new_len > s.cap:
+      s.cap = s.len * 2
+      s.data = realloc(s.data as &u8, s.cap * sizeof::[T]()) as &T
+      pass
+
+  Inst14[]
+    Value(35): &Seq[u8] = Offset(Value(0)) |s.len
+    Value(36): Seq[u8] = Deref(Value(35), false) |s.len
+    Value(34): int = Offset(Value(36)) |s.len
+    Value(37): &u8 = Call(Fun(478), [Value(0), Value(34)]) |s.get_unchecked(s.len)
+    Value(38): u8 = Deref(Value(37), true) |*s.get_unchecked(s.len)
+    Value(1): u8 = Assign(Value(38)) |*s.get_unchecked(s.len) = value
+    Value(40): &Seq[u8] = Offset(Value(0)) |s.len
+    Value(41): Seq[u8] = Deref(Value(40), false) |s.len
+    Value(39): int = Offset(Value(41)) |s.len
+    Value(7): int = Assign(Value(39)) |s.len = new_len
+    Return(None) |s.len = new_len
+
+
+function u0:0(i64, i8) fast {
+    sig0 = (i64, i64) -> i64 windows_fastcall
+    fn0 = u0:24 sig0
+
+block0(v0: i64, v1: i8):
+    v2 = iconst.i64 1
+    v3 = load.i64 v0+8
+    v4 = iadd v3, v2
+    v5 = load.i64 v0+16
+    v6 = icmp sgt v4, v5
+    brnz v6, block1
+    jump block2
+
+block1:
+    v7 = iconst.i64 2
+    v8 = load.i64 v0+8
+    v9 = imul v8, v7
+    store v9, v0+16
+    v10 = iconst.i64 1
+    v11 = load.i64 v0+16
+    v12 = imul v11, v10
+    v13 = load.i64 v0
+    v14 = call fn0(v13, v12)
+    store v14, v0
+    jump block2
+
+block2:
+    v15 = load.i64 v0+8
+    jump block3(v0, v15)
+
+block3(v16: i64, v17: i64):
+    v19 = iconst.i64 1
+    v20 = imul v17, v19
+    v21 = load.i64 v16
+    v22 = iadd v21, v20
+    jump block4(v22)
+
+block4(v18: i64):
+    store.i8 v1, v18
+    store.i64 v4, v0+8
+    return
+}
+
 fun pub pop_frame
 
   Inst1[]
@@ -2389,9 +2565,6 @@ fun pub pop_frame
     Return(None) |stacktrace.pop()
 
 
-Token { kind: Fun, span: Span { source: Source(1), hash: ID(438937012895), range: 4358..4388, line: 205, column: 6 } }
-Token { kind: Fun, span: Span { source: Source(1), hash: ID(438937012895), range: 4930..4975, line: 226, column: 6 } }
-Token { kind: Fun, span: Span { source: Source(1), hash: ID(438937012895), range: 5366..5392, line: 246, column: 6 } }
 function u0:0() fast {
     ss0 = explicit_slot 32
     ss1 = explicit_slot 24
@@ -2490,6 +2663,204 @@ block4(v4: i64):
     return
 }
 
+fun pop(s: &Self) -> Option[T]
+
+  Inst1[Value(0), Value(1)]
+    Value(3): &Seq[StackFrame] = Offset(Value(0)) |s.len
+    Value(4): Seq[StackFrame] = Deref(Value(3), false) |s.len
+    Value(2): int = Offset(Value(4)) |s.len
+    Value(5): int = Lit(Int(0, 0)) |0
+    Value(6): bool = Call(Fun(310), [Value(2), Value(5)]) |s.len == 0
+    JumpIfTrue(Value(6), Inst(7), []) |s.len == 0
+    Jump(Inst(9), []) |
+
+  Inst7[]
+    Value(7): Option[StackFrame] = Zeroed |return
+    Value(8): Option[StackFrame] = Deref(Value(1), false) |return
+    Value(7): Option[StackFrame] = Assign(Value(8)) |return
+    Return(Some(Value(1))) |return
+
+  Inst9[]
+    Value(10): &Seq[StackFrame] = Offset(Value(0)) |s.len
+    Value(11): Seq[StackFrame] = Deref(Value(10), false) |s.len
+    Value(9): int = Offset(Value(11)) |s.len
+    Value(12): int = Lit(Int(1, 0)) |1
+    Value(13): int = Call(Fun(270), [Value(9), Value(12)]) |s.len - 1
+    Value(14): &StackFrame = Call(Fun(482), [Value(0), Value(13)]) |s.get_unchecked(s.len - 1)
+    Value(15): StackFrame = Deref(Value(14), false) |*s.get_unchecked(s.len - 1)
+    Value(16): StackFrame = VarDecl(Value(15)) |value = *s.get_unchecked(s.len - 1)
+    Value(18): &Seq[StackFrame] = Offset(Value(0)) |s.len
+    Value(19): Seq[StackFrame] = Deref(Value(18), false) |s.len
+    Value(17): int = Offset(Value(19)) |s.len
+    Value(21): &Seq[StackFrame] = Offset(Value(0)) |s.len
+    Value(22): Seq[StackFrame] = Deref(Value(21), false) |s.len
+    Value(20): int = Offset(Value(22)) |s.len
+    Value(23): int = Lit(Int(1, 0)) |1
+    Value(24): int = Call(Fun(270), [Value(20), Value(23)]) |s.len -= 1
+    Value(24): int = Assign(Value(17)) |s.len -= 1
+    Value(25): Option[StackFrame] = Call(Fun(483), [Value(16), Value(25)]) |Option::some(value)
+    Value(26): Option[StackFrame] = Deref(Value(1), false) |Option::some(value)
+    Value(25): Option[StackFrame] = Assign(Value(26)) |Option::some(value)
+    Return(Some(Value(1))) |Option::some(value)
+
+
+function u0:0(i64, i64 sret) -> i64 sret fast {
+    ss0 = explicit_slot 24
+    ss1 = explicit_slot 32
+    ss2 = explicit_slot 32
+
+block0(v0: i64, v1: i64):
+    v2 = iconst.i64 0
+    v3 = load.i64 v0+8
+    v4 = icmp eq v3, v2
+    brnz v4, block1
+    jump block2
+
+block1:
+    v5 = iconst.i64 0
+    store v5, v1
+    store v5, v1+8
+    store v5, v1+16
+    store v5, v1+24
+    return v1
+
+block2:
+    v6 = iconst.i64 1
+    v7 = load.i64 v0+8
+    v8 = isub v7, v6
+    jump block3(v0, v8)
+
+block3(v9: i64, v10: i64):
+    v12 = iconst.i64 24
+    v13 = imul v10, v12
+    v14 = load.i64 v9
+    v15 = iadd v14, v13
+    jump block4(v15)
+
+block4(v11: i64):
+    v16 = stack_addr.i64 ss0
+    v17 = load.i64 v11
+    store v17, v16
+    v18 = load.i64 v11+8
+    store v18, v16+8
+    v19 = load.i64 v11+16
+    store v19, v16+16
+    v20 = iconst.i64 1
+    v21 = load.i64 v0+8
+    v22 = isub v21, v20
+    store v22, v0+8
+    v23 = stack_addr.i64 ss0
+    v24 = stack_addr.i64 ss1
+    jump block5(v23, v24)
+
+block5(v25: i64, v26: i64):
+    v28 = iconst.i64 0
+    stack_store v28, ss2
+    stack_store v28, ss2+8
+    stack_store v28, ss2+16
+    stack_store v28, ss2+24
+    v29 = stack_addr.i64 ss2
+    v30 = load.i64 v25
+    store v30, v29
+    v31 = load.i64 v25+8
+    store v31, v29+8
+    v32 = load.i64 v25+16
+    store v32, v29+16
+    v33 = bconst.b1 true
+    v34 = bint.i8 v33
+    stack_store v34, ss2+24
+    v35 = stack_addr.i64 ss2
+    v36 = load.i64 v35
+    store v36, v26
+    v37 = load.i64 v35+8
+    store v37, v26+8
+    v38 = load.i64 v35+16
+    store v38, v26+16
+    v39 = load.i64 v35+24
+    store v39, v26+24
+    jump block6(v26)
+
+block6(v27: i64):
+    v40 = load.i64 v27
+    store v40, v1
+    v41 = load.i64 v27+8
+    store v41, v1+8
+    v42 = load.i64 v27+16
+    store v42, v1+16
+    v43 = load.i64 v27+24
+    store v43, v1+24
+    return v1
+}
+
+fun some(value: T) -> Self
+
+  Inst1[Value(0), Value(1)]
+    Value(2): Option[StackFrame] = Zeroed |option: Self
+    Value(3): Option[StackFrame] = VarDecl(Value(2)) |option: Self
+    Value(4): StackFrame = Offset(Value(3)) |option.value
+    Value(0): StackFrame = Assign(Value(4)) |option.value = value
+    Value(5): bool = Offset(Value(3)) |option.is_some
+    Value(6): bool = Lit(Bool(true)) |true
+    Value(6): bool = Assign(Value(5)) |option.is_some = true
+    Value(7): Option[StackFrame] = Deref(Value(1), false) |option
+    Value(3): Option[StackFrame] = Assign(Value(7)) |option
+    Return(Some(Value(1))) |option
+
+
+function u0:0(i64, i64 sret) -> i64 sret fast {
+    ss0 = explicit_slot 32
+
+block0(v0: i64, v1: i64):
+    v2 = iconst.i64 0
+    stack_store v2, ss0
+    stack_store v2, ss0+8
+    stack_store v2, ss0+16
+    stack_store v2, ss0+24
+    v3 = stack_addr.i64 ss0
+    v4 = load.i64 v0
+    store v4, v3
+    v5 = load.i64 v0+8
+    store v5, v3+8
+    v6 = load.i64 v0+16
+    store v6, v3+16
+    v7 = bconst.b1 true
+    v8 = bint.i8 v7
+    stack_store v8, ss0+24
+    v9 = stack_addr.i64 ss0
+    v10 = load.i64 v9
+    store v10, v1
+    v11 = load.i64 v9+8
+    store v11, v1+8
+    v12 = load.i64 v9+16
+    store v12, v1+16
+    v13 = load.i64 v9+24
+    store v13, v1+24
+    return v1
+}
+
+fun get_unchecked(s: &Self, index: int) -> &T
+
+  Inst1[Value(0), Value(1)]
+    Value(3): &Seq[StackFrame] = Offset(Value(0)) |s.data
+    Value(4): Seq[StackFrame] = Deref(Value(3), false) |s.data
+    Value(2): &StackFrame = Offset(Value(4)) |s.data
+    Value(5): int = Cast(Value(2)) |s.data as int
+    Value(6): int = Call(Fun(484), []) |sizeof::[T]()
+    Value(7): int = Call(Fun(280), [Value(1), Value(6)]) |index * sizeof::[T]()
+    Value(8): int = Call(Fun(260), [Value(5), Value(7)]) |(s.data as int + index * sizeof::[T]())
+    Value(9): &StackFrame = Cast(Value(8)) |(s.data as int + index * sizeof::[T]()) as &T
+    Return(Some(Value(9))) |(s.data as int + index * sizeof::[T]()) as &T
+
+
+function u0:0(i64, i64) -> i64 fast {
+block0(v0: i64, v1: i64):
+    v2 = iconst.i64 24
+    v3 = imul v1, v2
+    v4 = load.i64 v0
+    v5 = iadd v4, v3
+    return v5
+}
+
 fun pub sizeof[T] -> int
 
 
@@ -2510,8 +2881,6 @@ fun pub push_frame(line, column: int, file: &u8)
     Return(None) |stacktrace.push(frame)
 
 
-Token { kind: Fun, span: Span { source: Source(1), hash: ID(438937012895), range: 4104..4132, line: 196, column: 6 } }
-Token { kind: Fun, span: Span { source: Source(1), hash: ID(438937012895), range: 4930..4975, line: 226, column: 6 } }
 function u0:0(i64, i64, i64) fast {
     ss0 = explicit_slot 24
     gv0 = symbol colocated u1:0
@@ -2574,6 +2943,114 @@ block6(v24: i64):
     jump block4
 
 block4:
+    return
+}
+
+fun push(s: &Self, value: T)
+
+  Inst1[Value(0), Value(1)]
+    Value(3): &Seq[StackFrame] = Offset(Value(0)) |s.len
+    Value(4): Seq[StackFrame] = Deref(Value(3), false) |s.len
+    Value(2): int = Offset(Value(4)) |s.len
+    Value(5): int = Lit(Int(1, 0)) |1
+    Value(6): int = Call(Fun(260), [Value(2), Value(5)]) |s.len + 1
+    Value(7): int = VarDecl(Value(6)) |new_len = s.len + 1
+    Value(9): &Seq[StackFrame] = Offset(Value(0)) |s.cap
+    Value(10): Seq[StackFrame] = Deref(Value(9), false) |s.cap
+    Value(8): int = Offset(Value(10)) |s.cap
+    Value(11): bool = Call(Fun(350), [Value(7), Value(8)]) |new_len > s.cap
+    JumpIfTrue(Value(11), Inst(12), []) |new_len > s.cap
+    Jump(Inst(14), []) |
+
+  Inst12[]
+    Value(13): &Seq[StackFrame] = Offset(Value(0)) |s.cap
+    Value(14): Seq[StackFrame] = Deref(Value(13), false) |s.cap
+    Value(12): int = Offset(Value(14)) |s.cap
+    Value(16): &Seq[StackFrame] = Offset(Value(0)) |s.len
+    Value(17): Seq[StackFrame] = Deref(Value(16), false) |s.len
+    Value(15): int = Offset(Value(17)) |s.len
+    Value(18): int = Lit(Int(2, 0)) |2
+    Value(19): int = Call(Fun(280), [Value(15), Value(18)]) |s.len * 2
+    Value(19): int = Assign(Value(12)) |s.cap = s.len * 2
+    Value(21): &Seq[StackFrame] = Offset(Value(0)) |s.data
+    Value(22): Seq[StackFrame] = Deref(Value(21), false) |s.data
+    Value(20): &StackFrame = Offset(Value(22)) |s.data
+    Value(24): &Seq[StackFrame] = Offset(Value(0)) |s.data
+    Value(25): Seq[StackFrame] = Deref(Value(24), false) |s.data
+    Value(23): &StackFrame = Offset(Value(25)) |s.data
+    Value(26): &u8 = Cast(Value(23)) |s.data as &u8
+    Value(28): &Seq[StackFrame] = Offset(Value(0)) |s.cap
+    Value(29): Seq[StackFrame] = Deref(Value(28), false) |s.cap
+    Value(27): int = Offset(Value(29)) |s.cap
+    Value(30): int = Call(Fun(484), []) |sizeof::[T]()
+    Value(31): int = Call(Fun(280), [Value(27), Value(30)]) |s.cap * sizeof::[T]()
+    Value(32): &u8 = Call(Fun(438), [Value(26), Value(31)]) |realloc(s.data as &u8, s.cap * sizeof::[T]())
+    Value(33): &StackFrame = Cast(Value(32)) |realloc(s.data as &u8, s.cap * sizeof::[T]()) as &T
+    Value(33): &StackFrame = Assign(Value(20)) |s.data = realloc(s.data as &u8, s.cap * sizeof::[T]()) as &T
+    Jump(Inst(14), []) |if new_len > s.cap:
+      s.cap = s.len * 2
+      s.data = realloc(s.data as &u8, s.cap * sizeof::[T]()) as &T
+      pass
+
+  Inst14[]
+    Value(35): &Seq[StackFrame] = Offset(Value(0)) |s.len
+    Value(36): Seq[StackFrame] = Deref(Value(35), false) |s.len
+    Value(34): int = Offset(Value(36)) |s.len
+    Value(37): &StackFrame = Call(Fun(482), [Value(0), Value(34)]) |s.get_unchecked(s.len)
+    Value(38): StackFrame = Deref(Value(37), true) |*s.get_unchecked(s.len)
+    Value(1): StackFrame = Assign(Value(38)) |*s.get_unchecked(s.len) = value
+    Value(40): &Seq[StackFrame] = Offset(Value(0)) |s.len
+    Value(41): Seq[StackFrame] = Deref(Value(40), false) |s.len
+    Value(39): int = Offset(Value(41)) |s.len
+    Value(7): int = Assign(Value(39)) |s.len = new_len
+    Return(None) |s.len = new_len
+
+
+function u0:0(i64, i64) fast {
+    sig0 = (i64, i64) -> i64 windows_fastcall
+    fn0 = u0:24 sig0
+
+block0(v0: i64, v1: i64):
+    v2 = iconst.i64 1
+    v3 = load.i64 v0+8
+    v4 = iadd v3, v2
+    v5 = load.i64 v0+16
+    v6 = icmp sgt v4, v5
+    brnz v6, block1
+    jump block2
+
+block1:
+    v7 = iconst.i64 2
+    v8 = load.i64 v0+8
+    v9 = imul v8, v7
+    store v9, v0+16
+    v10 = iconst.i64 24
+    v11 = load.i64 v0+16
+    v12 = imul v11, v10
+    v13 = load.i64 v0
+    v14 = call fn0(v13, v12)
+    store v14, v0
+    jump block2
+
+block2:
+    v15 = load.i64 v0+8
+    jump block3(v0, v15)
+
+block3(v16: i64, v17: i64):
+    v19 = iconst.i64 24
+    v20 = imul v17, v19
+    v21 = load.i64 v16
+    v22 = iadd v21, v20
+    jump block4(v22)
+
+block4(v18: i64):
+    v23 = load.i64 v1
+    store v23, v18
+    v24 = load.i64 v1+8
+    store v24, v18+8
+    v25 = load.i64 v1+16
+    store v25, v18+16
+    store.i64 v4, v0+8
     return
 }
 
@@ -2686,18 +3163,6 @@ fun pub panic(msg: &u8)
     Return(None) |exit(1)
 
 
-Token { kind: Fun, span: Span { source: Source(1), hash: ID(438937012895), range: 4638..4679, line: 217, column: 6 } }
-Token { kind: Fun, span: Span { source: Source(1), hash: ID(438937012895), range: 5036..5078, line: 229, column: 7 } }
-Token { kind: Fun, span: Span { source: Source(1), hash: ID(438937012895), range: 5152..5195, line: 233, column: 6 } }
-Token { kind: Fun, span: Span { source: Source(1), hash: ID(438937012895), range: 4930..4975, line: 226, column: 6 } }
-Token { kind: Fun, span: Span { source: Source(1), hash: ID(438937012895), range: 4104..4132, line: 196, column: 6 } }
-Token { kind: Fun, span: Span { source: Source(1), hash: ID(438937012895), range: 4930..4975, line: 226, column: 6 } }
-Token { kind: Fun, span: Span { source: Source(1), hash: ID(438937012895), range: 4104..4132, line: 196, column: 6 } }
-Token { kind: Fun, span: Span { source: Source(1), hash: ID(438937012895), range: 4930..4975, line: 226, column: 6 } }
-Token { kind: Fun, span: Span { source: Source(1), hash: ID(438937012895), range: 4104..4132, line: 196, column: 6 } }
-Token { kind: Fun, span: Span { source: Source(1), hash: ID(438937012895), range: 4930..4975, line: 226, column: 6 } }
-Token { kind: Fun, span: Span { source: Source(1), hash: ID(438937012895), range: 4104..4132, line: 196, column: 6 } }
-Token { kind: Fun, span: Span { source: Source(1), hash: ID(438937012895), range: 4930..4975, line: 226, column: 6 } }
 function u0:0(i64) fast {
     ss0 = explicit_slot 24
     ss1 = explicit_slot 24
@@ -3017,6 +3482,170 @@ block38:
     return
 }
 
+fun __index__(s: &Self, index: int) -> &T
+
+  Inst1[Value(0), Value(1)]
+    Call(Fun(487), [Value(0), Value(1)]) |s.assert_in_bounds(index)
+    Value(2): &StackFrame = Call(Fun(482), [Value(0), Value(1)]) |s.get_unchecked(index)
+    Return(Some(Value(2))) |s.get_unchecked(index)
+
+
+function u0:0(i64, i64) -> i64 fast {
+    gv0 = symbol colocated u1:4
+    sig0 = (i64) fast
+    fn0 = colocated u0:13 sig0
+
+block0(v0: i64, v1: i64):
+    jump block1(v0, v1)
+
+block1(v2: i64, v3: i64):
+    jump block5(v2, v3)
+
+block5(v4: i64, v5: i64):
+    v7 = iconst.i64 0
+    v8 = icmp sge v5, v7
+    v9 = load.i64 v4+8
+    v10 = icmp slt v5, v9
+    v11 = band v8, v10
+    jump block6(v11)
+
+block6(v6: b1):
+    v12 = bint.i8 v6
+    v13 = icmp_imm eq v12, 0
+    brnz v13, block2
+    jump block3
+
+block2:
+    v14 = global_value.i64 gv0
+    call fn0(v14)
+    jump block3
+
+block3:
+    jump block4
+
+block4:
+    jump block7(v0, v1)
+
+block7(v15: i64, v16: i64):
+    v18 = iconst.i64 24
+    v19 = imul v16, v18
+    v20 = load.i64 v15
+    v21 = iadd v20, v19
+    jump block8(v21)
+
+block8(v17: i64):
+    return v17
+}
+
+fun assert_in_bounds(s: &Self, index: int)
+
+  Inst1[Value(0), Value(1)]
+    Value(2): bool = Call(Fun(488), [Value(0), Value(1)]) |s.in_bounds(index)
+    Value(3): bool = Call(Fun(251), [Value(2)]) |!s.in_bounds(index)
+    JumpIfTrue(Value(3), Inst(4), []) |!s.in_bounds(index)
+    Jump(Inst(6), []) |
+
+  Inst4[]
+    Value(4): &u8 = Lit(String(Span { source: Source(0), hash: ID(6484216913505728610), range: 203..223, line: 0, column: 0 })) |"index out of bounds"
+    Call(Fun(446), [Value(4)]) |panic("index out of bounds")
+    Jump(Inst(6), []) |if !s.in_bounds(index):
+      panic("index out of bounds")
+
+  Inst6[]
+    Return(None) |if !s.in_bounds(index):
+      panic("index out of bounds")
+
+
+function u0:0(i64, i64) fast {
+    gv0 = symbol colocated u1:4
+    sig0 = (i64) fast
+    fn0 = colocated u0:13 sig0
+
+block0(v0: i64, v1: i64):
+    jump block3(v0, v1)
+
+block3(v2: i64, v3: i64):
+    v5 = iconst.i64 0
+    v6 = icmp sge v3, v5
+    v7 = load.i64 v2+8
+    v8 = icmp slt v3, v7
+    v9 = band v6, v8
+    jump block4(v9)
+
+block4(v4: b1):
+    v10 = bint.i8 v4
+    v11 = icmp_imm eq v10, 0
+    brnz v11, block1
+    jump block2
+
+block1:
+    v12 = global_value.i64 gv0
+    call fn0(v12)
+    jump block2
+
+block2:
+    return
+}
+
+fun in_bounds(s: &Self, index: int) -> bool
+
+  Inst1[Value(0), Value(1)]
+    Value(2): int = Lit(Int(0, 0)) |0
+    Value(3): bool = Call(Fun(330), [Value(1), Value(2)]) |index >= 0
+    Value(5): &Seq[StackFrame] = Offset(Value(0)) |s.len
+    Value(6): Seq[StackFrame] = Deref(Value(5), false) |s.len
+    Value(4): int = Offset(Value(6)) |s.len
+    Value(7): bool = Call(Fun(360), [Value(1), Value(4)]) |index < s.len
+    Value(8): bool = Call(Fun(436), [Value(3), Value(7)]) |index >= 0 & index < s.len
+    Return(Some(Value(8))) |index >= 0 & index < s.len
+
+
+function u0:0(i64, i64) -> b1 fast {
+block0(v0: i64, v1: i64):
+    v2 = iconst.i64 0
+    v3 = icmp sge v1, v2
+    v4 = load.i64 v0+8
+    v5 = icmp slt v1, v4
+    v6 = band v3, v5
+    return v6
+}
+
+fun pub assert(cond: bool)
+
+  Inst1[Value(0)]
+    Value(1): bool = Call(Fun(251), [Value(0)]) |!cond
+    JumpIfTrue(Value(1), Inst(3), []) |!cond
+    Jump(Inst(5), []) |
+
+  Inst3[]
+    Value(2): &u8 = Lit(String(Span { source: Source(0), hash: ID(18405710474171729989), range: 100..117, line: 0, column: 0 })) |"assertion failed"
+    Call(Fun(446), [Value(2)]) |panic("assertion failed")
+    Jump(Inst(5), []) |if !cond: panic("assertion failed")
+
+  Inst5[]
+    Return(None) |if !cond: panic("assertion failed")
+
+
+function u0:0(b1) fast {
+    gv0 = symbol colocated u1:5
+    sig0 = (i64) fast
+    fn0 = colocated u0:13 sig0
+
+block0(v0: b1):
+    v1 = bint.i8 v0
+    v2 = icmp_imm eq v1, 0
+    brnz v2, block1
+    jump block2
+
+block1:
+    v3 = global_value.i64 gv0
+    call fn0(v3)
+    jump block2
+
+block2:
+    return
+}
+
 fun pub exit(code: int)
 
 
@@ -3041,6 +3670,98 @@ fun pub realloc(ptr: &u8, size: int) -> &u8
 fun pub alloc(size: int) -> &u8
 
 
+fun calls_a
+
+  Inst1[]
+    Value(0): int = Lit(Int(232, 0)) |calls_b()
+    Value(1): int = Lit(Int(10, 0)) |calls_b()
+    Value(2): &u8 = Lit(String(Span { source: Source(0), hash: ID(3362311186304783455), range: 342..370, line: 0, column: 0 })) |calls_b()
+    Call(Fun(447), [Value(0), Value(1), Value(2)]) |calls_b()
+    Call(Fun(513), []) |calls_b()
+    Call(Fun(448), []) |calls_b()
+    Return(None) |calls_b()
+
+
+function u0:0() fast {
+    gv0 = symbol colocated u1:8
+    sig0 = (i64, i64, i64) fast
+    sig1 = () fast
+    sig2 = () fast
+    fn0 = colocated u0:11 sig0
+    fn1 = colocated u0:26 sig1
+    fn2 = colocated u0:6 sig2
+
+block0:
+    v0 = iconst.i64 232
+    v1 = iconst.i64 10
+    v2 = global_value.i64 gv0
+    call fn0(v0, v1, v2)
+    jump block1
+
+block1:
+    v3 = iconst.i64 228
+    v4 = iconst.i64 10
+    v5 = global_value.i64 gv0
+    call fn0(v3, v4, v5)
+    v6 = iconst.i64 228
+    v7 = iconst.i64 10
+    v8 = global_value.i64 gv0
+    call fn0(v6, v7, v8)
+    call fn1()
+    call fn2()
+    return
+
+block2:
+    call fn2()
+    return
+}
+
+fun calls_b
+
+  Inst1[]
+    Value(0): int = Lit(Int(228, 0)) |calls_a()
+    Value(1): int = Lit(Int(10, 0)) |calls_a()
+    Value(2): &u8 = Lit(String(Span { source: Source(0), hash: ID(3362311186304783455), range: 342..370, line: 0, column: 0 })) |calls_a()
+    Call(Fun(447), [Value(0), Value(1), Value(2)]) |calls_a()
+    Call(Fun(514), []) |calls_a()
+    Call(Fun(448), []) |calls_a()
+    Return(None) |calls_a()
+
+
+function u0:0() fast {
+    gv0 = symbol colocated u1:8
+    sig0 = (i64, i64, i64) fast
+    sig1 = () fast
+    sig2 = () fast
+    fn0 = colocated u0:11 sig0
+    fn1 = colocated u0:27 sig1
+    fn2 = colocated u0:6 sig2
+
+block0:
+    v0 = iconst.i64 228
+    v1 = iconst.i64 10
+    v2 = global_value.i64 gv0
+    call fn0(v0, v1, v2)
+    jump block1
+
+block1:
+    v3 = iconst.i64 232
+    v4 = iconst.i64 10
+    v5 = global_value.i64 gv0
+    call fn0(v3, v4, v5)
+    v6 = iconst.i64 232
+    v7 = iconst.i64 10
+    v8 = global_value.i64 gv0
+    call fn0(v6, v7, v8)
+    call fn1()
+    call fn2()
+    return
+
+block2:
+    call fn2()
+    return
+}
+
 fun assert(cond: bool)
 
   Inst1[Value(0)]
@@ -3060,10 +3781,9 @@ fun assert(cond: bool)
     Return(None) |print("ok\n")
 
 
-Token { kind: Fun, span: Span { source: Source(1), hash: ID(438937012895), range: 593..619, line: 33, column: 4 } }
 function u0:0(b1) fast {
-    gv0 = symbol colocated u1:7
-    gv1 = symbol colocated u1:8
+    gv0 = symbol colocated u1:8
+    gv1 = symbol colocated u1:5
     gv2 = symbol colocated u1:9
     sig0 = (i64, i64, i64) fast
     sig1 = (i64) fast
@@ -3130,16 +3850,16 @@ fun test_case_14
 
 
 function u0:0() fast {
-    gv0 = symbol colocated u1:7
+    gv0 = symbol colocated u1:8
     sig0 = () -> i64 fast
     sig1 = (i64, i64, i64) fast
     sig2 = () -> i64 fast
     sig3 = () fast
     sig4 = (b1) fast
-    fn0 = colocated u0:28 sig0
+    fn0 = colocated u0:30 sig0
     fn1 = colocated u0:11 sig1
     fn2 = colocated u0:6 sig3
-    fn3 = colocated u0:26 sig4
+    fn3 = colocated u0:28 sig4
 
 block0:
     v0 = func_addr.i64 fn0
@@ -3195,17 +3915,14 @@ fun test_case_13
     Return(None) |assert(even_worse(1, 1) == 0)
 
 
-Token { kind: Fun, span: Span { source: Source(3), hash: ID(438937012895), range: 2856..2888, line: 206, column: 4 } }
-Token { kind: Fun, span: Span { source: Source(3), hash: ID(438937012895), range: 2785..2816, line: 202, column: 4 } }
-Token { kind: Fun, span: Span { source: Source(3), hash: ID(438937012895), range: 2785..2816, line: 202, column: 4 } }
 function u0:0() fast {
-    gv0 = symbol colocated u1:7
+    gv0 = symbol colocated u1:8
     sig0 = (i64, i64, i64) fast
     sig1 = () fast
     sig2 = (b1) fast
     fn0 = colocated u0:11 sig0
     fn1 = colocated u0:6 sig1
-    fn2 = colocated u0:26 sig2
+    fn2 = colocated u0:28 sig2
 
 block0:
     v0 = iconst.i64 1
@@ -3274,6 +3991,114 @@ block5(v7: i64):
     return
 }
 
+fun even_worse(a, b: int) -> int
+
+  Inst1[Value(0), Value(1)]
+    Value(2): bool = Call(Fun(350), [Value(0), Value(1)]) |a > b
+    JumpIfTrue(Value(2), Inst(3), []) |a > b
+    Jump(Inst(6), []) |:
+
+  Inst3[]
+    Value(4): int = Lit(Int(208, 0)) |something(a, b)
+    Value(5): int = Lit(Int(21, 0)) |something(a, b)
+    Value(6): &u8 = Lit(String(Span { source: Source(0), hash: ID(3362311186304783455), range: 342..370, line: 0, column: 0 })) |something(a, b)
+    Call(Fun(447), [Value(4), Value(5), Value(6)]) |something(a, b)
+    Value(3): int = Call(Fun(507), [Value(0), Value(1)]) |something(a, b)
+    Call(Fun(448), []) |something(a, b)
+    Return(Some(Value(3))) |return something(a, b)
+
+  Inst6[]
+    Value(8): int = Lit(Int(210, 0)) |something(b, a)
+    Value(9): int = Lit(Int(21, 0)) |something(b, a)
+    Value(10): &u8 = Lit(String(Span { source: Source(0), hash: ID(3362311186304783455), range: 342..370, line: 0, column: 0 })) |something(b, a)
+    Call(Fun(447), [Value(8), Value(9), Value(10)]) |something(b, a)
+    Value(7): int = Call(Fun(507), [Value(1), Value(0)]) |something(b, a)
+    Call(Fun(448), []) |something(b, a)
+    Return(Some(Value(7))) |return something(b, a)
+
+  Inst5[]
+    Value(11): int = Zeroed |if a > b:
+    return something(a, b)
+  else:
+    return something(b, a)
+    Return(Some(Value(11))) |if a > b:
+    return something(a, b)
+  else:
+    return something(b, a)
+
+
+function u0:0(i64, i64) -> i64 fast {
+    gv0 = symbol colocated u1:8
+    sig0 = (i64, i64, i64) fast
+    sig1 = () fast
+    fn0 = colocated u0:11 sig0
+    fn1 = colocated u0:6 sig1
+
+block0(v0: i64, v1: i64):
+    v2 = icmp sgt v0, v1
+    brnz v2, block1
+    jump block2
+
+block1:
+    v3 = iconst.i64 208
+    v4 = iconst.i64 21
+    v5 = global_value.i64 gv0
+    call fn0(v3, v4, v5)
+    jump block4(v0, v1)
+
+block4(v6: i64, v7: i64):
+    v9 = iadd v6, v7
+    v10 = iconst.i64 2
+    v11 = imul v10, v6
+    v12 = isub v9, v11
+    jump block5(v12)
+
+block5(v8: i64):
+    call fn1()
+    return v8
+
+block2:
+    v13 = iconst.i64 210
+    v14 = iconst.i64 21
+    v15 = global_value.i64 gv0
+    call fn0(v13, v14, v15)
+    jump block6(v1, v0)
+
+block6(v16: i64, v17: i64):
+    v19 = iadd v16, v17
+    v20 = iconst.i64 2
+    v21 = imul v20, v16
+    v22 = isub v19, v21
+    jump block7(v22)
+
+block7(v18: i64):
+    call fn1()
+    return v18
+
+block3:
+    v23 = iconst.i64 0
+    return v23
+}
+
+fun something(a, b: int) -> int
+
+  Inst1[Value(0), Value(1)]
+    Value(2): int = Call(Fun(260), [Value(0), Value(1)]) |(a + b)
+    Value(3): int = Lit(Int(2, 0)) |2
+    Value(4): int = Call(Fun(280), [Value(3), Value(0)]) |2 * a
+    Value(5): int = Call(Fun(270), [Value(2), Value(4)]) |(a + b) - 2 * a
+    Return(Some(Value(5))) |return (a + b) - 2 * a
+
+
+function u0:0(i64, i64) -> i64 fast {
+block0(v0: i64, v1: i64):
+    v2 = iadd v0, v1
+    v3 = iconst.i64 2
+    v4 = imul v3, v0
+    v5 = isub v2, v4
+    return v5
+}
+
 fun test_case_12
 
   Inst1[]
@@ -3290,13 +4115,13 @@ fun test_case_12
 
 
 function u0:0() fast {
-    gv0 = symbol colocated u1:6
-    gv1 = symbol colocated u1:7
+    gv0 = symbol colocated u1:7
+    gv1 = symbol colocated u1:8
     sig0 = (i64, i64, i64) fast
     sig1 = (b1) fast
     sig2 = () fast
     fn0 = colocated u0:11 sig0
-    fn1 = colocated u0:26 sig1
+    fn1 = colocated u0:28 sig1
     fn2 = colocated u0:6 sig2
 
 block0:
@@ -3336,12 +4161,12 @@ fun test_case_11
 
 function u0:0() fast {
     ss0 = explicit_slot 8
-    gv0 = symbol colocated u1:7
+    gv0 = symbol colocated u1:8
     sig0 = (i64, i64, i64) fast
     sig1 = (b1) fast
     sig2 = () fast
     fn0 = colocated u0:11 sig0
-    fn1 = colocated u0:26 sig1
+    fn1 = colocated u0:28 sig1
     fn2 = colocated u0:6 sig2
 
 block0:
@@ -3416,7 +4241,7 @@ fun test_case_10
     Value(29): int = Lit(Int(18, 0)) |array.len()
     Value(30): &u8 = Lit(String(Span { source: Source(0), hash: ID(3362311186304783455), range: 342..370, line: 0, column: 0 })) |array.len()
     Call(Fun(447), [Value(28), Value(29), Value(30)]) |array.len()
-    Value(26): int = Call(Fun(513), [Value(27)]) |array.len()
+    Value(26): int = Call(Fun(515), [Value(27)]) |array.len()
     Call(Fun(448), []) |array.len()
     Value(31): bool = Call(Fun(330), [Value(23), Value(26)]) |i >= array.len()
     JumpIfTrue(Value(31), Inst(50), []) |i >= array.len()
@@ -3431,7 +4256,7 @@ fun test_case_10
     Value(35): int = Lit(Int(17, 0)) |array[i]
     Value(36): &u8 = Lit(String(Span { source: Source(0), hash: ID(3362311186304783455), range: 342..370, line: 0, column: 0 })) |array[i]
     Call(Fun(447), [Value(34), Value(35), Value(36)]) |array[i]
-    Value(32): &int = Call(Fun(514), [Value(33), Value(23)]) |array[i]
+    Value(32): &int = Call(Fun(516), [Value(33), Value(23)]) |array[i]
     Call(Fun(448), []) |array[i]
     Value(37): int = Deref(Value(32), false) |array[i]
     Value(38): int = Call(Fun(260), [Value(25), Value(37)]) |sum += array[i]
@@ -3442,7 +4267,7 @@ fun test_case_10
     Value(43): int = Lit(Int(12, 0)) |storage[i]
     Value(44): &u8 = Lit(String(Span { source: Source(0), hash: ID(3362311186304783455), range: 342..370, line: 0, column: 0 })) |storage[i]
     Call(Fun(447), [Value(42), Value(43), Value(44)]) |storage[i]
-    Value(40): &int = Call(Fun(514), [Value(41), Value(23)]) |storage[i]
+    Value(40): &int = Call(Fun(516), [Value(41), Value(23)]) |storage[i]
     Call(Fun(448), []) |storage[i]
     Value(45): int = Deref(Value(40), true) |storage[i]
     Value(47): &[int, 10] = Ref(Value(21)) |array[i]
@@ -3450,7 +4275,7 @@ fun test_case_10
     Value(49): int = Lit(Int(23, 0)) |array[i]
     Value(50): &u8 = Lit(String(Span { source: Source(0), hash: ID(3362311186304783455), range: 342..370, line: 0, column: 0 })) |array[i]
     Call(Fun(447), [Value(48), Value(49), Value(50)]) |array[i]
-    Value(46): &int = Call(Fun(514), [Value(47), Value(23)]) |array[i]
+    Value(46): &int = Call(Fun(516), [Value(47), Value(23)]) |array[i]
     Call(Fun(448), []) |array[i]
     Value(51): int = Deref(Value(46), false) |array[i]
     Value(51): int = Assign(Value(45)) |storage[i] = array[i]
@@ -3478,19 +4303,12 @@ fun test_case_10
     Return(None) |assert(sum == 11 * 5)
 
 
-Token { kind: Fun, span: Span { source: Source(1), hash: ID(438937012895), range: 2465..2493, line: 118, column: 6 } }
-Token { kind: Fun, span: Span { source: Source(1), hash: ID(438937012895), range: 2105..2146, line: 104, column: 6 } }
-Token { kind: Fun, span: Span { source: Source(1), hash: ID(438937012895), range: 2249..2294, line: 109, column: 6 } }
-Token { kind: Fun, span: Span { source: Source(1), hash: ID(438937012895), range: 2105..2146, line: 104, column: 6 } }
-Token { kind: Fun, span: Span { source: Source(1), hash: ID(438937012895), range: 2249..2294, line: 109, column: 6 } }
-Token { kind: Fun, span: Span { source: Source(1), hash: ID(438937012895), range: 2105..2146, line: 104, column: 6 } }
-Token { kind: Fun, span: Span { source: Source(1), hash: ID(438937012895), range: 2249..2294, line: 109, column: 6 } }
 function u0:0() fast {
     ss0 = explicit_slot 80
     ss1 = explicit_slot 80
-    gv0 = symbol colocated u1:7
+    gv0 = symbol colocated u1:8
     gv1 = symbol colocated u1:4
-    gv2 = symbol colocated u1:5
+    gv2 = symbol colocated u1:6
     sig0 = (i64, i64, i64) fast
     sig1 = () fast
     sig2 = (i64) fast
@@ -3498,7 +4316,7 @@ function u0:0() fast {
     fn0 = colocated u0:11 sig0
     fn1 = colocated u0:6 sig1
     fn2 = colocated u0:13 sig2
-    fn3 = colocated u0:26 sig3
+    fn3 = colocated u0:28 sig3
 
 block0:
     v109 = iconst.i64 0
@@ -3718,8 +4536,94 @@ block4:
     return
 }
 
+fun __index__(a: &Self, index: int) -> &T
+
+  Inst1[Value(0), Value(1)]
+    Value(2): int = Lit(Int(0, 0)) |0
+    Value(3): bool = Call(Fun(360), [Value(1), Value(2)]) |index < 0
+    Value(4): int = Lit(Int(10, 0)) |L
+    Value(5): bool = Call(Fun(330), [Value(1), Value(4)]) |index >= L
+    Value(6): bool = Call(Fun(435), [Value(3), Value(5)]) |index < 0 | index >= L
+    JumpIfTrue(Value(6), Inst(7), []) |index < 0 | index >= L
+    Jump(Inst(9), []) |
+
+  Inst7[]
+    Value(7): &u8 = Lit(String(Span { source: Source(0), hash: ID(6484216913505728610), range: 203..223, line: 0, column: 0 })) |"index out of bounds"
+    Call(Fun(446), [Value(7)]) |panic("index out of bounds")
+    Jump(Inst(9), []) |if index < 0 | index >= L:
+      panic("index out of bounds")
+
+  Inst9[]
+    Value(8): &int = Call(Fun(517), [Value(0), Value(1)]) |a.get_unchecked(index)
+    Return(Some(Value(8))) |a.get_unchecked(index)
+
+
+function u0:0(i64, i64) -> i64 fast {
+    gv0 = symbol colocated u1:4
+    sig0 = (i64) fast
+    fn0 = colocated u0:13 sig0
+
+block0(v0: i64, v1: i64):
+    v2 = iconst.i64 0
+    v3 = icmp slt v1, v2
+    v4 = iconst.i64 10
+    v5 = icmp sge v1, v4
+    v6 = bor v3, v5
+    brnz v6, block1
+    jump block2
+
+block1:
+    v7 = global_value.i64 gv0
+    call fn0(v7)
+    jump block2
+
+block2:
+    jump block3(v0, v1)
+
+block3(v8: i64, v9: i64):
+    v11 = iconst.i64 8
+    v12 = imul v9, v11
+    v13 = iadd v8, v12
+    jump block4(v13)
+
+block4(v10: i64):
+    return v10
+}
+
+fun get_unchecked(a: &Self, index: int) -> &T
+
+  Inst1[Value(0), Value(1)]
+    Value(2): int = Cast(Value(0)) |a as int
+    Value(3): int = Call(Fun(518), []) |sizeof::[T]()
+    Value(4): int = Call(Fun(280), [Value(1), Value(3)]) |index * sizeof::[T]()
+    Value(5): int = Call(Fun(260), [Value(2), Value(4)]) |(a as int + index * sizeof::[T]())
+    Value(6): &int = Cast(Value(5)) |(a as int + index * sizeof::[T]()) as &T
+    Return(Some(Value(6))) |(a as int + index * sizeof::[T]()) as &T
+
+
+function u0:0(i64, i64) -> i64 fast {
+block0(v0: i64, v1: i64):
+    v2 = iconst.i64 8
+    v3 = imul v1, v2
+    v4 = iadd v0, v3
+    return v4
+}
+
 fun pub sizeof[T] -> int
 
+
+fun len(array: &Self) -> int
+
+  Inst1[Value(0)]
+    Value(1): int = Lit(Int(10, 0)) |L
+    Return(Some(Value(1))) |L
+
+
+function u0:0(i64) -> i64 fast {
+block0(v0: i64):
+    v1 = iconst.i64 10
+    return v1
+}
 
 fun test_case_9
 
@@ -3772,7 +4676,7 @@ fun test_case_9
     Value(29): int = Lit(Int(18, 0)) |array.len()
     Value(30): &u8 = Lit(String(Span { source: Source(0), hash: ID(3362311186304783455), range: 342..370, line: 0, column: 0 })) |array.len()
     Call(Fun(447), [Value(28), Value(29), Value(30)]) |array.len()
-    Value(26): int = Call(Fun(513), [Value(27)]) |array.len()
+    Value(26): int = Call(Fun(515), [Value(27)]) |array.len()
     Call(Fun(448), []) |array.len()
     Value(31): bool = Call(Fun(330), [Value(23), Value(26)]) |i >= array.len()
     JumpIfTrue(Value(31), Inst(50), []) |i >= array.len()
@@ -3787,7 +4691,7 @@ fun test_case_9
     Value(35): int = Lit(Int(17, 0)) |array[i]
     Value(36): &u8 = Lit(String(Span { source: Source(0), hash: ID(3362311186304783455), range: 342..370, line: 0, column: 0 })) |array[i]
     Call(Fun(447), [Value(34), Value(35), Value(36)]) |array[i]
-    Value(32): &int = Call(Fun(514), [Value(33), Value(23)]) |array[i]
+    Value(32): &int = Call(Fun(516), [Value(33), Value(23)]) |array[i]
     Call(Fun(448), []) |array[i]
     Value(37): int = Deref(Value(32), false) |array[i]
     Value(38): int = Call(Fun(260), [Value(25), Value(37)]) |sum += array[i]
@@ -3815,13 +4719,10 @@ fun test_case_9
     Return(None) |assert(sum == 11 * 5)
 
 
-Token { kind: Fun, span: Span { source: Source(1), hash: ID(438937012895), range: 2465..2493, line: 118, column: 6 } }
-Token { kind: Fun, span: Span { source: Source(1), hash: ID(438937012895), range: 2105..2146, line: 104, column: 6 } }
-Token { kind: Fun, span: Span { source: Source(1), hash: ID(438937012895), range: 2249..2294, line: 109, column: 6 } }
 function u0:0() fast {
     ss0 = explicit_slot 80
     ss1 = explicit_slot 80
-    gv0 = symbol colocated u1:7
+    gv0 = symbol colocated u1:8
     gv1 = symbol colocated u1:4
     sig0 = (i64, i64, i64) fast
     sig1 = () fast
@@ -3830,7 +4731,7 @@ function u0:0() fast {
     fn0 = colocated u0:11 sig0
     fn1 = colocated u0:6 sig1
     fn2 = colocated u0:13 sig2
-    fn3 = colocated u0:26 sig3
+    fn3 = colocated u0:28 sig3
 
 block0:
     v68 = iconst.i64 0
@@ -4026,12 +4927,12 @@ fun test_case_8
 
 
 function u0:0() fast {
-    gv0 = symbol colocated u1:7
+    gv0 = symbol colocated u1:8
     sig0 = (i64, i64, i64) fast
     sig1 = (b1) fast
     sig2 = () fast
     fn0 = colocated u0:11 sig0
-    fn1 = colocated u0:26 sig1
+    fn1 = colocated u0:28 sig1
     fn2 = colocated u0:6 sig2
 
 block0:
@@ -4162,12 +5063,12 @@ fun test_case_7
 
 function u0:0() fast {
     ss0 = explicit_slot 16
-    gv0 = symbol colocated u1:7
+    gv0 = symbol colocated u1:8
     sig0 = (i64, i64, i64) fast
     sig1 = (b1) fast
     sig2 = () fast
     fn0 = colocated u0:11 sig0
-    fn1 = colocated u0:26 sig1
+    fn1 = colocated u0:28 sig1
     fn2 = colocated u0:6 sig2
 
 block0:
@@ -4227,15 +5128,15 @@ fun test_case_6
 function u0:0() fast {
     ss0 = explicit_slot 16
     ss1 = explicit_slot 16
-    gv0 = symbol colocated u1:7
+    gv0 = symbol colocated u1:8
     sig0 = (i64, i64, i64) fast
     sig1 = (i64, i64, i64, i64 sret) -> i64 sret fast
     sig2 = () fast
     sig3 = (b1) fast
     fn0 = colocated u0:11 sig0
-    fn1 = colocated u0:43 sig1
+    fn1 = colocated u0:45 sig1
     fn2 = colocated u0:6 sig2
-    fn3 = colocated u0:26 sig3
+    fn3 = colocated u0:28 sig3
 
 block0:
     v0 = iconst.i64 0
@@ -4346,12 +5247,12 @@ fun test_case_5
 
 function u0:0() fast {
     gv0 = symbol colocated u1:10
-    gv1 = symbol colocated u1:7
+    gv1 = symbol colocated u1:8
     sig0 = (i64, i64, i64) fast
     sig1 = (i32) windows_fastcall
     sig2 = () fast
     fn0 = colocated u0:11 sig0
-    fn1 = u0:45 sig1
+    fn1 = u0:47 sig1
     fn2 = colocated u0:6 sig2
 
 block0:
@@ -4434,12 +5335,12 @@ fun test_case_4
 
 
 function u0:0() fast {
-    gv0 = symbol colocated u1:7
+    gv0 = symbol colocated u1:8
     sig0 = (i64, i64, i64) fast
     sig1 = (b1) fast
     sig2 = () fast
     fn0 = colocated u0:11 sig0
-    fn1 = colocated u0:26 sig1
+    fn1 = colocated u0:28 sig1
     fn2 = colocated u0:6 sig2
 
 block0:
@@ -4511,12 +5412,12 @@ fun test_case_3
 
 
 function u0:0() fast {
-    gv0 = symbol colocated u1:7
+    gv0 = symbol colocated u1:8
     sig0 = (i64, i64, i64) fast
     sig1 = (b1) fast
     sig2 = () fast
     fn0 = colocated u0:11 sig0
-    fn1 = colocated u0:26 sig1
+    fn1 = colocated u0:28 sig1
     fn2 = colocated u0:6 sig2
 
 block0:
@@ -4588,15 +5489,15 @@ function u0:0() fast {
     ss0 = explicit_slot 16
     ss1 = explicit_slot 16
     ss2 = explicit_slot 16
-    gv0 = symbol colocated u1:7
+    gv0 = symbol colocated u1:8
     sig0 = (i64, i64, i64) fast
     sig1 = (i64, i64, i64, i64 sret) -> i64 sret fast
     sig2 = () fast
     sig3 = (b1) fast
     fn0 = colocated u0:11 sig0
-    fn1 = colocated u0:49 sig1
+    fn1 = colocated u0:51 sig1
     fn2 = colocated u0:6 sig2
-    fn3 = colocated u0:26 sig3
+    fn3 = colocated u0:28 sig3
 
 block0:
     v0 = iconst.i64 0
@@ -4707,12 +5608,12 @@ function u0:0() fast {
     ss0 = explicit_slot 16
     ss1 = explicit_slot 24
     ss2 = explicit_slot 32
-    gv0 = symbol colocated u1:7
+    gv0 = symbol colocated u1:8
     sig0 = (i64, i64, i64) fast
     sig1 = (b1) fast
     sig2 = () fast
     fn0 = colocated u0:11 sig0
-    fn1 = colocated u0:26 sig1
+    fn1 = colocated u0:28 sig1
     fn2 = colocated u0:6 sig2
 
 block0:
@@ -4881,12 +5782,12 @@ fun fib(v: int) -> int
 
 
 function u0:0(i64) -> i64 fast {
-    gv0 = symbol colocated u1:7
+    gv0 = symbol colocated u1:8
     sig0 = (i64, i64, i64) fast
     sig1 = (i64) -> i64 fast
     sig2 = () fast
     fn0 = colocated u0:11 sig0
-    fn1 = colocated u0:52 sig1
+    fn1 = colocated u0:54 sig1
     fn2 = colocated u0:6 sig2
 
 block0(v0: i64):
@@ -5075,7 +5976,7 @@ fun main -> int
 
 
 function u0:0() -> i64 fast {
-    gv0 = symbol colocated u1:7
+    gv0 = symbol colocated u1:8
     sig0 = (i64, i64, i64) fast
     sig1 = (b1) fast
     sig2 = () fast
@@ -5095,23 +5996,23 @@ function u0:0() -> i64 fast {
     sig16 = () fast
     sig17 = () fast
     fn0 = colocated u0:11 sig0
-    fn1 = colocated u0:26 sig1
+    fn1 = colocated u0:28 sig1
     fn2 = colocated u0:6 sig2
-    fn3 = colocated u0:52 sig3
-    fn4 = colocated u0:51 sig4
-    fn5 = colocated u0:50 sig5
-    fn6 = colocated u0:48 sig6
-    fn7 = colocated u0:47 sig7
-    fn8 = colocated u0:46 sig8
-    fn9 = colocated u0:44 sig9
-    fn10 = colocated u0:42 sig10
-    fn11 = colocated u0:41 sig11
-    fn12 = colocated u0:40 sig12
-    fn13 = colocated u0:39 sig13
-    fn14 = colocated u0:34 sig14
-    fn15 = colocated u0:33 sig15
-    fn16 = colocated u0:32 sig16
-    fn17 = colocated u0:29 sig17
+    fn3 = colocated u0:54 sig3
+    fn4 = colocated u0:53 sig4
+    fn5 = colocated u0:52 sig5
+    fn6 = colocated u0:50 sig6
+    fn7 = colocated u0:49 sig7
+    fn8 = colocated u0:48 sig8
+    fn9 = colocated u0:46 sig9
+    fn10 = colocated u0:44 sig10
+    fn11 = colocated u0:43 sig11
+    fn12 = colocated u0:42 sig12
+    fn13 = colocated u0:41 sig13
+    fn14 = colocated u0:36 sig14
+    fn15 = colocated u0:35 sig15
+    fn16 = colocated u0:34 sig16
+    fn17 = colocated u0:31 sig17
 
 block0:
     v1 = iconst.i64 1
@@ -5276,9 +6177,9 @@ block3(v0: i64):
 
 
 function u0:0(i64, i64) -> i64 fast {
-    gv0 = symbol colocated u1:6
+    gv0 = symbol colocated u1:7
     sig0 = () -> i64 fast
-    fn0 = colocated u0:53 sig0
+    fn0 = colocated u0:55 sig0
 
 block0(v0: i64, v1: i64):
     v7 = iconst.i64 0
@@ -5308,4 +6209,5 @@ ok
 ok
 ok
 ok
+
 :end

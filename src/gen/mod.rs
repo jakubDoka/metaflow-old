@@ -242,7 +242,7 @@ pub fn test() {
 
     println!("output:");
     let output = Command::new(".\\test_project.exe").status().unwrap();
-    println!(":end");
+    println!("\n:end");
 
     assert_eq!(output.code().unwrap(), 0);
 
