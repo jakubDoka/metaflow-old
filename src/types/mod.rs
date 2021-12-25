@@ -1,5 +1,6 @@
 use std::fmt::Write;
 use std::ops::{Deref, DerefMut};
+use std::str::FromStr;
 
 use crate::ast::{AError, AErrorDisplay, AKind, AParser, Ast, Vis};
 use crate::collector::{Attrs, Collector, Item};
@@ -7,14 +8,18 @@ use crate::lexer::{Span, TKind as LTKind, Token, TokenDisplay};
 use crate::module_tree::{self, MTContext, MTParser, MTState, Mod, TreeStorage};
 use crate::util::sdbm::ID;
 use crate::util::storage::{IndexPointer, List, ReusableList, Table};
-use cranelift_codegen::ir::types::*;
 use cranelift_codegen::ir::types::{Type as CrType, INVALID};
+use cranelift_codegen::ir::{types::*, AbiParam, ArgumentPurpose, Signature};
+use cranelift_codegen::isa::CallConv;
+use cranelift_codegen::settings;
+use cranelift_module::Module;
+use cranelift_object::{ObjectBuilder, ObjectModule};
 
 type Result<T = ()> = std::result::Result<T, TError>;
 
 pub const TYPE_SALT: ID = ID(0x9e3779b97f4a7c15);
 
-pub const VISIBILITY_MESSAGE: &str = 
+pub const VISIBILITY_MESSAGE: &str =
 "removing 'priv' in case of different module but same package or adding 'pub' in case of different package can help";
 
 pub static mut POINTER_TYPE: CrType = INVALID;
@@ -25,6 +30,7 @@ pub fn ptr_ty() -> CrType {
 
 pub struct TParser<'a> {
     module: Mod,
+    program: &'a mut Program,
     state: &'a mut TState,
     context: &'a mut TContext,
     collector: &'a mut Collector,
@@ -34,12 +40,14 @@ impl<'a> TParser<'a> {
     pub const MAX_TYPE_INSTANTIATION_DEPTH: usize = 1000;
 
     pub fn new(
+        program: &'a mut Program,
         state: &'a mut TState,
         context: &'a mut TContext,
         collector: &'a mut Collector,
     ) -> Self {
         Self {
             module: Mod::new(0),
+            program,
             state,
             context,
             collector,
@@ -272,21 +280,21 @@ impl<'a> TParser<'a> {
 
     fn resolve_type(&mut self, module: Mod, ast: &Ast, depth: usize) -> Result<(Mod, Type)> {
         let (ty_module, ty) = match ast.kind {
-            AKind::Ident => self.resolve_simple_type(module, &ast.token),
-            AKind::Path => self.resolve_explicit_package_type(module, ast),
+            AKind::Ident => self.resolve_simple_type(module, None, &ast.token),
+            AKind::Path => self.resolve_simple_type(module, Some(&ast[0].token), &ast.token),
             AKind::Instantiation => self.resolve_instance(module, ast, depth),
             AKind::Ref => self.resolve_pointer(module, ast, depth),
             AKind::Array => self.resolve_array(module, ast, depth),
             AKind::Lit => self.resolve_constant(module, &ast.token),
-            AKind::Fun(..) => self.resolve_function_pointer(module, ast, depth),
+            AKind::FunHeader(..) => self.resolve_function_pointer(module, ast, depth),
             _ => unreachable!("{:?}", ast.kind),
         }?;
 
-        if !self.state.can_access(module, ty_module, self.state.types[ty].vis) {
-            return Err(TError::new(
-                TEKind::VisibilityViolation,
-                ast.token.clone(),
-            ));
+        if !self
+            .state
+            .can_access(module, ty_module, self.state.types[ty].vis)
+        {
+            return Err(TError::new(TEKind::VisibilityViolation, ast.token.clone()));
         }
 
         Ok((module, ty))
@@ -300,50 +308,29 @@ impl<'a> TParser<'a> {
     ) -> Result<(Mod, Type)> {
         let mut args = self.context.pool.get();
 
-        let ast = &ast[0];
-
-        let mut id = TYPE_SALT.add(ID::new("fun"));
-
-        for arg in ast[1..ast.len() - 1].iter() {
+        for arg in ast[1..ast.len() - 2].iter() {
             let (_, ty) = self.resolve_type(module, arg, depth)?;
-            id = id.add(self.state.types[ty].id);
+
             args.push(ty);
         }
 
-        let ret = if ast[ast.len() - 1].kind != AKind::None {
-            let (_, ty) = self.resolve_type(module, &ast[ast.len() - 1], depth)?;
-            id = id.add(ID::new("->")).add(self.state.types[ty].id);
+        let ret = if ast[ast.len() - 2].kind != AKind::None {
+            let (_, ty) = self.resolve_type(module, &ast[ast.len() - 2], depth)?;
             Some(ty)
         } else {
             None
         };
 
-        if let Some(&id) = self.state.types.index(id) {
-            return Ok((module, id));
-        }
-
-        let fun = FunPointerEnt {
-            args: args.clone(),
-            ret,
-        };
-        let fun = self.state.fun_pointers.add(fun);
-
-        let size = ptr_ty().bytes() as u32;
-        let type_ent = TypeEnt {
-            kind: TKind::FunPointer(fun),
-            params: vec![],
-            hint: ast.token.clone(),
-            id,
-            module,
-            vis: Vis::None,
-            name: ast.token.span.clone(),
-            attrs: Attrs::default(),
-            size,
-            align: size,
+        let call_conv = if ast[ast.len() - 1].kind != AKind::None {
+            let str = self.state.display(&ast[ast.len() - 1].token.span);
+            self.program.parse_call_conv(str).ok_or_else(|| {
+                TError::new(TEKind::InvalidCallConv, ast[ast.len() - 1].token.clone())
+            })?
+        } else {
+            CallConv::Fast
         };
 
-        let (shadowed, id) = self.state.types.insert(id, type_ent);
-        debug_assert!(shadowed.is_none());
+        let id = self.function_type_of(module, args.as_slice(), ret, call_conv);
 
         Ok((module, id))
     }
@@ -396,9 +383,12 @@ impl<'a> TParser<'a> {
         ast: &Ast,
         depth: usize,
     ) -> Result<(Mod, Type)> {
-        let (module, ty) = match ast[0].kind {
-            AKind::Ident => self.resolve_simple_type(source_module, &ast[0].token)?,
-            AKind::Path => self.resolve_explicit_package_type(source_module, &ast[0])?,
+        let name = &ast[0];
+        let (module, ty) = match name.kind {
+            AKind::Ident => self.resolve_simple_type(source_module, None, &name.token)?,
+            AKind::Path => {
+                self.resolve_simple_type(source_module, Some(&name[0].token), &name[1].token)?
+            }
             _ => unreachable!("{:?}", ast[0].kind),
         };
 
@@ -455,41 +445,28 @@ impl<'a> TParser<'a> {
         Ok((module, ty))
     }
 
-    fn resolve_explicit_package_type(&mut self, module: Mod, ast: &Ast) -> Result<(Mod, Type)> {
-        let module = self
-            .state
-            .find_dep(module, &ast[0].token)
-            .ok_or_else(|| TError::new(TEKind::UnknownModule, ast.token.clone()))?;
-        let module_id = self.state.modules[module].id;
-        let id = TYPE_SALT.add(ast[1].token.span.hash);
-        self.type_index(id.add(module_id))
-            .map(|id| (module, id))
-            .ok_or_else(|| TError::new(TEKind::UnknownType, ast[0].token.clone()))
-    }
-
-    fn resolve_simple_type(&mut self, module: Mod, name: &Token) -> Result<(Mod, Type)> {
+    fn resolve_simple_type(
+        &mut self,
+        module: Mod,
+        target: Option<&Token>,
+        name: &Token,
+    ) -> Result<(Mod, Type)> {
         let id = TYPE_SALT.add(name.span.hash);
 
+        let target = if let Some(target) = target {
+            Some(
+                self.state
+                    .find_dep(module, target)
+                    .ok_or(TError::new(TEKind::UnknownModule, target.clone()))?,
+            )
+        } else {
+            None
+        };
+
         let mut buffer = self.context.pool.get();
-        self.state.collect_scopes(module, &mut buffer);
-
-        let (module, module_id) = buffer[0];
-        if let Some(ty) = self.type_index(id.add(module_id)) {
-            return Ok((module, ty));
-        }
-
-        let mut found = None;
-
-        for (module, module_id) in buffer.drain(1..) {
-            if let Some(ty) = self.type_index(id.add(module_id)) {
-                if let Some((_, found)) = found {
-                    return Err(TError::new(TEKind::AmbiguousType(ty, found), name.clone()));
-                }
-                found = Some((module, ty));
-            }
-        }
-
-        found.ok_or_else(|| TError::new(TEKind::UnknownType, name.clone()))
+        self.find_item(module, id, target, &mut buffer)
+            .map_err(|(a, b)| TError::new(TEKind::AmbiguousType(a, b), name.clone()))?
+            .ok_or_else(|| TError::new(TEKind::UnknownType, name.clone()))
     }
 
     fn collect(&mut self, module: Mod) -> Result<()> {
@@ -638,6 +615,69 @@ impl<'a> TParser<'a> {
     fn type_index(&self, id: ID) -> Option<Type> {
         self.state.types.index(id).cloned()
     }
+
+    pub fn function_type_of(
+        &mut self,
+        module: Mod,
+        args: &[Type],
+        ret: Option<Type>,
+        call_conv: CallConv,
+    ) -> Type {
+        let mut id = TYPE_SALT.add(ID::new("fun"));
+
+        for arg in args.iter() {
+            id = id.add(self.state.types[*arg].id);
+        }
+
+        if let Some(ret) = ret {
+            id = id.add(ID::new("->")).add(self.state.types[ret].id);
+        }
+
+        if let Some(&id) = self.state.types.index(id) {
+            return id;
+        }
+
+        let fun = FunPointerEnt {
+            call_conv,
+            args: args.to_vec(),
+            ret,
+        };
+
+        let fun = self.state.fun_pointers.add(fun);
+
+        let size = ptr_ty().bytes() as u32;
+        let type_ent = TypeEnt {
+            kind: TKind::FunPointer(fun),
+            params: vec![],
+            hint: Token::default(),
+            id,
+            module,
+            vis: Vis::None,
+            name: Span::default(),
+            attrs: Attrs::default(),
+            size,
+            align: size,
+        };
+
+        let (shadowed, id) = self.state.types.insert(id, type_ent);
+        debug_assert!(shadowed.is_none());
+
+        id
+    }
+}
+
+impl<'a> ItemSearch<Type> for TParser<'a> {
+    fn find(&self, id: ID) -> Option<Type> {
+        self.state.types.index(id).cloned()
+    }
+
+    fn scopes(&self, module: Mod, buffer: &mut Vec<(Mod, ID)>) {
+        self.state.collect_scopes(module, buffer)
+    }
+
+    fn module_id(&self, module: Mod) -> ID {
+        self.state.modules[module].id
+    }
 }
 
 impl<'a> TreeStorage<Type> for TParser<'a> {
@@ -679,6 +719,44 @@ impl<'a> TreeStorage<Type> for TParser<'a> {
 
     fn len(&self) -> usize {
         self.state.types.len()
+    }
+}
+
+pub trait ItemSearch<T: IndexPointer> {
+    fn find(&self, id: ID) -> Option<T>;
+    fn scopes(&self, module: Mod, buffer: &mut Vec<(Mod, ID)>);
+    fn module_id(&self, module: Mod) -> ID;
+
+    fn find_item(
+        &self,
+        module: Mod,
+        id: ID,
+        target_module: Option<Mod>,
+        buffer: &mut Vec<(Mod, ID)>,
+    ) -> std::result::Result<Option<(Mod, T)>, (T, T)> {
+        if let Some(module) = target_module {
+            Ok(self
+                .find(id.add(self.module_id(module)))
+                .map(|id| (module, id)))
+        } else {
+            if let Some(fun) = self.find(id.add(self.module_id(module))) {
+                Ok(Some((module, fun)))
+            } else {
+                self.scopes(module, buffer);
+
+                let mut found = None;
+                for (module, module_id) in buffer.drain(1..) {
+                    if let Some(fun) = self.find(id.add(module_id)) {
+                        if let Some((_, found)) = found {
+                            return Err((found, fun));
+                        }
+                        found = Some((module, fun));
+                        break;
+                    }
+                }
+                Ok(found)
+            }
+        }
     }
 }
 
@@ -762,8 +840,9 @@ super::index_pointer!(FunPointer);
 
 #[derive(Debug, Clone)]
 pub struct FunPointerEnt {
-    args: Vec<Type>,
-    ret: Option<Type>,
+    pub call_conv: CallConv,
+    pub args: Vec<Type>,
+    pub ret: Option<Type>,
 }
 
 #[derive(Debug, Clone)]
@@ -844,6 +923,36 @@ pub struct TState {
     pub unresolved: Vec<(Type, usize)>,
     pub resolved: Vec<Type>,
     pub parsed_ast: Ast,
+}
+
+impl TState {
+    pub fn signature_of_fun_pointer(&self, fun: FunPointer) -> Signature {
+        let fun = &self.fun_pointers[fun];
+
+        let mut params = fun
+            .args
+            .iter()
+            .map(|&ty| AbiParam::new(self.types[ty].repr()))
+            .collect::<Vec<_>>();
+
+        let mut returns = Vec::new();
+        if let Some(ret) = fun.ret {
+            let ret = &self.types[ret];
+            if ret.on_stack() {
+                let param = AbiParam::special(ret.repr(), ArgumentPurpose::StructReturn);
+                params.push(param);
+                returns.push(param);
+            } else {
+                returns.push(AbiParam::new(ret.repr()));
+            }
+        }
+
+        Signature {
+            params,
+            returns,
+            call_conv: fun.call_conv,
+        }
+    }
 }
 
 crate::inherit!(TState, mt_state, MTState);
@@ -940,6 +1049,39 @@ define_repo!(
     uint, ptr_ty(), ptr_ty().bytes() as u32;
     array, INVALID, 0
 );
+
+pub struct Program {
+    pub module: ObjectModule,
+    pub stacktrace: bool,
+}
+
+impl Program {
+    pub fn new(module: ObjectModule, stacktrace: bool) -> Self {
+        unsafe {
+            POINTER_TYPE = module.isa().pointer_type();
+        }
+        Self { module, stacktrace }
+    }
+
+    pub fn parse_call_conv(&self, call_conv: &str) -> Option<CallConv> {
+        if call_conv == "platform" {
+            let triple = self.module.isa().triple();
+            Some(CallConv::triple_default(triple))
+        } else {
+            CallConv::from_str(call_conv).ok()
+        }
+    }
+}
+
+impl Default for Program {
+    fn default() -> Self {
+        let flags = settings::Flags::new(settings::builder());
+        let isa = cranelift_native::builder().unwrap().finish(flags);
+        let builder =
+            ObjectBuilder::new(isa, "all", cranelift_module::default_libcall_names()).unwrap();
+        Self::new(ObjectModule::new(builder), true)
+    }
+}
 
 pub struct TypeDisplay<'a> {
     state: &'a TState,
@@ -1066,6 +1208,9 @@ crate::def_displayer!(
         TEKind::ExpectedIntConstant => {
             writeln!(f, "expected positive integer constant")?;
         },
+        TEKind::InvalidCallConv => {
+            call_conv_error(f)?;
+        },
     }
 );
 
@@ -1083,6 +1228,7 @@ impl TError {
 
 #[derive(Debug)]
 pub enum TEKind {
+    InvalidCallConv,
     VisibilityViolation,
     InstancingNonGeneric(Token),
     AError(AError),
@@ -1100,7 +1246,33 @@ pub enum TEKind {
     ExpectedIntConstant,
 }
 
+pub fn call_conv_error(f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+    writeln!(
+        f,
+        "Invalid call convention, list of valid call conventions:"
+    )?;
+    for cc in [
+        "platform - picks call convention based of target platform",
+        "fast",
+        "cold - then its unlikely this gets called",
+        "system_v",
+        "windows_fastcall",
+        "apple_aarch64",
+        "baldrdash_system_v",
+        "baldrdash_windows",
+        "baldrdash_2020",
+        "probestack",
+        "wasmtime_system_v",
+        "wasmtime_fastcall",
+        "wasmtime_apple_aarch64",
+    ] {
+        writeln!(f, "  {}", cc)?;
+    }
+    Ok(())
+}
+
 pub fn test() {
+    let mut program = Program::default();
     let mut state = TState::default();
     let mut context = TContext::default();
 
@@ -1123,7 +1295,7 @@ pub fn test() {
 
         context.recycle(ast);
 
-        TParser::new(&mut state, &mut context, &mut collector)
+        TParser::new(&mut program, &mut state, &mut context, &mut collector)
             .parse(module)
             .map_err(|e| panic!("\n{}", TErrorDisplay::new(&mut state, &e)))
             .unwrap();

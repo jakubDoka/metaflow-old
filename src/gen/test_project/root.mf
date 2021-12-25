@@ -212,7 +212,13 @@ fun even_worse(a, b: int) -> int:
 
 fun test_case_13:
   assert(even_worse(1, 1) == 0)
-    
+
+fun test_fun -> int: 1
+
+fun test_case_14:
+  let fun_pointer = test_fun
+  assert((*fun_pointer)() == 1)
+
 fun assert(cond: bool):
   builtin::assert(cond)
   print("ok\n")

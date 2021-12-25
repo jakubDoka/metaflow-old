@@ -2,11 +2,13 @@
 var something = [1, 2, 3]
 let hello = "hello"
 
+fun pointed_function(a: Int, b: Int) -> int:
+  return a + b
 
 ## doc comment
 fun something -> fun(int, int) -> int:
-  # ignored commend
-  return fun(a, b: #[ even more ignored commend ]# int) -> int: a + b
+  # ignored comment
+  return #[ even more ignored comment ]# pointed_function
 
 ##[
   multiline doc comment

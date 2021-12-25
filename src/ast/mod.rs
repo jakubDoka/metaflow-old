@@ -171,7 +171,7 @@ impl<'a> AParser<'a> {
         while self.state.token.kind != TKind::Eof {
             match self.state.token.kind {
                 TKind::Impl => ast.push(self.impl_block()?),
-                TKind::Fun => ast.push(self.fun(false)?),
+                TKind::Fun => ast.push(self.fun()?),
                 TKind::Attr => ast.push(self.attr()?),
                 TKind::Struct => ast.push(self.struct_declaration()?),
                 TKind::Var | TKind::Let => ast.push(self.var_statement(true)?),
@@ -179,7 +179,7 @@ impl<'a> AParser<'a> {
                     let ast = ast.push(self.ast(AKind::Comment));
                     self.next()?;
                     ast
-                },
+                }
                 TKind::Indent(_) => self.next()?,
                 _ => {
                     return Err(self.unexpected_str(
@@ -221,15 +221,19 @@ impl<'a> AParser<'a> {
         self.next()?;
         self.walk_block(|s| {
             match s.state.token.kind {
-                TKind::Fun => body.push(s.fun(false)?),
+                TKind::Fun => body.push(s.fun()?),
                 TKind::Attr => body.push(s.attr()?),
                 TKind::Var | TKind::Let => body.push(s.var_statement(true)?),
                 TKind::Comment(_) => {
                     let ast = ast.push(s.ast(AKind::Comment));
                     s.next()?;
                     ast
-                },
-                _ => return Err(s.unexpected_str("expected 'fun' or 'attr' or 'let' or 'var' or '##'")),
+                }
+                _ => {
+                    return Err(
+                        s.unexpected_str("expected 'fun' or 'attr' or 'let' or 'var' or '##'")
+                    )
+                }
             }
             Ok(())
         })?;
@@ -332,9 +336,9 @@ impl<'a> AParser<'a> {
         Ok(ast)
     }
 
-    fn fun(&mut self, anonymous: bool) -> Result<Ast> {
+    fn fun(&mut self) -> Result<Ast> {
         let mut ast = self.ast(AKind::None);
-        let (header, visibility) = self.fun_header(anonymous)?;
+        let (header, visibility) = self.fun_header(false)?;
         ast.push(header);
         ast.kind = AKind::Fun(visibility);
 
@@ -352,13 +356,14 @@ impl<'a> AParser<'a> {
     }
 
     fn fun_header(&mut self, anonymous: bool) -> Result<(Ast, Vis)> {
-        let mut ast = self.ast(AKind::FunHeader);
+        let mut ast = self.ast(AKind::None);
         self.next()?;
 
         let visibility = if anonymous { Vis::None } else { self.vis()? };
 
         let previous = self.state.is_type_expr;
         self.state.is_type_expr = true;
+        let is_op = self.state.token.kind == TKind::Op;
         ast.push(match self.state.token.kind {
             TKind::Ident | TKind::Op if !anonymous => self.ident_expr()?,
             _ => Ast::none(),
@@ -374,12 +379,39 @@ impl<'a> AParser<'a> {
             self.list(&mut ast, TKind::LPar, TKind::Comma, TKind::RPar, parser)?;
         }
 
+        let kind = if is_op {
+            let arg_count = ast[1..].iter().fold(0, |acc, i| acc + i.len() - 1);
+            match arg_count {
+                1 => OpKind::Unary,
+                2 => OpKind::Binary,
+                _ => return Err(AError::new(
+                    AEKind::UnexpectedToken(
+                        "operator functions can have either 1 or 2 arguments, (unary and binary)"
+                            .to_string(),
+                    ),
+                    ast.token.clone(),
+                )),
+            }
+        } else {
+            OpKind::Normal
+        };
+
+        ast.kind = AKind::FunHeader(kind);
+
         ast.push(if self.state.token == TKind::RArrow {
             self.next()?;
             self.type_expr()?
         } else {
             Ast::none()
         });
+
+        // call convention
+        if self.state.token == TKind::Ident {
+            ast.push(self.ast(AKind::Ident));
+            self.next()?;
+        } else {
+            ast.push(Ast::none());
+        }
 
         self.join_token(&mut ast.token);
 
@@ -561,14 +593,16 @@ impl<'a> AParser<'a> {
                     AKind::Ident,
                     Token::new(
                         TKind::Op,
-                        self.main_state.slice_span(&op.span, 0..op.span.range.len() - 1),
+                        self.main_state
+                            .slice_span(&op.span, 0..op.span.range.len() - 1),
                     ),
                 );
                 let eq = Ast::new(
                     AKind::Ident,
                     Token::new(
                         TKind::Op,
-                        self.main_state.slice_span(&op.span, op.span.range.len() - 1..op.span.range.len()),
+                        self.main_state
+                            .slice_span(&op.span, op.span.range.len() - 1..op.span.range.len()),
                     ),
                 );
 
@@ -647,7 +681,7 @@ impl<'a> AParser<'a> {
                 self.list(&mut ast, TKind::LBra, TKind::Comma, TKind::RBra, Self::expr)?;
                 return Ok(ast);
             }
-            TKind::Fun => return self.fun(true),
+            TKind::Fun => return Ok(self.fun_header(true)?.0),
             _ => todo!("unmatched simple expr pattern {:?}", self.state.token),
         };
 
@@ -1242,7 +1276,7 @@ pub enum AKind {
 
     Fun(Vis),
     Impl(Vis),
-    FunHeader,
+    FunHeader(OpKind),
     FunArgument(bool),
     Call(bool), // true if dot syntax is used
     Index,
@@ -1289,7 +1323,7 @@ impl Default for AKind {
     }
 }
 
-#[derive(Clone, Copy, Debug, PartialEq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Vis {
     Public,
     None,
@@ -1310,6 +1344,13 @@ impl Default for Vis {
     fn default() -> Self {
         Vis::Public
     }
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum OpKind {
+    Normal,
+    Unary,
+    Binary,
 }
 
 crate::def_displayer!(

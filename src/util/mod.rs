@@ -51,6 +51,16 @@ macro_rules! def_displayer {
     };
 }
 
+#[macro_export]
+macro_rules! unwrap_enum {
+    ($value:expr, $pattern:pat => $unwrapped:expr) => {
+        match $value {
+            $pattern => $unwrapped,
+            _ => unreachable!(),
+        }
+    };
+}
+
 pub fn test() {
     storage::test();
     pool::test();

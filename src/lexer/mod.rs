@@ -1,4 +1,7 @@
-use crate::util::{sdbm::ID, storage::{IndexPointer, Map}};
+use crate::util::{
+    sdbm::ID,
+    storage::{IndexPointer, Map},
+};
 use std::{
     fmt::{Debug, Display},
     ops::Range,
@@ -177,10 +180,7 @@ impl<'a> Lexer<'a> {
                     Some(c) => c,
                     None => {
                         let end = self.state.progress;
-                        return Err(LError::new(
-                            LEKind::InvalidCharacter,
-                            self.span(start..end),
-                        ));
+                        return Err(LError::new(LEKind::InvalidCharacter, self.span(start..end)));
                     }
                 },
                 false,
@@ -245,7 +245,7 @@ impl<'a> Lexer<'a> {
                     }
                     Some(_) => {
                         self.advance();
-                    },
+                    }
                     None => break,
                 }
             }
@@ -255,7 +255,7 @@ impl<'a> Lexer<'a> {
                     Some('\n') | None => break,
                     Some(_) => {
                         self.advance();
-                    },
+                    }
                 }
             }
         }
@@ -263,10 +263,7 @@ impl<'a> Lexer<'a> {
         let end = self.state.progress;
         let value = self.span(start..end);
 
-        Ok(Token::new(
-            TKind::Comment(is_doc),
-            value,
-        ))
+        Ok(Token::new(TKind::Comment(is_doc), value))
     }
 
     fn string(&mut self) -> Result<Token> {
@@ -325,18 +322,20 @@ impl<'a> Lexer<'a> {
         self.advance();
         let current = self.advance().unwrap_or('\0');
         Some(match current {
-            'a' | 'b' | 'e' | 'f' | 'n' | 'r' | 't' | 'v' | '\\' | '\'' | '"' | '0' => match current {
-                'a' => '\x07',
-                'b' => '\x08',
-                'e' => '\x1b',
-                'f' => '\x0c',
-                'v' => '\x0b',
-                'n' => '\n',
-                'r' => '\r',
-                't' => '\t',
-                '0' => '\0',
-                _ => current,
-            },
+            'a' | 'b' | 'e' | 'f' | 'n' | 'r' | 't' | 'v' | '\\' | '\'' | '"' | '0' => {
+                match current {
+                    'a' => '\x07',
+                    'b' => '\x08',
+                    'e' => '\x1b',
+                    'f' => '\x0c',
+                    'v' => '\x0b',
+                    'n' => '\n',
+                    'r' => '\r',
+                    't' => '\t',
+                    '0' => '\0',
+                    _ => current,
+                }
+            }
             '0'..='7' => {
                 let mut res = 0u8 + current as u8 - '0' as u8;
                 for _ in 0..2 {
@@ -406,9 +405,9 @@ impl<'a> Lexer<'a> {
             if char.is_numeric() {
                 return self.number();
             }
-    
+
             let start = self.state.progress;
-    
+
             let kind = match char {
                 '\n' => return self.indent(),
                 ' ' | '\r' | '\t' => {
@@ -425,7 +424,7 @@ impl<'a> Lexer<'a> {
                         continue;
                     }
                     return Ok(comment);
-                }    
+                }
                 ',' => TKind::Comma,
                 '(' => TKind::LPar,
                 ')' => TKind::RPar,
@@ -442,10 +441,10 @@ impl<'a> Lexer<'a> {
                     ))
                 }
             };
-    
+
             self.advance();
             let end = self.state.progress;
-            return Ok(Token::new(kind, self.span(start..end)))
+            return Ok(Token::new(kind, self.span(start..end)));
         }
     }
 }
@@ -589,10 +588,7 @@ pub struct Token {
 
 impl Token {
     pub fn new(kind: TKind, span: Span) -> Self {
-        Token {
-            kind,
-            span,
-        }
+        Token { kind, span }
     }
 
     pub fn eof() -> Self {
@@ -756,11 +752,7 @@ impl std::fmt::Display for TokenDisplay<'_> {
             range.start += 1;
         }
 
-        writeln!(
-            f,
-            "|> {}",
-            SpanDisplay::new(self.state, &self.token.span)
-        )?;
+        writeln!(f, "|> {}", SpanDisplay::new(self.state, &self.token.span))?;
 
         let end = string[range.end..]
             .find('\n')

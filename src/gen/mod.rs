@@ -11,10 +11,13 @@ use cranelift_object::{ObjectBuilder, ObjectModule};
 use std::process::Command;
 
 use crate::{
+    ast::{AError, AErrorDisplay, AParser, Vis},
     cli::Arguments,
-    functions::{FError, FErrorDisplay, Program},
+    collector::Collector,
+    functions::{FError, FErrorDisplay},
     lexer::{Token, TokenDisplay},
-    module_tree::{MTError, MTErrorDisplay, MTParser}, collector::Collector, ast::{AParser, AErrorDisplay, AError, Vis},
+    module_tree::{MTError, MTErrorDisplay, MTParser},
+    types::Program,
 };
 
 use super::*;
@@ -120,7 +123,7 @@ pub fn generate_obj_file(args: &Arguments) -> Result<Vec<u8>> {
     if let Err(e) = MTParser::new(&mut state, &mut context).parse(&args[0]) {
         return Err((Some(state), GEKind::MTError(e).into()));
     }
-      
+
     let mut collector = Collector::default();
 
     for module in std::mem::take(&mut state.module_order).drain(..).rev() {
@@ -137,11 +140,11 @@ pub fn generate_obj_file(args: &Arguments) -> Result<Vec<u8>> {
 
         context.recycle(ast);
 
-        if let Err(e) = Generator::new(&mut program, &mut state, &mut context, &mut collector)
-            .generate(module) {
+        if let Err(e) =
+            Generator::new(&mut program, &mut state, &mut context, &mut collector).generate(module)
+        {
             return Err((Some(state), e));
         }
-      
     }
 
     Generator::new(&mut program, &mut state, &mut context, &mut collector)
@@ -152,46 +155,50 @@ pub fn generate_obj_file(args: &Arguments) -> Result<Vec<u8>> {
 }
 
 pub struct GErrorDisplay<'a> {
-  pub state: Option<&'a GState>,
-  pub error: &'a GError,
+    pub state: Option<&'a GState>,
+    pub error: &'a GError,
 }
 
 impl<'a> GErrorDisplay<'a> {
-  pub fn new(state: Option<&'a GState>, error: &'a GError) -> Self {
-      Self { state, error }
-  }
+    pub fn new(state: Option<&'a GState>, error: &'a GError) -> Self {
+        Self { state, error }
+    }
 }
 
 impl std::fmt::Display for GErrorDisplay<'_> {
-  fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-      writeln!(f, "{}", TokenDisplay::new(&self.state.unwrap(), &self.error.token))?;
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        writeln!(
+            f,
+            "{}",
+            TokenDisplay::new(&self.state.unwrap(), &self.error.token)
+        )?;
 
-      match &self.error.kind {
-          GEKind::FError(error) => {
-              write!(f, "{}", FErrorDisplay::new(&self.state.unwrap(), error))?;
-          },
-          GEKind::MTError(error) => {
-              write!(f, "{}", MTErrorDisplay::new(&self.state.unwrap(), error))?;
-          },
-          GEKind::AError(error) => {
-              write!(f, "{}", AErrorDisplay::new(&self.state.unwrap(), error))?;
-          },
-          GEKind::IoError(err) => {
-              writeln!(f, "{}", err)?;
-          },
-          GEKind::InvalidTriplet(error) => {
-              writeln!(f, "invalid triplet: {}", error)?;
-          },
-          GEKind::CompilationFlagError(err) => {
-              writeln!(f, "invalid compilation flag: {}", err)?;
-          },
-          GEKind::NoFiles => {
-              writeln!(f, "first argument is missing <FILE>")?;
-          },
-      }
+        match &self.error.kind {
+            GEKind::FError(error) => {
+                write!(f, "{}", FErrorDisplay::new(&self.state.unwrap(), error))?;
+            }
+            GEKind::MTError(error) => {
+                write!(f, "{}", MTErrorDisplay::new(&self.state.unwrap(), error))?;
+            }
+            GEKind::AError(error) => {
+                write!(f, "{}", AErrorDisplay::new(&self.state.unwrap(), error))?;
+            }
+            GEKind::IoError(err) => {
+                writeln!(f, "{}", err)?;
+            }
+            GEKind::InvalidTriplet(error) => {
+                writeln!(f, "invalid triplet: {}", error)?;
+            }
+            GEKind::CompilationFlagError(err) => {
+                writeln!(f, "invalid compilation flag: {}", err)?;
+            }
+            GEKind::NoFiles => {
+                writeln!(f, "first argument is missing <FILE>")?;
+            }
+        }
 
-      Ok(())
-  }
+        Ok(())
+    }
 }
 
 #[derive(Debug)]
@@ -230,8 +237,8 @@ pub fn test() {
     let args = Arguments::from_str("root src/gen/test_project -trace").unwrap();
 
     compile(args)
-      .map_err(|(state, e)| panic!("{}", GErrorDisplay::new(state.as_ref(), &e)))
-      .unwrap();
+        .map_err(|(state, e)| panic!("{}", GErrorDisplay::new(state.as_ref(), &e)))
+        .unwrap();
 
     println!("output:");
     let output = Command::new(".\\test_project.exe").status().unwrap();

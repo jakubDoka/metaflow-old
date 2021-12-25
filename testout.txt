@@ -57,1554 +57,1575 @@ Dummy(1)
 |> 4:2:text_code.mf
 | 
 | ^
-|> 5:2:text_code.mf
+|> 5:1:text_code.mf
+| fun pointed_function(a: Int, b: Int) -> int:
+| ^
+|> 5:4:text_code.mf
+| fun pointed_function(a: Int, b: Int) -> int:
+| ^^^
+|> 5:21:text_code.mf
+| fun pointed_function(a: Int, b: Int) -> int:
+|     ^^^^^^^^^^^^^^^^
+|> 5:22:text_code.mf
+| fun pointed_function(a: Int, b: Int) -> int:
+|                     ^
+|> 5:23:text_code.mf
+| fun pointed_function(a: Int, b: Int) -> int:
+|                      ^
+|> 5:24:text_code.mf
+| fun pointed_function(a: Int, b: Int) -> int:
+|                       ^
+|> 5:28:text_code.mf
+| fun pointed_function(a: Int, b: Int) -> int:
+|                         ^^^
+|> 5:29:text_code.mf
+| fun pointed_function(a: Int, b: Int) -> int:
+|                            ^
+|> 5:31:text_code.mf
+| fun pointed_function(a: Int, b: Int) -> int:
+|                              ^
+|> 5:32:text_code.mf
+| fun pointed_function(a: Int, b: Int) -> int:
+|                               ^
+|> 5:36:text_code.mf
+| fun pointed_function(a: Int, b: Int) -> int:
+|                                 ^^^
+|> 5:37:text_code.mf
+| fun pointed_function(a: Int, b: Int) -> int:
+|                                    ^
+|> 5:40:text_code.mf
+| fun pointed_function(a: Int, b: Int) -> int:
+|                                      ^^
+|> 5:44:text_code.mf
+| fun pointed_function(a: Int, b: Int) -> int:
+|                                         ^^^
+|> 5:45:text_code.mf
+| fun pointed_function(a: Int, b: Int) -> int:
+|                                            ^
+|> 6:3:text_code.mf
+|   return a + b
+| ^^
+|> 6:9:text_code.mf
+|   return a + b
+|   ^^^^^^
+|> 6:11:text_code.mf
+|   return a + b
+|          ^
+|> 6:13:text_code.mf
+|   return a + b
+|            ^
+|> 6:15:text_code.mf
+|   return a + b
+|              ^
+|> 7:2:text_code.mf
 | 
 | ^
-|> 6:1:text_code.mf
+|> 8:1:text_code.mf
 | ## doc comment
 | ^
-|> 6:16:text_code.mf
+|> 8:16:text_code.mf
 | ## doc comment
 | ^^^^^^^^^^^^^^
-|> 7:1:text_code.mf
+|> 9:1:text_code.mf
 | fun something -> fun(int, int) -> int:
 | ^
-|> 7:4:text_code.mf
+|> 9:4:text_code.mf
 | fun something -> fun(int, int) -> int:
 | ^^^
-|> 7:14:text_code.mf
+|> 9:14:text_code.mf
 | fun something -> fun(int, int) -> int:
 |     ^^^^^^^^^
-|> 7:17:text_code.mf
+|> 9:17:text_code.mf
 | fun something -> fun(int, int) -> int:
 |               ^^
-|> 7:21:text_code.mf
+|> 9:21:text_code.mf
 | fun something -> fun(int, int) -> int:
 |                  ^^^
-|> 7:22:text_code.mf
+|> 9:22:text_code.mf
 | fun something -> fun(int, int) -> int:
 |                     ^
-|> 7:25:text_code.mf
+|> 9:25:text_code.mf
 | fun something -> fun(int, int) -> int:
 |                      ^^^
-|> 7:26:text_code.mf
+|> 9:26:text_code.mf
 | fun something -> fun(int, int) -> int:
 |                         ^
-|> 7:30:text_code.mf
+|> 9:30:text_code.mf
 | fun something -> fun(int, int) -> int:
 |                           ^^^
-|> 7:31:text_code.mf
+|> 9:31:text_code.mf
 | fun something -> fun(int, int) -> int:
 |                              ^
-|> 7:34:text_code.mf
+|> 9:34:text_code.mf
 | fun something -> fun(int, int) -> int:
 |                                ^^
-|> 7:38:text_code.mf
+|> 9:38:text_code.mf
 | fun something -> fun(int, int) -> int:
 |                                   ^^^
-|> 7:39:text_code.mf
+|> 9:39:text_code.mf
 | fun something -> fun(int, int) -> int:
 |                                      ^
-|> 8:3:text_code.mf
-|   # ignored commend
+|> 10:3:text_code.mf
+|   # ignored comment
 | ^^
-|> 9:3:text_code.mf
-|   return fun(a, b: #[ even more ignored commend ]# int) -> int: a + b
+|> 11:3:text_code.mf
+|   return #[ even more ignored comment ]# pointed_function
 | ^^
-|> 9:9:text_code.mf
-|   return fun(a, b: #[ even more ignored commend ]# int) -> int: a + b
+|> 11:9:text_code.mf
+|   return #[ even more ignored comment ]# pointed_function
 |   ^^^^^^
-|> 9:13:text_code.mf
-|   return fun(a, b: #[ even more ignored commend ]# int) -> int: a + b
-|          ^^^
-|> 9:14:text_code.mf
-|   return fun(a, b: #[ even more ignored commend ]# int) -> int: a + b
-|             ^
-|> 9:15:text_code.mf
-|   return fun(a, b: #[ even more ignored commend ]# int) -> int: a + b
-|              ^
-|> 9:16:text_code.mf
-|   return fun(a, b: #[ even more ignored commend ]# int) -> int: a + b
-|               ^
-|> 9:18:text_code.mf
-|   return fun(a, b: #[ even more ignored commend ]# int) -> int: a + b
-|                 ^
-|> 9:19:text_code.mf
-|   return fun(a, b: #[ even more ignored commend ]# int) -> int: a + b
-|                  ^
-|> 9:55:text_code.mf
-|   return fun(a, b: #[ even more ignored commend ]# int) -> int: a + b
-|                                                    ^^^
-|> 9:56:text_code.mf
-|   return fun(a, b: #[ even more ignored commend ]# int) -> int: a + b
-|                                                       ^
-|> 9:59:text_code.mf
-|   return fun(a, b: #[ even more ignored commend ]# int) -> int: a + b
-|                                                         ^^
-|> 9:63:text_code.mf
-|   return fun(a, b: #[ even more ignored commend ]# int) -> int: a + b
-|                                                            ^^^
-|> 9:64:text_code.mf
-|   return fun(a, b: #[ even more ignored commend ]# int) -> int: a + b
-|                                                               ^
-|> 9:66:text_code.mf
-|   return fun(a, b: #[ even more ignored commend ]# int) -> int: a + b
-|                                                                 ^
-|> 9:68:text_code.mf
-|   return fun(a, b: #[ even more ignored commend ]# int) -> int: a + b
-|                                                                   ^
-|> 9:70:text_code.mf
-|   return fun(a, b: #[ even more ignored commend ]# int) -> int: a + b
-|                                                                     ^
-|> 10:2:text_code.mf
+|> 11:58:text_code.mf
+|   return #[ even more ignored comment ]# pointed_function
+|                                          ^^^^^^^^^^^^^^^^
+|> 12:2:text_code.mf
 | 
 | ^
-|> 11:1:text_code.mf
+|> 13:1:text_code.mf
 | ##[
 | ^
-|> 13:3:text_code.mf
+|> 15:3:text_code.mf
 | ##[
 |   multiline doc comment
 | ]#
 | ^^^^^^^^^^^^^^^^^^^^^^^
-|> 14:1:text_code.mf
+|> 16:1:text_code.mf
 | struct Scope
 | ^
-|> 14:7:text_code.mf
+|> 16:7:text_code.mf
 | struct Scope
 | ^^^^^^
-|> 14:13:text_code.mf
+|> 16:13:text_code.mf
 | struct Scope
 |        ^^^^^
-|> 15:2:text_code.mf
+|> 17:2:text_code.mf
 | 
 | ^
-|> 16:1:text_code.mf
+|> 18:1:text_code.mf
 | impl Scope:
 | ^
-|> 16:5:text_code.mf
-| impl Scope:
-| ^^^^
-|> 16:11:text_code.mf
-| impl Scope:
-|      ^^^^^
-|> 16:12:text_code.mf
-| impl Scope:
-|           ^
-|> 17:3:text_code.mf
-|   fun new -> Self:
-| ^^
-|> 17:6:text_code.mf
-|   fun new -> Self:
-|   ^^^
-|> 17:10:text_code.mf
-|   fun new -> Self:
-|       ^^^
-|> 17:13:text_code.mf
-|   fun new -> Self:
-|           ^^
-|> 17:18:text_code.mf
-|   fun new -> Self:
-|              ^^^^
-|> 17:19:text_code.mf
-|   fun new -> Self:
-|                  ^
 |> 18:5:text_code.mf
-|     return
+| impl Scope:
 | ^^^^
 |> 18:11:text_code.mf
+| impl Scope:
+|      ^^^^^
+|> 18:12:text_code.mf
+| impl Scope:
+|           ^
+|> 19:3:text_code.mf
+|   fun new -> Self:
+| ^^
+|> 19:6:text_code.mf
+|   fun new -> Self:
+|   ^^^
+|> 19:10:text_code.mf
+|   fun new -> Self:
+|       ^^^
+|> 19:13:text_code.mf
+|   fun new -> Self:
+|           ^^
+|> 19:18:text_code.mf
+|   fun new -> Self:
+|              ^^^^
+|> 19:19:text_code.mf
+|   fun new -> Self:
+|                  ^
+|> 20:5:text_code.mf
+|     return
+| ^^^^
+|> 20:11:text_code.mf
 |     return
 |     ^^^^^^
-|> 19:4:text_code.mf
+|> 21:4:text_code.mf
 |   
 | ^^^
-|> 20:3:text_code.mf
+|> 22:3:text_code.mf
 |   fun do_nothing(s: Self):
 | ^^
-|> 20:6:text_code.mf
+|> 22:6:text_code.mf
 |   fun do_nothing(s: Self):
 |   ^^^
-|> 20:17:text_code.mf
+|> 22:17:text_code.mf
 |   fun do_nothing(s: Self):
 |       ^^^^^^^^^^
-|> 20:18:text_code.mf
+|> 22:18:text_code.mf
 |   fun do_nothing(s: Self):
 |                 ^
-|> 20:19:text_code.mf
+|> 22:19:text_code.mf
 |   fun do_nothing(s: Self):
 |                  ^
-|> 20:20:text_code.mf
+|> 22:20:text_code.mf
 |   fun do_nothing(s: Self):
 |                   ^
-|> 20:25:text_code.mf
+|> 22:25:text_code.mf
 |   fun do_nothing(s: Self):
 |                     ^^^^
-|> 20:26:text_code.mf
+|> 22:26:text_code.mf
 |   fun do_nothing(s: Self):
 |                         ^
-|> 20:27:text_code.mf
+|> 22:27:text_code.mf
 |   fun do_nothing(s: Self):
 |                          ^
-|> 21:5:text_code.mf
+|> 23:5:text_code.mf
 |     pass
 | ^^^^
-|> 21:9:text_code.mf
+|> 23:9:text_code.mf
 |     pass
 |     ^^^^
-|> 22:2:text_code.mf
-| 
-| ^
-|> 23:1:text_code.mf
-| struct Template[T]
-| ^
-|> 23:7:text_code.mf
-| struct Template[T]
-| ^^^^^^
-|> 23:16:text_code.mf
-| struct Template[T]
-|        ^^^^^^^^
-|> 23:17:text_code.mf
-| struct Template[T]
-|                ^
-|> 23:18:text_code.mf
-| struct Template[T]
-|                 ^
-|> 23:19:text_code.mf
-| struct Template[T]
-|                  ^
 |> 24:2:text_code.mf
 | 
 | ^
 |> 25:1:text_code.mf
-| impl[T] Template[T]:
+| struct Template[T]
 | ^
-|> 25:5:text_code.mf
-| impl[T] Template[T]:
-| ^^^^
-|> 25:6:text_code.mf
-| impl[T] Template[T]:
-|     ^
 |> 25:7:text_code.mf
-| impl[T] Template[T]:
-|      ^
-|> 25:8:text_code.mf
-| impl[T] Template[T]:
-|       ^
+| struct Template[T]
+| ^^^^^^
+|> 25:16:text_code.mf
+| struct Template[T]
+|        ^^^^^^^^
 |> 25:17:text_code.mf
-| impl[T] Template[T]:
-|         ^^^^^^^^
+| struct Template[T]
+|                ^
 |> 25:18:text_code.mf
-| impl[T] Template[T]:
+| struct Template[T]
 |                 ^
 |> 25:19:text_code.mf
+| struct Template[T]
+|                  ^
+|> 26:2:text_code.mf
+| 
+| ^
+|> 27:1:text_code.mf
+| impl[T] Template[T]:
+| ^
+|> 27:5:text_code.mf
+| impl[T] Template[T]:
+| ^^^^
+|> 27:6:text_code.mf
+| impl[T] Template[T]:
+|     ^
+|> 27:7:text_code.mf
+| impl[T] Template[T]:
+|      ^
+|> 27:8:text_code.mf
+| impl[T] Template[T]:
+|       ^
+|> 27:17:text_code.mf
+| impl[T] Template[T]:
+|         ^^^^^^^^
+|> 27:18:text_code.mf
+| impl[T] Template[T]:
+|                 ^
+|> 27:19:text_code.mf
 | impl[T] Template[T]:
 |                  ^
-|> 25:20:text_code.mf
+|> 27:20:text_code.mf
 | impl[T] Template[T]:
 |                   ^
-|> 25:21:text_code.mf
+|> 27:21:text_code.mf
 | impl[T] Template[T]:
 |                    ^
-|> 26:3:text_code.mf
+|> 28:3:text_code.mf
 |   fun new -> Self:
 | ^^
-|> 26:6:text_code.mf
+|> 28:6:text_code.mf
 |   fun new -> Self:
 |   ^^^
-|> 26:10:text_code.mf
+|> 28:10:text_code.mf
 |   fun new -> Self:
 |       ^^^
-|> 26:13:text_code.mf
+|> 28:13:text_code.mf
 |   fun new -> Self:
 |           ^^
-|> 26:18:text_code.mf
+|> 28:18:text_code.mf
 |   fun new -> Self:
 |              ^^^^
-|> 26:19:text_code.mf
+|> 28:19:text_code.mf
 |   fun new -> Self:
 |                  ^
-|> 27:5:text_code.mf
+|> 29:5:text_code.mf
 |     return
 | ^^^^
-|> 27:11:text_code.mf
+|> 29:11:text_code.mf
 |     return
 |     ^^^^^^
-|> 28:4:text_code.mf
+|> 30:4:text_code.mf
 |   
 | ^^^
-|> 29:3:text_code.mf
+|> 31:3:text_code.mf
 |   fun do_nothing(s: Self, value: T) -> T:
 | ^^
-|> 29:6:text_code.mf
+|> 31:6:text_code.mf
 |   fun do_nothing(s: Self, value: T) -> T:
 |   ^^^
-|> 29:17:text_code.mf
+|> 31:17:text_code.mf
 |   fun do_nothing(s: Self, value: T) -> T:
 |       ^^^^^^^^^^
-|> 29:18:text_code.mf
+|> 31:18:text_code.mf
 |   fun do_nothing(s: Self, value: T) -> T:
 |                 ^
-|> 29:19:text_code.mf
+|> 31:19:text_code.mf
 |   fun do_nothing(s: Self, value: T) -> T:
 |                  ^
-|> 29:20:text_code.mf
+|> 31:20:text_code.mf
 |   fun do_nothing(s: Self, value: T) -> T:
 |                   ^
-|> 29:25:text_code.mf
+|> 31:25:text_code.mf
 |   fun do_nothing(s: Self, value: T) -> T:
 |                     ^^^^
-|> 29:26:text_code.mf
+|> 31:26:text_code.mf
 |   fun do_nothing(s: Self, value: T) -> T:
 |                         ^
-|> 29:32:text_code.mf
+|> 31:32:text_code.mf
 |   fun do_nothing(s: Self, value: T) -> T:
 |                           ^^^^^
-|> 29:33:text_code.mf
+|> 31:33:text_code.mf
 |   fun do_nothing(s: Self, value: T) -> T:
 |                                ^
-|> 29:35:text_code.mf
+|> 31:35:text_code.mf
 |   fun do_nothing(s: Self, value: T) -> T:
 |                                  ^
-|> 29:36:text_code.mf
+|> 31:36:text_code.mf
 |   fun do_nothing(s: Self, value: T) -> T:
 |                                   ^
-|> 29:39:text_code.mf
+|> 31:39:text_code.mf
 |   fun do_nothing(s: Self, value: T) -> T:
 |                                     ^^
-|> 29:41:text_code.mf
+|> 31:41:text_code.mf
 |   fun do_nothing(s: Self, value: T) -> T:
 |                                        ^
-|> 29:42:text_code.mf
+|> 31:42:text_code.mf
 |   fun do_nothing(s: Self, value: T) -> T:
 |                                         ^
-|> 30:5:text_code.mf
+|> 32:5:text_code.mf
 |     value
 | ^^^^
-|> 30:10:text_code.mf
+|> 32:10:text_code.mf
 |     value
 |     ^^^^^
-|> 31:2:text_code.mf
+|> 33:2:text_code.mf
 | 
 | ^
-|> 32:1:text_code.mf
+|> 34:1:text_code.mf
 | fun use_chain:
 | ^
-|> 32:4:text_code.mf
+|> 34:4:text_code.mf
 | fun use_chain:
 | ^^^
-|> 32:14:text_code.mf
+|> 34:14:text_code.mf
 | fun use_chain:
 |     ^^^^^^^^^
-|> 32:15:text_code.mf
+|> 34:15:text_code.mf
 | fun use_chain:
 |              ^
-|> 33:3:text_code.mf
+|> 35:3:text_code.mf
 |   module::Type::method::[param]()
 | ^^
-|> 33:9:text_code.mf
+|> 35:9:text_code.mf
 |   module::Type::method::[param]()
 |   ^^^^^^
-|> 33:11:text_code.mf
+|> 35:11:text_code.mf
 |   module::Type::method::[param]()
 |         ^^
-|> 33:15:text_code.mf
+|> 35:15:text_code.mf
 |   module::Type::method::[param]()
 |           ^^^^
-|> 33:17:text_code.mf
+|> 35:17:text_code.mf
 |   module::Type::method::[param]()
 |               ^^
-|> 33:23:text_code.mf
+|> 35:23:text_code.mf
 |   module::Type::method::[param]()
 |                 ^^^^^^
-|> 33:25:text_code.mf
+|> 35:25:text_code.mf
 |   module::Type::method::[param]()
 |                       ^^
-|> 33:26:text_code.mf
+|> 35:26:text_code.mf
 |   module::Type::method::[param]()
 |                         ^
-|> 33:31:text_code.mf
+|> 35:31:text_code.mf
 |   module::Type::method::[param]()
 |                          ^^^^^
-|> 33:32:text_code.mf
+|> 35:32:text_code.mf
 |   module::Type::method::[param]()
 |                               ^
-|> 33:33:text_code.mf
+|> 35:33:text_code.mf
 |   module::Type::method::[param]()
 |                                ^
-|> 33:34:text_code.mf
+|> 35:34:text_code.mf
 |   module::Type::method::[param]()
 |                                 ^
-|> 34:2:text_code.mf
-| 
-| ^
-|> 35:1:text_code.mf
-| fun flo: pass
-| ^
-|> 35:4:text_code.mf
-| fun flo: pass
-| ^^^
-|> 35:8:text_code.mf
-| fun flo: pass
-|     ^^^
-|> 35:9:text_code.mf
-| fun flo: pass
-|        ^
-|> 35:14:text_code.mf
-| fun flo: pass
-|          ^^^^
 |> 36:2:text_code.mf
 | 
 | ^
 |> 37:1:text_code.mf
-| fun foo(): pass
+| fun flo: pass
 | ^
 |> 37:4:text_code.mf
-| fun foo(): pass
+| fun flo: pass
 | ^^^
 |> 37:8:text_code.mf
-| fun foo(): pass
+| fun flo: pass
 |     ^^^
 |> 37:9:text_code.mf
-| fun foo(): pass
+| fun flo: pass
 |        ^
-|> 37:10:text_code.mf
-| fun foo(): pass
-|         ^
-|> 37:11:text_code.mf
-| fun foo(): pass
-|          ^
-|> 37:16:text_code.mf
-| fun foo(): pass
-|            ^^^^
+|> 37:14:text_code.mf
+| fun flo: pass
+|          ^^^^
 |> 38:2:text_code.mf
 | 
 | ^
 |> 39:1:text_code.mf
-| fun goo(a: i8, b: i8): pass
+| fun foo(): pass
 | ^
 |> 39:4:text_code.mf
-| fun goo(a: i8, b: i8): pass
+| fun foo(): pass
 | ^^^
 |> 39:8:text_code.mf
-| fun goo(a: i8, b: i8): pass
+| fun foo(): pass
 |     ^^^
 |> 39:9:text_code.mf
-| fun goo(a: i8, b: i8): pass
+| fun foo(): pass
 |        ^
 |> 39:10:text_code.mf
-| fun goo(a: i8, b: i8): pass
+| fun foo(): pass
 |         ^
 |> 39:11:text_code.mf
-| fun goo(a: i8, b: i8): pass
+| fun foo(): pass
 |          ^
-|> 39:14:text_code.mf
-| fun goo(a: i8, b: i8): pass
-|            ^^
-|> 39:15:text_code.mf
-| fun goo(a: i8, b: i8): pass
-|              ^
-|> 39:17:text_code.mf
-| fun goo(a: i8, b: i8): pass
-|                ^
-|> 39:18:text_code.mf
-| fun goo(a: i8, b: i8): pass
-|                 ^
-|> 39:21:text_code.mf
-| fun goo(a: i8, b: i8): pass
-|                   ^^
-|> 39:22:text_code.mf
-| fun goo(a: i8, b: i8): pass
-|                     ^
-|> 39:23:text_code.mf
-| fun goo(a: i8, b: i8): pass
-|                      ^
-|> 39:28:text_code.mf
-| fun goo(a: i8, b: i8): pass
-|                        ^^^^
+|> 39:16:text_code.mf
+| fun foo(): pass
+|            ^^^^
 |> 40:2:text_code.mf
 | 
 | ^
 |> 41:1:text_code.mf
-| fun loo:
+| fun goo(a: i8, b: i8): pass
 | ^
 |> 41:4:text_code.mf
-| fun loo:
+| fun goo(a: i8, b: i8): pass
 | ^^^
 |> 41:8:text_code.mf
-| fun loo:
+| fun goo(a: i8, b: i8): pass
 |     ^^^
 |> 41:9:text_code.mf
+| fun goo(a: i8, b: i8): pass
+|        ^
+|> 41:10:text_code.mf
+| fun goo(a: i8, b: i8): pass
+|         ^
+|> 41:11:text_code.mf
+| fun goo(a: i8, b: i8): pass
+|          ^
+|> 41:14:text_code.mf
+| fun goo(a: i8, b: i8): pass
+|            ^^
+|> 41:15:text_code.mf
+| fun goo(a: i8, b: i8): pass
+|              ^
+|> 41:17:text_code.mf
+| fun goo(a: i8, b: i8): pass
+|                ^
+|> 41:18:text_code.mf
+| fun goo(a: i8, b: i8): pass
+|                 ^
+|> 41:21:text_code.mf
+| fun goo(a: i8, b: i8): pass
+|                   ^^
+|> 41:22:text_code.mf
+| fun goo(a: i8, b: i8): pass
+|                     ^
+|> 41:23:text_code.mf
+| fun goo(a: i8, b: i8): pass
+|                      ^
+|> 41:28:text_code.mf
+| fun goo(a: i8, b: i8): pass
+|                        ^^^^
+|> 42:2:text_code.mf
+| 
+| ^
+|> 43:1:text_code.mf
+| fun loo:
+| ^
+|> 43:4:text_code.mf
+| fun loo:
+| ^^^
+|> 43:8:text_code.mf
+| fun loo:
+|     ^^^
+|> 43:9:text_code.mf
 | fun loo:
 |        ^
-|> 42:3:text_code.mf
-|   noo::loo::[i8]()
-| ^^
-|> 42:6:text_code.mf
-|   noo::loo::[i8]()
-|   ^^^
-|> 42:8:text_code.mf
-|   noo::loo::[i8]()
-|      ^^
-|> 42:11:text_code.mf
-|   noo::loo::[i8]()
-|        ^^^
-|> 42:13:text_code.mf
-|   noo::loo::[i8]()
-|           ^^
-|> 42:14:text_code.mf
-|   noo::loo::[i8]()
-|             ^
-|> 42:16:text_code.mf
-|   noo::loo::[i8]()
-|              ^^
-|> 42:17:text_code.mf
-|   noo::loo::[i8]()
-|                ^
-|> 42:18:text_code.mf
-|   noo::loo::[i8]()
-|                 ^
-|> 42:19:text_code.mf
-|   noo::loo::[i8]()
-|                  ^
-|> 43:2:text_code.mf
-| 
-| ^
 |> 44:3:text_code.mf
-|   let array = [1, 2, 3]
+|   noo::loo::[i8]()
 | ^^
 |> 44:6:text_code.mf
-|   let array = [1, 2, 3]
+|   noo::loo::[i8]()
 |   ^^^
-|> 44:12:text_code.mf
-|   let array = [1, 2, 3]
-|       ^^^^^
+|> 44:8:text_code.mf
+|   noo::loo::[i8]()
+|      ^^
+|> 44:11:text_code.mf
+|   noo::loo::[i8]()
+|        ^^^
+|> 44:13:text_code.mf
+|   noo::loo::[i8]()
+|           ^^
 |> 44:14:text_code.mf
-|   let array = [1, 2, 3]
+|   noo::loo::[i8]()
 |             ^
 |> 44:16:text_code.mf
-|   let array = [1, 2, 3]
-|               ^
+|   noo::loo::[i8]()
+|              ^^
 |> 44:17:text_code.mf
-|   let array = [1, 2, 3]
+|   noo::loo::[i8]()
 |                ^
 |> 44:18:text_code.mf
-|   let array = [1, 2, 3]
+|   noo::loo::[i8]()
 |                 ^
-|> 44:20:text_code.mf
-|   let array = [1, 2, 3]
-|                   ^
-|> 44:21:text_code.mf
-|   let array = [1, 2, 3]
-|                    ^
-|> 44:23:text_code.mf
-|   let array = [1, 2, 3]
-|                      ^
-|> 44:24:text_code.mf
-|   let array = [1, 2, 3]
-|                       ^
-|> 45:3:text_code.mf
-|   array[0] = 3
-| ^^
-|> 45:8:text_code.mf
-|   array[0] = 3
-|   ^^^^^
-|> 45:9:text_code.mf
-|   array[0] = 3
-|        ^
-|> 45:10:text_code.mf
-|   array[0] = 3
-|         ^
-|> 45:11:text_code.mf
-|   array[0] = 3
-|          ^
-|> 45:13:text_code.mf
-|   array[0] = 3
-|            ^
-|> 45:15:text_code.mf
-|   array[0] = 3
-|              ^
-|> 46:3:text_code.mf
-|   array[2] = always[1]
-| ^^
-|> 46:8:text_code.mf
-|   array[2] = always[1]
-|   ^^^^^
-|> 46:9:text_code.mf
-|   array[2] = always[1]
-|        ^
-|> 46:10:text_code.mf
-|   array[2] = always[1]
-|         ^
-|> 46:11:text_code.mf
-|   array[2] = always[1]
-|          ^
-|> 46:13:text_code.mf
-|   array[2] = always[1]
-|            ^
-|> 46:20:text_code.mf
-|   array[2] = always[1]
-|              ^^^^^^
-|> 46:21:text_code.mf
-|   array[2] = always[1]
-|                    ^
-|> 46:22:text_code.mf
-|   array[2] = always[1]
-|                     ^
-|> 46:23:text_code.mf
-|   array[2] = always[1]
-|                      ^
-|> 47:3:text_code.mf
-|   array[1] = 1
-| ^^
-|> 47:8:text_code.mf
-|   array[1] = 1
-|   ^^^^^
-|> 47:9:text_code.mf
-|   array[1] = 1
-|        ^
-|> 47:10:text_code.mf
-|   array[1] = 1
-|         ^
-|> 47:11:text_code.mf
-|   array[1] = 1
-|          ^
-|> 47:13:text_code.mf
-|   array[1] = 1
-|            ^
-|> 47:15:text_code.mf
-|   array[1] = 1
-|              ^
-|> 48:2:text_code.mf
+|> 44:19:text_code.mf
+|   noo::loo::[i8]()
+|                  ^
+|> 45:2:text_code.mf
 | 
 | ^
-|> 49:3:text_code.mf
-|   pass
+|> 46:3:text_code.mf
+|   let array = [1, 2, 3]
 | ^^
-|> 49:7:text_code.mf
-|   pass
-|   ^^^^
+|> 46:6:text_code.mf
+|   let array = [1, 2, 3]
+|   ^^^
+|> 46:12:text_code.mf
+|   let array = [1, 2, 3]
+|       ^^^^^
+|> 46:14:text_code.mf
+|   let array = [1, 2, 3]
+|             ^
+|> 46:16:text_code.mf
+|   let array = [1, 2, 3]
+|               ^
+|> 46:17:text_code.mf
+|   let array = [1, 2, 3]
+|                ^
+|> 46:18:text_code.mf
+|   let array = [1, 2, 3]
+|                 ^
+|> 46:20:text_code.mf
+|   let array = [1, 2, 3]
+|                   ^
+|> 46:21:text_code.mf
+|   let array = [1, 2, 3]
+|                    ^
+|> 46:23:text_code.mf
+|   let array = [1, 2, 3]
+|                      ^
+|> 46:24:text_code.mf
+|   let array = [1, 2, 3]
+|                       ^
+|> 47:3:text_code.mf
+|   array[0] = 3
+| ^^
+|> 47:8:text_code.mf
+|   array[0] = 3
+|   ^^^^^
+|> 47:9:text_code.mf
+|   array[0] = 3
+|        ^
+|> 47:10:text_code.mf
+|   array[0] = 3
+|         ^
+|> 47:11:text_code.mf
+|   array[0] = 3
+|          ^
+|> 47:13:text_code.mf
+|   array[0] = 3
+|            ^
+|> 47:15:text_code.mf
+|   array[0] = 3
+|              ^
+|> 48:3:text_code.mf
+|   array[2] = always[1]
+| ^^
+|> 48:8:text_code.mf
+|   array[2] = always[1]
+|   ^^^^^
+|> 48:9:text_code.mf
+|   array[2] = always[1]
+|        ^
+|> 48:10:text_code.mf
+|   array[2] = always[1]
+|         ^
+|> 48:11:text_code.mf
+|   array[2] = always[1]
+|          ^
+|> 48:13:text_code.mf
+|   array[2] = always[1]
+|            ^
+|> 48:20:text_code.mf
+|   array[2] = always[1]
+|              ^^^^^^
+|> 48:21:text_code.mf
+|   array[2] = always[1]
+|                    ^
+|> 48:22:text_code.mf
+|   array[2] = always[1]
+|                     ^
+|> 48:23:text_code.mf
+|   array[2] = always[1]
+|                      ^
+|> 49:3:text_code.mf
+|   array[1] = 1
+| ^^
+|> 49:8:text_code.mf
+|   array[1] = 1
+|   ^^^^^
+|> 49:9:text_code.mf
+|   array[1] = 1
+|        ^
+|> 49:10:text_code.mf
+|   array[1] = 1
+|         ^
+|> 49:11:text_code.mf
+|   array[1] = 1
+|          ^
+|> 49:13:text_code.mf
+|   array[1] = 1
+|            ^
+|> 49:15:text_code.mf
+|   array[1] = 1
+|              ^
 |> 50:2:text_code.mf
 | 
 | ^
-|> 51:1:text_code.mf
+|> 51:3:text_code.mf
+|   pass
+| ^^
+|> 51:7:text_code.mf
+|   pass
+|   ^^^^
+|> 52:2:text_code.mf
+| 
+| ^
+|> 53:1:text_code.mf
 | fun main -> i64:
 | ^
-|> 51:4:text_code.mf
+|> 53:4:text_code.mf
 | fun main -> i64:
 | ^^^
-|> 51:9:text_code.mf
+|> 53:9:text_code.mf
 | fun main -> i64:
 |     ^^^^
-|> 51:12:text_code.mf
+|> 53:12:text_code.mf
 | fun main -> i64:
 |          ^^
-|> 51:16:text_code.mf
+|> 53:16:text_code.mf
 | fun main -> i64:
 |             ^^^
-|> 51:17:text_code.mf
+|> 53:17:text_code.mf
 | fun main -> i64:
 |                ^
-|> 52:3:text_code.mf
+|> 54:3:text_code.mf
 |   return 10 + 4 - 2 * 1 + 8
 | ^^
-|> 52:9:text_code.mf
+|> 54:9:text_code.mf
 |   return 10 + 4 - 2 * 1 + 8
 |   ^^^^^^
-|> 52:12:text_code.mf
+|> 54:12:text_code.mf
 |   return 10 + 4 - 2 * 1 + 8
 |          ^^
-|> 52:14:text_code.mf
+|> 54:14:text_code.mf
 |   return 10 + 4 - 2 * 1 + 8
 |             ^
-|> 52:16:text_code.mf
+|> 54:16:text_code.mf
 |   return 10 + 4 - 2 * 1 + 8
 |               ^
-|> 52:18:text_code.mf
+|> 54:18:text_code.mf
 |   return 10 + 4 - 2 * 1 + 8
 |                 ^
-|> 52:20:text_code.mf
+|> 54:20:text_code.mf
 |   return 10 + 4 - 2 * 1 + 8
 |                   ^
-|> 52:22:text_code.mf
+|> 54:22:text_code.mf
 |   return 10 + 4 - 2 * 1 + 8
 |                     ^
-|> 52:24:text_code.mf
+|> 54:24:text_code.mf
 |   return 10 + 4 - 2 * 1 + 8
 |                       ^
-|> 52:26:text_code.mf
+|> 54:26:text_code.mf
 |   return 10 + 4 - 2 * 1 + 8
 |                         ^
-|> 52:28:text_code.mf
+|> 54:28:text_code.mf
 |   return 10 + 4 - 2 * 1 + 8
 |                           ^
-|> 53:2:text_code.mf
+|> 55:2:text_code.mf
 | 
 | ^
-|> 54:1:text_code.mf
+|> 56:1:text_code.mf
 | fun operator_stress_test -> i64:
 | ^
-|> 54:4:text_code.mf
+|> 56:4:text_code.mf
 | fun operator_stress_test -> i64:
 | ^^^
-|> 54:25:text_code.mf
+|> 56:25:text_code.mf
 | fun operator_stress_test -> i64:
 |     ^^^^^^^^^^^^^^^^^^^^
-|> 54:28:text_code.mf
+|> 56:28:text_code.mf
 | fun operator_stress_test -> i64:
 |                          ^^
-|> 54:32:text_code.mf
+|> 56:32:text_code.mf
 | fun operator_stress_test -> i64:
 |                             ^^^
-|> 54:33:text_code.mf
+|> 56:33:text_code.mf
 | fun operator_stress_test -> i64:
 |                                ^
-|> 55:3:text_code.mf
+|> 57:3:text_code.mf
 |   return 10 + 2 * 1 - 9 | 4 & 1 ^ 2 >> 1 << 7 min 20 max 10
 | ^^
-|> 55:9:text_code.mf
+|> 57:9:text_code.mf
 |   return 10 + 2 * 1 - 9 | 4 & 1 ^ 2 >> 1 << 7 min 20 max 10
 |   ^^^^^^
-|> 55:12:text_code.mf
+|> 57:12:text_code.mf
 |   return 10 + 2 * 1 - 9 | 4 & 1 ^ 2 >> 1 << 7 min 20 max 10
 |          ^^
-|> 55:14:text_code.mf
+|> 57:14:text_code.mf
 |   return 10 + 2 * 1 - 9 | 4 & 1 ^ 2 >> 1 << 7 min 20 max 10
 |             ^
-|> 55:16:text_code.mf
+|> 57:16:text_code.mf
 |   return 10 + 2 * 1 - 9 | 4 & 1 ^ 2 >> 1 << 7 min 20 max 10
 |               ^
-|> 55:18:text_code.mf
+|> 57:18:text_code.mf
 |   return 10 + 2 * 1 - 9 | 4 & 1 ^ 2 >> 1 << 7 min 20 max 10
 |                 ^
-|> 55:20:text_code.mf
+|> 57:20:text_code.mf
 |   return 10 + 2 * 1 - 9 | 4 & 1 ^ 2 >> 1 << 7 min 20 max 10
 |                   ^
-|> 55:22:text_code.mf
+|> 57:22:text_code.mf
 |   return 10 + 2 * 1 - 9 | 4 & 1 ^ 2 >> 1 << 7 min 20 max 10
 |                     ^
-|> 55:24:text_code.mf
+|> 57:24:text_code.mf
 |   return 10 + 2 * 1 - 9 | 4 & 1 ^ 2 >> 1 << 7 min 20 max 10
 |                       ^
-|> 55:26:text_code.mf
+|> 57:26:text_code.mf
 |   return 10 + 2 * 1 - 9 | 4 & 1 ^ 2 >> 1 << 7 min 20 max 10
 |                         ^
-|> 55:28:text_code.mf
+|> 57:28:text_code.mf
 |   return 10 + 2 * 1 - 9 | 4 & 1 ^ 2 >> 1 << 7 min 20 max 10
 |                           ^
-|> 55:30:text_code.mf
+|> 57:30:text_code.mf
 |   return 10 + 2 * 1 - 9 | 4 & 1 ^ 2 >> 1 << 7 min 20 max 10
 |                             ^
-|> 55:32:text_code.mf
+|> 57:32:text_code.mf
 |   return 10 + 2 * 1 - 9 | 4 & 1 ^ 2 >> 1 << 7 min 20 max 10
 |                               ^
-|> 55:34:text_code.mf
+|> 57:34:text_code.mf
 |   return 10 + 2 * 1 - 9 | 4 & 1 ^ 2 >> 1 << 7 min 20 max 10
 |                                 ^
-|> 55:36:text_code.mf
+|> 57:36:text_code.mf
 |   return 10 + 2 * 1 - 9 | 4 & 1 ^ 2 >> 1 << 7 min 20 max 10
 |                                   ^
-|> 55:39:text_code.mf
+|> 57:39:text_code.mf
 |   return 10 + 2 * 1 - 9 | 4 & 1 ^ 2 >> 1 << 7 min 20 max 10
 |                                     ^^
-|> 55:41:text_code.mf
+|> 57:41:text_code.mf
 |   return 10 + 2 * 1 - 9 | 4 & 1 ^ 2 >> 1 << 7 min 20 max 10
 |                                        ^
-|> 55:44:text_code.mf
+|> 57:44:text_code.mf
 |   return 10 + 2 * 1 - 9 | 4 & 1 ^ 2 >> 1 << 7 min 20 max 10
 |                                          ^^
-|> 55:46:text_code.mf
+|> 57:46:text_code.mf
 |   return 10 + 2 * 1 - 9 | 4 & 1 ^ 2 >> 1 << 7 min 20 max 10
 |                                             ^
-|> 55:50:text_code.mf
+|> 57:50:text_code.mf
 |   return 10 + 2 * 1 - 9 | 4 & 1 ^ 2 >> 1 << 7 min 20 max 10
 |                                               ^^^
-|> 55:53:text_code.mf
+|> 57:53:text_code.mf
 |   return 10 + 2 * 1 - 9 | 4 & 1 ^ 2 >> 1 << 7 min 20 max 10
 |                                                   ^^
-|> 55:57:text_code.mf
+|> 57:57:text_code.mf
 |   return 10 + 2 * 1 - 9 | 4 & 1 ^ 2 >> 1 << 7 min 20 max 10
 |                                                      ^^^
-|> 55:60:text_code.mf
+|> 57:60:text_code.mf
 |   return 10 + 2 * 1 - 9 | 4 & 1 ^ 2 >> 1 << 7 min 20 max 10
 |                                                          ^^
-|> 56:2:text_code.mf
+|> 58:2:text_code.mf
 | 
 | ^
-|> 57:1:text_code.mf
+|> 59:1:text_code.mf
 | fun conditional -> i64:
 | ^
-|> 57:4:text_code.mf
+|> 59:4:text_code.mf
 | fun conditional -> i64:
 | ^^^
-|> 57:16:text_code.mf
+|> 59:16:text_code.mf
 | fun conditional -> i64:
 |     ^^^^^^^^^^^
-|> 57:19:text_code.mf
+|> 59:19:text_code.mf
 | fun conditional -> i64:
 |                 ^^
-|> 57:23:text_code.mf
+|> 59:23:text_code.mf
 | fun conditional -> i64:
 |                    ^^^
-|> 57:24:text_code.mf
+|> 59:24:text_code.mf
 | fun conditional -> i64:
 |                       ^
-|> 58:3:text_code.mf
+|> 60:3:text_code.mf
 |   if false:
 | ^^
-|> 58:5:text_code.mf
+|> 60:5:text_code.mf
 |   if false:
 |   ^^
-|> 58:11:text_code.mf
+|> 60:11:text_code.mf
 |   if false:
 |      ^^^^^
-|> 58:12:text_code.mf
+|> 60:12:text_code.mf
 |   if false:
 |           ^
-|> 59:5:text_code.mf
-|     return 10
-| ^^^^
-|> 59:11:text_code.mf
-|     return 10
-|     ^^^^^^
-|> 59:14:text_code.mf
-|     return 10
-|            ^^
-|> 60:3:text_code.mf
-|   elif true:
-| ^^
-|> 60:7:text_code.mf
-|   elif true:
-|   ^^^^
-|> 60:12:text_code.mf
-|   elif true:
-|        ^^^^
-|> 60:13:text_code.mf
-|   elif true:
-|            ^
 |> 61:5:text_code.mf
-|     return if true: 10 else: 20
+|     return 10
 | ^^^^
 |> 61:11:text_code.mf
-|     return if true: 10 else: 20
+|     return 10
 |     ^^^^^^
 |> 61:14:text_code.mf
-|     return if true: 10 else: 20
+|     return 10
 |            ^^
-|> 61:19:text_code.mf
-|     return if true: 10 else: 20
-|               ^^^^
-|> 61:20:text_code.mf
-|     return if true: 10 else: 20
-|                   ^
-|> 61:23:text_code.mf
-|     return if true: 10 else: 20
-|                     ^^
-|> 61:28:text_code.mf
-|     return if true: 10 else: 20
-|                        ^^^^
-|> 61:29:text_code.mf
-|     return if true: 10 else: 20
-|                            ^
-|> 61:32:text_code.mf
-|     return if true: 10 else: 20
-|                              ^^
 |> 62:3:text_code.mf
-|   else:
+|   elif true:
 | ^^
 |> 62:7:text_code.mf
-|   else:
+|   elif true:
 |   ^^^^
-|> 62:8:text_code.mf
-|   else:
-|       ^
+|> 62:12:text_code.mf
+|   elif true:
+|        ^^^^
+|> 62:13:text_code.mf
+|   elif true:
+|            ^
 |> 63:5:text_code.mf
-|     return 0
+|     return if true: 10 else: 20
 | ^^^^
 |> 63:11:text_code.mf
+|     return if true: 10 else: 20
+|     ^^^^^^
+|> 63:14:text_code.mf
+|     return if true: 10 else: 20
+|            ^^
+|> 63:19:text_code.mf
+|     return if true: 10 else: 20
+|               ^^^^
+|> 63:20:text_code.mf
+|     return if true: 10 else: 20
+|                   ^
+|> 63:23:text_code.mf
+|     return if true: 10 else: 20
+|                     ^^
+|> 63:28:text_code.mf
+|     return if true: 10 else: 20
+|                        ^^^^
+|> 63:29:text_code.mf
+|     return if true: 10 else: 20
+|                            ^
+|> 63:32:text_code.mf
+|     return if true: 10 else: 20
+|                              ^^
+|> 64:3:text_code.mf
+|   else:
+| ^^
+|> 64:7:text_code.mf
+|   else:
+|   ^^^^
+|> 64:8:text_code.mf
+|   else:
+|       ^
+|> 65:5:text_code.mf
+|     return 0
+| ^^^^
+|> 65:11:text_code.mf
 |     return 0
 |     ^^^^^^
-|> 63:13:text_code.mf
+|> 65:13:text_code.mf
 |     return 0
 |            ^
-|> 64:2:text_code.mf
+|> 66:2:text_code.mf
 | 
 | ^
-|> 65:1:text_code.mf
+|> 67:1:text_code.mf
 | attr inline = always, call_conv = cold
 | ^
-|> 65:5:text_code.mf
+|> 67:5:text_code.mf
 | attr inline = always, call_conv = cold
 | ^^^^
-|> 65:12:text_code.mf
+|> 67:12:text_code.mf
 | attr inline = always, call_conv = cold
 |      ^^^^^^
-|> 65:14:text_code.mf
+|> 67:14:text_code.mf
 | attr inline = always, call_conv = cold
 |             ^
-|> 65:21:text_code.mf
+|> 67:21:text_code.mf
 | attr inline = always, call_conv = cold
 |               ^^^^^^
-|> 65:22:text_code.mf
+|> 67:22:text_code.mf
 | attr inline = always, call_conv = cold
 |                     ^
-|> 65:32:text_code.mf
+|> 67:32:text_code.mf
 | attr inline = always, call_conv = cold
 |                       ^^^^^^^^^
-|> 65:34:text_code.mf
+|> 67:34:text_code.mf
 | attr inline = always, call_conv = cold
 |                                 ^
-|> 65:39:text_code.mf
+|> 67:39:text_code.mf
 | attr inline = always, call_conv = cold
 |                                   ^^^^
-|> 66:1:text_code.mf
+|> 68:1:text_code.mf
 | fun inline_fn -> u32:
 | ^
-|> 66:4:text_code.mf
+|> 68:4:text_code.mf
 | fun inline_fn -> u32:
 | ^^^
-|> 66:14:text_code.mf
+|> 68:14:text_code.mf
 | fun inline_fn -> u32:
 |     ^^^^^^^^^
-|> 66:17:text_code.mf
+|> 68:17:text_code.mf
 | fun inline_fn -> u32:
 |               ^^
-|> 66:21:text_code.mf
+|> 68:21:text_code.mf
 | fun inline_fn -> u32:
 |                  ^^^
-|> 66:22:text_code.mf
+|> 68:22:text_code.mf
 | fun inline_fn -> u32:
 |                     ^
-|> 67:3:text_code.mf
+|> 69:3:text_code.mf
 |   return 10
 | ^^
-|> 67:9:text_code.mf
+|> 69:9:text_code.mf
 |   return 10
 |   ^^^^^^
-|> 67:12:text_code.mf
+|> 69:12:text_code.mf
 |   return 10
 |          ^^
-|> 68:2:text_code.mf
+|> 70:2:text_code.mf
 | 
 | ^
-|> 69:1:text_code.mf
+|> 71:1:text_code.mf
 | fun fib(v: i64) -> i64:
 | ^
-|> 69:4:text_code.mf
+|> 71:4:text_code.mf
 | fun fib(v: i64) -> i64:
 | ^^^
-|> 69:8:text_code.mf
+|> 71:8:text_code.mf
 | fun fib(v: i64) -> i64:
 |     ^^^
-|> 69:9:text_code.mf
+|> 71:9:text_code.mf
 | fun fib(v: i64) -> i64:
 |        ^
-|> 69:10:text_code.mf
+|> 71:10:text_code.mf
 | fun fib(v: i64) -> i64:
 |         ^
-|> 69:11:text_code.mf
+|> 71:11:text_code.mf
 | fun fib(v: i64) -> i64:
 |          ^
-|> 69:15:text_code.mf
+|> 71:15:text_code.mf
 | fun fib(v: i64) -> i64:
 |            ^^^
-|> 69:16:text_code.mf
+|> 71:16:text_code.mf
 | fun fib(v: i64) -> i64:
 |               ^
-|> 69:19:text_code.mf
+|> 71:19:text_code.mf
 | fun fib(v: i64) -> i64:
 |                 ^^
-|> 69:23:text_code.mf
+|> 71:23:text_code.mf
 | fun fib(v: i64) -> i64:
 |                    ^^^
-|> 69:24:text_code.mf
+|> 71:24:text_code.mf
 | fun fib(v: i64) -> i64:
 |                       ^
-|> 70:3:text_code.mf
+|> 72:3:text_code.mf
 |   return if v == 0 | v == 1:
 | ^^
-|> 70:9:text_code.mf
+|> 72:9:text_code.mf
 |   return if v == 0 | v == 1:
 |   ^^^^^^
-|> 70:12:text_code.mf
+|> 72:12:text_code.mf
 |   return if v == 0 | v == 1:
 |          ^^
-|> 70:14:text_code.mf
+|> 72:14:text_code.mf
 |   return if v == 0 | v == 1:
 |             ^
-|> 70:17:text_code.mf
+|> 72:17:text_code.mf
 |   return if v == 0 | v == 1:
 |               ^^
-|> 70:19:text_code.mf
+|> 72:19:text_code.mf
 |   return if v == 0 | v == 1:
 |                  ^
-|> 70:21:text_code.mf
+|> 72:21:text_code.mf
 |   return if v == 0 | v == 1:
 |                    ^
-|> 70:23:text_code.mf
+|> 72:23:text_code.mf
 |   return if v == 0 | v == 1:
 |                      ^
-|> 70:26:text_code.mf
+|> 72:26:text_code.mf
 |   return if v == 0 | v == 1:
 |                        ^^
-|> 70:28:text_code.mf
+|> 72:28:text_code.mf
 |   return if v == 0 | v == 1:
 |                           ^
-|> 70:29:text_code.mf
+|> 72:29:text_code.mf
 |   return if v == 0 | v == 1:
 |                            ^
-|> 71:5:text_code.mf
+|> 73:5:text_code.mf
 |     1
 | ^^^^
-|> 71:6:text_code.mf
+|> 73:6:text_code.mf
 |     1
 |     ^
-|> 72:3:text_code.mf
+|> 74:3:text_code.mf
 |   else:
 | ^^
-|> 72:7:text_code.mf
+|> 74:7:text_code.mf
 |   else:
 |   ^^^^
-|> 72:8:text_code.mf
+|> 74:8:text_code.mf
 |   else:
 |       ^
-|> 73:5:text_code.mf
+|> 75:5:text_code.mf
 |     fib(v - 1) + fib(v - 2)
 | ^^^^
-|> 73:8:text_code.mf
+|> 75:8:text_code.mf
 |     fib(v - 1) + fib(v - 2)
 |     ^^^
-|> 73:9:text_code.mf
+|> 75:9:text_code.mf
 |     fib(v - 1) + fib(v - 2)
 |        ^
-|> 73:10:text_code.mf
+|> 75:10:text_code.mf
 |     fib(v - 1) + fib(v - 2)
 |         ^
-|> 73:12:text_code.mf
+|> 75:12:text_code.mf
 |     fib(v - 1) + fib(v - 2)
 |           ^
-|> 73:14:text_code.mf
-|     fib(v - 1) + fib(v - 2)
-|             ^
-|> 73:15:text_code.mf
-|     fib(v - 1) + fib(v - 2)
-|              ^
-|> 73:17:text_code.mf
-|     fib(v - 1) + fib(v - 2)
-|                ^
-|> 73:21:text_code.mf
-|     fib(v - 1) + fib(v - 2)
-|                  ^^^
-|> 73:22:text_code.mf
-|     fib(v - 1) + fib(v - 2)
-|                     ^
-|> 73:23:text_code.mf
-|     fib(v - 1) + fib(v - 2)
-|                      ^
-|> 73:25:text_code.mf
-|     fib(v - 1) + fib(v - 2)
-|                        ^
-|> 73:27:text_code.mf
-|     fib(v - 1) + fib(v - 2)
-|                          ^
-|> 73:28:text_code.mf
-|     fib(v - 1) + fib(v - 2)
-|                           ^
-|> 74:2:text_code.mf
-| 
-| ^
-|> 75:1:text_code.mf
-| fun fib_loop(v: i64) -> i64:
-| ^
-|> 75:4:text_code.mf
-| fun fib_loop(v: i64) -> i64:
-| ^^^
-|> 75:13:text_code.mf
-| fun fib_loop(v: i64) -> i64:
-|     ^^^^^^^^
 |> 75:14:text_code.mf
-| fun fib_loop(v: i64) -> i64:
+|     fib(v - 1) + fib(v - 2)
 |             ^
 |> 75:15:text_code.mf
+|     fib(v - 1) + fib(v - 2)
+|              ^
+|> 75:17:text_code.mf
+|     fib(v - 1) + fib(v - 2)
+|                ^
+|> 75:21:text_code.mf
+|     fib(v - 1) + fib(v - 2)
+|                  ^^^
+|> 75:22:text_code.mf
+|     fib(v - 1) + fib(v - 2)
+|                     ^
+|> 75:23:text_code.mf
+|     fib(v - 1) + fib(v - 2)
+|                      ^
+|> 75:25:text_code.mf
+|     fib(v - 1) + fib(v - 2)
+|                        ^
+|> 75:27:text_code.mf
+|     fib(v - 1) + fib(v - 2)
+|                          ^
+|> 75:28:text_code.mf
+|     fib(v - 1) + fib(v - 2)
+|                           ^
+|> 76:2:text_code.mf
+| 
+| ^
+|> 77:1:text_code.mf
+| fun fib_loop(v: i64) -> i64:
+| ^
+|> 77:4:text_code.mf
+| fun fib_loop(v: i64) -> i64:
+| ^^^
+|> 77:13:text_code.mf
+| fun fib_loop(v: i64) -> i64:
+|     ^^^^^^^^
+|> 77:14:text_code.mf
+| fun fib_loop(v: i64) -> i64:
+|             ^
+|> 77:15:text_code.mf
 | fun fib_loop(v: i64) -> i64:
 |              ^
-|> 75:16:text_code.mf
+|> 77:16:text_code.mf
 | fun fib_loop(v: i64) -> i64:
 |               ^
-|> 75:20:text_code.mf
+|> 77:20:text_code.mf
 | fun fib_loop(v: i64) -> i64:
 |                 ^^^
-|> 75:21:text_code.mf
+|> 77:21:text_code.mf
 | fun fib_loop(v: i64) -> i64:
 |                    ^
-|> 75:24:text_code.mf
+|> 77:24:text_code.mf
 | fun fib_loop(v: i64) -> i64:
 |                      ^^
-|> 75:28:text_code.mf
+|> 77:28:text_code.mf
 | fun fib_loop(v: i64) -> i64:
 |                         ^^^
-|> 75:29:text_code.mf
+|> 77:29:text_code.mf
 | fun fib_loop(v: i64) -> i64:
 |                            ^
-|> 76:3:text_code.mf
+|> 78:3:text_code.mf
 |   var a, b, c = 1
 | ^^
-|> 76:6:text_code.mf
+|> 78:6:text_code.mf
 |   var a, b, c = 1
 |   ^^^
-|> 76:8:text_code.mf
+|> 78:8:text_code.mf
 |   var a, b, c = 1
 |       ^
-|> 76:9:text_code.mf
+|> 78:9:text_code.mf
 |   var a, b, c = 1
 |        ^
-|> 76:11:text_code.mf
+|> 78:11:text_code.mf
 |   var a, b, c = 1
 |          ^
-|> 76:12:text_code.mf
-|   var a, b, c = 1
-|           ^
-|> 76:14:text_code.mf
-|   var a, b, c = 1
-|             ^
-|> 76:16:text_code.mf
-|   var a, b, c = 1
-|               ^
-|> 76:18:text_code.mf
-|   var a, b, c = 1
-|                 ^
-|> 77:3:text_code.mf
-|   loop'a:
-| ^^
-|> 77:7:text_code.mf
-|   loop'a:
-|   ^^^^
-|> 77:9:text_code.mf
-|   loop'a:
-|       ^^
-|> 77:10:text_code.mf
-|   loop'a:
-|         ^
-|> 78:5:text_code.mf
-|     c = a + b
-| ^^^^
-|> 78:6:text_code.mf
-|     c = a + b
-|     ^
-|> 78:8:text_code.mf
-|     c = a + b
-|       ^
-|> 78:10:text_code.mf
-|     c = a + b
-|         ^
 |> 78:12:text_code.mf
-|     c = a + b
+|   var a, b, c = 1
 |           ^
 |> 78:14:text_code.mf
-|     c = a + b
+|   var a, b, c = 1
 |             ^
-|> 79:5:text_code.mf
-|     a = b
-| ^^^^
-|> 79:6:text_code.mf
-|     a = b
-|     ^
-|> 79:8:text_code.mf
-|     a = b
-|       ^
+|> 78:16:text_code.mf
+|   var a, b, c = 1
+|               ^
+|> 78:18:text_code.mf
+|   var a, b, c = 1
+|                 ^
+|> 79:3:text_code.mf
+|   loop'a:
+| ^^
+|> 79:7:text_code.mf
+|   loop'a:
+|   ^^^^
+|> 79:9:text_code.mf
+|   loop'a:
+|       ^^
 |> 79:10:text_code.mf
-|     a = b
+|   loop'a:
 |         ^
 |> 80:5:text_code.mf
-|     b = c
+|     c = a + b
 | ^^^^
 |> 80:6:text_code.mf
-|     b = c
+|     c = a + b
 |     ^
 |> 80:8:text_code.mf
-|     b = c
+|     c = a + b
 |       ^
 |> 80:10:text_code.mf
-|     b = c
+|     c = a + b
 |         ^
+|> 80:12:text_code.mf
+|     c = a + b
+|           ^
+|> 80:14:text_code.mf
+|     c = a + b
+|             ^
 |> 81:5:text_code.mf
-|     v = v - 1
+|     a = b
 | ^^^^
 |> 81:6:text_code.mf
-|     v = v - 1
+|     a = b
 |     ^
 |> 81:8:text_code.mf
-|     v = v - 1
+|     a = b
 |       ^
 |> 81:10:text_code.mf
+|     a = b
+|         ^
+|> 82:5:text_code.mf
+|     b = c
+| ^^^^
+|> 82:6:text_code.mf
+|     b = c
+|     ^
+|> 82:8:text_code.mf
+|     b = c
+|       ^
+|> 82:10:text_code.mf
+|     b = c
+|         ^
+|> 83:5:text_code.mf
+|     v = v - 1
+| ^^^^
+|> 83:6:text_code.mf
+|     v = v - 1
+|     ^
+|> 83:8:text_code.mf
+|     v = v - 1
+|       ^
+|> 83:10:text_code.mf
 |     v = v - 1
 |         ^
-|> 81:12:text_code.mf
+|> 83:12:text_code.mf
 |     v = v - 1
 |           ^
-|> 81:14:text_code.mf
+|> 83:14:text_code.mf
 |     v = v - 1
 |             ^
-|> 82:5:text_code.mf
+|> 84:5:text_code.mf
 |     if v == 0:
 | ^^^^
-|> 82:7:text_code.mf
+|> 84:7:text_code.mf
 |     if v == 0:
 |     ^^
-|> 82:9:text_code.mf
+|> 84:9:text_code.mf
 |     if v == 0:
 |        ^
-|> 82:12:text_code.mf
+|> 84:12:text_code.mf
 |     if v == 0:
 |          ^^
-|> 82:14:text_code.mf
+|> 84:14:text_code.mf
 |     if v == 0:
 |             ^
-|> 82:15:text_code.mf
+|> 84:15:text_code.mf
 |     if v == 0:
 |              ^
-|> 83:7:text_code.mf
+|> 85:7:text_code.mf
 |       break'a
 | ^^^^^^
-|> 83:12:text_code.mf
+|> 85:12:text_code.mf
 |       break'a
 |       ^^^^^
-|> 83:14:text_code.mf
+|> 85:14:text_code.mf
 |       break'a
 |            ^^
-|> 84:3:text_code.mf
+|> 86:3:text_code.mf
 |   return c
 | ^^
-|> 84:9:text_code.mf
+|> 86:9:text_code.mf
 |   return c
 |   ^^^^^^
-|> 84:11:text_code.mf
+|> 86:11:text_code.mf
 |   return c
 |          ^
-|> 85:2:text_code.mf
+|> 87:2:text_code.mf
 | 
 | ^
-|> 86:1:text_code.mf
+|> 88:1:text_code.mf
 | fun unary_operators(a: i64) -> i64:
 | ^
-|> 86:4:text_code.mf
+|> 88:4:text_code.mf
 | fun unary_operators(a: i64) -> i64:
 | ^^^
-|> 86:20:text_code.mf
+|> 88:20:text_code.mf
 | fun unary_operators(a: i64) -> i64:
 |     ^^^^^^^^^^^^^^^
-|> 86:21:text_code.mf
+|> 88:21:text_code.mf
 | fun unary_operators(a: i64) -> i64:
 |                    ^
-|> 86:22:text_code.mf
+|> 88:22:text_code.mf
 | fun unary_operators(a: i64) -> i64:
 |                     ^
-|> 86:23:text_code.mf
+|> 88:23:text_code.mf
 | fun unary_operators(a: i64) -> i64:
 |                      ^
-|> 86:27:text_code.mf
+|> 88:27:text_code.mf
 | fun unary_operators(a: i64) -> i64:
 |                        ^^^
-|> 86:28:text_code.mf
+|> 88:28:text_code.mf
 | fun unary_operators(a: i64) -> i64:
 |                           ^
-|> 86:31:text_code.mf
+|> 88:31:text_code.mf
 | fun unary_operators(a: i64) -> i64:
 |                             ^^
-|> 86:35:text_code.mf
+|> 88:35:text_code.mf
 | fun unary_operators(a: i64) -> i64:
 |                                ^^^
-|> 86:36:text_code.mf
+|> 88:36:text_code.mf
 | fun unary_operators(a: i64) -> i64:
 |                                   ^
-|> 87:3:text_code.mf
+|> 89:3:text_code.mf
 |   return -a + ~a + !a + ++a + --a
 | ^^
-|> 87:9:text_code.mf
+|> 89:9:text_code.mf
 |   return -a + ~a + !a + ++a + --a
 |   ^^^^^^
-|> 87:11:text_code.mf
+|> 89:11:text_code.mf
 |   return -a + ~a + !a + ++a + --a
 |          ^
-|> 87:12:text_code.mf
+|> 89:12:text_code.mf
 |   return -a + ~a + !a + ++a + --a
 |           ^
-|> 87:14:text_code.mf
+|> 89:14:text_code.mf
 |   return -a + ~a + !a + ++a + --a
 |             ^
-|> 87:16:text_code.mf
+|> 89:16:text_code.mf
 |   return -a + ~a + !a + ++a + --a
 |               ^
-|> 87:17:text_code.mf
+|> 89:17:text_code.mf
 |   return -a + ~a + !a + ++a + --a
 |                ^
-|> 87:19:text_code.mf
+|> 89:19:text_code.mf
 |   return -a + ~a + !a + ++a + --a
 |                  ^
-|> 87:21:text_code.mf
+|> 89:21:text_code.mf
 |   return -a + ~a + !a + ++a + --a
 |                    ^
-|> 87:22:text_code.mf
+|> 89:22:text_code.mf
 |   return -a + ~a + !a + ++a + --a
 |                     ^
-|> 87:24:text_code.mf
+|> 89:24:text_code.mf
 |   return -a + ~a + !a + ++a + --a
 |                       ^
-|> 87:27:text_code.mf
+|> 89:27:text_code.mf
 |   return -a + ~a + !a + ++a + --a
 |                         ^^
-|> 87:28:text_code.mf
+|> 89:28:text_code.mf
 |   return -a + ~a + !a + ++a + --a
 |                           ^
-|> 87:30:text_code.mf
+|> 89:30:text_code.mf
 |   return -a + ~a + !a + ++a + --a
 |                             ^
-|> 87:33:text_code.mf
+|> 89:33:text_code.mf
 |   return -a + ~a + !a + ++a + --a
 |                               ^^
-|> 87:34:text_code.mf
+|> 89:34:text_code.mf
 |   return -a + ~a + !a + ++a + --a
 |                                 ^
-|> 88:2:text_code.mf
+|> 90:2:text_code.mf
 | 
 | ^
-|> 89:1:text_code.mf
+|> 91:1:text_code.mf
 | struct Foo:
 | ^
-|> 89:7:text_code.mf
+|> 91:7:text_code.mf
 | struct Foo:
 | ^^^^^^
-|> 89:11:text_code.mf
+|> 91:11:text_code.mf
 | struct Foo:
 |        ^^^
-|> 89:12:text_code.mf
+|> 91:12:text_code.mf
 | struct Foo:
 |           ^
-|> 90:3:text_code.mf
+|> 92:3:text_code.mf
 |   a, b, c: int
 | ^^
-|> 90:4:text_code.mf
+|> 92:4:text_code.mf
 |   a, b, c: int
 |   ^
-|> 90:5:text_code.mf
+|> 92:5:text_code.mf
 |   a, b, c: int
 |    ^
-|> 90:7:text_code.mf
+|> 92:7:text_code.mf
 |   a, b, c: int
 |      ^
-|> 90:8:text_code.mf
+|> 92:8:text_code.mf
 |   a, b, c: int
 |       ^
-|> 90:10:text_code.mf
+|> 92:10:text_code.mf
 |   a, b, c: int
 |         ^
-|> 90:11:text_code.mf
+|> 92:11:text_code.mf
 |   a, b, c: int
 |          ^
-|> 90:15:text_code.mf
+|> 92:15:text_code.mf
 |   a, b, c: int
 |            ^^^
-|> 91:2:text_code.mf
+|> 93:2:text_code.mf
 | 
 | ^
-|> 92:1:text_code.mf
+|> 94:1:text_code.mf
 | struct Goo:
 | ^
-|> 92:7:text_code.mf
+|> 94:7:text_code.mf
 | struct Goo:
 | ^^^^^^
-|> 92:11:text_code.mf
+|> 94:11:text_code.mf
 | struct Goo:
 |        ^^^
-|> 92:12:text_code.mf
+|> 94:12:text_code.mf
 | struct Goo:
 |           ^
-|> 93:3:text_code.mf
+|> 95:3:text_code.mf
 |   embed foo: Foo
 | ^^
-|> 93:8:text_code.mf
+|> 95:8:text_code.mf
 |   embed foo: Foo
 |   ^^^^^
-|> 93:12:text_code.mf
+|> 95:12:text_code.mf
 |   embed foo: Foo
 |         ^^^
-|> 93:13:text_code.mf
+|> 95:13:text_code.mf
 |   embed foo: Foo
 |            ^
-|> 93:17:text_code.mf
+|> 95:17:text_code.mf
 |   embed foo: Foo
 |              ^^^
-|> 94:3:text_code.mf
+|> 96:3:text_code.mf
 |   gva: int
 | ^^
-|> 94:6:text_code.mf
+|> 96:6:text_code.mf
 |   gva: int
 |   ^^^
-|> 94:7:text_code.mf
+|> 96:7:text_code.mf
 |   gva: int
 |      ^
-|> 94:11:text_code.mf
+|> 96:11:text_code.mf
 |   gva: int
 |        ^^^
-|> 95:2:text_code.mf
+|> 97:2:text_code.mf
 | 
 | ^
-|> 96:1:text_code.mf
+|> 98:1:text_code.mf
 | fun strings -> i64:
 | ^
-|> 96:4:text_code.mf
+|> 98:4:text_code.mf
 | fun strings -> i64:
 | ^^^
-|> 96:12:text_code.mf
+|> 98:12:text_code.mf
 | fun strings -> i64:
 |     ^^^^^^^
-|> 96:15:text_code.mf
+|> 98:15:text_code.mf
 | fun strings -> i64:
 |             ^^
-|> 96:19:text_code.mf
+|> 98:19:text_code.mf
 | fun strings -> i64:
 |                ^^^
-|> 96:20:text_code.mf
+|> 98:20:text_code.mf
 | fun strings -> i64:
 |                   ^
-|> 97:3:text_code.mf
+|> 99:3:text_code.mf
 |   var hello = "hello"
 | ^^
-|> 97:6:text_code.mf
+|> 99:6:text_code.mf
 |   var hello = "hello"
 |   ^^^
-|> 97:12:text_code.mf
+|> 99:12:text_code.mf
 |   var hello = "hello"
 |       ^^^^^
-|> 97:14:text_code.mf
+|> 99:14:text_code.mf
 |   var hello = "hello"
 |             ^
-|> 97:22:text_code.mf
+|> 99:22:text_code.mf
 |   var hello = "hello"
 |               ^^^^^^^
-|> 98:3:text_code.mf
+|> 100:3:text_code.mf
 |   return 0
 | ^^
-|> 98:9:text_code.mf
+|> 100:9:text_code.mf
 |   return 0
 |   ^^^^^^
-|> 98:11:text_code.mf
+|> 100:11:text_code.mf
 |   return 0
 |          ^
-|> 99:2:text_code.mf
+|> 101:2:text_code.mf
 | 
 | ^
-|> 100:1:text_code.mf
+|> 102:1:text_code.mf
 | fun mutable_ref(a: &Foo):
 | ^
-|> 100:4:text_code.mf
+|> 102:4:text_code.mf
 | fun mutable_ref(a: &Foo):
 | ^^^
-|> 100:16:text_code.mf
+|> 102:16:text_code.mf
 | fun mutable_ref(a: &Foo):
 |     ^^^^^^^^^^^
-|> 100:17:text_code.mf
+|> 102:17:text_code.mf
 | fun mutable_ref(a: &Foo):
 |                ^
-|> 100:18:text_code.mf
+|> 102:18:text_code.mf
 | fun mutable_ref(a: &Foo):
 |                 ^
-|> 100:19:text_code.mf
+|> 102:19:text_code.mf
 | fun mutable_ref(a: &Foo):
 |                  ^
-|> 100:21:text_code.mf
+|> 102:21:text_code.mf
 | fun mutable_ref(a: &Foo):
 |                    ^
-|> 100:24:text_code.mf
+|> 102:24:text_code.mf
 | fun mutable_ref(a: &Foo):
 |                     ^^^
-|> 100:25:text_code.mf
+|> 102:25:text_code.mf
 | fun mutable_ref(a: &Foo):
 |                        ^
-|> 100:26:text_code.mf
+|> 102:26:text_code.mf
 | fun mutable_ref(a: &Foo):
 |                         ^
-|> 101:3:text_code.mf
-|   a.a = 10
-| ^^
-|> 101:4:text_code.mf
-|   a.a = 10
-|   ^
-|> 101:5:text_code.mf
-|   a.a = 10
-|    ^
-|> 101:6:text_code.mf
-|   a.a = 10
-|     ^
-|> 101:8:text_code.mf
-|   a.a = 10
-|       ^
-|> 101:11:text_code.mf
-|   a.a = 10
-|         ^^
-|> 102:3:text_code.mf
-|   a.b = 20
-| ^^
-|> 102:4:text_code.mf
-|   a.b = 20
-|   ^
-|> 102:5:text_code.mf
-|   a.b = 20
-|    ^
-|> 102:6:text_code.mf
-|   a.b = 20
-|     ^
-|> 102:8:text_code.mf
-|   a.b = 20
-|       ^
-|> 102:11:text_code.mf
-|   a.b = 20
-|         ^^
 |> 103:3:text_code.mf
-|   a.c = 30
+|   a.a = 10
 | ^^
 |> 103:4:text_code.mf
-|   a.c = 30
+|   a.a = 10
 |   ^
 |> 103:5:text_code.mf
-|   a.c = 30
+|   a.a = 10
 |    ^
 |> 103:6:text_code.mf
-|   a.c = 30
+|   a.a = 10
 |     ^
 |> 103:8:text_code.mf
-|   a.c = 30
+|   a.a = 10
 |       ^
 |> 103:11:text_code.mf
+|   a.a = 10
+|         ^^
+|> 104:3:text_code.mf
+|   a.b = 20
+| ^^
+|> 104:4:text_code.mf
+|   a.b = 20
+|   ^
+|> 104:5:text_code.mf
+|   a.b = 20
+|    ^
+|> 104:6:text_code.mf
+|   a.b = 20
+|     ^
+|> 104:8:text_code.mf
+|   a.b = 20
+|       ^
+|> 104:11:text_code.mf
+|   a.b = 20
+|         ^^
+|> 105:3:text_code.mf
+|   a.c = 30
+| ^^
+|> 105:4:text_code.mf
+|   a.c = 30
+|   ^
+|> 105:5:text_code.mf
+|   a.c = 30
+|    ^
+|> 105:6:text_code.mf
+|   a.c = 30
+|     ^
+|> 105:8:text_code.mf
+|   a.c = 30
+|       ^
+|> 105:11:text_code.mf
 |   a.c = 30
 |         ^^
-|> 104:2:text_code.mf
+|> 106:2:text_code.mf
 | 
 | ^
-|> 105:1:text_code.mf
+|> 107:1:text_code.mf
 | fun some_string -> &u8:
 | ^
-|> 105:4:text_code.mf
+|> 107:4:text_code.mf
 | fun some_string -> &u8:
 | ^^^
-|> 105:16:text_code.mf
+|> 107:16:text_code.mf
 | fun some_string -> &u8:
 |     ^^^^^^^^^^^
-|> 105:19:text_code.mf
+|> 107:19:text_code.mf
 | fun some_string -> &u8:
 |                 ^^
-|> 105:21:text_code.mf
+|> 107:21:text_code.mf
 | fun some_string -> &u8:
 |                    ^
-|> 105:23:text_code.mf
+|> 107:23:text_code.mf
 | fun some_string -> &u8:
 |                     ^^
-|> 105:24:text_code.mf
+|> 107:24:text_code.mf
 | fun some_string -> &u8:
 |                       ^
-|> 106:3:text_code.mf
+|> 108:3:text_code.mf
 |   "
 | ^^
-|> 108:4:text_code.mf
+|> 110:4:text_code.mf
 |   "
 | hello there
 |   "
@@ -1627,32 +1648,37 @@ Group "\n":
    None ""
    Group "=":
     Lit "\"hello\""
+ Fun(None) "fun pointed_function(a: Int, b: Int) -> int:\r\n  return a + b":
+  FunHeader(Normal) "fun pointed_function(a: Int, b: Int) -> int":
+   Ident "pointed_function"
+   FunArgument(false) "a: Int":
+    Ident "a"
+    Ident "Int"
+   FunArgument(false) "b: Int":
+    Ident "b"
+    Ident "Int"
+   Ident "int"
+   None ""
+  Group ":":
+   ReturnStatement "return a + b":
+    BinaryOp "a + b":
+     Ident "+"
+     Ident "a"
+     Ident "b"
  Comment "## doc comment\r"
- Fun(None) "fun something -> fun(int, int) -> int:\r\n  # ignored commend\r\n  return fun(a, b: #[ even more ignored commend ]# int) -> int: a + b":
-  FunHeader "fun something -> fun(int, int) -> int:\r\n  # ignored commend\r\n  return fun(a, b: #[ even more ignored commend ]# int) -> int: a + b":
+ Fun(None) "fun something -> fun(int, int) -> int:\r\n  # ignored comment\r\n  return #[ even more ignored comment ]# pointed_function":
+  FunHeader(Normal) "fun something -> fun(int, int) -> int":
    Ident "something"
-   Fun(None) "fun(int, int) -> int:\r\n  # ignored commend\r\n  return fun(a, b: #[ even more ignored commend ]# int) -> int: a + b":
-    FunHeader "fun(int, int) -> int":
-     None ""
-     Ident "int"
-     Ident "int"
-     Ident "int"
-    Group ":":
-     ReturnStatement "return fun(a, b: #[ even more ignored commend ]# int) -> int: a + b":
-      Fun(None) "fun(a, b: #[ even more ignored commend ]# int) -> int: a + b":
-       FunHeader "fun(a, b: #[ even more ignored commend ]# int) -> int":
-        None ""
-        FunArgument(false) "a, b: #[ even more ignored commend ]# int":
-         Ident "a"
-         Ident "b"
-         Ident "int"
-        Ident "int"
-       Group ":":
-        BinaryOp "a + b":
-         Ident "+"
-         Ident "a"
-         Ident "b"
-  None ""
+   FunHeader(Normal) "fun(int, int) -> int":
+    None ""
+    Ident "int"
+    Ident "int"
+    Ident "int"
+    None ""
+   None ""
+  Group ":":
+   ReturnStatement "return #[ even more ignored comment ]# pointed_function":
+    Ident "pointed_function"
  Comment "##[\r\n  multiline doc comment\r\n]#"
  StructDeclaration(None) "struct":
   Ident "Scope"
@@ -1662,18 +1688,20 @@ Group "\n":
   Ident "Scope"
   Group ":":
    Fun(None) "fun new -> Self:\r\n    return":
-    FunHeader "fun new -> Self":
+    FunHeader(Normal) "fun new -> Self":
      Ident "new"
      Ident "Self"
+     None ""
     Group ":":
      ReturnStatement "return":
       None ""
    Fun(None) "fun do_nothing(s: Self):\r\n    pass":
-    FunHeader "fun do_nothing(s: Self)":
+    FunHeader(Normal) "fun do_nothing(s: Self)":
      Ident "do_nothing"
      FunArgument(false) "s: Self":
       Ident "s"
       Ident "Self"
+     None ""
      None ""
     Group ":":
      Pass "pass"
@@ -1690,14 +1718,15 @@ Group "\n":
    Ident "T"
   Group ":":
    Fun(None) "fun new -> Self:\r\n    return":
-    FunHeader "fun new -> Self":
+    FunHeader(Normal) "fun new -> Self":
      Ident "new"
      Ident "Self"
+     None ""
     Group ":":
      ReturnStatement "return":
       None ""
    Fun(None) "fun do_nothing(s: Self, value: T) -> T:\r\n    value":
-    FunHeader "fun do_nothing(s: Self, value: T) -> T":
+    FunHeader(Normal) "fun do_nothing(s: Self, value: T) -> T":
      Ident "do_nothing"
      FunArgument(false) "s: Self":
       Ident "s"
@@ -1706,11 +1735,13 @@ Group "\n":
       Ident "value"
       Ident "T"
      Ident "T"
+     None ""
     Group ":":
      Ident "value"
  Fun(None) "fun use_chain:\r\n  module::Type::method::[param]()":
-  FunHeader "fun use_chain":
+  FunHeader(Normal) "fun use_chain":
    Ident "use_chain"
+   None ""
    None ""
   Group ":":
    Call(false) "module::Type::method::[param]()":
@@ -1721,19 +1752,21 @@ Group "\n":
       Ident "method"
      Ident "param"
  Fun(None) "fun flo: pass":
-  FunHeader "fun flo":
+  FunHeader(Normal) "fun flo":
    Ident "flo"
+   None ""
    None ""
   Group ":":
    Pass "pass"
  Fun(None) "fun foo(): pass":
-  FunHeader "fun foo()":
+  FunHeader(Normal) "fun foo()":
    Ident "foo"
+   None ""
    None ""
   Group ":":
    Pass "pass"
  Fun(None) "fun goo(a: i8, b: i8): pass":
-  FunHeader "fun goo(a: i8, b: i8)":
+  FunHeader(Normal) "fun goo(a: i8, b: i8)":
    Ident "goo"
    FunArgument(false) "a: i8":
     Ident "a"
@@ -1742,11 +1775,13 @@ Group "\n":
     Ident "b"
     Ident "i8"
    None ""
+   None ""
   Group ":":
    Pass "pass"
  Fun(None) "fun loo:\r\n  noo::loo::[i8]()\r\n\r\n  let array = [1, 2, 3]\r\n  array[0] = 3\r\n  array[2] = always[1]\r\n  array[1] = 1\r\n\r\n  pass":
-  FunHeader "fun loo":
+  FunHeader(Normal) "fun loo":
    Ident "loo"
+   None ""
    None ""
   Group ":":
    Call(false) "noo::loo::[i8]()":
@@ -1787,9 +1822,10 @@ Group "\n":
     Lit "1"
    Pass "pass"
  Fun(None) "fun main -> i64:\r\n  return 10 + 4 - 2 * 1 + 8":
-  FunHeader "fun main -> i64":
+  FunHeader(Normal) "fun main -> i64":
    Ident "main"
    Ident "i64"
+   None ""
   Group ":":
    ReturnStatement "return 10 + 4 - 2 * 1 + 8":
     BinaryOp "10 + 4 - 2 * 1 + 8":
@@ -1806,9 +1842,10 @@ Group "\n":
        Lit "1"
       Lit "8"
  Fun(None) "fun operator_stress_test -> i64:\r\n  return 10 + 2 * 1 - 9 | 4 & 1 ^ 2 >> 1 << 7 min 20 max 10":
-  FunHeader "fun operator_stress_test -> i64":
+  FunHeader(Normal) "fun operator_stress_test -> i64":
    Ident "operator_stress_test"
    Ident "i64"
+   None ""
   Group ":":
    ReturnStatement "return 10 + 2 * 1 - 9 | 4 & 1 ^ 2 >> 1 << 7 min 20 max 10":
     BinaryOp "10 + 2 * 1 - 9 | 4 & 1 ^ 2 >> 1 << 7 min 20 max 10":
@@ -1843,9 +1880,10 @@ Group "\n":
          Lit "20"
         Lit "10"
  Fun(None) "fun conditional -> i64:\r\n  if false:\r\n    return 10\r\n  elif true:\r\n    return if true: 10 else: 20\r\n  else:\r\n    return 0":
-  FunHeader "fun conditional -> i64":
+  FunHeader(Normal) "fun conditional -> i64":
    Ident "conditional"
    Ident "i64"
+   None ""
   Group ":":
    IfExpr "if false:\r\n    return 10\r\n  elif true:\r\n    return if true: 10 else: 20\r\n  else:\r\n    return 0":
     Lit "false"
@@ -1874,19 +1912,21 @@ Group "\n":
    Ident "call_conv"
    Ident "cold"
  Fun(None) "fun inline_fn -> u32:\r\n  return 10":
-  FunHeader "fun inline_fn -> u32":
+  FunHeader(Normal) "fun inline_fn -> u32":
    Ident "inline_fn"
    Ident "u32"
+   None ""
   Group ":":
    ReturnStatement "return 10":
     Lit "10"
  Fun(None) "fun fib(v: i64) -> i64:\r\n  return if v == 0 | v == 1:\r\n    1\r\n  else:\r\n    fib(v - 1) + fib(v - 2)":
-  FunHeader "fun fib(v: i64) -> i64":
+  FunHeader(Normal) "fun fib(v: i64) -> i64":
    Ident "fib"
    FunArgument(false) "v: i64":
     Ident "v"
     Ident "i64"
    Ident "i64"
+   None ""
   Group ":":
    ReturnStatement "return if v == 0 | v == 1:\r\n    1\r\n  else:\r\n    fib(v - 1) + fib(v - 2)":
     IfExpr "if v == 0 | v == 1:\r\n    1\r\n  else:\r\n    fib(v - 1) + fib(v - 2)":
@@ -1918,12 +1958,13 @@ Group "\n":
          Ident "v"
          Lit "2"
  Fun(None) "fun fib_loop(v: i64) -> i64:\r\n  var a, b, c = 1\r\n  loop'a:\r\n    c = a + b\r\n    a = b\r\n    b = c\r\n    v = v - 1\r\n    if v == 0:\r\n      break'a\r\n  return c":
-  FunHeader "fun fib_loop(v: i64) -> i64":
+  FunHeader(Normal) "fun fib_loop(v: i64) -> i64":
    Ident "fib_loop"
    FunArgument(false) "v: i64":
     Ident "v"
     Ident "i64"
    Ident "i64"
+   None ""
   Group ":":
    VarStatement(None, true) "var a, b, c = 1":
     VarAssign "a, b, c = 1":
@@ -1974,12 +2015,13 @@ Group "\n":
    ReturnStatement "return c":
     Ident "c"
  Fun(None) "fun unary_operators(a: i64) -> i64:\r\n  return -a + ~a + !a + ++a + --a":
-  FunHeader "fun unary_operators(a: i64) -> i64":
+  FunHeader(Normal) "fun unary_operators(a: i64) -> i64":
    Ident "unary_operators"
    FunArgument(false) "a: i64":
     Ident "a"
     Ident "i64"
    Ident "i64"
+   None ""
   Group ":":
    ReturnStatement "return -a + ~a + !a + ++a + --a":
     BinaryOp "-a + ~a + !a + ++a + --a":
@@ -2023,9 +2065,10 @@ Group "\n":
     Ident "gva"
     Ident "int"
  Fun(None) "fun strings -> i64:\r\n  var hello = \"hello\"\r\n  return 0":
-  FunHeader "fun strings -> i64":
+  FunHeader(Normal) "fun strings -> i64":
    Ident "strings"
    Ident "i64"
+   None ""
   Group ":":
    VarStatement(None, true) "var hello = \"hello\"":
     VarAssign "hello = \"hello\"":
@@ -2037,12 +2080,13 @@ Group "\n":
    ReturnStatement "return 0":
     Lit "0"
  Fun(None) "fun mutable_ref(a: &Foo):\r\n  a.a = 10\r\n  a.b = 20\r\n  a.c = 30":
-  FunHeader "fun mutable_ref(a: &Foo)":
+  FunHeader(Normal) "fun mutable_ref(a: &Foo)":
    Ident "mutable_ref"
    FunArgument(false) "a: &Foo":
     Ident "a"
     Ref "&Foo":
      Ident "Foo"
+   None ""
    None ""
   Group ":":
    BinaryOp "a.a = 10":
@@ -2064,16 +2108,14 @@ Group "\n":
      Ident "c"
     Lit "30"
  Fun(None) "fun some_string -> &u8:\r\n  \"\r\nhello there\r\n  \"":
-  FunHeader "fun some_string -> &u8":
+  FunHeader(Normal) "fun some_string -> &u8":
    Ident "some_string"
    Ref "&u8":
     Ident "u8"
+   None ""
   Group ":":
    Lit "\"\r\nhello there\r\n  \""
 
-Manifest0
-(ID(7136432111909353704), Manifest(1))
-Manifest0
 fun print(s: &Self, value: &u8)
 
   Inst1[Value(0), Value(1)]
@@ -2127,8 +2169,8 @@ fun print(s: &Self, value: &u8)
     Return(None) |s.len += i
 
 
-Token { kind: Fun, span: Span { source: Source(1), hash: ID(438937012895), range: 3354..3389, line: 163, column: 6 } }
-Token { kind: Fun, span: Span { source: Source(1), hash: ID(438937012895), range: 4921..4966, line: 226, column: 6 } }
+Token { kind: Fun, span: Span { source: Source(1), hash: ID(438937012895), range: 3356..3391, line: 163, column: 6 } }
+Token { kind: Fun, span: Span { source: Source(1), hash: ID(438937012895), range: 4930..4975, line: 226, column: 6 } }
 function u0:0(i64, i64) fast {
     sig0 = (i64, i64) -> i64 windows_fastcall
     sig1 = (i64, i64, i64) windows_fastcall
@@ -2232,7 +2274,7 @@ fun print_int(s: &Self, value: int)
     Value(9): int = Call(Fun(290), [Value(2), Value(8)]) |value / 10
     Value(9): int = Assign(Value(2)) |value = value / 10
     Value(10): u32 = Call(Fun(96), [Value(7)]) |digit.u32()
-    Value(11): i32 = Lit(Char('0')) |'0'
+    Value(11): u32 = Lit(Char('0')) |'0'
     Value(12): u32 = Call(Fun(258), [Value(10), Value(11)]) |(
     Value(13): u8 = Call(Fun(63), [Value(12)]) |(digit.u32() + '0').u8()
     Call(Fun(480), [Value(0), Value(13)]) |s.push((digit.u32() + '0').u8())
@@ -2252,8 +2294,8 @@ fun print_int(s: &Self, value: int)
       s.push((digit.u32() + '0').u8())
 
 
-Token { kind: Fun, span: Span { source: Source(1), hash: ID(438937012895), range: 4102..4130, line: 196, column: 6 } }
-Token { kind: Fun, span: Span { source: Source(1), hash: ID(438937012895), range: 4921..4966, line: 226, column: 6 } }
+Token { kind: Fun, span: Span { source: Source(1), hash: ID(438937012895), range: 4104..4132, line: 196, column: 6 } }
+Token { kind: Fun, span: Span { source: Source(1), hash: ID(438937012895), range: 4930..4975, line: 226, column: 6 } }
 function u0:0(i64, i64) fast {
     sig0 = (i64, i64) -> i64 windows_fastcall
     fn0 = u0:24 sig0
@@ -2347,9 +2389,9 @@ fun pub pop_frame
     Return(None) |stacktrace.pop()
 
 
-Token { kind: Fun, span: Span { source: Source(1), hash: ID(438937012895), range: 4349..4379, line: 205, column: 6 } }
-Token { kind: Fun, span: Span { source: Source(1), hash: ID(438937012895), range: 4921..4966, line: 226, column: 6 } }
-Token { kind: Fun, span: Span { source: Source(1), hash: ID(438937012895), range: 5357..5383, line: 246, column: 6 } }
+Token { kind: Fun, span: Span { source: Source(1), hash: ID(438937012895), range: 4358..4388, line: 205, column: 6 } }
+Token { kind: Fun, span: Span { source: Source(1), hash: ID(438937012895), range: 4930..4975, line: 226, column: 6 } }
+Token { kind: Fun, span: Span { source: Source(1), hash: ID(438937012895), range: 5366..5392, line: 246, column: 6 } }
 function u0:0() fast {
     ss0 = explicit_slot 32
     ss1 = explicit_slot 24
@@ -2468,8 +2510,8 @@ fun pub push_frame(line, column: int, file: &u8)
     Return(None) |stacktrace.push(frame)
 
 
-Token { kind: Fun, span: Span { source: Source(1), hash: ID(438937012895), range: 4102..4130, line: 196, column: 6 } }
-Token { kind: Fun, span: Span { source: Source(1), hash: ID(438937012895), range: 4921..4966, line: 226, column: 6 } }
+Token { kind: Fun, span: Span { source: Source(1), hash: ID(438937012895), range: 4104..4132, line: 196, column: 6 } }
+Token { kind: Fun, span: Span { source: Source(1), hash: ID(438937012895), range: 4930..4975, line: 226, column: 6 } }
 function u0:0(i64, i64, i64) fast {
     ss0 = explicit_slot 24
     gv0 = symbol colocated u1:0
@@ -2551,8 +2593,8 @@ fun pub panic(msg: &u8)
     Jump(Inst(13), []) |
 
   Inst11[]
-    Value(7): &u8 = Lit(String(Span { source: Source(0), hash: ID(16979661566361224870), range: 127..202, line: 0, column: 0 })) |"no stacktrace available, use '-trace' when building to generate stactrace\n"
-    Call(Fun(443), [Value(7)]) |print("no stacktrace available, use '-trace' when building to generate stactrace\n")
+    Value(7): &u8 = Lit(String(Span { source: Source(0), hash: ID(5614517716665998117), range: 127..203, line: 0, column: 0 })) |"no stacktrace available, use '-trace' when building to generate stacktrace\n"
+    Call(Fun(443), [Value(7)]) |print("no stacktrace available, use '-trace' when building to generate stacktrace\n")
     Value(8): int = Lit(Int(1, 0)) |1
     Call(Fun(444), [Value(8)]) |exit(1)
     Return(None) |return
@@ -2596,22 +2638,22 @@ fun pub panic(msg: &u8)
     Value(21): int = Offset(Value(20)) |frame.line
     Value(22): &Seq[u8] = Ref(Value(10)) |buffer.print_int(frame.line)
     Call(Fun(456), [Value(22), Value(21)]) |buffer.print_int(frame.line)
-    Value(23): i32 = Lit(Char(':')) |':'
-    Value(24): u8 = Call(Fun(59), [Value(23)]) |':'.u8()
+    Value(23): u32 = Lit(Char(':')) |':'
+    Value(24): u8 = Call(Fun(63), [Value(23)]) |':'.u8()
     Value(25): &Seq[u8] = Ref(Value(10)) |buffer.push(':'.u8())
     Call(Fun(480), [Value(25), Value(24)]) |buffer.push(':'.u8())
     Value(26): int = Offset(Value(20)) |frame.column
     Value(27): &Seq[u8] = Ref(Value(10)) |buffer.print_int(frame.column)
     Call(Fun(456), [Value(27), Value(26)]) |buffer.print_int(frame.column)
-    Value(28): i32 = Lit(Char(' ')) |' '
-    Value(29): u8 = Call(Fun(59), [Value(28)]) |' '.u8()
+    Value(28): u32 = Lit(Char(' ')) |' '
+    Value(29): u8 = Call(Fun(63), [Value(28)]) |' '.u8()
     Value(30): &Seq[u8] = Ref(Value(10)) |buffer.push(' '.u8())
     Call(Fun(480), [Value(30), Value(29)]) |buffer.push(' '.u8())
     Value(31): &u8 = Offset(Value(20)) |frame.file
     Value(32): &Seq[u8] = Ref(Value(10)) |buffer.print(frame.file)
     Call(Fun(457), [Value(32), Value(31)]) |buffer.print(frame.file)
-    Value(33): i32 = Lit(Char('\n')) |'\n'
-    Value(34): u8 = Call(Fun(59), [Value(33)]) |'\n'.u8()
+    Value(33): u32 = Lit(Char('\n')) |'\n'
+    Value(34): u8 = Call(Fun(63), [Value(33)]) |'\n'.u8()
     Value(35): &Seq[u8] = Ref(Value(10)) |buffer.push('\n'.u8())
     Call(Fun(480), [Value(35), Value(34)]) |buffer.push('\n'.u8())
     Value(36): int = Lit(Int(1, 0)) |1
@@ -2633,8 +2675,8 @@ fun pub panic(msg: &u8)
     i += 1
 
   Inst27[]
-    Value(38): i32 = Lit(Char('\u{0}')) |'\0'
-    Value(39): u8 = Call(Fun(59), [Value(38)]) |'\0'.u8()
+    Value(38): u32 = Lit(Char('\u{0}')) |'\0'
+    Value(39): u8 = Call(Fun(63), [Value(38)]) |'\0'.u8()
     Value(40): &Seq[u8] = Ref(Value(10)) |buffer.push('\0'.u8())
     Call(Fun(480), [Value(40), Value(39)]) |buffer.push('\0'.u8())
     Value(41): &u8 = Offset(Value(10)) |buffer.data
@@ -2644,18 +2686,18 @@ fun pub panic(msg: &u8)
     Return(None) |exit(1)
 
 
-Token { kind: Fun, span: Span { source: Source(1), hash: ID(438937012895), range: 4629..4670, line: 217, column: 6 } }
-Token { kind: Fun, span: Span { source: Source(1), hash: ID(438937012895), range: 5027..5069, line: 229, column: 7 } }
-Token { kind: Fun, span: Span { source: Source(1), hash: ID(438937012895), range: 5143..5186, line: 233, column: 6 } }
-Token { kind: Fun, span: Span { source: Source(1), hash: ID(438937012895), range: 4921..4966, line: 226, column: 6 } }
-Token { kind: Fun, span: Span { source: Source(1), hash: ID(438937012895), range: 4102..4130, line: 196, column: 6 } }
-Token { kind: Fun, span: Span { source: Source(1), hash: ID(438937012895), range: 4921..4966, line: 226, column: 6 } }
-Token { kind: Fun, span: Span { source: Source(1), hash: ID(438937012895), range: 4102..4130, line: 196, column: 6 } }
-Token { kind: Fun, span: Span { source: Source(1), hash: ID(438937012895), range: 4921..4966, line: 226, column: 6 } }
-Token { kind: Fun, span: Span { source: Source(1), hash: ID(438937012895), range: 4102..4130, line: 196, column: 6 } }
-Token { kind: Fun, span: Span { source: Source(1), hash: ID(438937012895), range: 4921..4966, line: 226, column: 6 } }
-Token { kind: Fun, span: Span { source: Source(1), hash: ID(438937012895), range: 4102..4130, line: 196, column: 6 } }
-Token { kind: Fun, span: Span { source: Source(1), hash: ID(438937012895), range: 4921..4966, line: 226, column: 6 } }
+Token { kind: Fun, span: Span { source: Source(1), hash: ID(438937012895), range: 4638..4679, line: 217, column: 6 } }
+Token { kind: Fun, span: Span { source: Source(1), hash: ID(438937012895), range: 5036..5078, line: 229, column: 7 } }
+Token { kind: Fun, span: Span { source: Source(1), hash: ID(438937012895), range: 5152..5195, line: 233, column: 6 } }
+Token { kind: Fun, span: Span { source: Source(1), hash: ID(438937012895), range: 4930..4975, line: 226, column: 6 } }
+Token { kind: Fun, span: Span { source: Source(1), hash: ID(438937012895), range: 4104..4132, line: 196, column: 6 } }
+Token { kind: Fun, span: Span { source: Source(1), hash: ID(438937012895), range: 4930..4975, line: 226, column: 6 } }
+Token { kind: Fun, span: Span { source: Source(1), hash: ID(438937012895), range: 4104..4132, line: 196, column: 6 } }
+Token { kind: Fun, span: Span { source: Source(1), hash: ID(438937012895), range: 4930..4975, line: 226, column: 6 } }
+Token { kind: Fun, span: Span { source: Source(1), hash: ID(438937012895), range: 4104..4132, line: 196, column: 6 } }
+Token { kind: Fun, span: Span { source: Source(1), hash: ID(438937012895), range: 4930..4975, line: 226, column: 6 } }
+Token { kind: Fun, span: Span { source: Source(1), hash: ID(438937012895), range: 4104..4132, line: 196, column: 6 } }
+Token { kind: Fun, span: Span { source: Source(1), hash: ID(438937012895), range: 4930..4975, line: 226, column: 6 } }
 function u0:0(i64) fast {
     ss0 = explicit_slot 24
     ss1 = explicit_slot 24
@@ -3002,16 +3044,16 @@ fun pub alloc(size: int) -> &u8
 fun assert(cond: bool)
 
   Inst1[Value(0)]
-    Value(1): int = Lit(Int(217, 0)) |builtin::assert(cond)
+    Value(1): int = Lit(Int(223, 0)) |builtin::assert(cond)
     Value(2): int = Lit(Int(10, 0)) |builtin::assert(cond)
-    Value(3): &u8 = Lit(String(Span { source: Source(0), hash: ID(3362311186304783455), range: 341..369, line: 0, column: 0 })) |builtin::assert(cond)
+    Value(3): &u8 = Lit(String(Span { source: Source(0), hash: ID(3362311186304783455), range: 342..370, line: 0, column: 0 })) |builtin::assert(cond)
     Call(Fun(447), [Value(1), Value(2), Value(3)]) |builtin::assert(cond)
     Call(Fun(445), [Value(0)]) |builtin::assert(cond)
     Call(Fun(448), []) |builtin::assert(cond)
-    Value(4): &u8 = Lit(String(Span { source: Source(0), hash: ID(31334373625102386), range: 337..341, line: 0, column: 0 })) |"ok\n"
-    Value(5): int = Lit(Int(218, 0)) |print("ok\n")
+    Value(4): &u8 = Lit(String(Span { source: Source(0), hash: ID(31334373625102386), range: 338..342, line: 0, column: 0 })) |"ok\n"
+    Value(5): int = Lit(Int(224, 0)) |print("ok\n")
     Value(6): int = Lit(Int(8, 0)) |print("ok\n")
-    Value(7): &u8 = Lit(String(Span { source: Source(0), hash: ID(3362311186304783455), range: 341..369, line: 0, column: 0 })) |print("ok\n")
+    Value(7): &u8 = Lit(String(Span { source: Source(0), hash: ID(3362311186304783455), range: 342..370, line: 0, column: 0 })) |print("ok\n")
     Call(Fun(447), [Value(5), Value(6), Value(7)]) |print("ok\n")
     Call(Fun(443), [Value(4)]) |print("ok\n")
     Call(Fun(448), []) |print("ok\n")
@@ -3033,7 +3075,7 @@ function u0:0(b1) fast {
     fn3 = u0:19 sig3
 
 block0(v0: b1):
-    v1 = iconst.i64 217
+    v1 = iconst.i64 223
     v2 = iconst.i64 10
     v3 = global_value.i64 gv0
     call fn0(v1, v2, v3)
@@ -3056,13 +3098,79 @@ block3:
 block4:
     call fn2()
     v8 = global_value.i64 gv2
-    v9 = iconst.i64 218
+    v9 = iconst.i64 224
     v10 = iconst.i64 8
     v11 = global_value.i64 gv0
     call fn0(v9, v10, v11)
     call fn3(v8)
     call fn2()
     return
+}
+
+fun test_case_14
+
+  Inst1[]
+    Value(0): fn() -> int = FunPointer(Fun(510)) |test_fun
+    Value(1): fn() -> int = VarDecl(Value(0)) |fun_pointer = test_fun
+    Value(2): int = Lit(Int(220, 0)) |(*fun_pointer)()
+    Value(3): int = Lit(Int(11, 0)) |(*fun_pointer)()
+    Value(4): &u8 = Lit(String(Span { source: Source(0), hash: ID(3362311186304783455), range: 342..370, line: 0, column: 0 })) |(*fun_pointer)()
+    Call(Fun(447), [Value(2), Value(3), Value(4)]) |(*fun_pointer)()
+    Value(5): int = FunPointerCall(Value(1), []) |(*fun_pointer)()
+    Call(Fun(448), []) |(*fun_pointer)()
+    Value(6): int = Lit(Int(1, 0)) |1
+    Value(7): bool = Call(Fun(310), [Value(5), Value(6)]) |(*fun_pointer)() == 1
+    Value(8): int = Lit(Int(220, 0)) |assert((*fun_pointer)() == 1)
+    Value(9): int = Lit(Int(9, 0)) |assert((*fun_pointer)() == 1)
+    Value(10): &u8 = Lit(String(Span { source: Source(0), hash: ID(3362311186304783455), range: 342..370, line: 0, column: 0 })) |assert((*fun_pointer)() == 1)
+    Call(Fun(447), [Value(8), Value(9), Value(10)]) |assert((*fun_pointer)() == 1)
+    Call(Fun(512), [Value(7)]) |assert((*fun_pointer)() == 1)
+    Call(Fun(448), []) |assert((*fun_pointer)() == 1)
+    Return(None) |assert((*fun_pointer)() == 1)
+
+
+function u0:0() fast {
+    gv0 = symbol colocated u1:7
+    sig0 = () -> i64 fast
+    sig1 = (i64, i64, i64) fast
+    sig2 = () -> i64 fast
+    sig3 = () fast
+    sig4 = (b1) fast
+    fn0 = colocated u0:28 sig0
+    fn1 = colocated u0:11 sig1
+    fn2 = colocated u0:6 sig3
+    fn3 = colocated u0:26 sig4
+
+block0:
+    v0 = func_addr.i64 fn0
+    v1 = iconst.i64 220
+    v2 = iconst.i64 11
+    v3 = global_value.i64 gv0
+    call fn1(v1, v2, v3)
+    v4 = call_indirect sig2, v0()
+    call fn2()
+    v5 = iconst.i64 1
+    v6 = icmp eq v4, v5
+    v7 = iconst.i64 220
+    v8 = iconst.i64 9
+    v9 = global_value.i64 gv0
+    call fn1(v7, v8, v9)
+    call fn3(v6)
+    call fn2()
+    return
+}
+
+fun test_fun -> int
+
+  Inst1[]
+    Value(0): int = Lit(Int(1, 0)) |1
+    Return(Some(Value(0))) |1
+
+
+function u0:0() -> i64 fast {
+block0:
+    v0 = iconst.i64 1
+    return v0
 }
 
 fun test_case_13
@@ -3072,7 +3180,7 @@ fun test_case_13
     Value(1): int = Lit(Int(1, 0)) |1
     Value(3): int = Lit(Int(214, 0)) |even_worse(1, 1)
     Value(4): int = Lit(Int(20, 0)) |even_worse(1, 1)
-    Value(5): &u8 = Lit(String(Span { source: Source(0), hash: ID(3362311186304783455), range: 341..369, line: 0, column: 0 })) |even_worse(1, 1)
+    Value(5): &u8 = Lit(String(Span { source: Source(0), hash: ID(3362311186304783455), range: 342..370, line: 0, column: 0 })) |even_worse(1, 1)
     Call(Fun(447), [Value(3), Value(4), Value(5)]) |even_worse(1, 1)
     Value(2): int = Call(Fun(508), [Value(0), Value(1)]) |even_worse(1, 1)
     Call(Fun(448), []) |even_worse(1, 1)
@@ -3080,9 +3188,9 @@ fun test_case_13
     Value(7): bool = Call(Fun(310), [Value(2), Value(6)]) |even_worse(1, 1) == 0
     Value(8): int = Lit(Int(214, 0)) |assert(even_worse(1, 1) == 0)
     Value(9): int = Lit(Int(9, 0)) |assert(even_worse(1, 1) == 0)
-    Value(10): &u8 = Lit(String(Span { source: Source(0), hash: ID(3362311186304783455), range: 341..369, line: 0, column: 0 })) |assert(even_worse(1, 1) == 0)
+    Value(10): &u8 = Lit(String(Span { source: Source(0), hash: ID(3362311186304783455), range: 342..370, line: 0, column: 0 })) |assert(even_worse(1, 1) == 0)
     Call(Fun(447), [Value(8), Value(9), Value(10)]) |assert(even_worse(1, 1) == 0)
-    Call(Fun(510), [Value(7)]) |assert(even_worse(1, 1) == 0)
+    Call(Fun(512), [Value(7)]) |assert(even_worse(1, 1) == 0)
     Call(Fun(448), []) |assert(even_worse(1, 1) == 0)
     Return(None) |assert(even_worse(1, 1) == 0)
 
@@ -3174,9 +3282,9 @@ fun test_case_12
     Value(2): bool = Call(Fun(310), [Value(0), Value(1)]) |a == 1
     Value(3): int = Lit(Int(198, 0)) |assert(a == 1)
     Value(4): int = Lit(Int(9, 0)) |assert(a == 1)
-    Value(5): &u8 = Lit(String(Span { source: Source(0), hash: ID(3362311186304783455), range: 341..369, line: 0, column: 0 })) |assert(a == 1)
+    Value(5): &u8 = Lit(String(Span { source: Source(0), hash: ID(3362311186304783455), range: 342..370, line: 0, column: 0 })) |assert(a == 1)
     Call(Fun(447), [Value(3), Value(4), Value(5)]) |assert(a == 1)
-    Call(Fun(510), [Value(2)]) |assert(a == 1)
+    Call(Fun(512), [Value(2)]) |assert(a == 1)
     Call(Fun(448), []) |assert(a == 1)
     Return(None) |assert(a == 1)
 
@@ -3219,9 +3327,9 @@ fun test_case_11
     Value(7): bool = Call(Fun(310), [Value(1), Value(6)]) |a == 0
     Value(8): int = Lit(Int(192, 0)) |assert(a == 0)
     Value(9): int = Lit(Int(9, 0)) |assert(a == 0)
-    Value(10): &u8 = Lit(String(Span { source: Source(0), hash: ID(3362311186304783455), range: 341..369, line: 0, column: 0 })) |assert(a == 0)
+    Value(10): &u8 = Lit(String(Span { source: Source(0), hash: ID(3362311186304783455), range: 342..370, line: 0, column: 0 })) |assert(a == 0)
     Call(Fun(447), [Value(8), Value(9), Value(10)]) |assert(a == 0)
-    Call(Fun(510), [Value(7)]) |assert(a == 0)
+    Call(Fun(512), [Value(7)]) |assert(a == 0)
     Call(Fun(448), []) |assert(a == 0)
     Return(None) |assert(a == 0)
 
@@ -3306,9 +3414,9 @@ fun test_case_10
     Value(27): &[int, 10] = Ref(Value(21)) |array.len()
     Value(28): int = Lit(Int(180, 0)) |array.len()
     Value(29): int = Lit(Int(18, 0)) |array.len()
-    Value(30): &u8 = Lit(String(Span { source: Source(0), hash: ID(3362311186304783455), range: 341..369, line: 0, column: 0 })) |array.len()
+    Value(30): &u8 = Lit(String(Span { source: Source(0), hash: ID(3362311186304783455), range: 342..370, line: 0, column: 0 })) |array.len()
     Call(Fun(447), [Value(28), Value(29), Value(30)]) |array.len()
-    Value(26): int = Call(Fun(511), [Value(27)]) |array.len()
+    Value(26): int = Call(Fun(513), [Value(27)]) |array.len()
     Call(Fun(448), []) |array.len()
     Value(31): bool = Call(Fun(330), [Value(23), Value(26)]) |i >= array.len()
     JumpIfTrue(Value(31), Inst(50), []) |i >= array.len()
@@ -3321,9 +3429,9 @@ fun test_case_10
     Value(33): &[int, 10] = Ref(Value(21)) |array[i]
     Value(34): int = Lit(Int(182, 0)) |array[i]
     Value(35): int = Lit(Int(17, 0)) |array[i]
-    Value(36): &u8 = Lit(String(Span { source: Source(0), hash: ID(3362311186304783455), range: 341..369, line: 0, column: 0 })) |array[i]
+    Value(36): &u8 = Lit(String(Span { source: Source(0), hash: ID(3362311186304783455), range: 342..370, line: 0, column: 0 })) |array[i]
     Call(Fun(447), [Value(34), Value(35), Value(36)]) |array[i]
-    Value(32): &int = Call(Fun(512), [Value(33), Value(23)]) |array[i]
+    Value(32): &int = Call(Fun(514), [Value(33), Value(23)]) |array[i]
     Call(Fun(448), []) |array[i]
     Value(37): int = Deref(Value(32), false) |array[i]
     Value(38): int = Call(Fun(260), [Value(25), Value(37)]) |sum += array[i]
@@ -3332,17 +3440,17 @@ fun test_case_10
     Value(41): &[int, 10] = Ref(Value(39)) |storage[i]
     Value(42): int = Lit(Int(183, 0)) |storage[i]
     Value(43): int = Lit(Int(12, 0)) |storage[i]
-    Value(44): &u8 = Lit(String(Span { source: Source(0), hash: ID(3362311186304783455), range: 341..369, line: 0, column: 0 })) |storage[i]
+    Value(44): &u8 = Lit(String(Span { source: Source(0), hash: ID(3362311186304783455), range: 342..370, line: 0, column: 0 })) |storage[i]
     Call(Fun(447), [Value(42), Value(43), Value(44)]) |storage[i]
-    Value(40): &int = Call(Fun(512), [Value(41), Value(23)]) |storage[i]
+    Value(40): &int = Call(Fun(514), [Value(41), Value(23)]) |storage[i]
     Call(Fun(448), []) |storage[i]
     Value(45): int = Deref(Value(40), true) |storage[i]
     Value(47): &[int, 10] = Ref(Value(21)) |array[i]
     Value(48): int = Lit(Int(183, 0)) |array[i]
     Value(49): int = Lit(Int(23, 0)) |array[i]
-    Value(50): &u8 = Lit(String(Span { source: Source(0), hash: ID(3362311186304783455), range: 341..369, line: 0, column: 0 })) |array[i]
+    Value(50): &u8 = Lit(String(Span { source: Source(0), hash: ID(3362311186304783455), range: 342..370, line: 0, column: 0 })) |array[i]
     Call(Fun(447), [Value(48), Value(49), Value(50)]) |array[i]
-    Value(46): &int = Call(Fun(512), [Value(47), Value(23)]) |array[i]
+    Value(46): &int = Call(Fun(514), [Value(47), Value(23)]) |array[i]
     Call(Fun(448), []) |array[i]
     Value(51): int = Deref(Value(46), false) |array[i]
     Value(51): int = Assign(Value(45)) |storage[i] = array[i]
@@ -3363,20 +3471,20 @@ fun test_case_10
     Value(57): bool = Call(Fun(310), [Value(25), Value(56)]) |sum == 11 * 5
     Value(58): int = Lit(Int(186, 0)) |assert(sum == 11 * 5)
     Value(59): int = Lit(Int(9, 0)) |assert(sum == 11 * 5)
-    Value(60): &u8 = Lit(String(Span { source: Source(0), hash: ID(3362311186304783455), range: 341..369, line: 0, column: 0 })) |assert(sum == 11 * 5)
+    Value(60): &u8 = Lit(String(Span { source: Source(0), hash: ID(3362311186304783455), range: 342..370, line: 0, column: 0 })) |assert(sum == 11 * 5)
     Call(Fun(447), [Value(58), Value(59), Value(60)]) |assert(sum == 11 * 5)
-    Call(Fun(510), [Value(57)]) |assert(sum == 11 * 5)
+    Call(Fun(512), [Value(57)]) |assert(sum == 11 * 5)
     Call(Fun(448), []) |assert(sum == 11 * 5)
     Return(None) |assert(sum == 11 * 5)
 
 
-Token { kind: Fun, span: Span { source: Source(1), hash: ID(438937012895), range: 2463..2491, line: 118, column: 6 } }
-Token { kind: Fun, span: Span { source: Source(1), hash: ID(438937012895), range: 2103..2144, line: 104, column: 6 } }
-Token { kind: Fun, span: Span { source: Source(1), hash: ID(438937012895), range: 2247..2292, line: 109, column: 6 } }
-Token { kind: Fun, span: Span { source: Source(1), hash: ID(438937012895), range: 2103..2144, line: 104, column: 6 } }
-Token { kind: Fun, span: Span { source: Source(1), hash: ID(438937012895), range: 2247..2292, line: 109, column: 6 } }
-Token { kind: Fun, span: Span { source: Source(1), hash: ID(438937012895), range: 2103..2144, line: 104, column: 6 } }
-Token { kind: Fun, span: Span { source: Source(1), hash: ID(438937012895), range: 2247..2292, line: 109, column: 6 } }
+Token { kind: Fun, span: Span { source: Source(1), hash: ID(438937012895), range: 2465..2493, line: 118, column: 6 } }
+Token { kind: Fun, span: Span { source: Source(1), hash: ID(438937012895), range: 2105..2146, line: 104, column: 6 } }
+Token { kind: Fun, span: Span { source: Source(1), hash: ID(438937012895), range: 2249..2294, line: 109, column: 6 } }
+Token { kind: Fun, span: Span { source: Source(1), hash: ID(438937012895), range: 2105..2146, line: 104, column: 6 } }
+Token { kind: Fun, span: Span { source: Source(1), hash: ID(438937012895), range: 2249..2294, line: 109, column: 6 } }
+Token { kind: Fun, span: Span { source: Source(1), hash: ID(438937012895), range: 2105..2146, line: 104, column: 6 } }
+Token { kind: Fun, span: Span { source: Source(1), hash: ID(438937012895), range: 2249..2294, line: 109, column: 6 } }
 function u0:0() fast {
     ss0 = explicit_slot 80
     ss1 = explicit_slot 80
@@ -3662,9 +3770,9 @@ fun test_case_9
     Value(27): &[int, 10] = Ref(Value(21)) |array.len()
     Value(28): int = Lit(Int(162, 0)) |array.len()
     Value(29): int = Lit(Int(18, 0)) |array.len()
-    Value(30): &u8 = Lit(String(Span { source: Source(0), hash: ID(3362311186304783455), range: 341..369, line: 0, column: 0 })) |array.len()
+    Value(30): &u8 = Lit(String(Span { source: Source(0), hash: ID(3362311186304783455), range: 342..370, line: 0, column: 0 })) |array.len()
     Call(Fun(447), [Value(28), Value(29), Value(30)]) |array.len()
-    Value(26): int = Call(Fun(511), [Value(27)]) |array.len()
+    Value(26): int = Call(Fun(513), [Value(27)]) |array.len()
     Call(Fun(448), []) |array.len()
     Value(31): bool = Call(Fun(330), [Value(23), Value(26)]) |i >= array.len()
     JumpIfTrue(Value(31), Inst(50), []) |i >= array.len()
@@ -3677,9 +3785,9 @@ fun test_case_9
     Value(33): &[int, 10] = Ref(Value(21)) |array[i]
     Value(34): int = Lit(Int(164, 0)) |array[i]
     Value(35): int = Lit(Int(17, 0)) |array[i]
-    Value(36): &u8 = Lit(String(Span { source: Source(0), hash: ID(3362311186304783455), range: 341..369, line: 0, column: 0 })) |array[i]
+    Value(36): &u8 = Lit(String(Span { source: Source(0), hash: ID(3362311186304783455), range: 342..370, line: 0, column: 0 })) |array[i]
     Call(Fun(447), [Value(34), Value(35), Value(36)]) |array[i]
-    Value(32): &int = Call(Fun(512), [Value(33), Value(23)]) |array[i]
+    Value(32): &int = Call(Fun(514), [Value(33), Value(23)]) |array[i]
     Call(Fun(448), []) |array[i]
     Value(37): int = Deref(Value(32), false) |array[i]
     Value(38): int = Call(Fun(260), [Value(25), Value(37)]) |sum += array[i]
@@ -3700,16 +3808,16 @@ fun test_case_9
     Value(44): bool = Call(Fun(310), [Value(25), Value(43)]) |sum == 11 * 5
     Value(45): int = Lit(Int(167, 0)) |assert(sum == 11 * 5)
     Value(46): int = Lit(Int(9, 0)) |assert(sum == 11 * 5)
-    Value(47): &u8 = Lit(String(Span { source: Source(0), hash: ID(3362311186304783455), range: 341..369, line: 0, column: 0 })) |assert(sum == 11 * 5)
+    Value(47): &u8 = Lit(String(Span { source: Source(0), hash: ID(3362311186304783455), range: 342..370, line: 0, column: 0 })) |assert(sum == 11 * 5)
     Call(Fun(447), [Value(45), Value(46), Value(47)]) |assert(sum == 11 * 5)
-    Call(Fun(510), [Value(44)]) |assert(sum == 11 * 5)
+    Call(Fun(512), [Value(44)]) |assert(sum == 11 * 5)
     Call(Fun(448), []) |assert(sum == 11 * 5)
     Return(None) |assert(sum == 11 * 5)
 
 
-Token { kind: Fun, span: Span { source: Source(1), hash: ID(438937012895), range: 2463..2491, line: 118, column: 6 } }
-Token { kind: Fun, span: Span { source: Source(1), hash: ID(438937012895), range: 2103..2144, line: 104, column: 6 } }
-Token { kind: Fun, span: Span { source: Source(1), hash: ID(438937012895), range: 2247..2292, line: 109, column: 6 } }
+Token { kind: Fun, span: Span { source: Source(1), hash: ID(438937012895), range: 2465..2493, line: 118, column: 6 } }
+Token { kind: Fun, span: Span { source: Source(1), hash: ID(438937012895), range: 2105..2146, line: 104, column: 6 } }
+Token { kind: Fun, span: Span { source: Source(1), hash: ID(438937012895), range: 2249..2294, line: 109, column: 6 } }
 function u0:0() fast {
     ss0 = explicit_slot 80
     ss1 = explicit_slot 80
@@ -3910,9 +4018,9 @@ fun test_case_8
     Value(36): bool = Call(Fun(302), [Value(32), Value(35)]) |eb.a + eb.h + eb.g + eb.f + eb.e + eb.d + eb.c + eb.b == 4i8 * 9i8
     Value(37): int = Lit(Int(152, 0)) |assert(eb.a + eb.h + eb.g + eb.f + eb.e + eb.d + eb.c + eb.b == 4i8 * 9i8)
     Value(38): int = Lit(Int(9, 0)) |assert(eb.a + eb.h + eb.g + eb.f + eb.e + eb.d + eb.c + eb.b == 4i8 * 9i8)
-    Value(39): &u8 = Lit(String(Span { source: Source(0), hash: ID(3362311186304783455), range: 341..369, line: 0, column: 0 })) |assert(eb.a + eb.h + eb.g + eb.f + eb.e + eb.d + eb.c + eb.b == 4i8 * 9i8)
+    Value(39): &u8 = Lit(String(Span { source: Source(0), hash: ID(3362311186304783455), range: 342..370, line: 0, column: 0 })) |assert(eb.a + eb.h + eb.g + eb.f + eb.e + eb.d + eb.c + eb.b == 4i8 * 9i8)
     Call(Fun(447), [Value(37), Value(38), Value(39)]) |assert(eb.a + eb.h + eb.g + eb.f + eb.e + eb.d + eb.c + eb.b == 4i8 * 9i8)
-    Call(Fun(510), [Value(36)]) |assert(eb.a + eb.h + eb.g + eb.f + eb.e + eb.d + eb.c + eb.b == 4i8 * 9i8)
+    Call(Fun(512), [Value(36)]) |assert(eb.a + eb.h + eb.g + eb.f + eb.e + eb.d + eb.c + eb.b == 4i8 * 9i8)
     Call(Fun(448), []) |assert(eb.a + eb.h + eb.g + eb.f + eb.e + eb.d + eb.c + eb.b == 4i8 * 9i8)
     Return(None) |assert(eb.a + eb.h + eb.g + eb.f + eb.e + eb.d + eb.c + eb.b == 4i8 * 9i8)
 
@@ -4045,9 +4153,9 @@ fun test_case_7
     Value(22): bool = Call(Fun(310), [Value(20), Value(21)]) |c.x + c.y == 3
     Value(23): int = Lit(Int(136, 0)) |assert(c.x + c.y == 3)
     Value(24): int = Lit(Int(9, 0)) |assert(c.x + c.y == 3)
-    Value(25): &u8 = Lit(String(Span { source: Source(0), hash: ID(3362311186304783455), range: 341..369, line: 0, column: 0 })) |assert(c.x + c.y == 3)
+    Value(25): &u8 = Lit(String(Span { source: Source(0), hash: ID(3362311186304783455), range: 342..370, line: 0, column: 0 })) |assert(c.x + c.y == 3)
     Call(Fun(447), [Value(23), Value(24), Value(25)]) |assert(c.x + c.y == 3)
-    Call(Fun(510), [Value(22)]) |assert(c.x + c.y == 3)
+    Call(Fun(512), [Value(22)]) |assert(c.x + c.y == 3)
     Call(Fun(448), []) |assert(c.x + c.y == 3)
     Return(None) |assert(c.x + c.y == 3)
 
@@ -4098,7 +4206,7 @@ fun test_case_6
     Value(5): &Point = Ref(Value(1)) |p.init(2, 2)
     Value(6): int = Lit(Int(120, 0)) |p.init(2, 2)
     Value(7): int = Lit(Int(4, 0)) |p.init(2, 2)
-    Value(8): &u8 = Lit(String(Span { source: Source(0), hash: ID(3362311186304783455), range: 341..369, line: 0, column: 0 })) |p.init(2, 2)
+    Value(8): &u8 = Lit(String(Span { source: Source(0), hash: ID(3362311186304783455), range: 342..370, line: 0, column: 0 })) |p.init(2, 2)
     Call(Fun(447), [Value(6), Value(7), Value(8)]) |p.init(2, 2)
     Value(4): Point = Call(Fun(499), [Value(5), Value(2), Value(3), Value(4)]) |p.init(2, 2)
     Call(Fun(448), []) |p.init(2, 2)
@@ -4109,9 +4217,9 @@ fun test_case_6
     Value(13): bool = Call(Fun(310), [Value(11), Value(12)]) |p.x + p.y == 4
     Value(14): int = Lit(Int(121, 0)) |assert(p.x + p.y == 4)
     Value(15): int = Lit(Int(9, 0)) |assert(p.x + p.y == 4)
-    Value(16): &u8 = Lit(String(Span { source: Source(0), hash: ID(3362311186304783455), range: 341..369, line: 0, column: 0 })) |assert(p.x + p.y == 4)
+    Value(16): &u8 = Lit(String(Span { source: Source(0), hash: ID(3362311186304783455), range: 342..370, line: 0, column: 0 })) |assert(p.x + p.y == 4)
     Call(Fun(447), [Value(14), Value(15), Value(16)]) |assert(p.x + p.y == 4)
-    Call(Fun(510), [Value(13)]) |assert(p.x + p.y == 4)
+    Call(Fun(512), [Value(13)]) |assert(p.x + p.y == 4)
     Call(Fun(448), []) |assert(p.x + p.y == 4)
     Return(None) |assert(p.x + p.y == 4)
 
@@ -4125,7 +4233,7 @@ function u0:0() fast {
     sig2 = () fast
     sig3 = (b1) fast
     fn0 = colocated u0:11 sig0
-    fn1 = colocated u0:41 sig1
+    fn1 = colocated u0:43 sig1
     fn2 = colocated u0:6 sig2
     fn3 = colocated u0:26 sig3
 
@@ -4185,7 +4293,7 @@ block0(v0: i64, v1: i64, v2: i64, v3: i64):
 fun test_case_5
 
   Inst1[]
-    Value(0): &u8 = Lit(String(Span { source: Source(0), hash: ID(14798484927345966379), range: 323..337, line: 0, column: 0 })) |"Hello, World!"
+    Value(0): &u8 = Lit(String(Span { source: Source(0), hash: ID(14798484927345966379), range: 324..338, line: 0, column: 0 })) |"Hello, World!"
     Value(1): &u8 = VarDecl(Value(0)) |a = "Hello, World!"
     Value(2): uint = Cast(Value(1)) |a as uint
     Value(3): uint = VarDecl(Value(2)) |b = a as uint
@@ -4212,7 +4320,7 @@ fun test_case_5
     Value(9): i32 = Call(Fun(33), [Value(6)]) |char.i32()
     Value(10): int = Lit(Int(109, 0)) |putchar(char.i32())
     Value(11): int = Lit(Int(12, 0)) |putchar(char.i32())
-    Value(12): &u8 = Lit(String(Span { source: Source(0), hash: ID(3362311186304783455), range: 341..369, line: 0, column: 0 })) |putchar(char.i32())
+    Value(12): &u8 = Lit(String(Span { source: Source(0), hash: ID(3362311186304783455), range: 342..370, line: 0, column: 0 })) |putchar(char.i32())
     Call(Fun(447), [Value(10), Value(11), Value(12)]) |putchar(char.i32())
     Call(Fun(497), [Value(9)]) |putchar(char.i32())
     Call(Fun(448), []) |putchar(char.i32())
@@ -4243,7 +4351,7 @@ function u0:0() fast {
     sig1 = (i32) windows_fastcall
     sig2 = () fast
     fn0 = colocated u0:11 sig0
-    fn1 = u0:43 sig1
+    fn1 = u0:45 sig1
     fn2 = colocated u0:6 sig2
 
 block0:
@@ -4318,9 +4426,9 @@ fun test_case_4
     Value(8): bool = Call(Fun(310), [Value(6), Value(7)]) |f64::int(a) == 101
     Value(9): int = Lit(Int(95, 0)) |assert(f64::int(a) == 101)
     Value(10): int = Lit(Int(9, 0)) |assert(f64::int(a) == 101)
-    Value(11): &u8 = Lit(String(Span { source: Source(0), hash: ID(3362311186304783455), range: 341..369, line: 0, column: 0 })) |assert(f64::int(a) == 101)
+    Value(11): &u8 = Lit(String(Span { source: Source(0), hash: ID(3362311186304783455), range: 342..370, line: 0, column: 0 })) |assert(f64::int(a) == 101)
     Call(Fun(447), [Value(9), Value(10), Value(11)]) |assert(f64::int(a) == 101)
-    Call(Fun(510), [Value(8)]) |assert(f64::int(a) == 101)
+    Call(Fun(512), [Value(8)]) |assert(f64::int(a) == 101)
     Call(Fun(448), []) |assert(f64::int(a) == 101)
     Return(None) |assert(f64::int(a) == 101)
 
@@ -4395,9 +4503,9 @@ fun test_case_3
     Value(20): bool = Call(Fun(310), [Value(18), Value(19)]) |bool::int(!true) + ~1 + 2 + abs -1 - 1 + a == 0
     Value(21): int = Lit(Int(85, 0)) |assert(bool::int(!true) + ~1 + 2 + abs -1 - 1 + a == 0)
     Value(22): int = Lit(Int(9, 0)) |assert(bool::int(!true) + ~1 + 2 + abs -1 - 1 + a == 0)
-    Value(23): &u8 = Lit(String(Span { source: Source(0), hash: ID(3362311186304783455), range: 341..369, line: 0, column: 0 })) |assert(bool::int(!true) + ~1 + 2 + abs -1 - 1 + a == 0)
+    Value(23): &u8 = Lit(String(Span { source: Source(0), hash: ID(3362311186304783455), range: 342..370, line: 0, column: 0 })) |assert(bool::int(!true) + ~1 + 2 + abs -1 - 1 + a == 0)
     Call(Fun(447), [Value(21), Value(22), Value(23)]) |assert(bool::int(!true) + ~1 + 2 + abs -1 - 1 + a == 0)
-    Call(Fun(510), [Value(20)]) |assert(bool::int(!true) + ~1 + 2 + abs -1 - 1 + a == 0)
+    Call(Fun(512), [Value(20)]) |assert(bool::int(!true) + ~1 + 2 + abs -1 - 1 + a == 0)
     Call(Fun(448), []) |assert(bool::int(!true) + ~1 + 2 + abs -1 - 1 + a == 0)
     Return(None) |assert(bool::int(!true) + ~1 + 2 + abs -1 - 1 + a == 0)
 
@@ -4457,7 +4565,7 @@ fun test_case_2
     Value(5): int = Lit(Int(2, 0)) |2
     Value(7): int = Lit(Int(78, 0)) |p.set(1, 2)
     Value(8): int = Lit(Int(8, 0)) |p.set(1, 2)
-    Value(9): &u8 = Lit(String(Span { source: Source(0), hash: ID(3362311186304783455), range: 341..369, line: 0, column: 0 })) |p.set(1, 2)
+    Value(9): &u8 = Lit(String(Span { source: Source(0), hash: ID(3362311186304783455), range: 342..370, line: 0, column: 0 })) |p.set(1, 2)
     Call(Fun(447), [Value(7), Value(8), Value(9)]) |p.set(1, 2)
     Value(6): Point = Call(Fun(493), [Value(1), Value(4), Value(5), Value(6)]) |p.set(1, 2)
     Call(Fun(448), []) |p.set(1, 2)
@@ -4469,9 +4577,9 @@ fun test_case_2
     Value(14): bool = Call(Fun(310), [Value(12), Value(13)]) |p.x + p.y == 3
     Value(15): int = Lit(Int(79, 0)) |assert(p.x + p.y == 3)
     Value(16): int = Lit(Int(9, 0)) |assert(p.x + p.y == 3)
-    Value(17): &u8 = Lit(String(Span { source: Source(0), hash: ID(3362311186304783455), range: 341..369, line: 0, column: 0 })) |assert(p.x + p.y == 3)
+    Value(17): &u8 = Lit(String(Span { source: Source(0), hash: ID(3362311186304783455), range: 342..370, line: 0, column: 0 })) |assert(p.x + p.y == 3)
     Call(Fun(447), [Value(15), Value(16), Value(17)]) |assert(p.x + p.y == 3)
-    Call(Fun(510), [Value(14)]) |assert(p.x + p.y == 3)
+    Call(Fun(512), [Value(14)]) |assert(p.x + p.y == 3)
     Call(Fun(448), []) |assert(p.x + p.y == 3)
     Return(None) |assert(p.x + p.y == 3)
 
@@ -4486,7 +4594,7 @@ function u0:0() fast {
     sig2 = () fast
     sig3 = (b1) fast
     fn0 = colocated u0:11 sig0
-    fn1 = colocated u0:47 sig1
+    fn1 = colocated u0:49 sig1
     fn2 = colocated u0:6 sig2
     fn3 = colocated u0:26 sig3
 
@@ -4588,9 +4696,9 @@ fun test_case_1
     Value(21): bool = Call(Fun(310), [Value(19), Value(20)]) |r.mi.x - r.mi.y + 1 == 0
     Value(22): int = Lit(Int(66, 0)) |assert(r.mi.x - r.mi.y + 1 == 0)
     Value(23): int = Lit(Int(9, 0)) |assert(r.mi.x - r.mi.y + 1 == 0)
-    Value(24): &u8 = Lit(String(Span { source: Source(0), hash: ID(3362311186304783455), range: 341..369, line: 0, column: 0 })) |assert(r.mi.x - r.mi.y + 1 == 0)
+    Value(24): &u8 = Lit(String(Span { source: Source(0), hash: ID(3362311186304783455), range: 342..370, line: 0, column: 0 })) |assert(r.mi.x - r.mi.y + 1 == 0)
     Call(Fun(447), [Value(22), Value(23), Value(24)]) |assert(r.mi.x - r.mi.y + 1 == 0)
-    Call(Fun(510), [Value(21)]) |assert(r.mi.x - r.mi.y + 1 == 0)
+    Call(Fun(512), [Value(21)]) |assert(r.mi.x - r.mi.y + 1 == 0)
     Call(Fun(448), []) |assert(r.mi.x - r.mi.y + 1 == 0)
     Return(None) |assert(r.mi.x - r.mi.y + 1 == 0)
 
@@ -4750,7 +4858,7 @@ fun fib(v: int) -> int
     Value(6): int = Call(Fun(270), [Value(0), Value(5)]) |v - 1
     Value(8): int = Lit(Int(28, 0)) |fib(v - 1)
     Value(9): int = Lit(Int(8, 0)) |fib(v - 1)
-    Value(10): &u8 = Lit(String(Span { source: Source(0), hash: ID(3362311186304783455), range: 341..369, line: 0, column: 0 })) |fib(v - 1)
+    Value(10): &u8 = Lit(String(Span { source: Source(0), hash: ID(3362311186304783455), range: 342..370, line: 0, column: 0 })) |fib(v - 1)
     Call(Fun(447), [Value(8), Value(9), Value(10)]) |fib(v - 1)
     Value(7): int = Call(Fun(490), [Value(6)]) |fib(v - 1)
     Call(Fun(448), []) |fib(v - 1)
@@ -4758,7 +4866,7 @@ fun fib(v: int) -> int
     Value(12): int = Call(Fun(270), [Value(0), Value(11)]) |v - 2
     Value(14): int = Lit(Int(28, 0)) |fib(v - 2)
     Value(15): int = Lit(Int(21, 0)) |fib(v - 2)
-    Value(16): &u8 = Lit(String(Span { source: Source(0), hash: ID(3362311186304783455), range: 341..369, line: 0, column: 0 })) |fib(v - 2)
+    Value(16): &u8 = Lit(String(Span { source: Source(0), hash: ID(3362311186304783455), range: 342..370, line: 0, column: 0 })) |fib(v - 2)
     Call(Fun(447), [Value(14), Value(15), Value(16)]) |fib(v - 2)
     Value(13): int = Call(Fun(490), [Value(12)]) |fib(v - 2)
     Call(Fun(448), []) |fib(v - 2)
@@ -4778,7 +4886,7 @@ function u0:0(i64) -> i64 fast {
     sig1 = (i64) -> i64 fast
     sig2 = () fast
     fn0 = colocated u0:11 sig0
-    fn1 = colocated u0:50 sig1
+    fn1 = colocated u0:52 sig1
     fn2 = colocated u0:6 sig2
 
 block0(v0: i64):
@@ -4825,9 +4933,9 @@ fun main -> int
     Value(4): bool = Call(Fun(310), [Value(2), Value(3)]) |1 - 1 == 0
     Value(5): int = Lit(Int(3, 0)) |assert(1 - 1 == 0)
     Value(6): int = Lit(Int(9, 0)) |assert(1 - 1 == 0)
-    Value(7): &u8 = Lit(String(Span { source: Source(0), hash: ID(3362311186304783455), range: 341..369, line: 0, column: 0 })) |assert(1 - 1 == 0)
+    Value(7): &u8 = Lit(String(Span { source: Source(0), hash: ID(3362311186304783455), range: 342..370, line: 0, column: 0 })) |assert(1 - 1 == 0)
     Call(Fun(447), [Value(5), Value(6), Value(7)]) |assert(1 - 1 == 0)
-    Call(Fun(510), [Value(4)]) |assert(1 - 1 == 0)
+    Call(Fun(512), [Value(4)]) |assert(1 - 1 == 0)
     Call(Fun(448), []) |assert(1 - 1 == 0)
     Value(8): int = Lit(Int(1, 0)) |1
     Value(9): int = Lit(Int(1, 0)) |1
@@ -4836,9 +4944,9 @@ fun main -> int
     Value(12): bool = Call(Fun(310), [Value(10), Value(11)]) |1 + 1 == 2
     Value(13): int = Lit(Int(4, 0)) |assert(1 + 1 == 2)
     Value(14): int = Lit(Int(9, 0)) |assert(1 + 1 == 2)
-    Value(15): &u8 = Lit(String(Span { source: Source(0), hash: ID(3362311186304783455), range: 341..369, line: 0, column: 0 })) |assert(1 + 1 == 2)
+    Value(15): &u8 = Lit(String(Span { source: Source(0), hash: ID(3362311186304783455), range: 342..370, line: 0, column: 0 })) |assert(1 + 1 == 2)
     Call(Fun(447), [Value(13), Value(14), Value(15)]) |assert(1 + 1 == 2)
-    Call(Fun(510), [Value(12)]) |assert(1 + 1 == 2)
+    Call(Fun(512), [Value(12)]) |assert(1 + 1 == 2)
     Call(Fun(448), []) |assert(1 + 1 == 2)
     Value(16): int = Lit(Int(1, 0)) |1
     Value(17): int = Lit(Int(1, 0)) |1
@@ -4859,106 +4967,106 @@ fun main -> int
     Value(23): bool = Call(Fun(310), [Value(20), Value(22)]) |(if 1 == 1: 1 else: 0) == 1
     Value(24): int = Lit(Int(5, 0)) |assert((if 1 == 1: 1 else: 0) == 1)
     Value(25): int = Lit(Int(9, 0)) |assert((if 1 == 1: 1 else: 0) == 1)
-    Value(26): &u8 = Lit(String(Span { source: Source(0), hash: ID(3362311186304783455), range: 341..369, line: 0, column: 0 })) |assert((if 1 == 1: 1 else: 0) == 1)
+    Value(26): &u8 = Lit(String(Span { source: Source(0), hash: ID(3362311186304783455), range: 342..370, line: 0, column: 0 })) |assert((if 1 == 1: 1 else: 0) == 1)
     Call(Fun(447), [Value(24), Value(25), Value(26)]) |assert((if 1 == 1: 1 else: 0) == 1)
-    Call(Fun(510), [Value(23)]) |assert((if 1 == 1: 1 else: 0) == 1)
+    Call(Fun(512), [Value(23)]) |assert((if 1 == 1: 1 else: 0) == 1)
     Call(Fun(448), []) |assert((if 1 == 1: 1 else: 0) == 1)
     Value(27): int = Lit(Int(10, 0)) |10
     Value(29): int = Lit(Int(6, 0)) |fib(10)
     Value(30): int = Lit(Int(13, 0)) |fib(10)
-    Value(31): &u8 = Lit(String(Span { source: Source(0), hash: ID(3362311186304783455), range: 341..369, line: 0, column: 0 })) |fib(10)
+    Value(31): &u8 = Lit(String(Span { source: Source(0), hash: ID(3362311186304783455), range: 342..370, line: 0, column: 0 })) |fib(10)
     Call(Fun(447), [Value(29), Value(30), Value(31)]) |fib(10)
     Value(28): int = Call(Fun(490), [Value(27)]) |fib(10)
     Call(Fun(448), []) |fib(10)
     Value(32): int = Lit(Int(10, 0)) |10
     Value(34): int = Lit(Int(6, 0)) |fib_loop(10)
     Value(35): int = Lit(Int(29, 0)) |fib_loop(10)
-    Value(36): &u8 = Lit(String(Span { source: Source(0), hash: ID(3362311186304783455), range: 341..369, line: 0, column: 0 })) |fib_loop(10)
+    Value(36): &u8 = Lit(String(Span { source: Source(0), hash: ID(3362311186304783455), range: 342..370, line: 0, column: 0 })) |fib_loop(10)
     Call(Fun(447), [Value(34), Value(35), Value(36)]) |fib_loop(10)
     Value(33): int = Call(Fun(491), [Value(32)]) |fib_loop(10)
     Call(Fun(448), []) |fib_loop(10)
     Value(37): bool = Call(Fun(310), [Value(28), Value(33)]) |fib(10) == fib_loop(10)
     Value(38): int = Lit(Int(6, 0)) |assert(fib(10) == fib_loop(10))
     Value(39): int = Lit(Int(9, 0)) |assert(fib(10) == fib_loop(10))
-    Value(40): &u8 = Lit(String(Span { source: Source(0), hash: ID(3362311186304783455), range: 341..369, line: 0, column: 0 })) |assert(fib(10) == fib_loop(10))
+    Value(40): &u8 = Lit(String(Span { source: Source(0), hash: ID(3362311186304783455), range: 342..370, line: 0, column: 0 })) |assert(fib(10) == fib_loop(10))
     Call(Fun(447), [Value(38), Value(39), Value(40)]) |assert(fib(10) == fib_loop(10))
-    Call(Fun(510), [Value(37)]) |assert(fib(10) == fib_loop(10))
+    Call(Fun(512), [Value(37)]) |assert(fib(10) == fib_loop(10))
     Call(Fun(448), []) |assert(fib(10) == fib_loop(10))
     Value(41): int = Lit(Int(8, 0)) |test_case_1()
     Value(42): int = Lit(Int(14, 0)) |test_case_1()
-    Value(43): &u8 = Lit(String(Span { source: Source(0), hash: ID(3362311186304783455), range: 341..369, line: 0, column: 0 })) |test_case_1()
+    Value(43): &u8 = Lit(String(Span { source: Source(0), hash: ID(3362311186304783455), range: 342..370, line: 0, column: 0 })) |test_case_1()
     Call(Fun(447), [Value(41), Value(42), Value(43)]) |test_case_1()
     Call(Fun(492), []) |test_case_1()
     Call(Fun(448), []) |test_case_1()
     Value(44): int = Lit(Int(9, 0)) |test_case_2()
     Value(45): int = Lit(Int(14, 0)) |test_case_2()
-    Value(46): &u8 = Lit(String(Span { source: Source(0), hash: ID(3362311186304783455), range: 341..369, line: 0, column: 0 })) |test_case_2()
+    Value(46): &u8 = Lit(String(Span { source: Source(0), hash: ID(3362311186304783455), range: 342..370, line: 0, column: 0 })) |test_case_2()
     Call(Fun(447), [Value(44), Value(45), Value(46)]) |test_case_2()
     Call(Fun(494), []) |test_case_2()
     Call(Fun(448), []) |test_case_2()
     Value(47): int = Lit(Int(10, 0)) |test_case_3()
     Value(48): int = Lit(Int(14, 0)) |test_case_3()
-    Value(49): &u8 = Lit(String(Span { source: Source(0), hash: ID(3362311186304783455), range: 341..369, line: 0, column: 0 })) |test_case_3()
+    Value(49): &u8 = Lit(String(Span { source: Source(0), hash: ID(3362311186304783455), range: 342..370, line: 0, column: 0 })) |test_case_3()
     Call(Fun(447), [Value(47), Value(48), Value(49)]) |test_case_3()
     Call(Fun(495), []) |test_case_3()
     Call(Fun(448), []) |test_case_3()
     Value(50): int = Lit(Int(11, 0)) |test_case_4()
     Value(51): int = Lit(Int(14, 0)) |test_case_4()
-    Value(52): &u8 = Lit(String(Span { source: Source(0), hash: ID(3362311186304783455), range: 341..369, line: 0, column: 0 })) |test_case_4()
+    Value(52): &u8 = Lit(String(Span { source: Source(0), hash: ID(3362311186304783455), range: 342..370, line: 0, column: 0 })) |test_case_4()
     Call(Fun(447), [Value(50), Value(51), Value(52)]) |test_case_4()
     Call(Fun(496), []) |test_case_4()
     Call(Fun(448), []) |test_case_4()
     Value(53): int = Lit(Int(12, 0)) |test_case_5()
     Value(54): int = Lit(Int(14, 0)) |test_case_5()
-    Value(55): &u8 = Lit(String(Span { source: Source(0), hash: ID(3362311186304783455), range: 341..369, line: 0, column: 0 })) |test_case_5()
+    Value(55): &u8 = Lit(String(Span { source: Source(0), hash: ID(3362311186304783455), range: 342..370, line: 0, column: 0 })) |test_case_5()
     Call(Fun(447), [Value(53), Value(54), Value(55)]) |test_case_5()
     Call(Fun(498), []) |test_case_5()
     Call(Fun(448), []) |test_case_5()
     Value(56): int = Lit(Int(13, 0)) |test_case_6()
     Value(57): int = Lit(Int(14, 0)) |test_case_6()
-    Value(58): &u8 = Lit(String(Span { source: Source(0), hash: ID(3362311186304783455), range: 341..369, line: 0, column: 0 })) |test_case_6()
+    Value(58): &u8 = Lit(String(Span { source: Source(0), hash: ID(3362311186304783455), range: 342..370, line: 0, column: 0 })) |test_case_6()
     Call(Fun(447), [Value(56), Value(57), Value(58)]) |test_case_6()
     Call(Fun(500), []) |test_case_6()
     Call(Fun(448), []) |test_case_6()
     Value(59): int = Lit(Int(14, 0)) |test_case_7()
     Value(60): int = Lit(Int(14, 0)) |test_case_7()
-    Value(61): &u8 = Lit(String(Span { source: Source(0), hash: ID(3362311186304783455), range: 341..369, line: 0, column: 0 })) |test_case_7()
+    Value(61): &u8 = Lit(String(Span { source: Source(0), hash: ID(3362311186304783455), range: 342..370, line: 0, column: 0 })) |test_case_7()
     Call(Fun(447), [Value(59), Value(60), Value(61)]) |test_case_7()
     Call(Fun(501), []) |test_case_7()
     Call(Fun(448), []) |test_case_7()
     Value(62): int = Lit(Int(15, 0)) |test_case_8()
     Value(63): int = Lit(Int(14, 0)) |test_case_8()
-    Value(64): &u8 = Lit(String(Span { source: Source(0), hash: ID(3362311186304783455), range: 341..369, line: 0, column: 0 })) |test_case_8()
+    Value(64): &u8 = Lit(String(Span { source: Source(0), hash: ID(3362311186304783455), range: 342..370, line: 0, column: 0 })) |test_case_8()
     Call(Fun(447), [Value(62), Value(63), Value(64)]) |test_case_8()
     Call(Fun(502), []) |test_case_8()
     Call(Fun(448), []) |test_case_8()
     Value(65): int = Lit(Int(16, 0)) |test_case_9()
     Value(66): int = Lit(Int(14, 0)) |test_case_9()
-    Value(67): &u8 = Lit(String(Span { source: Source(0), hash: ID(3362311186304783455), range: 341..369, line: 0, column: 0 })) |test_case_9()
+    Value(67): &u8 = Lit(String(Span { source: Source(0), hash: ID(3362311186304783455), range: 342..370, line: 0, column: 0 })) |test_case_9()
     Call(Fun(447), [Value(65), Value(66), Value(67)]) |test_case_9()
     Call(Fun(503), []) |test_case_9()
     Call(Fun(448), []) |test_case_9()
     Value(68): int = Lit(Int(17, 0)) |test_case_10()
     Value(69): int = Lit(Int(15, 0)) |test_case_10()
-    Value(70): &u8 = Lit(String(Span { source: Source(0), hash: ID(3362311186304783455), range: 341..369, line: 0, column: 0 })) |test_case_10()
+    Value(70): &u8 = Lit(String(Span { source: Source(0), hash: ID(3362311186304783455), range: 342..370, line: 0, column: 0 })) |test_case_10()
     Call(Fun(447), [Value(68), Value(69), Value(70)]) |test_case_10()
     Call(Fun(504), []) |test_case_10()
     Call(Fun(448), []) |test_case_10()
     Value(71): int = Lit(Int(18, 0)) |test_case_11()
     Value(72): int = Lit(Int(15, 0)) |test_case_11()
-    Value(73): &u8 = Lit(String(Span { source: Source(0), hash: ID(3362311186304783455), range: 341..369, line: 0, column: 0 })) |test_case_11()
+    Value(73): &u8 = Lit(String(Span { source: Source(0), hash: ID(3362311186304783455), range: 342..370, line: 0, column: 0 })) |test_case_11()
     Call(Fun(447), [Value(71), Value(72), Value(73)]) |test_case_11()
     Call(Fun(505), []) |test_case_11()
     Call(Fun(448), []) |test_case_11()
     Value(74): int = Lit(Int(19, 0)) |test_case_12()
     Value(75): int = Lit(Int(15, 0)) |test_case_12()
-    Value(76): &u8 = Lit(String(Span { source: Source(0), hash: ID(3362311186304783455), range: 341..369, line: 0, column: 0 })) |test_case_12()
+    Value(76): &u8 = Lit(String(Span { source: Source(0), hash: ID(3362311186304783455), range: 342..370, line: 0, column: 0 })) |test_case_12()
     Call(Fun(447), [Value(74), Value(75), Value(76)]) |test_case_12()
     Call(Fun(506), []) |test_case_12()
     Call(Fun(448), []) |test_case_12()
     Value(77): int = Lit(Int(20, 0)) |test_case_13()
     Value(78): int = Lit(Int(15, 0)) |test_case_13()
-    Value(79): &u8 = Lit(String(Span { source: Source(0), hash: ID(3362311186304783455), range: 341..369, line: 0, column: 0 })) |test_case_13()
+    Value(79): &u8 = Lit(String(Span { source: Source(0), hash: ID(3362311186304783455), range: 342..370, line: 0, column: 0 })) |test_case_13()
     Call(Fun(447), [Value(77), Value(78), Value(79)]) |test_case_13()
     Call(Fun(509), []) |test_case_13()
     Call(Fun(448), []) |test_case_13()
@@ -4989,21 +5097,21 @@ function u0:0() -> i64 fast {
     fn0 = colocated u0:11 sig0
     fn1 = colocated u0:26 sig1
     fn2 = colocated u0:6 sig2
-    fn3 = colocated u0:50 sig3
-    fn4 = colocated u0:49 sig4
-    fn5 = colocated u0:48 sig5
-    fn6 = colocated u0:46 sig6
-    fn7 = colocated u0:45 sig7
-    fn8 = colocated u0:44 sig8
-    fn9 = colocated u0:42 sig9
-    fn10 = colocated u0:40 sig10
-    fn11 = colocated u0:39 sig11
-    fn12 = colocated u0:38 sig12
-    fn13 = colocated u0:37 sig13
-    fn14 = colocated u0:32 sig14
-    fn15 = colocated u0:31 sig15
-    fn16 = colocated u0:30 sig16
-    fn17 = colocated u0:27 sig17
+    fn3 = colocated u0:52 sig3
+    fn4 = colocated u0:51 sig4
+    fn5 = colocated u0:50 sig5
+    fn6 = colocated u0:48 sig6
+    fn7 = colocated u0:47 sig7
+    fn8 = colocated u0:46 sig8
+    fn9 = colocated u0:44 sig9
+    fn10 = colocated u0:42 sig10
+    fn11 = colocated u0:41 sig11
+    fn12 = colocated u0:40 sig12
+    fn13 = colocated u0:39 sig13
+    fn14 = colocated u0:34 sig14
+    fn15 = colocated u0:33 sig15
+    fn16 = colocated u0:32 sig16
+    fn17 = colocated u0:29 sig17
 
 block0:
     v1 = iconst.i64 1
@@ -5170,7 +5278,7 @@ block3(v0: i64):
 function u0:0(i64, i64) -> i64 fast {
     gv0 = symbol colocated u1:6
     sig0 = () -> i64 fast
-    fn0 = colocated u0:51 sig0
+    fn0 = colocated u0:53 sig0
 
 block0(v0: i64, v1: i64):
     v7 = iconst.i64 0

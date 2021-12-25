@@ -70,11 +70,11 @@ impl Collector {
                         AKind::Fun(fun_vis) => {
                             item.ast.kind = AKind::Fun(vis.join(fun_vis));
                             self.functions.push(item)
-                        },
+                        }
                         AKind::VarStatement(var_vis, mutable) => {
                             item.ast.kind = AKind::VarStatement(vis.join(var_vis), mutable);
                             self.globals.push(item)
-                        },
+                        }
                         AKind::StructDeclaration(_) => self.types.push(item),
                         _ => unreachable!(),
                     }
@@ -112,10 +112,10 @@ impl Collector {
     pub fn attr_id(&self, attrs: &Attrs, hash: ID) -> Option<Attr> {
         self.attrs(attrs)
             .iter()
-            .find(|&&attr| 
-                self.attributes[attr].0.kind != AKind::Comment && 
-                self.attributes[attr].0[0].token.span.hash == hash
-            )
+            .find(|&&attr| {
+                self.attributes[attr].0.kind != AKind::Comment
+                    && self.attributes[attr].0[0].token.span.hash == hash
+            })
             .copied()
     }
 

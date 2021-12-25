@@ -50,7 +50,6 @@ impl<'a> MTParser<'a> {
                 .take_imports(&mut imports)
                 .map_err(Into::into)?;
             for import in imports.drain(..) {
-                
                 let path = self.state.display(&import.path);
                 let head = Path::new(path)
                     .components()
@@ -61,7 +60,6 @@ impl<'a> MTParser<'a> {
                     .unwrap();
                 let id = ID::new(head);
                 let manifest = &self.state.manifests[module.manifest];
-                println!("{}", module.manifest);
                 let manifest = if id == manifest.name.hash {
                     module.manifest
                 } else {
@@ -69,13 +67,12 @@ impl<'a> MTParser<'a> {
                         .deps
                         .iter()
                         .find(|dep| {
-                            println!("{:?}", dep);
                             dep.0 == id
                         })
                         .map(|dep| dep.1)
                         .ok_or_else(|| MTError::new(MTEKind::ImportNotFound, import.token.clone()))?
                         .clone()
-                };  
+                };
 
                 let dependency = self.load_module(
                     import.path,
@@ -136,7 +133,9 @@ impl<'a> MTParser<'a> {
         let whole_len = module_path.file_name().unwrap().len();
 
         let len = root_span.range.len();
-        let name = self.state.slice_span(&root_span, len - whole_len..len - name_len + whole_len);
+        let name = self
+            .state
+            .slice_span(&root_span, len - whole_len..len - name_len + whole_len);
 
         let module_path = module_path
             .strip_prefix(
@@ -258,7 +257,9 @@ impl<'a> MTParser<'a> {
             let whole_len = Path::new(root_file).file_name().unwrap().len();
 
             let len = root_file_span.range.len();
-            let name = self.state.slice_span(&root_file_span, len - whole_len..len - whole_len + name_len);
+            let name = self
+                .state
+                .slice_span(&root_file_span, len - whole_len..len - whole_len + name_len);
             let root_path = self.state.slice_span(&root_file_span, 0..parent_len);
 
             let manifest_ent = &mut self.state.manifests[manifest_id];
@@ -527,10 +528,12 @@ impl MTState {
 
     pub fn can_access(&self, from: Mod, to: Mod, vis: Vis) -> bool {
         matches!(
-            (from == to, self.modules[from].manifest == self.modules[to].manifest, vis),
-            (true, ..) |
-            (_, true, Vis::None | Vis::Public) |
-            (.., Vis::Public)
+            (
+                from == to,
+                self.modules[from].manifest == self.modules[to].manifest,
+                vis
+            ),
+            (true, ..) | (_, true, Vis::None | Vis::Public) | (.., Vis::Public)
         )
     }
 }

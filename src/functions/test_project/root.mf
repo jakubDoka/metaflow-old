@@ -152,8 +152,6 @@ fun something -> Embedded[i64]:
 
   v.push(10)
 
-fun something[T](x: [T, 10])
-
 fun arrays -> int:
   var 
     a: [int, 3]

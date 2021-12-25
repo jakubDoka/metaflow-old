@@ -34,7 +34,7 @@ fun pub assert(cond: bool):
   if !cond: panic("assertion failed")
 
 ##[
-  interupts the program with 1 exit code and prints 
+  interrupts the program with 1 exit code and prints 
   collected stacktrace if any, along with the message 
 ]#
 attr terminating
@@ -44,7 +44,7 @@ fun pub panic(msg: &u8):
   print("\n")
 
   if stacktrace.len == 0:
-    print("no stacktrace available, use '-trace' when building to generate stactrace\n")
+    print("no stacktrace available, use '-trace' when building to generate stacktrace\n")
     exit(1)
     return
 
@@ -90,7 +90,7 @@ fun pub new[T] -> &T:
   memset(new, 0, sizeof::[T]())
   new as &T
 
-## drops the given pointer assumint it was previously allocated with
+## drops the given pointer assuming it was previously allocated with
 ## 'new' function
 fun pub drop[T](ptr: &T):
   free(ptr as &u8)
@@ -197,7 +197,7 @@ impl pub [T] Seq[T]:
     let new_len = s.len + 1
     if new_len > s.cap:
       s.cap = s.len * 2
-      s.data = realloc(s.data, s.cap * sizeof::[T]()) as &T
+      s.data = realloc(s.data as &u8, s.cap * sizeof::[T]()) as &T
       pass
     *s.get_unchecked(s.len) = value
     s.len = new_len

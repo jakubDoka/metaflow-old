@@ -4,8 +4,8 @@ use cranelift_codegen::{
     ir::{
         condcodes::{FloatCC, IntCC},
         types::*,
-        Block as CrBlock, InstBuilder, MemFlags, Signature, StackSlot, StackSlotData,
-        StackSlotKind, Type as CrType, Value as CrValue, FuncRef, GlobalValue,
+        Block as CrBlock, FuncRef, GlobalValue, InstBuilder, MemFlags, SigRef, Signature,
+        StackSlot, StackSlotData, StackSlotKind, Type as CrType, Value as CrValue,
     },
     isa::CallConv,
     Context,
@@ -17,13 +17,17 @@ use std::ops::{Deref, DerefMut};
 use crate::{
     collector::Collector,
     functions::{
-        self, FContext, FKind, FParser, FState, FinalValue, Fun, GKind, IKind, Inst, InstEnt,
-        Program, RFun, Value, ValueEnt,
+        self, FContext, FKind, FParser, FState, FinalValue, Fun, GKind, IKind, Inst, InstEnt, RFun,
+        Value, ValueEnt,
     },
     lexer::{Span, TKind as LTKind, Token},
     module_tree::Mod,
-    types::{self, ptr_ty, TKind, Type, TypeDisplay, TypeEnt},
-    util::{pool::PoolRef, sdbm::{SdbmHash, ID}, storage::{IndexPointer, Map}},
+    types::{self, ptr_ty, Program, TKind, Type, TypeDisplay, TypeEnt},
+    util::{
+        pool::PoolRef,
+        sdbm::{SdbmHash, ID},
+        storage::{IndexPointer, Map},
+    },
 };
 
 use super::{GEKind, GError};
@@ -107,10 +111,10 @@ impl<'a> Generator<'a> {
 
         for fun in represented.drain(..) {
             crate::test_println!("{}", crate::functions::FunDisplay::new(&self.state, fun));
-            
+
             self.state.imported_funs.clear();
             self.state.imported_globals.clear();
-            
+
             let fun = &self.state.funs[fun];
             let rid = fun.kind.unwrap_represented();
             let fun_id = self.state.rfuns[rid].id;
@@ -314,8 +318,9 @@ impl<'a> Generator<'a> {
                     arg_buffer.clear();
                     arg_buffer.extend(args);
 
-                    if let &FKind::Builtin(_, return_type) = &other.kind {
+                    if let &FKind::Builtin(id) = &other.kind {
                         let name = other.name.clone();
+                        let return_type = self.state.bfuns[id].ret_ty;
                         self.call_builtin(fun, name, return_type, &arg_buffer, value, builder);
                     } else if other.module == Mod::new(0)
                         && matches!(self.state.display(&other.name), "sizeof")
@@ -330,7 +335,7 @@ impl<'a> Generator<'a> {
 
                         let mut struct_return = false;
 
-                        if let Some(ret_ty) = r_ent.signature.ret_ty {
+                        if let Some(ret_ty) = r_ent.sig.ret_ty {
                             if self.on_stack(ret_ty) {
                                 let size = self.ty(ret_ty).size;
                                 let last = arg_buffer[arg_buffer.len() - 1];
@@ -346,16 +351,17 @@ impl<'a> Generator<'a> {
                         if inline {
                             return Ok(Some(current));
                         } else {
-                            let fun_ref = if let Some(&fun_ref) = self.state.imported_funs.get(map_id) {
-                                fun_ref
-                            } else {
-                                let fun_ref = self
-                                    .program
-                                    .module
-                                    .declare_func_in_func(fun_id, builder.func);
-                                self.state.imported_funs.insert(map_id, fun_ref);
-                                fun_ref
-                            };
+                            let fun_ref =
+                                if let Some(&fun_ref) = self.state.imported_funs.get(map_id) {
+                                    fun_ref
+                                } else {
+                                    let fun_ref = self
+                                        .program
+                                        .module
+                                        .declare_func_in_func(fun_id, builder.func);
+                                    self.state.imported_funs.insert(map_id, fun_ref);
+                                    fun_ref
+                                };
 
                             call_buffer.clear();
                             call_buffer.extend(
@@ -433,10 +439,13 @@ impl<'a> Generator<'a> {
                             };
                             let data = self.make_static_data(data, false, false);
                             let map_id = ID(data.as_u32() as u64);
-                            let value = if let Some(&value) = self.state.imported_globals.get(map_id) {
+                            let value = if let Some(&value) =
+                                self.state.imported_globals.get(map_id)
+                            {
                                 value
                             } else {
-                                let value = self.program.module.declare_data_in_func(data, builder.func);
+                                let value =
+                                    self.program.module.declare_data_in_func(data, builder.func);
                                 self.state.imported_globals.insert(map_id, value);
                                 value
                             };
@@ -521,10 +530,10 @@ impl<'a> Generator<'a> {
                         _ => unreachable!(),
                     };
                     let map_id = ID(id.as_u32() as u64);
-                    
+
                     let data = if let Some(&data) = self.state.imported_globals.get(map_id) {
                         data
-                    } else { 
+                    } else {
                         let data = self.program.module.declare_data_in_func(id, builder.func);
                         self.state.imported_globals.insert(map_id, data);
                         data
@@ -532,6 +541,73 @@ impl<'a> Generator<'a> {
                     let val = builder.ins().global_value(self.repr(ty), data);
                     let value = self.value_mut(fun, value.unwrap());
                     value.value = FinalValue::Pointer(val);
+                }
+                IKind::FunPointer(id) => {
+                    let id = *id;
+                    let rid = match self.state.funs[id].kind {
+                        FKind::Represented(rid) => rid,
+                        _ => unreachable!(),
+                    };
+                    let fun_id = self.state.rfuns[rid].id;
+                    let map_id = ID(fun_id.as_u32() as u64);
+
+                    let fun_ref = if let Some(&fun_ref) = self.state.imported_funs.get(map_id) {
+                        fun_ref
+                    } else {
+                        let fun_ref = self
+                            .program
+                            .module
+                            .declare_func_in_func(fun_id, builder.func);
+                        self.state.imported_funs.insert(map_id, fun_ref);
+                        fun_ref
+                    };
+
+                    let pointer = builder.ins().func_addr(ptr_ty(), fun_ref);
+
+                    self.wrap_val(fun, value.unwrap(), pointer);
+                }
+                IKind::FunPointerCall(pointer, args) => {
+                    arg_buffer.clear();
+                    arg_buffer.extend(args);
+
+                    let pointer_type = self.value(fun, *pointer).ty;
+                    let pointer = self.unwrap_val(fun, *pointer, builder);
+                    call_buffer.clear();
+                    call_buffer.extend(args.iter().map(|&a| self.unwrap_val(fun, a, builder)));
+
+                    let mut struct_return = false;
+                    if let Some(ret_ty) = value.map(|v| self.value(fun, v).ty) {
+                        if self.on_stack(ret_ty) {
+                            let size = self.ty(ret_ty).size;
+                            let last = arg_buffer[arg_buffer.len() - 1];
+                            let data = StackSlotData::new(StackSlotKind::ExplicitSlot, size);
+                            let slot = builder.create_stack_slot(data);
+                            self.value_mut(fun, last).value = FinalValue::StackSlot(slot);
+                            self.value_mut(fun, value.unwrap()).value = FinalValue::StackSlot(slot);
+                            struct_return = true;
+                        }
+                    }
+
+                    let sig_id = self.ty(pointer_type).id;
+                    let sig = if let Some(&sig) = self.state.imported_signatures.get(sig_id) {
+                        sig
+                    } else {
+                        let ptr_ty = match self.ty(pointer_type).kind {
+                            TKind::FunPointer(id) => id,
+                            _ => unreachable!(),
+                        };
+                        let sig = self.state.signature_of_fun_pointer(ptr_ty);
+                        let sig = builder.import_signature(sig);
+                        self.state.imported_signatures.insert(sig_id, sig);
+                        sig
+                    };
+
+                    let call = builder.ins().call_indirect(sig, pointer, &call_buffer);
+                    if !struct_return {
+                        if let Some(value) = value {
+                            self.wrap_val(fun, value, builder.inst_results(call)[0]);
+                        }
+                    }
                 }
                 IKind::BlockEnd(_) => break,
                 value => unreachable!("{:?}", value),
@@ -1001,9 +1077,7 @@ impl<'a> Generator<'a> {
             FinalValue::StackSlot(slot) => {
                 if !assign && (!value.on_stack || !self.on_stack(value.ty)) {
                     if value.ty == self.state.builtin_repo.bool {
-                        let value = builder
-                            .ins()
-                            .stack_load(I8, slot, value.offset as i32);
+                        let value = builder.ins().stack_load(I8, slot, value.offset as i32);
                         builder.ins().icmp_imm(IntCC::NotEqual, value, 0)
                     } else {
                         builder
@@ -1102,6 +1176,7 @@ impl SdbmHash for &[u8] {
 #[derive(Default)]
 pub struct GState {
     pub f_state: FState,
+    pub imported_signatures: Map<SigRef>,
     pub imported_funs: Map<FuncRef>,
     pub imported_globals: Map<GlobalValue>,
 }
