@@ -15,3 +15,6 @@ cranelift-object = "0.78.0"
 cranelift-native = "0.78.0"
 cranelift-preopt = "0.78.0"
 target-lexicon = "0.12.2"
+
+meta_ser = { path = "meta_ser" }
+traits = { path = "meta_ser/traits" }
