@@ -12,7 +12,7 @@ use std::process::Command;
 
 use crate::{
     ast::{AError, AErrorDisplay, AParser, Vis},
-    cli::Arguments,
+    util::cli::Arguments,
     collector::Collector,
     functions::{FError, FErrorDisplay},
     lexer::{Token, TokenDisplay},
@@ -167,11 +167,13 @@ impl<'a> GErrorDisplay<'a> {
 
 impl std::fmt::Display for GErrorDisplay<'_> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        writeln!(
-            f,
-            "{}",
-            TokenDisplay::new(&self.state.unwrap(), &self.error.token)
-        )?;
+        if let Some(state) = self.state {
+            writeln!(
+                f,
+                "{}",
+                TokenDisplay::new(state, &self.error.token)
+            )?;
+        }
 
         match &self.error.kind {
             GEKind::FError(error) => {

@@ -1,11 +1,11 @@
-Ok(Arguments { _filename: "file", flags: ["flag", "flag"], field_flags: [("flag", "value")], args: ["arg", "arg"] })
-Ok(Arguments { _filename: "file", flags: [], field_flags: [], args: ["string value"] })
 Dummy1
 [(Dummy(1), 0)]
 0
 Dummy(1)
 []
 [(Dummy(1), 0)]
+Ok(Arguments { _filename: "file", hash: ID(0), flags: ["flag", "flag"], field_flags: [("flag", "value")], args: ["arg", "arg"] })
+Ok(Arguments { _filename: "file", hash: ID(0), flags: [], field_flags: [], args: ["string value"] })
 |> 2:1:text_code.mf
 | var something = [1, 2, 3]
 | ^

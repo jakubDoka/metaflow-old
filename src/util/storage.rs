@@ -335,7 +335,6 @@ impl<I: IndexPointer, T> Table<I, T> {
         (None, i)
     }
 
-    #[inline]
     pub fn index(&self, id: ID) -> Option<&I> {
         self.map.get(id)
     }

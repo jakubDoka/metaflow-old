@@ -1,6 +1,7 @@
 pub mod pool;
 pub mod sdbm;
 pub mod storage;
+pub mod cli;
 
 #[macro_export]
 macro_rules! inherit {
@@ -64,4 +65,5 @@ macro_rules! unwrap_enum {
 pub fn test() {
     storage::test();
     pool::test();
+    cli::test();
 }

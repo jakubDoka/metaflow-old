@@ -5,9 +5,9 @@ extern crate cranelift_codegen;
 extern crate cranelift_frontend;
 
 pub mod ast;
-pub mod cli;
 pub mod collector;
 pub mod functions;
+pub mod incr;
 pub mod gen;
 pub mod lexer;
 pub mod module_tree;
@@ -16,6 +16,7 @@ pub mod types;
 pub mod util;
 
 pub const FILE_EXTENSION: &str = ".pmt";
+pub const VERSION: &str = env!("CARGO_PKG_VERSION");
 
 fn main() {
     #[cfg(feature = "testing")]
@@ -25,7 +26,7 @@ fn main() {
 }
 
 fn run() {
-    let args = match cli::Arguments::new(std::env::args()) {
+    let args = match util::cli::Arguments::new(std::env::args()) {
         Ok(args) => args,
         Err(e) => {
             println!("{:?}", e);
@@ -44,7 +45,6 @@ fn run() {
 
 #[cfg(feature = "testing")]
 fn test() {
-    cli::test();
     util::test();
     lexer::test();
     ast::test();
