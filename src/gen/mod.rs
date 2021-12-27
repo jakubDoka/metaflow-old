@@ -17,7 +17,6 @@ use crate::{
     functions::{FError, FErrorDisplay},
     lexer::{Token, TokenDisplay},
     module_tree::{MTError, MTErrorDisplay, MTParser},
-    types::Program,
 };
 
 use super::*;

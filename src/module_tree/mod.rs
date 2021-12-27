@@ -70,13 +70,13 @@ impl<'a> MTParser<'a> {
                             dep.0 == id
                         })
                         .map(|dep| dep.1)
-                        .ok_or_else(|| MTError::new(MTEKind::ImportNotFound, import.token.clone()))?
+                        .ok_or_else(|| MTError::new(MTEKind::ImportNotFound, import.token))?
                         .clone()
                 };
 
                 let dependency = self.load_module(
                     import.path,
-                    import.token.clone(),
+                    import.token,
                     manifest,
                     &mut path_buffer,
                 )?;
@@ -132,10 +132,10 @@ impl<'a> MTParser<'a> {
         let name_len = module_path.file_stem().unwrap().len();
         let whole_len = module_path.file_name().unwrap().len();
 
-        let len = root_span.range.len();
+        let len = root_span.len();
         let name = self
             .state
-            .slice_span(&root_span, len - whole_len..len - name_len + whole_len);
+            .slice_span(&root_span, len - whole_len, len - name_len + whole_len);
 
         let module_path = module_path
             .strip_prefix(
@@ -220,7 +220,7 @@ impl<'a> MTParser<'a> {
             let content = std::fs::read_to_string(&path_buffer).map_err(|err| {
                 MTError::new(
                     MTEKind::ManifestReadError(path_buffer.clone(), err),
-                    token.clone(),
+                    token,
                 )
             })?;
 
@@ -228,7 +228,7 @@ impl<'a> MTParser<'a> {
                 .canonicalize()
                 .unwrap()
                 .to_str()
-                .ok_or_else(|| MTError::new(MTEKind::InvalidPathEncoding, token.clone()))?
+                .ok_or_else(|| MTError::new(MTEKind::InvalidPathEncoding, token))?
                 .to_string();
 
             let source = SourceEnt {
@@ -252,15 +252,15 @@ impl<'a> MTParser<'a> {
 
             let name_len = Path::new(root_file)
                 .file_stem()
-                .ok_or_else(|| MTError::new(MTEKind::MissingPathStem, token.clone()))?
+                .ok_or_else(|| MTError::new(MTEKind::MissingPathStem, token))?
                 .len();
             let whole_len = Path::new(root_file).file_name().unwrap().len();
 
-            let len = root_file_span.range.len();
+            let len = root_file_span.len();
             let name = self
                 .state
-                .slice_span(&root_file_span, len - whole_len..len - whole_len + name_len);
-            let root_path = self.state.slice_span(&root_file_span, 0..parent_len);
+                .slice_span(&root_file_span, len - whole_len, len - whole_len + name_len);
+            let root_path = self.state.slice_span(&root_file_span, 0, parent_len);
 
             let manifest_ent = &mut self.state.manifests[manifest_id];
             manifest_ent.name = name;
@@ -299,7 +299,7 @@ impl<'a> MTParser<'a> {
 
                 self.state.manifests[manifest_id].deps.push((id, manifest));
 
-                frontier.push((manifest, dependency.token.clone(), Some(dependency.clone())));
+                frontier.push((manifest, dependency.token, Some(dependency.clone())));
             }
         }
 
@@ -335,10 +335,10 @@ impl<'a> MTParser<'a> {
                 base_path,
             ])
             .status()
-            .map_err(|err| MTError::new(MTEKind::DownloadError(err), dep.token.clone()))?;
+            .map_err(|err| MTError::new(MTEKind::DownloadError(err), dep.token))?;
 
         if !code.success() {
-            return Err(MTError::new(MTEKind::DownloadFailed, dep.token.clone()));
+            return Err(MTError::new(MTEKind::DownloadFailed, dep.token));
         }
 
         Ok(())

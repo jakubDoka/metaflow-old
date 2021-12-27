@@ -188,3 +188,132 @@ pub fn derive_de_ser(input: TokenStream) -> TokenStream {
     result.into()
 }
 
+#[proc_macro_derive(EnumGetters)]
+pub fn derive_enum_getters(input: TokenStream) -> TokenStream {
+    let input = syn::parse_macro_input!(input as syn::DeriveInput);
+
+    let name = &input.ident;
+
+    let generics = input.generics.clone();
+
+    let mut type_params = input.generics.clone();
+    for param in type_params.type_params_mut() {
+        param.bounds.clear();
+    }
+
+    let data = match input.data {
+        syn::Data::Enum(data) => data,
+        _ => panic!("macro only supports enums"),
+    };
+
+    let functions = data.variants.iter().map(|v| {
+        let ident = &v.ident;
+        
+        let pascal_case = pascal_to_snake(&ident.to_string());
+
+        let getter_name = format_ident!("{}", pascal_case);
+        let mut_getter_name = format_ident!("{}_mut", pascal_case);
+        let into_name = format_ident!("into_{}", pascal_case); 
+
+        let is_tuple = v.fields.iter().next().map(|f| f.ident.is_none()).unwrap_or(false);
+
+        if is_tuple {
+            let names1 = (0..v.fields.len()).map(|i| format_ident!("field{}", i));
+            let names2 = names1.clone();
+            let names3 = names1.clone();
+            let names4 = names1.clone();
+            let names5 = names1.clone();
+            let names6 = names1.clone();
+
+            let types1 = v.fields.iter().map(|f| &f.ty);
+            let types2 = types1.clone();
+            let types3 = types1.clone();
+            
+            
+            quote::quote! {
+                pub fn #getter_name(&self) -> (#( &#types1 ),*) {
+                    match self {
+                        Self::#ident(#(#names1),*) => (#(#names2),*),
+                        var => panic!("invalid variant {:?}", var),
+                    }
+                }
+
+                pub fn #mut_getter_name(&mut self) -> (#( &mut #types2 ),*) {
+                    match self {
+                        Self::#ident(#(#names3),*) => (#(#names4),*),
+                        var => panic!("invalid variant {:?}", var),
+                    }
+                }
+
+                pub fn #into_name(self) -> (#(#types3),*) {
+                    match self {
+                        Self::#ident(#(#names5),*) => (#(#names6),*),
+                        var => panic!("invalid variant {:?}", var),
+                    }
+                }
+            }
+        } else {
+            let names1 = v.fields.iter().map(|f| f.ident.as_ref().unwrap());
+            let names2 = names1.clone();
+            let names3 = names1.clone();
+            let names4 = names1.clone();
+            let names5 = names1.clone();
+            let names6 = names1.clone();
+            
+            let types1 = v.fields.iter().map(|f| &f.ty);
+            let types2 = types1.clone();
+            let types3 = types1.clone();
+            
+
+            quote::quote! {
+                pub fn #getter_name(&self) -> (#( &#types1 ),*) {
+                    match self {
+                        Self::#ident { #(#names1),* } => (#(#names2),*),
+                        var => panic!("invalid variant {:?}", var),
+                    }
+                }
+
+                pub fn #mut_getter_name(&mut self) -> (#( &mut #types2 ),*) {
+                    match self {
+                        Self::#ident { #(#names4),* } => (#(#names3),*),
+                        var => panic!("invalid variant {:?}", var),
+                    }
+                }
+
+                pub fn #into_name(self) -> (#( #types3 ),*) {
+                    match self {
+                        Self::#ident { #(#names5),* } => (#(#names6),*),
+                        var => panic!("invalid variant {:?}", var),
+                    }
+                }
+            }
+        }
+    });
+
+    quote::quote! {
+        impl #generics #name #type_params {
+            #( #functions )*
+        }
+    }.into()
+}
+
+fn pascal_to_snake(s: &str) -> String {
+    let mut result = String::with_capacity(s.len() + s.chars().filter(|c| c.is_uppercase()).count());
+    let mut prev_is_upper = true;
+    for c in s.chars() {
+        if c.is_uppercase() {
+            if prev_is_upper {
+                result.push(c.to_ascii_lowercase());
+            } else {
+                result.push('_');
+                result.push(c.to_ascii_lowercase());
+            }
+            prev_is_upper = true;
+        } else {
+            result.push(c);
+            prev_is_upper = false;
+        }
+    }
+    result
+}
+

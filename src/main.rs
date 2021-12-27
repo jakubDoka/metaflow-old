@@ -1,6 +1,6 @@
 #![feature(vec_into_raw_parts)]
 
-use gen::GErrorDisplay;
+//use gen::GErrorDisplay;
 extern crate cranelift_codegen;
 extern crate cranelift_frontend;
 
@@ -8,7 +8,7 @@ pub mod ast;
 pub mod collector;
 pub mod functions;
 pub mod incr;
-pub mod gen;
+//pub mod gen;
 pub mod lexer;
 pub mod module_tree;
 pub mod testing;
@@ -26,7 +26,7 @@ fn main() {
 }
 
 fn run() {
-    let args = match util::cli::Arguments::new(std::env::args()) {
+    /*let args = match util::cli::Arguments::new(std::env::args()) {
         Ok(args) => args,
         Err(e) => {
             println!("{:?}", e);
@@ -40,7 +40,7 @@ fn run() {
             "Failed to compile:\n {}",
             GErrorDisplay::new(state.as_ref(), &err)
         ),
-    };
+    };*/
 }
 
 #[cfg(feature = "testing")]

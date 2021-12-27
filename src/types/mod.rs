@@ -1,36 +1,30 @@
 use std::fmt::Write;
 use std::ops::{Deref, DerefMut};
-use std::str::FromStr;
 
 use crate::ast::{AError, AErrorDisplay, AKind, AParser, Ast, Vis};
 use crate::collector::{Attrs, Collector, Item};
 use crate::lexer::{Span, TKind as LTKind, Token, TokenDisplay};
 use crate::module_tree::{self, MTContext, MTParser, MTState, Mod, TreeStorage};
 use crate::util::sdbm::ID;
-use crate::util::storage::{IndexPointer, List, ReusableList, Table};
-use cranelift_codegen::ir::types::{Type as CrType, INVALID};
-use cranelift_codegen::ir::{types::*, AbiParam, ArgumentPurpose, Signature};
-use cranelift_codegen::isa::CallConv;
-use cranelift_codegen::settings;
-use cranelift_module::Module;
-use cranelift_object::{ObjectBuilder, ObjectModule};
+use crate::util::Size;
+use crate::util::storage::{IndexPointer, ReusableList, Table};
+use cranelift_codegen::ir::types::Type as CrType;
+use cranelift_codegen::ir::types::*;
+use meta_ser::EnumGetters;
 
 type Result<T = ()> = std::result::Result<T, TError>;
 
 pub const TYPE_SALT: ID = ID(0x9e3779b97f4a7c15);
 
-pub const VISIBILITY_MESSAGE: &str =
-"removing 'priv' in case of different module but same package or adding 'pub' in case of different package can help";
+pub const VISIBILITY_MESSAGE: &str = concat!(
+    "removing 'priv' in case of different module but same package or adding",
+    " 'pub' in case of different package can help",
+);
 
 pub static mut POINTER_TYPE: CrType = INVALID;
 
-pub fn ptr_ty() -> CrType {
-    unsafe { POINTER_TYPE }
-}
-
 pub struct TParser<'a> {
     module: Mod,
-    program: &'a mut Program,
     state: &'a mut TState,
     context: &'a mut TContext,
     collector: &'a mut Collector,
@@ -40,14 +34,12 @@ impl<'a> TParser<'a> {
     pub const MAX_TYPE_INSTANTIATION_DEPTH: usize = 1000;
 
     pub fn new(
-        program: &'a mut Program,
         state: &'a mut TState,
         context: &'a mut TContext,
         collector: &'a mut Collector,
     ) -> Self {
         Self {
             module: Mod::new(0),
-            program,
             state,
             context,
             collector,
@@ -96,35 +88,35 @@ impl<'a> TParser<'a> {
         self.context.pool = pool;
 
         for &ty in order.iter().rev() {
-            let ty_ent = &self.state.types[ty];
+            let ty_ent = &mut self.state.types[ty];
 
-            match ty_ent.kind {
-                TKind::Structure(id) => {
-                    let mut size = 0;
-                    let structure = &mut self.state.stypes[id];
-                    let mut fields = std::mem::take(&mut structure.fields);
-                    let kind = structure.kind;
+            match &mut ty_ent.kind {
+                TKind::Structure(stype) => {
+                    let mut size = Size::ZERO;
+                    let mut fields = std::mem::take(&mut stype.fields);
+                    let kind = stype.kind;
                     let align = fields
                         .iter()
                         .map(|field| self.state.types[field.ty].align)
                         .max()
-                        .unwrap_or(0);
+                        .unwrap_or(Size::ZERO);
 
-                    if align != 0 {
+                    if align != Size::ZERO {
                         match kind {
                             SKind::Struct => {
-                                let calc = move |offset| {
-                                    align * ((offset & (align - 1)) != 0) as u32
-                                        - (offset & (align - 1))
+                                let calc = move |offset: Size| {
+                                    let temp = Size::new(offset.s32 & (align.s32 - 1), offset.s64 & (align.s64 - 1));
+                                    let add = (temp != Size::ZERO) as u32;
+                                    Size::new(temp.s32 * add - temp.s32, temp.s64 * add - temp.s64)
                                 };
 
                                 for field in &mut fields {
-                                    size += calc(size);
+                                    size = size.add(calc(size));
                                     field.offset = size;
-                                    size += self.state.types[field.ty].size;
+                                    size = size.add(self.state.types[field.ty].size);
                                 }
 
-                                size += calc(size);
+                                size = size.add(calc(size));
                             }
                             SKind::Union => {
                                 size = fields
@@ -136,14 +128,15 @@ impl<'a> TParser<'a> {
                         }
                     }
 
-                    self.state.stypes[id].fields = fields;
+                    self.state.types[ty].kind.structure_mut().fields = fields;
 
                     let ty_ent = &mut self.state.types[ty];
                     ty_ent.align = align;
                     ty_ent.size = size;
                 }
-                TKind::Array(element, size) => {
-                    self.state.types[ty].size = size * self.state.types[element].size;
+                &mut TKind::Array(element, size) => {
+                    let element_size = self.state.types[element].size;
+                    self.state.types[ty].size = Size::new(size, size).mul(element_size);
                 }
                 TKind::Pointer(..) | TKind::Builtin(..) | TKind::FunPointer(..) => (),
                 _ => unreachable!("{:?}", ty_ent.kind),
@@ -194,7 +187,7 @@ impl<'a> TParser<'a> {
         ast_id: GAst,
         kind: SKind,
         depth: usize,
-    ) -> Result<SType> {
+    ) -> Result {
         let mut fields = std::mem::take(&mut self.context.struct_field_buffer);
 
         // SAFETY: we can take a reference as we know that
@@ -235,7 +228,7 @@ impl<'a> TParser<'a> {
             };
             let type_ast = &field_line[field_line.len() - 1];
             let (_, ty) = self.resolve_type(module, type_ast, depth)?;
-            let hint = field_line.token.clone();
+            let hint = field_line.token;
 
             for field in field_line[..field_line.len() - 1].iter() {
                 let id = field.token.span.hash;
@@ -243,7 +236,7 @@ impl<'a> TParser<'a> {
                     embedded,
                     vis,
                     id,
-                    offset: 0,
+                    offset: Size::ZERO,
                     ty,
                     hint: hint.clone(),
                 };
@@ -264,18 +257,17 @@ impl<'a> TParser<'a> {
             self.state.types.remove_link(id, ty);
         }
 
-        let s_ent = STypeEnt {
+        let s_ent = SType {
             kind,
             fields: fields.clone(),
         };
-        let s_id = self.state.stypes.add(s_ent);
 
-        self.state.types[id].kind = TKind::Structure(s_id);
+        self.state.types[id].kind = TKind::Structure(s_ent);
 
         fields.clear();
         self.context.struct_field_buffer = fields;
 
-        Ok(s_id)
+        Ok(())
     }
 
     fn resolve_type(&mut self, module: Mod, ast: &Ast, depth: usize) -> Result<(Mod, Type)> {
@@ -294,7 +286,7 @@ impl<'a> TParser<'a> {
             .state
             .can_access(module, ty_module, self.state.types[ty].vis)
         {
-            return Err(TError::new(TEKind::VisibilityViolation, ast.token.clone()));
+            return Err(TError::new(TEKind::VisibilityViolation, ast.token));
         }
 
         Ok((module, ty))
@@ -323,8 +315,8 @@ impl<'a> TParser<'a> {
 
         let call_conv = if ast[ast.len() - 1].kind != AKind::None {
             let str = self.state.display(&ast[ast.len() - 1].token.span);
-            self.program.parse_call_conv(str).ok_or_else(|| {
-                TError::new(TEKind::InvalidCallConv, ast[ast.len() - 1].token.clone())
+            CallConv::from_str(str).ok_or_else(|| {
+                TError::new(TEKind::InvalidCallConv, ast[ast.len() - 1].token)
             })?
         } else {
             CallConv::Fast
@@ -342,11 +334,11 @@ impl<'a> TParser<'a> {
         let (_, element) = self.resolve_type(module, element, depth)?;
         let (_, length) = self.resolve_type(module, length, depth)?;
         let length = match self.state.types[length].kind {
-            TKind::Const(TypeConst::Int(i)) => i,
+            TKind::Constant(TypeConst::Int(i)) => i,
             _ => {
                 return Err(TError::new(
                     TEKind::ExpectedIntConstant,
-                    ast[1].token.clone(),
+                    ast[1].token,
                 ))
             }
         };
@@ -419,7 +411,7 @@ impl<'a> TParser<'a> {
             _ => {
                 return Err(TError::new(
                     TEKind::InstancingNonGeneric(ty_ent.hint.clone()),
-                    ast.token.clone(),
+                    ast.token,
                 ))
             }
         };
@@ -431,10 +423,10 @@ impl<'a> TParser<'a> {
             params: params.clone(),
             kind: TKind::Unresolved(ast_id),
             name: ty_ent.name.clone(),
-            hint: ast.token.clone(),
+            hint: ast.token,
             attrs: ty_ent.attrs.clone(),
-            size: 0,
-            align: 0,
+            size: Size::ZERO,
+            align: Size::ZERO,
         };
 
         let (shadowed, ty) = self.state.types.insert(id, type_ent);
@@ -487,11 +479,11 @@ impl<'a> TParser<'a> {
                     } else {
                         return Err(TError::new(
                             TEKind::UnexpectedAst(String::from("expected struct identifier")),
-                            ident.token.clone(),
+                            ident.token,
                         ));
                     };
 
-                    let hint = ast[0].token.clone();
+                    let hint = ast[0].token;
                     let id = TYPE_SALT.add(ident.token.span.hash).add(module_name);
                     let datatype = TypeEnt {
                         vis: visibility,
@@ -499,11 +491,11 @@ impl<'a> TParser<'a> {
                         params: vec![],
                         module,
                         kind,
-                        name: ident.token.span.clone(),
+                        name: ident.token.span,
                         attrs,
                         hint: hint.clone(),
-                        size: 0,
-                        align: 0,
+                        size: Size::ZERO,
+                        align: Size::ZERO,
                     };
 
                     let (replaced, id) = self.state.types.insert(id, datatype);
@@ -534,7 +526,7 @@ impl<'a> TParser<'a> {
             return index;
         }
 
-        let size = ptr_ty().bytes() as u32;
+        let size = Size::POINTER;
 
         let pointer_type = TypeEnt {
             vis: Vis::Public,
@@ -571,7 +563,7 @@ impl<'a> TParser<'a> {
             vis: Vis::Public,
             kind: TKind::Array(element, length as u32),
 
-            size: self.state.types[element].size * length as u32,
+            size: self.state.types[element].size.mul(Size::new(length as u32, length as u32)),
             align: self.state.types[element].align,
 
             ..Default::default()
@@ -601,7 +593,7 @@ impl<'a> TParser<'a> {
         let ty_ent = TypeEnt {
             id,
             vis: Vis::Public,
-            kind: TKind::Const(constant),
+            kind: TKind::Constant(constant),
 
             ..Default::default()
         };
@@ -639,15 +631,13 @@ impl<'a> TParser<'a> {
             return id;
         }
 
-        let fun = FunPointerEnt {
+        let fun = FunPointer {
             call_conv,
             args: args.to_vec(),
             ret,
         };
 
-        let fun = self.state.fun_pointers.add(fun);
-
-        let size = ptr_ty().bytes() as u32;
+        let size = Size::POINTER;
         let type_ent = TypeEnt {
             kind: TKind::FunPointer(fun),
             params: vec![],
@@ -685,14 +675,12 @@ impl<'a> ItemSearch<Type> for TParser<'a> {
 impl<'a> TreeStorage<Type> for TParser<'a> {
     fn node_dep(&self, id: Type, idx: usize) -> Type {
         let node = &self.state.types[id];
-        match node.kind {
-            TKind::Structure(id) => {
-                let structure = &self.state.stypes[id];
-                structure.fields[idx].ty
+        match &node.kind {
+            TKind::Structure(stype) => {
+                stype.fields[idx].ty
             }
-            TKind::Array(ty, _) => ty,
-            TKind::FunPointer(id) => {
-                let fun = &self.state.fun_pointers[id];
+            TKind::Array(ty, _) => *ty,
+            TKind::FunPointer(fun) => {
                 if idx == fun.args.len() {
                     fun.ret.unwrap()
                 } else {
@@ -706,16 +694,15 @@ impl<'a> TreeStorage<Type> for TParser<'a> {
     fn node_len(&self, id: Type) -> usize {
         let node = &self.state.types[id];
 
-        match node.kind {
-            _ if node.module != self.module || node.size != 0 => 0,
+        match &node.kind {
+            _ if node.module != self.module || node.size != Size::ZERO => 0,
             TKind::Builtin(_) | TKind::Pointer(..) => 0,
-            TKind::FunPointer(id) => {
-                let fun = &self.state.fun_pointers[id];
+            TKind::FunPointer(fun) => {
                 fun.args.len() + fun.ret.is_some() as usize
             }
             TKind::Array(..) => 1,
-            TKind::Structure(id) => self.state.stypes[id].fields.len(),
-            TKind::Generic(_) | TKind::Unresolved(_) | TKind::Const(_) => unreachable!(),
+            TKind::Structure(stype) => stype.fields.len(),
+            TKind::Generic(_) | TKind::Unresolved(_) | TKind::Constant(_) => unreachable!(),
         }
     }
 
@@ -774,8 +761,8 @@ pub struct TypeEnt {
     pub name: Span,
     pub hint: Token,
     pub attrs: Attrs,
-    pub size: u32,
-    pub align: u32,
+    pub size: Size,
+    pub align: Size,
 }
 
 impl Default for TypeEnt {
@@ -789,26 +776,15 @@ impl Default for TypeEnt {
             name: Span::default(),
             hint: Token::default(),
             attrs: Attrs::default(),
-            size: 0,
-            align: 0,
+            size: Size::default(),
+            align: Size::default(),
         }
     }
 }
 
 impl TypeEnt {
     pub fn on_stack(&self) -> bool {
-        self.size > ptr_ty().bytes() as u32
-    }
-
-    pub fn repr(&self) -> CrType {
-        match self.kind {
-            TKind::Builtin(ty) => ty,
-            TKind::Structure(..)
-            | TKind::Pointer(..)
-            | TKind::FunPointer(..)
-            | TKind::Array(..) => ptr_ty(),
-            TKind::Generic(..) | TKind::Unresolved(..) | TKind::Const(..) => unreachable!(),
-        }
+        self.size > Size::POINTER
     }
 
     pub fn base(&self) -> Option<Type> {
@@ -820,13 +796,13 @@ impl TypeEnt {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, EnumGetters)]
 pub enum TKind {
     Builtin(CrType),
     Pointer(Type),
     Array(Type, u32),
     FunPointer(FunPointer),
-    Const(TypeConst),
+    Constant(TypeConst),
     Structure(SType),
     Generic(GAst),
     Unresolved(GAst),
@@ -834,14 +810,12 @@ pub enum TKind {
 
 impl Default for TKind {
     fn default() -> Self {
-        TKind::Builtin(ptr_ty())
+        TKind::Builtin(INVALID)
     }
 }
 
-super::index_pointer!(FunPointer);
-
 #[derive(Debug, Clone)]
-pub struct FunPointerEnt {
+pub struct FunPointer {
     pub call_conv: CallConv,
     pub args: Vec<Type>,
     pub ret: Option<Type>,
@@ -881,10 +855,8 @@ impl std::fmt::Display for TypeConstDisplay<'_> {
 
 crate::index_pointer!(GAst);
 
-crate::index_pointer!(SType);
-
 #[derive(Debug, Clone)]
-pub struct STypeEnt {
+pub struct SType {
     pub kind: SKind,
     pub fields: Vec<SField>,
 }
@@ -894,7 +866,7 @@ pub struct SField {
     pub embedded: bool,
     pub vis: Vis,
     pub id: ID,
-    pub offset: u32,
+    pub offset: Size,
     pub ty: Type,
     pub hint: Token,
 }
@@ -919,8 +891,6 @@ pub struct TState {
     pub builtin_repo: BuiltinRepo,
     pub types: Table<Type, TypeEnt>,
     pub asts: ReusableList<GAst, Ast>,
-    pub stypes: List<SType, STypeEnt>,
-    pub fun_pointers: List<FunPointer, FunPointerEnt>,
     pub mt_state: MTState,
     pub unresolved: Vec<(Type, usize)>,
     pub resolved: Vec<Type>,
@@ -928,7 +898,7 @@ pub struct TState {
 }
 
 impl TState {
-    pub fn signature_of_fun_pointer(&self, fun: FunPointer) -> Signature {
+    /*pub fn signature_of_fun_pointer(&self, fun: FunPointer) -> Signature {
         let fun = &self.fun_pointers[fun];
 
         let mut params = fun
@@ -954,7 +924,7 @@ impl TState {
             returns,
             call_conv: fun.call_conv,
         }
-    }
+    }*/
 }
 
 crate::inherit!(TState, mt_state, MTState);
@@ -965,12 +935,10 @@ impl Default for TState {
             builtin_repo: Default::default(),
             types: Table::new(),
             asts: ReusableList::new(),
-            stypes: List::new(),
             mt_state: MTState::default(),
             unresolved: vec![],
             resolved: vec![],
             parsed_ast: Ast::default(),
-            fun_pointers: List::new(),
         };
 
         s.builtin_repo = BuiltinRepo::new(&mut s);
@@ -981,7 +949,7 @@ impl Default for TState {
 
 macro_rules! define_repo {
     (
-        $($name:ident, $repr:expr, $size:expr);+
+        $($name:ident, $repr:expr, $s32:expr, $s64:expr);+
     ) => {
         #[derive(Clone, Debug)]
         pub struct BuiltinRepo {
@@ -1010,8 +978,8 @@ macro_rules! define_repo {
                         id,
                         vis: Vis::Public,
                         kind: TKind::Builtin($repr),
-                        size: $size,
-                        align: $size.min(8),
+                        size: Size::new($s32, $s64),
+                        align: Size::new($s32, $s64).min(Size::new(4, 8)),
                         module,
                         hint: Token::new(LTKind::Ident, name.clone()),
                         name,
@@ -1036,52 +1004,63 @@ macro_rules! define_repo {
 }
 
 define_repo!(
-    i8, I8, 1;
-    i16, I16, 2;
-    i32, I32, 4;
-    i64, I64, 8;
-    u8, I8, 1;
-    u16, I16, 2;
-    u32, I32, 4;
-    u64, I64, 8;
-    f32, F32, 4;
-    f64, F64, 8;
-    bool, B1, 1;
-    int, ptr_ty(), ptr_ty().bytes() as u32;
-    uint, ptr_ty(), ptr_ty().bytes() as u32;
-    array, INVALID, 0
+    i8, I8, 1, 0;
+    i16, I16, 2, 0;
+    i32, I32, 4, 0;
+    i64, I64, 8, 0;
+    u8, I8, 1, 0;
+    u16, I16, 2, 0;
+    u32, I32, 4, 0;
+    u64, I64, 8, 0;
+    f32, F32, 4, 0;
+    f64, F64, 8, 0;
+    bool, B1, 1, 0;
+    int, INVALID, 0, 1;
+    uint, INVALID, 0, 1;
+    array, INVALID, 0, 0
 );
 
-pub struct Program {
-    pub module: ObjectModule,
-    pub stacktrace: bool,
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum CallConv {
+    Fast,
+    Cold,
+    SystemV,
+    WindowsFastcall,
+    AppleAarch64,
+    BaldrdashSystemV,
+    BaldrdashWindows,
+    Baldrdash2020,
+    Probestack,
+    WasmtimeSystemV,
+    WasmtimeFastcall,
+    WasmtimeAppleAarch64,
+    Default,
 }
 
-impl Program {
-    pub fn new(module: ObjectModule, stacktrace: bool) -> Self {
-        unsafe {
-            POINTER_TYPE = module.isa().pointer_type();
-        }
-        Self { module, stacktrace }
-    }
-
-    pub fn parse_call_conv(&self, call_conv: &str) -> Option<CallConv> {
-        if call_conv == "platform" {
-            let triple = self.module.isa().triple();
-            Some(CallConv::triple_default(triple))
-        } else {
-            CallConv::from_str(call_conv).ok()
-        }
+impl CallConv {
+    pub fn from_str(s: &str) -> Option<Self> {
+        Some(match s {
+            "fast" => Self::Fast,
+            "cold" => Self::Cold,
+            "system_v" => Self::SystemV,
+            "windows_fastcall" => Self::WindowsFastcall,
+            "apple_aarch64" => Self::AppleAarch64,
+            "baldrdash_system_v" => Self::BaldrdashSystemV,
+            "baldrdash_windows" => Self::BaldrdashWindows,
+            "baldrdash_2020" => Self::Baldrdash2020,
+            "probestack" => Self::Probestack,
+            "wasmtime_system_v" => Self::WasmtimeSystemV,
+            "wasmtime_fastcall" => Self::WasmtimeFastcall,
+            "wasmtime_apple_aarch64" => Self::WasmtimeAppleAarch64,
+            "default" => Self::Default,
+            _ => return None,
+        })
     }
 }
 
-impl Default for Program {
+impl Default for CallConv {
     fn default() -> Self {
-        let flags = settings::Flags::new(settings::builder());
-        let isa = cranelift_native::builder().unwrap().finish(flags);
-        let builder =
-            ObjectBuilder::new(isa, "all", cranelift_module::default_libcall_names()).unwrap();
-        Self::new(ObjectModule::new(builder), true)
+        Self::Fast
     }
 }
 
@@ -1115,14 +1094,13 @@ impl<'a> std::fmt::Display for TypeDisplay<'a> {
             TKind::Builtin(_) | TKind::Unresolved(_) | TKind::Generic(_) | TKind::Structure(_) => {
                 write!(f, "{}", self.state.display(&ty.name))
             }
-            TKind::Const(value) => {
+            TKind::Constant(value) => {
                 write!(f, "{}", TypeConstDisplay::new(self.state, value))
             }
             TKind::Array(id, len) => {
                 write!(f, "[{}, {}]", Self::new(self.state, *id), len)
             }
-            &TKind::FunPointer(id) => {
-                let fun = &self.state.fun_pointers[id];
+            TKind::FunPointer(fun) => {
                 write!(
                     f,
                     "fn({})",
@@ -1274,7 +1252,6 @@ pub fn call_conv_error(f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
 }
 
 pub fn test() {
-    let mut program = Program::default();
     let mut state = TState::default();
     let mut context = TContext::default();
 
@@ -1297,7 +1274,7 @@ pub fn test() {
 
         context.recycle(ast);
 
-        TParser::new(&mut program, &mut state, &mut context, &mut collector)
+        TParser::new(&mut state, &mut context, &mut collector)
             .parse(module)
             .map_err(|e| panic!("\n{}", TErrorDisplay::new(&mut state, &e)))
             .unwrap();

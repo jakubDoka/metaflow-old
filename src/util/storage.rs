@@ -875,15 +875,15 @@ impl Cursor {
 macro_rules! index_pointer {
     ($id:ident) => {
         #[derive(Clone, Copy, PartialEq, Eq, Debug, Default)]
-        pub struct $id(usize);
+        pub struct $id(u32);
 
         impl IndexPointer for $id {
             fn new(idx: usize) -> Self {
-                Self(idx)
+                Self(idx as u32)
             }
 
             fn raw(&self) -> usize {
-                self.0
+                self.0 as usize
             }
         }
 

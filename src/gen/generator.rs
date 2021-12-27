@@ -7,7 +7,7 @@ use cranelift_codegen::{
         Block as CrBlock, FuncRef, GlobalValue, InstBuilder, MemFlags, SigRef,
         StackSlot, StackSlotData, StackSlotKind, Type as CrType, Value as CrValue,
     },
-    Context,
+    Context, isa::TargetIsa,
 };
 use cranelift_frontend::{FunctionBuilder, FunctionBuilderContext, Variable as CrVar};
 use cranelift_module::{DataContext, DataId, FuncOrDataId, Linkage, Module};
@@ -21,7 +21,7 @@ use crate::{
     },
     lexer::{Span, TKind as LTKind, Token},
     module_tree::Mod,
-    types::{self, ptr_ty, Program, TKind, Type, TypeDisplay, TypeEnt},
+    types::{self, TKind, Type, TypeDisplay, TypeEnt},
     util::{
         pool::PoolRef,
         sdbm::{SdbmHash, ID},
@@ -35,22 +35,22 @@ type Result<T = ()> = std::result::Result<T, GError>;
 
 pub const STRING_SALT: u64 = 0xDEADBEEF; // just a random number
 
-pub struct Generator<'a> {
-    program: &'a mut Program,
+pub struct Generator<'a, T: Module> {
+    module: &'a mut T,
     state: &'a mut GState,
     context: &'a mut GContext,
     collector: &'a mut Collector,
 }
 
-impl<'a> Generator<'a> {
+impl<'a, T: Module> Generator<'a, T> {
     pub fn new(
-        program: &'a mut Program,
+        module: &'a mut T,
         state: &'a mut GState,
         context: &'a mut GContext,
         collector: &'a mut Collector,
     ) -> Self {
         Self {
-            program,
+            module,
             state,
             context,
             collector,
@@ -58,7 +58,7 @@ impl<'a> Generator<'a> {
     }
 
     pub fn generate(&mut self, module: Mod) -> Result {
-        FParser::new(self.program, self.state, self.context, self.collector)
+        FParser::new(self.state, self.context, self.collector)
             .parse(module)
             .map_err(|err| GError::new(GEKind::FError(err), Token::default()))?;
 
@@ -70,7 +70,7 @@ impl<'a> Generator<'a> {
     }
 
     pub fn finalize(&mut self) -> Result {
-        FParser::new(self.program, self.state, self.context, self.collector)
+        FParser::new(self.state, self.context, self.collector)
             .finalize()
             .map_err(|err| GError::new(GEKind::FError(err), Token::default()))?;
 
@@ -87,7 +87,8 @@ impl<'a> Generator<'a> {
                 &GKind::Represented(id, ty) => (id, ty),
                 _ => unreachable!(),
             };
-            self.context
+            self
+                .context
                 .data_context
                 .define_zeroinit(self.ty(ty).size as usize);
             let ctx = unsafe {

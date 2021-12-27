@@ -1,4 +1,4 @@
-use meta_ser::{MetaSer, MetaDeSer};
+use meta_ser::{MetaSer, MetaDeSer, EnumGetters};
 use traits::{MetaSer, MetaDeSer};
 
 #[derive(MetaDeSer, MetaSer, PartialEq, Eq)]
@@ -16,7 +16,7 @@ pub struct SomeGenerics<T> {
     pub b: T,
 }
 
-#[derive(MetaDeSer, MetaSer, PartialEq, Eq)]
+#[derive(MetaDeSer, MetaSer, PartialEq, Eq, Debug, EnumGetters)]
 pub enum SomeEnum {
     A(u32),
     B(u32, u32),

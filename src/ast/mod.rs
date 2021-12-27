@@ -40,7 +40,7 @@ impl<'a> AParser<'a> {
                     return Err(self.unexpected_str("every item in manifest starts with identifier"))
                 }
             }
-            let name = self.state.token.span.clone();
+            let name = self.state.token.span;
             self.next()?;
             match self.state.token.kind {
                 TKind::Op if self.state.token.span.hash == self.main_state.equal_sign => {
@@ -50,9 +50,9 @@ impl<'a> AParser<'a> {
                         return Err(self.unexpected_str("expected string literal"));
                     }
 
-                    let mut value = self.state.token.span.clone();
-                    value.range.start += 1;
-                    value.range.end -= 1;
+                    let mut value = self.state.token.span;
+                    value.start += 1;
+                    value.end -= 1;
 
                     manifest.attrs.push((name, value));
 
@@ -62,18 +62,18 @@ impl<'a> AParser<'a> {
                     "dependencies" => {
                         self.next()?;
                         self.walk_block(|s| {
-                            let mut token = s.state.token.clone();
+                            let mut token = s.state.token;
 
                             s.expect_str(TKind::Ident, "expected dependency name")?;
-                            let name = s.state.token.span.clone();
+                            let name = s.state.token.span;
                             s.next()?;
 
                             if !matches!(s.state.token.kind, TKind::String(_)) {
                                 return Err(s.unexpected_str("expected string literal as repository link with version or local path"));
                             }
-                            let mut path_and_version = s.state.token.span.clone();
-                            path_and_version.range.start += 1;
-                            path_and_version.range.end -= 1;
+                            let mut path_and_version = s.state.token.span;
+                            path_and_version.start += 1;
+                            path_and_version.end -= 1;
                             s.next()?;
 
                             let (path_end, version_start) = s
@@ -81,11 +81,11 @@ impl<'a> AParser<'a> {
                                 .display(&path_and_version)
                                 .find('@')
                                 .map(|i| (i, i + 1))
-                                .unwrap_or((path_and_version.range.len(), path_and_version.range.len()));
+                                .unwrap_or((path_and_version.len(), path_and_version.len()));
 
-                            let path = s.main_state.slice_span(&path_and_version, 0..path_end);
+                            let path = s.main_state.slice_span(&path_and_version, 0, path_end);
 
-                            let version = s.main_state.slice_span(&path_and_version, version_start..path_and_version.range.len());
+                            let version = s.main_state.slice_span(&path_and_version, version_start, path_and_version.len());
 
                             s.join_token(&mut token);
 
@@ -135,10 +135,10 @@ impl<'a> AParser<'a> {
     }
 
     fn import_line(&mut self, imports: &mut Vec<Import>) -> Result {
-        let mut token = self.state.token.clone();
+        let mut token = self.state.token;
 
         let nickname = if self.state.token == TKind::Ident {
-            let nickname = self.state.token.span.clone();
+            let nickname = self.state.token.span;
             self.next()?;
             Some(nickname)
         } else {
@@ -146,9 +146,9 @@ impl<'a> AParser<'a> {
         };
 
         let path = if let TKind::String(_) = self.state.token.kind {
-            let mut path = self.state.token.span.clone();
-            path.range.start += 1;
-            path.range.end -= 1;
+            let mut path = self.state.token.span;
+            path.start += 1;
+            path.end -= 1;
             path
         } else {
             return Err(self.unexpected_str("expected string literal as import path"));
@@ -389,7 +389,7 @@ impl<'a> AParser<'a> {
                         "operator functions can have either 1 or 2 arguments, (unary and binary)"
                             .to_string(),
                     ),
-                    ast.token.clone(),
+                    ast.token,
                 )),
             }
         } else {
@@ -564,7 +564,7 @@ impl<'a> AParser<'a> {
     fn expr_low(&mut self, previous: Ast) -> Result<Ast> {
         let mut result = previous;
         while self.state.token == TKind::Op {
-            let op = self.state.token.clone();
+            let op = self.state.token;
             let pre = precedence(self.main_state.display(&op.span));
 
             self.next()?;
@@ -580,13 +580,13 @@ impl<'a> AParser<'a> {
                 }
             }
 
-            let mut token = result.token.clone();
+            let mut token = result.token;
 
             self.join_token_with(&mut token, &next.token, false);
 
             // this handles the '{op}=' sugar
             result = if pre == ASSIGN_PRECEDENCE
-                && op.span.range.len() != 1
+                && op.span.len() != 1
                 && self.main_state.display(&op.span).chars().last().unwrap() == '='
             {
                 let operator = Ast::new(
@@ -594,7 +594,7 @@ impl<'a> AParser<'a> {
                     Token::new(
                         TKind::Op,
                         self.main_state
-                            .slice_span(&op.span, 0..op.span.range.len() - 1),
+                            .slice_span(&op.span, 0, op.span.len() - 1),
                     ),
                 );
                 let eq = Ast::new(
@@ -602,13 +602,13 @@ impl<'a> AParser<'a> {
                     Token::new(
                         TKind::Op,
                         self.main_state
-                            .slice_span(&op.span, op.span.range.len() - 1..op.span.range.len()),
+                            .slice_span(&op.span, op.span.len() - 1, op.span.len()),
                     ),
                 );
 
                 Ast::with_children(
                     AKind::BinaryOp,
-                    token.clone(),
+                    token,
                     vec![
                         eq,
                         result.clone(),
@@ -641,7 +641,7 @@ impl<'a> AParser<'a> {
             | TKind::Float(..)
             | TKind::String(..) => self.ast(AKind::Lit),
             TKind::LPar => {
-                let token = self.state.token.clone();
+                let token = self.state.token;
                 self.next()?;
                 let mut expr = self.expr()?;
                 self.expect_str(TKind::RPar, "expected ')'")?;
@@ -693,14 +693,14 @@ impl<'a> AParser<'a> {
             loop {
                 match self.state.token.kind {
                     TKind::Dot => {
-                        let mut new_ast = Ast::new(AKind::DotExpr, ast.token.clone());
+                        let mut new_ast = Ast::new(AKind::DotExpr, ast.token);
                         new_ast.push(ast);
                         self.next()?;
                         new_ast.push(self.simple_expr_low(true)?);
                         ast = new_ast;
                     }
                     TKind::LPar => {
-                        let mut new_ast = Ast::new(AKind::None, ast.token.clone());
+                        let mut new_ast = Ast::new(AKind::None, ast.token);
                         if ast.kind == AKind::DotExpr {
                             new_ast.kind = AKind::Call(true);
                             ast.drain(..).rev().for_each(|e| new_ast.push(e));
@@ -720,7 +720,7 @@ impl<'a> AParser<'a> {
                         ast = new_ast;
                     }
                     TKind::LBra => {
-                        let mut new_ast = Ast::new(AKind::Index, ast.token.clone());
+                        let mut new_ast = Ast::new(AKind::Index, ast.token);
                         new_ast.push(ast);
                         self.next()?;
                         self.ignore_newlines()?;
@@ -801,7 +801,7 @@ impl<'a> AParser<'a> {
 
         self.peek()?;
         if self.state.token == TKind::DoubleColon && self.state.peeked == TKind::Ident {
-            let mut temp_ast = Ast::new(AKind::Path, ast.token.clone());
+            let mut temp_ast = Ast::new(AKind::Path, ast.token);
             temp_ast.push(ast);
             self.next()?;
             temp_ast.push(self.ident()?);
@@ -825,7 +825,7 @@ impl<'a> AParser<'a> {
                 TKind::LBra,
                 "expected '[' as a start of generic instantiation",
             )?;
-            let mut temp_ast = Ast::new(AKind::Instantiation, ast.token.clone());
+            let mut temp_ast = Ast::new(AKind::Instantiation, ast.token);
             temp_ast.push(ast);
             ast = temp_ast;
             self.list(&mut ast, TKind::LBra, TKind::Comma, TKind::RBra, Self::expr)?;
@@ -1023,7 +1023,7 @@ impl<'a> AParser<'a> {
     }
 
     fn ast(&mut self, kind: AKind) -> Ast {
-        self.context.ast(kind, self.state.token.clone())
+        self.context.ast(kind, self.state.token)
     }
 
     fn expect_str(&self, kind: TKind, message: &str) -> Result<()> {
@@ -1043,7 +1043,7 @@ impl<'a> AParser<'a> {
     }
 
     fn unexpected(&self, message: String) -> AError {
-        AError::new(AEKind::UnexpectedToken(message), self.state.token.clone())
+        AError::new(AEKind::UnexpectedToken(message), self.state.token)
     }
 
     fn join_token(&self, token: &mut Token) {
@@ -1117,7 +1117,7 @@ impl AMainState {
 
         AState {
             l_state,
-            peeked: token.clone(),
+            peeked: token,
             token,
             is_type_expr: false,
             level: 0,

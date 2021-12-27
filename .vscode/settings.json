@@ -79,6 +79,7 @@
         "sshr",
         "stactrace",
         "struct",
+        "stype",
         "stypes",
         "Svar",
         "udiv",

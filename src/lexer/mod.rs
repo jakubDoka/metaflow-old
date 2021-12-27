@@ -2,10 +2,7 @@ use crate::util::{
     sdbm::ID,
     storage::{IndexPointer, Map},
 };
-use std::{
-    fmt::{Debug, Display},
-    ops::Range,
-};
+use std::fmt::{Debug, Display};
 
 use crate::util::storage::List;
 
@@ -37,7 +34,7 @@ impl<'a> Lexer<'a> {
             self.advance();
         }
         let end = self.state.progress;
-        let value = self.span(start..end);
+        let value = self.span(start, end);
         let kind = match &self.source[start..end] {
             "priv" => TKind::Priv,
             "pub" => TKind::Pub,
@@ -71,7 +68,7 @@ impl<'a> Lexer<'a> {
             self.advance();
         }
         let end = self.state.progress;
-        let value = self.span(start..end);
+        let value = self.span(start, end);
         let kind = match &self.source[start..end] {
             ":" => TKind::Colon,
             "::" => TKind::DoubleColon,
@@ -102,7 +99,7 @@ impl<'a> Lexer<'a> {
             }
         }
         let end = self.state.progress;
-        let value = self.span(start..end);
+        let value = self.span(start, end);
         Ok(Token::new(TKind::Indent(indentation / 2), value))
     }
 
@@ -137,7 +134,7 @@ impl<'a> Lexer<'a> {
             }
         };
         let end = self.state.progress;
-        let value = self.span(start..end);
+        let value = self.span(start, end);
         Ok(Token::new(kind, value))
     }
 
@@ -145,7 +142,7 @@ impl<'a> Lexer<'a> {
         let start = self.state.progress;
         self.parse_number(base).ok_or_else(|| {
             let end = self.state.progress;
-            let value = self.span(start..end);
+            let value = self.span(start, end);
             LError::new(LEKind::InvalidCharacter, value)
         })
     }
@@ -180,7 +177,7 @@ impl<'a> Lexer<'a> {
                     Some(c) => c,
                     None => {
                         let end = self.state.progress;
-                        return Err(LError::new(LEKind::InvalidCharacter, self.span(start..end)));
+                        return Err(LError::new(LEKind::InvalidCharacter, self.span(start, end)));
                     }
                 },
                 false,
@@ -195,21 +192,21 @@ impl<'a> Lexer<'a> {
         if !may_be_label && next != '\'' {
             return Err(LError::new(
                 LEKind::UnclosedCharacter,
-                self.span(start..self.state.progress),
+                self.span(start, self.state.progress),
             ));
         }
 
         if next == '\'' {
             self.advance();
             let end = self.state.progress;
-            let value = self.span(start..end);
+            let value = self.span(start, end);
             Ok(Token::new(TKind::Char(char), value))
         } else {
             while self.peek().unwrap_or('\0').is_alphanumeric() {
                 self.advance();
             }
             let end = self.state.progress;
-            let value = self.span(start..end);
+            let value = self.span(start, end);
             Ok(Token::new(TKind::Label, value))
         }
     }
@@ -261,7 +258,7 @@ impl<'a> Lexer<'a> {
         }
 
         let end = self.state.progress;
-        let value = self.span(start..end);
+        let value = self.span(start, end);
 
         Ok(Token::new(TKind::Comment(is_doc), value))
     }
@@ -284,7 +281,7 @@ impl<'a> Lexer<'a> {
                             let end = self.state.progress;
                             return Err(LError::new(
                                 LEKind::InvalidCharacter,
-                                self.span(start..end),
+                                self.span(start, end),
                             ));
                         }
                     }
@@ -300,7 +297,7 @@ impl<'a> Lexer<'a> {
                 None => {
                     return Err(LError::new(
                         LEKind::UnclosedString,
-                        self.span(start..self.state.progress),
+                        self.span(start, self.state.progress),
                     ));
                 }
             }
@@ -314,7 +311,7 @@ impl<'a> Lexer<'a> {
 
         // note: we don't care if string has incorrect encoding
         let end = self.state.progress;
-        let value = self.span(start..end);
+        let value = self.span(start, end);
         Ok(Token::new(TKind::String(span), value))
     }
 
@@ -383,13 +380,14 @@ impl<'a> Lexer<'a> {
         char
     }
 
-    pub fn span(&self, range: Range<usize>) -> Span {
+    pub fn span(&self, start: usize, end: usize) -> Span {
         Span::new(
             self.state.source,
-            ID::new(&self.source[range.clone()]),
-            range.clone(),
-            self.state.line,
-            range.end - self.state.last_n_line,
+            ID::new(&self.source[start as usize..end as usize]),
+            start as u32,
+            end as u32,
+            self.state.line as u32,
+            end as u32 - self.state.last_n_line as u32,
         )
     }
 
@@ -437,14 +435,14 @@ impl<'a> Lexer<'a> {
                 _ => {
                     return Err(LError::new(
                         LEKind::UnknownCharacter,
-                        self.span(start..start + 1),
+                        self.span(start, start + 1),
                     ))
                 }
             };
 
             self.advance();
             let end = self.state.progress;
-            return Ok(Token::new(kind, self.span(start..end)));
+            return Ok(Token::new(kind, self.span(start, end)));
         }
     }
 }
@@ -485,7 +483,7 @@ impl LState {
 pub struct LMainState {
     pub sources: List<Source, SourceEnt>,
     pub builtin_source: Source,
-    pub builtin_spans: Map<Range<usize>>,
+    pub builtin_spans: Map<(u32, u32)>,
     pub string_lit_buffer: String,
 }
 
@@ -506,53 +504,52 @@ impl LMainState {
     }
 
     pub fn display(&self, span: &Span) -> &str {
-        &self.sources[span.source].content[span.range.clone()]
+        &self.sources[span.source].content[span.start as usize..span.end as usize]
     }
 
     pub fn join_spans(&self, span: &mut Span, other: &Span, trim: bool) {
-        if span.range.end == other.range.end {
+        if span.end == other.end {
             return;
         }
 
         debug_assert!(
-            span.source == other.source && span.range.end <= other.range.start,
+            span.source == other.source && span.end <= other.start,
             "{:?} {:?}",
             span,
             other,
         );
 
         let end = if trim {
-            other.range.start
+            other.start
         } else {
-            other.range.end
-        };
+            other.end
+        } as usize;
 
-        span.range.end = span.range.start
-            + self.sources[span.source].content[span.range.start..end]
+        span.end = span.start
+            + self.sources[span.source].content[span.start as usize..end]
                 .trim_end()
-                .len();
+                .len() as u32;
     }
 
     pub fn builtin_span(&mut self, name: &str) -> Span {
         let hash = ID::new(name);
         let builtin = &mut self.sources[self.builtin_source].content;
-        let range = if let Some(range) = self.builtin_spans.get(hash) {
-            range.clone()
-        } else {
-            let start = builtin.len();
-            builtin.push_str(name);
-            let end = builtin.len();
-            let range = start..end;
-            self.builtin_spans.insert(hash, range.clone());
+        let (start, end) = if let Some(&range) = self.builtin_spans.get(hash) {
             range
+        } else {
+            let start = builtin.len() as u32;
+            builtin.push_str(name);
+            let end = builtin.len() as u32;
+            self.builtin_spans.insert(hash, (start, end));
+            (start, end)
         };
-        Span::new(self.builtin_source, hash, range, 0, 0)
+        Span::new(self.builtin_source, hash, start, end, 0, 0)
     }
 
-    pub fn slice_span(&self, span: &Span, range: Range<usize>) -> Span {
-        let new_range = span.range.start + range.start..span.range.start + range.end;
+    pub fn slice_span(&self, span: &Span, start: usize, end: usize) -> Span {
+        let new_range = span.start as usize + start..span.start as usize + end;
         let hash = ID::new(&self.sources[span.source].content[new_range.clone()]);
-        Span::new(span.source, hash, new_range, span.line, span.column)
+        Span::new(span.source, hash, new_range.start as u32, new_range.end as u32, span.line, span.column)
     }
 
     pub fn lexer_for<'a>(&'a mut self, state: &'a mut LState) -> Lexer<'a> {
@@ -580,7 +577,7 @@ pub struct SourceEnt {
     pub content: String,
 }
 
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Clone, Copy, Default)]
 pub struct Token {
     pub kind: TKind,
     pub span: Span,
@@ -618,7 +615,7 @@ impl PartialEq<TKind> for Token {
     }
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, Copy, PartialEq)]
 pub enum TKind {
     Pub,
     Priv,
@@ -746,7 +743,7 @@ impl std::fmt::Display for TokenDisplay<'_> {
             return Ok(());
         }
 
-        let mut range = self.token.span.range.clone();
+        let mut range = self.token.span.start as usize..self.token.span.end as usize;
         let string = &self.state.sources[self.token.span.source].content;
         if string[range.start..range.end].starts_with("\n") {
             range.start += 1;
@@ -869,25 +866,31 @@ impl Display for SpanDisplay<'_> {
     }
 }
 
-#[derive(Debug, Clone, Default, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub struct Span {
     pub source: Source,
     pub hash: ID,
-    pub range: Range<usize>,
-    pub line: usize,
-    pub column: usize,
+    pub start: u32,
+    pub end: u32,
+    pub line: u32,
+    pub column: u32,
 }
 
 impl Span {
-    pub fn new(source: Source, hash: ID, range: Range<usize>, line: usize, column: usize) -> Self {
+    pub fn new(source: Source, hash: ID, start: u32, end: u32, line: u32, column: u32) -> Self {
         Self {
             source,
-            range,
+            start,
+            end,
             hash,
             line,
             column,
         }
     }
+
+    pub fn len(&self) -> usize {
+        (self.end - self.start) as usize
+    } 
 }
 
 pub fn test() {

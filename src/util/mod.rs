@@ -62,6 +62,53 @@ macro_rules! unwrap_enum {
     };
 }
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Default, PartialOrd, Ord)]
+pub struct Size {
+    pub s32: u32,
+    pub s64: u32,
+}
+
+impl Size {
+    pub const ZERO: Self = Self { s32: 0, s64: 0 };
+    pub const POINTER: Self = Self { s32: 4, s64: 8 };
+
+    pub fn new(s32: u32, s64: u32) -> Self {
+        Self { s32, s64 }
+    }
+
+    pub fn zero() -> Self {
+        Self::new(0, 0)
+    }
+
+    pub fn add(self, other: Self) -> Self {
+        Self::new(self.s32 + other.s32, self.s64 + other.s64)
+    }
+
+    pub fn mul(self, other: Self) -> Self {
+        Self::new(self.s32 * other.s32, self.s64 * other.s64)
+    }
+
+    pub fn rem(self, other: Self) -> Self {
+        Self::new(self.s32 % other.s32, self.s64 % other.s64)
+    }
+
+    pub fn max(self, other: Self) -> Self {
+        Self::new(self.s32.max(other.s32), self.s64.max(other.s64))
+    }
+
+    pub fn min(self, other: Self) -> Self {
+        Self::new(self.s32.min(other.s32), self.s64.min(other.s64))
+    }
+
+    pub fn pick(self, s32: bool) -> u32 {
+        if s32 {
+            self.s32
+        } else {
+            self.s64
+        }
+    }
+}
+
 pub fn test() {
     storage::test();
     pool::test();
