@@ -13,4 +13,5 @@ path = "tests/progress.rs"
 [dependencies]
 quote = "1.0.10"
 syn = "1.0.84"
+proc-macro2 = "1.0.34"
 traits = { path = "traits" }

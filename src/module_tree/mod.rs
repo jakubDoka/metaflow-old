@@ -1,7 +1,7 @@
 use std::ops::{Deref, DerefMut};
 use std::path::{Path, PathBuf};
 
-use crate::ast::{AContext, AError, AErrorDisplay, AMainState, AParser, AState, Dep, Vis};
+use crate::ast::{AError, AErrorDisplay, AMainState, AParser, AState, Dep, Vis};
 use crate::lexer::{SourceEnt, Span, TokenDisplay};
 use crate::util::pool::{Pool, PoolRef};
 use crate::util::sdbm::ID;
@@ -46,7 +46,7 @@ impl<'a> MTParser<'a> {
 
         while let Some(module_id) = frontier.pop() {
             let mut module = std::mem::take(&mut self.state.modules[module_id]);
-            AParser::new(&mut self.state, &mut module.ast, &mut self.context.ast)
+            AParser::new(&mut self.state, &mut module.ast)
                 .take_imports(&mut imports)
                 .map_err(Into::into)?;
             for import in imports.drain(..) {
@@ -238,7 +238,7 @@ impl<'a> MTParser<'a> {
             let source = self.state.sources.add(source);
 
             let mut state = self.state.a_state_for(source);
-            let manifest = AParser::new(&mut self.state, &mut state, &mut self.context.ast)
+            let manifest = AParser::new(&mut self.state, &mut state)
                 .parse_manifest()
                 .map_err(Into::into)?;
 
@@ -540,11 +540,8 @@ impl MTState {
 
 #[derive(Debug, Clone, Default)]
 pub struct MTContext {
-    pub ast: AContext,
     pub pool: Pool,
 }
-
-crate::inherit!(MTContext, ast, AContext);
 
 crate::index_pointer!(Mod);
 

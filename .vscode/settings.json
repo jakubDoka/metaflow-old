@@ -66,6 +66,8 @@
         "probestack",
         "putchar",
         "realloc",
+        "Reloc",
+        "relocs",
         "repr",
         "rfind",
         "rfuns",
@@ -92,5 +94,6 @@
         "wasmtime",
         "xffff",
         "zeroinit"
-    ]
+    ],
+    "rust-analyzer.procMacro.enable": true,
 }

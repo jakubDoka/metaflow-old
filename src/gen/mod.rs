@@ -114,9 +114,10 @@ pub fn generate_obj_file(args: &Arguments) -> Result<Vec<u8>> {
 
     let stacktrace = args.enabled("trace");
 
-    let mut program = Program::new(ObjectModule::new(builder), stacktrace);
+    let mut module = ObjectModule::new(builder);
 
     let mut state = GState::default();
+    state.do_stacktrace = stacktrace;
     let mut context = GContext::default();
 
     if let Err(e) = MTParser::new(&mut state, &mut context).parse(&args[0]) {
@@ -125,32 +126,30 @@ pub fn generate_obj_file(args: &Arguments) -> Result<Vec<u8>> {
 
     let mut collector = Collector::default();
 
-    for module in std::mem::take(&mut state.module_order).drain(..).rev() {
-        let mut ast = std::mem::take(&mut state.modules[module].ast);
+    for module_id in std::mem::take(&mut state.module_order).drain(..).rev() {
+        let mut ast = std::mem::take(&mut state.modules[module_id].ast);
 
-        let result = AParser::new(&mut state, &mut ast, &mut context).parse();
+        let result = AParser::new(&mut state, &mut ast).parse();
         let mut ast = match result {
             Ok(ast) => ast,
             Err(e) => return Err((Some(state), GEKind::AError(e).into())),
         };
 
-        collector.clear(&mut context);
+        collector.clear();
         collector.parse(&mut state, &mut ast, Vis::None);
 
-        context.recycle(ast);
-
         if let Err(e) =
-            Generator::new(&mut program, &mut state, &mut context, &mut collector).generate(module)
+            Generator::new(&mut module, &mut state, &mut context, &mut collector, false).generate(module_id)
         {
             return Err((Some(state), e));
         }
     }
 
-    Generator::new(&mut program, &mut state, &mut context, &mut collector)
+    Generator::new(&mut module, &mut state, &mut context, &mut collector, false)
         .finalize()
         .map_err(|err| (Some(state), err))?;
 
-    Ok(program.module.finish().emit().unwrap())
+    Ok(module.finish().emit().unwrap())
 }
 
 pub struct GErrorDisplay<'a> {
@@ -235,7 +234,7 @@ impl Into<GError> for GEKind {
 }
 
 pub fn test() {
-    let args = Arguments::from_str("root src/gen/test_project -trace").unwrap();
+    let args = Arguments::from_str("root src/gen/test_project").unwrap();
 
     compile(args)
         .map_err(|(state, e)| panic!("{}", GErrorDisplay::new(state.as_ref(), &e)))

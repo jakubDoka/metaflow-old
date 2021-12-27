@@ -55,6 +55,9 @@ impl PoolObj {
 
     pub fn recycle<T>(&mut self, target: Vec<T>) {
         let (ptr, len, cap) = target.into_raw_parts();
+        if cap == 0 {
+            return;
+        }
         let cap = cap * std::mem::size_of::<T>();
         let len = len * std::mem::size_of::<T>();
         let ptr = unsafe { std::mem::transmute::<*mut T, *mut u8>(ptr) };

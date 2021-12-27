@@ -8,7 +8,7 @@ pub mod ast;
 pub mod collector;
 pub mod functions;
 pub mod incr;
-//pub mod gen;
+pub mod gen;
 pub mod lexer;
 pub mod module_tree;
 pub mod testing;

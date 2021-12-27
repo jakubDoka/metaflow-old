@@ -15,12 +15,15 @@ use crate::util::{
     storage::{IndexPointer, List},
 };
 
+use cranelift_codegen::ir::types::I64;
 use cranelift_codegen::ir::{
     Block as CrBlock, StackSlot, Value as CrValue,
+    types::Type as CrType,
 };
 
 use cranelift_frontend::Variable as CrVar;
-use meta_ser::EnumGetters;
+use cranelift_module::{FuncId, RelocRecord, DataId, Linkage};
+use meta_ser::{EnumGetters, CustomDefault};
 
 type Result<T = ()> = std::result::Result<T, FError>;
 type ExprResult = Result<Option<Value>>;
@@ -35,6 +38,7 @@ pub struct FParser<'a> {
     state: &'a mut FState,
     context: &'a mut FContext,
     collector: &'a mut Collector,
+    ptr_ty: CrType,
 }
 
 impl<'a> FParser<'a> {
@@ -42,11 +46,13 @@ impl<'a> FParser<'a> {
         state: &'a mut FState,
         context: &'a mut FContext,
         collector: &'a mut Collector,
+        ptr_ty: CrType,
     ) -> Self {
         Self {
             state,
             context,
             collector,
+            ptr_ty,
         }
     }
 
@@ -73,6 +79,8 @@ impl<'a> FParser<'a> {
             None,
             &Token::default(),
         ));
+
+        self.finalize_fun(self.state.main_fun);
 
         Ok(())
     }
@@ -141,6 +149,7 @@ impl<'a> FParser<'a> {
 
         if ast[1].is_empty() {
             self.state.asts[n_ent_ast] = ast;
+            self.finalize_fun(fun);
             return Ok(());
         }
 
@@ -154,7 +163,7 @@ impl<'a> FParser<'a> {
             let ty = unsafe { std::mem::transmute::<&Ast, &Ast>(&self.collector.scopes[scope].ty) };
             let ty = self.parse_type(module, ty)?;
             let id = TYPE_SALT
-                .add(self.state.self_hash)
+                .add(ID::new("Self"))
                 .add(self.state.modules[module].id);
 
             shadowed.push((id, self.state.types.link(id, ty)));
@@ -165,17 +174,23 @@ impl<'a> FParser<'a> {
 
         let sig = &mut self.fun_mut(fun).kind.normal_mut().sig;
         let args = std::mem::take(&mut sig.args);
-        let ret_ty = sig.ret_ty;
+        let ret = sig.ret;
         let mut arg_buffer = self.context.pool.get();
         self.clear_vars();
-        for arg in args.iter() {
-            let var = self.state.bstate.body.values.add(arg.clone());
-            self.state.bstate.vars.push(var);
-            arg_buffer.push(var);
+
+        let header = &ast[0];
+        let mut i = 0;
+        for arg_group in header[1..header.len() - 2].iter() {
+            for arg in arg_group[..arg_group.len() - 1].iter() {
+                let var = self.new_value(arg.token.span.hash, args[i], false);
+                self.state.bstate.vars.push(var);
+                arg_buffer.push(var);
+                i += 1;
+            }
         }
-        if let Some(ret_ty) = ret_ty {
-            if self.ty(ret_ty).on_stack() {
-                let ty = self.pointer_of(ret_ty);
+        if let Some(ret) = ret {
+            if self.ty(ret).on_stack(self.ptr_ty) {
+                let ty = self.pointer_of(ret);
                 let value = self.new_anonymous_value(ty, false);
                 arg_buffer.push(value);
             }
@@ -185,16 +200,16 @@ impl<'a> FParser<'a> {
 
         let value = self.block(fun, &ast[1])?;
 
-        if let (Some(value), Some(_), Some(ret_ty)) =
-            (value, self.state.bstate.block, ret_ty)
+        if let (Some(value), Some(_), Some(ret)) =
+            (value, self.state.bstate.block, ret)
         {
             let value_ty = self.value(value).ty;
             let token = &ast[1].last().unwrap().token;
-            self.assert_type(value_ty, ret_ty, token)?;
+            self.assert_type(value_ty, ret, token)?;
             let value = self.return_value(fun, value, token);
             self.add_inst(InstEnt::new(IKind::Return(Some(value)), None, token));
-        } else if let (Some(ret_ty), Some(_)) = (ret_ty, self.state.bstate.block) {
-            let value = self.new_temp_value(ret_ty);
+        } else if let (Some(ret), Some(_)) = (ret, self.state.bstate.block) {
+            let value = self.new_temp_value(ret);
             let token = &ast[1].last().unwrap().token;
             self.add_inst(InstEnt::new(IKind::Zeroed, Some(value), token));
             let value = self.return_value(fun, value, token);
@@ -211,7 +226,7 @@ impl<'a> FParser<'a> {
 
         for value_id in self.state.bstate.body.values.ids() {
             let ty = self.value(value_id).ty;
-            let on_stack = self.ty(ty).on_stack();
+            let on_stack = self.ty(ty).on_stack(self.ptr_ty);
             self.value_mut(value_id).on_stack = self.value(value_id).on_stack || on_stack;
         }
 
@@ -219,162 +234,28 @@ impl<'a> FParser<'a> {
             self.state.types.remove_link(id, shadow);
         }
 
+        self.finalize_fun(fun);
+        
         Ok(())
     }
 
-    /*fn declare_fun(&mut self, fun: Fun) -> Result {
-        let fun_ent = self.fun(fun);
-        let ast = fun_ent.kind
-        let call_conv = fun_ent.call_conv;
-        let disposable = fun_ent.params.is_empty();
-        let fun_id = fun_ent.id;
-        let attrs = fun_ent.attrs.clone();
-        let state = unsafe {
-            std::mem::transmute::<&mut BodyState, &mut BodyState>(&mut self.state.main_bstate)
-        };
+    fn finalize_fun(&mut self, fun: Fun) {
+        let normal = std::mem::take(&mut self.fun_mut(fun).kind).into_normal();
 
-        if disposable {
-            
-            let ast = self.state.asts.remove(n_ent.ast);
-            self.context.recycle(ast);
-        }
-
-        let mut name_buffer = self.context.pool.get();
-
-        write_base36(fun_id.0, &mut name_buffer);
-
-        let name = unsafe { std::str::from_utf8_unchecked(&name_buffer[..]) };
-
-        let (linkage, alias) =
-            if let Some(attr) = self.collector.attr(&attrs, self.state.linkage_hash) {
-                assert_attr_len(attr, 1)?;
-
-                let linkage = match self.state.display(&attr[1].token.span) {
-                    "import" => Linkage::Import,
-                    "local" => Linkage::Local,
-                    "export" => Linkage::Export,
-                    "preemptible" => Linkage::Preemptible,
-                    "hidden" => Linkage::Hidden,
-                    _ => return Err(FError::new(FEKind::InvalidLinkage, attr[1].token)),
-                };
-
-                if attr.len() > 2 {
-                    (linkage, self.state.display(&attr[2].token.span))
-                } else if linkage == Linkage::Import {
-                    (linkage, self.state.display(&self.fun(fun).name))
-                } else {
-                    (linkage, name)
-                }
-            } else {
-                (Linkage::Export, name)
-            };
-
-        let mut signature =
-            std::mem::replace(&mut self.context.signature, Signature::new(CallConv::Fast));
-        signature.clear(call_conv);
-
-        for arg in n_ent.sig.args.iter() {
-            let repr = self.ty(arg.ty).repr();
-            signature.params.push(AbiParam::new(repr));
-        }
-
-        if let Some(ret_ty) = n_ent.sig.ret_ty {
-            let ret_ty = &self.ty(ret_ty);
-            let repr = ret_ty.repr();
-
-            let purpose = if ret_ty.on_stack() {
-                signature
-                    .params
-                    .push(AbiParam::special(repr, ArgumentPurpose::StructReturn));
-                ArgumentPurpose::StructReturn
-            } else {
-                ArgumentPurpose::Normal
-            };
-
-            signature.returns.push(AbiParam::special(repr, purpose));
-        }
-
-        if let Some(attr) = self.collector.attr(&attrs, self.state.entry_hash) {
-            if !n_ent.sig.args.is_empty()
-                && (
-                    !n_ent.sig.args.len() != 2
-                        || n_ent.sig.args[0].ty != self.state.builtin_repo.int
-                        || self
-                            .base_of(n_ent.sig.args[1].ty)
-                            .map(|base| self.base_of(base))
-                            .flatten()
-                            .map(|base| base == self.state.builtin_repo.u8)
-                            .unwrap_or(true)
-                    // verify that it is a '& &u8'
-                )
-            {
-                return Err(FError::new(
-                    FEKind::InvalidEntrySignature,
-                    attr[0].token,
-                ));
-            }
-
-            let args = if n_ent.sig.args.len() == 2 {
-                let args = state.body.insts.first().unwrap();
-                state.body.insts[args].kind.block().args.clone()
-            } else {
-                vec![]
-            };
-
-            let token = attr[0].token;
-
-            if let Some(ret) = n_ent.sig.ret_ty {
-                let return_value = state.body.values.add(ValueEnt::temp(ret));
-                state.body.insts.push(InstEnt::new(
-                    IKind::Call(fun, args),
-                    Some(return_value),
-                    &token,
-                ));
-                if ret == self.state.builtin_repo.int {
-                    let result = state.vars.last().unwrap().clone();
-                    state.body.insts.push(InstEnt::new(
-                        IKind::Assign(result),
-                        Some(return_value),
-                        &token,
-                    ));
-                }
-            } else {
-                state
-                    .body
-                    .insts
-                    .push(InstEnt::new(IKind::Call(fun, args), None, &token));
-            }
-        }
-
-        let inline = self.collector.attr(&attrs, self.state.inline_hash).is_some();
-
-        let alias = if fun_id == ID(0) { "main" } else { alias };
-
-        let id = self
-            .program
-            .module
-            .declare_function(alias, linkage, &signature)
-            .unwrap();
-
-        let r_ent = RFunEnt {
-            sig: n_ent.sig,
-            ir_signature: signature.clone(),
-            id,
+        let represented = RFun {
+            sig: normal.sig,
             body: std::mem::take(&mut self.state.bstate.body),
-            inline,
+            compiled: None,
         };
 
-        let f = self.state.rfuns.add(r_ent);
-        self.fun_mut(fun).kind = FKind::Represented(f);
+        self.fun_mut(fun).kind = FKind::Represented(represented);
 
         self.state.represented.push(fun);
-
-        Ok(())
-    }*/
+    }
 
     fn return_value(&mut self, fun: Fun, value: Value, token: &Token) -> Value {
-        let ty = self.signature_of(fun).ret_ty.unwrap();
-        if self.ty(ty).on_stack() {
+        let ty = self.signature_of(fun).ret.unwrap();
+        if self.ty(ty).on_stack(self.ptr_ty) {
             let entry = self.state.bstate.body.insts.first().unwrap();
             let return_value = self.inst(entry).kind.block().args.last().unwrap().clone();
 
@@ -491,7 +372,7 @@ impl<'a> FParser<'a> {
     }
 
     fn return_statement(&mut self, fun: Fun, ast: &Ast) -> Result {
-        let ty = self.signature_of(fun).ret_ty;
+        let ty = self.signature_of(fun).ret;
 
         let value = if ast[0].kind == AKind::None {
             if let Some(ty) = ty {
@@ -961,7 +842,7 @@ impl<'a> FParser<'a> {
                     }
                 };
 
-                let ret_ty = fp.ret;
+                let ret = fp.ret;
 
                 let mismatched = fp.args.len() != values.len()
                     || fp
@@ -981,12 +862,13 @@ impl<'a> FParser<'a> {
                 }
 
                 let do_stacktrace = self.state.do_stacktrace;
+                
 
                 if do_stacktrace {
                     self.gen_frame_push(&ast.token);
                 }
 
-                let value = ret_ty.map(|ty| self.new_temp_value(ty));
+                let value = ret.map(|ty| self.new_temp_value(ty));
                 self.add_inst(InstEnt::new(
                     IKind::FunPointerCall(pointer, values.clone()),
                     value,
@@ -1119,8 +1001,13 @@ impl<'a> FParser<'a> {
             if caller.is_none() {
                 let result = self.create(other_fun, params, &types)?;
                 types[0] = self.pointer_of(types[0]);
-                result.or(self.create(other_fun, params, &types)?)
+                if result.is_some() {
+                    result
+                } else {
+                    self.create(other_fun, params, &types)?
+                }
             } else {
+                
                 self.create(other_fun, params, &types)?
             }
             .ok_or_else(|| {
@@ -1133,10 +1020,10 @@ impl<'a> FParser<'a> {
             other_fun
         };
 
-        let return_type = self.signature_of(other_fun).ret_ty;
+        let return_type = self.signature_of(other_fun).ret;
 
         let value = return_type.map(|t| {
-            let on_stack = self.ty(t).on_stack();
+            let on_stack = self.ty(t).on_stack(self.ptr_ty);
             let value = self.new_anonymous_value(t, on_stack);
             if on_stack {
                 values.push(value);
@@ -1151,7 +1038,7 @@ impl<'a> FParser<'a> {
                 values[0] = temp;
             }
 
-            let first_arg_ty = self.signature_of(other_fun).args[0].ty;
+            let first_arg_ty = self.signature_of(other_fun).args[0];
 
             let first_real_arg_ty = self.value(values[0]).ty;
 
@@ -1171,7 +1058,7 @@ impl<'a> FParser<'a> {
                 .args
                 .iter()
                 .zip(values.iter())
-                .any(|(a, &b)| a.ty != self.value(b).ty);
+                .any(|(&a, &b)| a != self.value(b).ty);
 
         if mismatched {
             types[0] = self.value(values[0]).ty;
@@ -1184,6 +1071,7 @@ impl<'a> FParser<'a> {
         let do_stacktrace = self.state.do_stacktrace
             && !self.fun(fun).untraced
             && !matches!(self.fun(other_fun).kind, FKind::Builtin(..));
+
 
         if do_stacktrace {
             self.gen_frame_push(&token);
@@ -1699,7 +1587,10 @@ impl<'a> FParser<'a> {
         // perform pattern matching
         let mut i = 0;
         let mut j = 0;
-        while i < g_ent_len {
+        let ok = 'o: loop {
+            if i >= g_ent_len {
+                break true;
+            }
             let (amount, length) = match elements[i] {
                 GenericElement::NextArgument(amount, length) => (amount, length),
                 _ => unreachable!("{:?}", elements[i]),
@@ -1721,7 +1612,7 @@ impl<'a> FParser<'a> {
                                     | GenericElement::Array(Some(ty)) => {
                                         if let Some(inferred_ty) = params[i] {
                                             if ty != inferred_ty {
-                                                return Ok(None);
+                                                break 'o false;
                                             }
                                         } else {
                                             params[i] = Some(ty);
@@ -1741,9 +1632,9 @@ impl<'a> FParser<'a> {
                                             }
                                         }
                                     }
-                                    _ => return Ok(None),
+                                    _ => break 'o false,
                                 },
-                                _ => return Ok(None),
+                                _ => break 'o false,
                             }
                         }
                         j += 1;
@@ -1754,23 +1645,30 @@ impl<'a> FParser<'a> {
                 j += 1;
             }
             i += length + 1;
-        }
+        };
 
         let fun_ent = self.fun_mut(fun);
+
+        if !ok {
+            fun_ent.kind.generic_mut().signature.elements = elements;
+            return Ok(None);
+        }
+        
         let &mut FunEnt {
             module,
             untraced,
-            call_conv,
             vis,
             scope,
             inline,
+            attrs,
+            hint,
+            name,
+            linkage,
             ..
         } = fun_ent;
-        let hint = fun_ent.hint.clone();
-        let attrs = fun_ent.attrs.clone();
-        let name = fun_ent.name.clone();
         let g_ent = fun_ent.kind.generic_mut();
         g_ent.signature.elements = elements;
+        let call_conv = g_ent.call_conv;
         let g_params = std::mem::take(&mut g_ent.signature.params); 
         let mut id = FUN_SALT.add(fun_ent.name.hash);
         let ast_id = g_ent.ast;
@@ -1795,17 +1693,18 @@ impl<'a> FParser<'a> {
         if let Some(scope) = scope {
             let ty = unsafe { std::mem::transmute::<&Ast, &Ast>(&self.collector.scopes[scope].ty) };
             let ty = self.parse_type(module, ty)?;
-            let id = TYPE_SALT.add(self.state.self_hash).add(fun_module_id);
+            let id = TYPE_SALT.add(ID::new("Self")).add(fun_module_id);
             shadowed.push((id, self.state.types.link(id, ty)));
         }
 
         let ast = std::mem::take(&mut self.state.asts[ast_id]);
-        let signature = self.parse_signature(module, &ast[0])?;
+        let mut signature = self.parse_signature(module, &ast[0])?;
         for final_param in final_params.iter() {
             id = id.add(self.ty(final_param.1).id);
         }
         id = id.add(self.state.modules[module].id);
         self.state.asts[ast_id] = ast;
+        signature.call_conv = call_conv;
 
         for (id, ty) in shadowed.drain(..) {
             self.state.types.remove_link(id, ty);
@@ -1833,8 +1732,9 @@ impl<'a> FParser<'a> {
             kind,
             scope,
             untraced,
-            call_conv,
             inline,
+            linkage,
+            alias: None,
         };
 
         let (shadowed, id) = self.state.funs.insert(id, new_fun_ent);
@@ -1907,6 +1807,8 @@ impl<'a> FParser<'a> {
             _ => unreachable!(),
         };
 
+        let (linkage, alias) = self.resolve_linkage(attrs)?;
+
         for var_line in ast.iter_mut() {
             let ty = if var_line[1].kind != AKind::None {
                 Some(self.parse_type(module, &var_line[1])?)
@@ -1930,8 +1832,10 @@ impl<'a> FParser<'a> {
                     module,
                     kind: GKind::Normal(value, ty),
                     hint,
-                    attrs: attrs.clone(),
+                    attrs,
                     scope,
+                    linkage,
+                    alias,
                 };
 
                 let (shadowed, id) = self.state.globals.insert(id, g_ent);
@@ -1955,7 +1859,7 @@ impl<'a> FParser<'a> {
         ast: Ast,
         module: Mod,
         module_id: ID,
-        mut attrs: Attrs,
+        attrs: Attrs,
         scope: Option<Scope>,
     ) -> Result {
         let mut shadowed = None;
@@ -1972,7 +1876,7 @@ impl<'a> FParser<'a> {
 
             if !generic {
                 let ty = self.parse_type(module, &raw_ty)?;
-                let id = TYPE_SALT.add(self.state.self_hash).add(module_id);
+                let id = TYPE_SALT.add(ID::new("Self")).add(module_id);
                 shadowed = Some((id, self.state.types.link(id, ty)));
             };
 
@@ -2000,7 +1904,7 @@ impl<'a> FParser<'a> {
 
         let call_conv = if let Some(attr) = self
             .collector
-            .attr(&attrs, self.state.call_conv_hash)
+            .attr(&attrs, ID::new("call_conv"))
             .or_else(|| {
                 if header[header.len() - 1].kind == AKind::Ident {
                     Some(&header[header.len() - 1])
@@ -2016,14 +1920,23 @@ impl<'a> FParser<'a> {
             CallConv::Fast
         };
 
+        let entry = self.collector.attr(&attrs, ID::new("entry")).is_some();
+
+        let (linkage, mut alias) = self.resolve_linkage(attrs)?;
+
         let hint = header.token;
         let name = &header[0];
         let (name, mut id, kind, unresolved) = if name.kind == AKind::Ident && !generic {
-            let signature = self.parse_signature(module, header)?;
+            let mut signature = self.parse_signature(module, header)?;
+            signature.call_conv = call_conv;
 
             let fun_id = salt.add(name.token.span.hash).add(caller);
 
             let name = name.token.span;
+
+            if linkage == Linkage::Import && alias.is_none() {
+                alias = Some(name);
+            }
 
             let ast = self.state.asts.add(ast);
             let n_ent = NFun {
@@ -2077,11 +1990,10 @@ impl<'a> FParser<'a> {
             let nm = nm.token.span;
 
             let g_ent = GFun {
+                call_conv,
                 signature,
                 ast: self.state.asts.add(ast),
             };
-
-            attrs = self.collector.to_permanent(attrs);
 
             (nm, id, FKind::Generic(g_ent), false)
         } else {
@@ -2107,16 +2019,16 @@ impl<'a> FParser<'a> {
             name,
             untraced: self
                 .collector
-                .attr(&attrs, self.state.untraced_hash)
+                .attr(&attrs, ID::new("untraced"))
                 .is_some(),
             inline: self
                 .collector
-                .attr(&attrs, self.state.inline_hash)
+                .attr(&attrs, ID::new("inline"))
                 .is_some(),
             attrs,
-            scope,
-            call_conv,
-            
+            scope, 
+            linkage,
+            alias,          
         };
 
         let (shadowed, id) = self.state.funs.insert(id, fun_ent);
@@ -2126,42 +2038,94 @@ impl<'a> FParser<'a> {
                 hint,
             ));
         }
-
+        
+        
+        
         if unresolved {
+            if entry {
+                self.add_entry(id)?;
+            }
             self.state.unresolved.push(id);
         }
 
         Ok(())
     }
 
+    fn add_entry(&mut self, id: Fun) -> Result {
+        std::mem::swap(&mut self.state.main_bstate, &mut self.state.bstate);
+        
+        let signature = self.signature_of(id);
+
+        let ret = match signature.args.as_slice() {
+            &[] => {
+                let value = signature.ret.map(|ty| self.new_temp_value(ty));
+                self.add_inst(InstEnt::new(
+                    IKind::Call(id, vec![]), 
+                    value, 
+                    &self.fun(id).hint,
+                ));
+                value
+            }
+            &[count, args] => {
+                let value = signature.ret.map(|ty| self.new_temp_value(ty));
+                let temp_ptr = self.pointer_of(self.state.builtin_repo.int);
+                if count != self.state.builtin_repo.int ||
+                    args != self.pointer_of(temp_ptr) {
+                    return Err(FError::new(
+                        FEKind::InvalidEntrySignature,
+                        self.fun(id).hint,
+                    ));
+                }
+                self.add_inst(InstEnt::new(
+                    IKind::Call(id, vec![Value::new(0), Value::new(1)]), 
+                    value, 
+                    &self.fun(id).hint,
+                ));
+                value
+            }
+            _ => {
+                return Err(FError::new(
+                    FEKind::InvalidEntrySignature,
+                    self.fun(id).hint,
+                ));
+            }
+        };
+
+        if let Some(ret) = ret {
+            let value = self.state.bstate.vars[0];
+            self.add_inst(InstEnt::new(
+                IKind::Assign(value),
+                Some(ret),
+                &self.fun(id).hint,
+            ));
+        }
+
+        std::mem::swap(&mut self.state.main_bstate, &mut self.state.bstate);
+
+        Ok(())
+    }
+
     fn parse_signature(&mut self, module: Mod, header: &Ast) -> Result<Signature> {
         let mut args = self.context.pool.get();
-        args.clear();
 
         for arg_section in &header[1..header.len() - 2] {
             let ty = self.parse_type(module, &arg_section[arg_section.len() - 1])?;
-            for arg in arg_section[0..arg_section.len() - 1].iter() {
-                let id = arg.token.span.hash;
-                let val_ent = ValueEnt {
-                    id,
-                    ty,
-
-                    ..ValueEnt::default()
-                };
-                args.push(val_ent);
+            for _ in 0..arg_section.len() - 1 {
+                args.push(ty);
             }
         }
 
         let raw_ret_ty = &header[header.len() - 2];
-        let ret_ty = if raw_ret_ty.kind != AKind::None {
+        let ret = if raw_ret_ty.kind != AKind::None {
             Some(self.parse_type(module, raw_ret_ty)?)
         } else {
             None
         };
 
         Ok(Signature {
+            call_conv: CallConv::Fast,
             args: args.clone(),
-            ret_ty,
+            ret,
         })
     }
 
@@ -2188,7 +2152,7 @@ impl<'a> FParser<'a> {
             let ast = *ast;
             match &ast.kind {
                 AKind::Ident => {
-                    if ast.token.span.hash == self.state.self_hash && scope.is_some() {
+                    if ast.token.span.hash == ID::new("Self") && scope.is_some() {
                         let ast = unsafe {
                             std::mem::transmute::<&Ast, &Ast>(
                                 &self.collector.scopes[scope.unwrap()].ty,
@@ -2367,29 +2331,13 @@ impl<'a> FParser<'a> {
         TParser::new(self.state, self.context, self.collector).array_of(ty, length)
     }
 
-    fn function_type_of(&mut self, module: Mod, f: Fun) -> Result<Type> {
-        let mut args = self.context.pool.get();
-
-        let fun = self.fun(f);
-        let call_conv = fun.call_conv;
-        let ret_ty = match &fun.kind {
-            FKind::Normal(n) => {
-                args.extend(n.sig.args.iter().map(|a| a.ty));
-                n.sig.ret_ty
-            }
-            FKind::Represented(r) => {
-                args.extend(r.sig.args.iter().map(|a| a.ty));
-                r.sig.ret_ty
-            }
-            _ => todo!(),
-        };
+    fn function_type_of(&mut self, module: Mod, fun: Fun) -> Result<Type> {        
+        let sig = self.signature_of(fun).clone();
 
         Ok(
             TParser::new(self.state, self.context, self.collector).function_type_of(
                 module,
-                args.as_slice(),
-                ret_ty,
-                call_conv,
+                sig,
             ),
         )
     }
@@ -2410,7 +2358,26 @@ impl<'a> FParser<'a> {
         match &self.fun(fun).kind {
             FKind::Normal(n) => &n.sig,
             FKind::Represented(r) => &r.sig,
+            FKind::Builtin(s) => s,
             _ => todo!(),
+        }
+    }
+
+    fn resolve_linkage(&self, attrs: Attrs) -> Result<(Linkage, Option<Span>)> {
+        if let Some(attr) = self.collector.attr(&attrs, ID::new("linkage")) {
+            assert_attr_len(attr, 1)?;
+            let linkage = match self.state.display(&attr[1].token.span) {
+                "import" => Linkage::Import,
+                "export" => Linkage::Export,
+                "hidden" => Linkage::Hidden,
+                "preemptible" => Linkage::Preemptible,
+                "local" => Linkage::Local,
+                _ => unreachable!(),
+            };
+
+            Ok((linkage, attr.get(2).map(|a| a.token.span)))
+        } else {
+            Ok((Linkage::Export, None))
         }
     }
 }
@@ -2663,7 +2630,7 @@ crate::def_displayer!(
             writeln!(
                 f,
                 "function argument types are '({})' but you provided '({})'",
-                sig.args.iter().map(|a| format!("{}", TypeDisplay::new(&self.state, a.ty))).collect::<Vec<_>>().join(", "),
+                sig.args.iter().map(|&a| format!("{}", TypeDisplay::new(&self.state, a))).collect::<Vec<_>>().join(", "),
                 arguments.iter().map(|&a| format!("{}", TypeDisplay::new(&self.state, a))).collect::<Vec<_>>().join(", ")
             )?;
         },
@@ -2745,9 +2712,8 @@ pub enum DotInstr {
 
 crate::index_pointer!(Fun);
 
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Clone, CustomDefault)]
 pub struct FunEnt {
-    pub vis: Vis,
     pub id: ID,
     pub module: Mod,
     pub hint: Token,
@@ -2756,8 +2722,11 @@ pub struct FunEnt {
     pub name: Span,
     pub attrs: Attrs,
     pub scope: Option<Scope>,
+    pub alias: Option<Span>,
+    pub vis: Vis,
+    #[default(Linkage::Export)]
+    pub linkage: Linkage,
     pub untraced: bool,
-    pub call_conv: CallConv,
     pub inline: bool,
 }
 
@@ -2797,6 +2766,7 @@ pub struct NFun {
 
 #[derive(Debug, Clone, Default)]
 pub struct GFun {
+    pub call_conv: CallConv,
     pub signature: GenericSignature,
     pub ast: GAst,
 }
@@ -2805,8 +2775,49 @@ pub struct GFun {
 pub struct RFun {
     pub sig: Signature,
     pub body: FunBody,
+    pub compiled: Option<CFun>,
 }
 
+impl RFun {
+    pub fn value(&self, value: Value) -> &ValueEnt {
+        &self.body.values[value]
+    }
+
+    pub fn value_mut(&mut self, value: Value) -> &mut ValueEnt {
+        &mut self.body.values[value]
+    }
+
+    pub fn inst(&self, inst: Inst) -> &InstEnt {
+        &self.body.insts[inst]
+    }
+
+    pub fn inst_mut(&mut self, inst: Inst) -> &mut InstEnt {
+        &mut self.body.insts[inst]
+    }
+}
+
+#[derive(Debug, Clone, CustomDefault)]
+pub struct CFun {
+    pub bin: CompiledData,
+    pub jit: CompiledData,
+    #[default(FuncId::from_u32(0))]
+    pub id: FuncId,
+}
+
+#[derive(Clone, Default)]
+pub struct CompiledData {
+    pub bytes: Vec<u8>,
+    pub relocs: Vec<RelocRecord>,
+}
+
+impl std::fmt::Debug for CompiledData {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("CompiledData")
+            .field("bytes", &self.bytes)
+            .field("relocs", &"...")
+            .finish()
+    }
+}
 
 #[derive(Debug, Clone, Default)]
 pub struct GenericSignature {
@@ -2835,12 +2846,6 @@ impl GenericElement {
             _ => self == other,
         }
     }
-}
-
-#[derive(Debug, Default, Clone)]
-pub struct Signature {
-    pub args: Vec<ValueEnt>,
-    pub ret_ty: Option<Type>,
 }
 
 crate::index_pointer!(Inst);
@@ -2990,17 +2995,28 @@ crate::index_pointer!(Global);
 pub struct GlobalEnt {
     pub id: ID,
     pub vis: Vis,
-    pub module: Mod,
     pub mutable: bool,
+    pub module: Mod,
     pub kind: GKind,
     pub hint: Token,
     pub attrs: Attrs,
     pub scope: Option<Scope>,
+    pub linkage: Linkage,
+    pub alias: Option<Span>,
 }
 
+#[derive(Debug, Clone)]
 pub enum GKind {
+    Default,
     Normal(Ast, Option<Type>),
     Intermediate(Type),
+    Represented(DataId, Type),
+}
+
+impl Default for GKind {
+    fn default() -> Self {
+        GKind::Default
+    }
 }
 
 #[derive(Default)]
@@ -3030,15 +3046,6 @@ pub struct FState {
     pub index_span: Span,
 
     pub do_stacktrace: bool,
-
-    pub linkage_hash: ID,
-    pub entry_hash: ID,
-    pub call_conv_hash: ID,
-    pub inline_hash: ID,
-    pub tls_hash: ID,
-    pub thread_local_hash: ID,
-    pub self_hash: ID,
-    pub untraced_hash: ID,
 }
 
 crate::inherit!(FState, t_state, TState);
@@ -3059,15 +3066,6 @@ impl Default for FState {
             resolved_globals: Vec::new(),
 
             do_stacktrace: false,
-
-            linkage_hash: ID::new("linkage"),
-            entry_hash: ID::new("entry"),
-            call_conv_hash: ID::new("call_conv"),
-            inline_hash: ID::new("inline"),
-            tls_hash: ID::new("tls"),
-            thread_local_hash: ID::new("thread_local"),
-            self_hash: ID::new("Self"),
-            untraced_hash: ID::new("untraced"),
         };
 
         let count = state
@@ -3119,19 +3117,23 @@ impl Default for FState {
 
         let n_fun = NFun {
             sig: Signature {
+                call_conv: CallConv::Platform,
                 args: vec![
-                    ValueEnt::new(ID(0), state.builtin_repo.int, true), //arg count
-                    ValueEnt::new(ID(0), state.builtin_repo.int, true), //args
+                    state.builtin_repo.int, //arg count
+                    state.builtin_repo.int, //args
                 ],
-                ret_ty: Some(state.builtin_repo.int),
+                ret: Some(state.builtin_repo.int),
             },
             ast: GAst::default(),
         };
 
+        let name = state.builtin_span("main");
+
         let main_fun = FunEnt {
             vis: Vis::Public,
             kind: FKind::Normal(n_fun),
-            name: state.builtin_span("main"),
+            name,
+            alias: Some(name),
 
             ..Default::default()
         };
@@ -3152,14 +3154,13 @@ impl Default for FState {
             salt: ID,
             name: Span,
             args: &[Type],
-            ret_ty: Option<Type>,
+            ret: Option<Type>,
         ) {
             let id = salt.add(name.hash).add(state.types[args[0]].id).add(module);
-
-            let args = args.iter().map(|&t| ValueEnt::temp(t)).collect();
             let sig = Signature { 
-                args, 
-                ret_ty 
+                call_conv: CallConv::Fast,
+                args: args.to_vec(), 
+                ret 
             };
 
             let fun_ent = FunEnt {
@@ -3277,15 +3278,6 @@ impl Default for FContext {
     }
 }
 
-pub fn write_base36(mut number: u64, buffer: &mut Vec<u8>) {
-    while number > 0 {
-        let mut digit = (number % 36) as u8;
-        digit += (digit < 10) as u8 * b'0' + (digit >= 10) as u8 * (b'a' - 10);
-        buffer.push(digit);
-        number /= 36;
-    }
-}
-
 pub fn assert_attr_len(attr: &Ast, len: usize) -> Result {
     if attr.len() - 1 < len {
         Err(FError::new(
@@ -3364,17 +3356,14 @@ pub fn test() {
     for module in std::mem::take(&mut state.module_order).drain(..).rev() {
         let mut ast = std::mem::take(&mut state.modules[module].ast);
 
-        let mut ast = AParser::new(&mut state, &mut ast, &mut context)
+        let mut ast = AParser::new(&mut state, &mut ast)
             .parse()
             .map_err(|err| TError::new(TEKind::AError(err), Token::default()))
             .unwrap();
 
-        collector.clear(&mut context);
         collector.parse(&mut state, &mut ast, Vis::None);
 
-        context.recycle(ast);
-
-        FParser::new(&mut state, &mut context, &mut collector)
+        FParser::new(&mut state, &mut context, &mut collector, I64)
             .parse(module)
             .map_err(|e| println!("{}", FErrorDisplay::new(&mut state, &e)))
             .unwrap();

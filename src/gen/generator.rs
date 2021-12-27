@@ -1,31 +1,35 @@
 use cranelift_codegen::{
-    binemit::{NullStackMapSink, NullTrapSink},
+    binemit::{NullStackMapSink, TrapSink},
     entity::EntityRef,
     ir::{
         condcodes::{FloatCC, IntCC},
         types::*,
+        Signature as CrSignature,
         Block as CrBlock, FuncRef, GlobalValue, InstBuilder, MemFlags, SigRef,
         StackSlot, StackSlotData, StackSlotKind, Type as CrType, Value as CrValue,
     },
-    Context, isa::TargetIsa,
+    Context, isa::{
+        CallConv as CrCallConv,
+    },
+    binemit::RelocSink,
 };
 use cranelift_frontend::{FunctionBuilder, FunctionBuilderContext, Variable as CrVar};
-use cranelift_module::{DataContext, DataId, FuncOrDataId, Linkage, Module};
+use cranelift_module::{DataContext, DataId, FuncOrDataId, Linkage, Module, RelocRecord};
 use std::ops::{Deref, DerefMut};
 
 use crate::{
     collector::Collector,
     functions::{
-        self, FContext, FKind, FParser, FState, FinalValue, Fun, GKind, IKind, Inst, InstEnt, RFun,
-        Value, ValueEnt,
+        FContext, FKind, FParser, FState, FinalValue, Fun, GKind, IKind, Inst, RFun,
+        Value, CFun,
     },
     lexer::{Span, TKind as LTKind, Token},
     module_tree::Mod,
-    types::{self, TKind, Type, TypeDisplay, TypeEnt},
+    types::{TKind, Type, TypeDisplay, TypeEnt},
     util::{
         pool::PoolRef,
         sdbm::{SdbmHash, ID},
-        storage::{IndexPointer, Map},
+        storage::{IndexPointer, Map}, write_radix, Size,
     },
 };
 
@@ -40,6 +44,9 @@ pub struct Generator<'a, T: Module> {
     state: &'a mut GState,
     context: &'a mut GContext,
     collector: &'a mut Collector,
+    s32: bool,
+    jit: bool,
+    ptr_ty: CrType,
 }
 
 impl<'a, T: Module> Generator<'a, T> {
@@ -48,8 +55,20 @@ impl<'a, T: Module> Generator<'a, T> {
         state: &'a mut GState,
         context: &'a mut GContext,
         collector: &'a mut Collector,
+        jit: bool,
     ) -> Self {
+        // TODO: move this to better place so we don't repeat it pointlessly
+        let ptr_ty = module.isa().pointer_type();
+        let int = state.builtin_repo.int;
+        let uint = state.builtin_repo.uint;
+        state.types[int].kind = TKind::Builtin(ptr_ty);
+        state.types[uint].kind = TKind::Builtin(ptr_ty);
+
+
         Self {
+            jit,
+            s32: ptr_ty.bytes() == 4,
+            ptr_ty,
             module,
             state,
             context,
@@ -58,44 +77,115 @@ impl<'a, T: Module> Generator<'a, T> {
     }
 
     pub fn generate(&mut self, module: Mod) -> Result {
-        FParser::new(self.state, self.context, self.collector)
+        FParser::new(self.state, self.context, self.collector, self.ptr_ty)
             .parse(module)
             .map_err(|err| GError::new(GEKind::FError(err), Token::default()))?;
 
-        self.make_globals()?;
+        self.declare_funs()?;
 
-        self.make_bodies()?;
+        self.declare_and_define_globals()?;
+
+        self.define_funs()?;
 
         Ok(())
     }
 
     pub fn finalize(&mut self) -> Result {
-        FParser::new(self.state, self.context, self.collector)
+        FParser::new(self.state, self.context, self.collector, self.ptr_ty)
             .finalize()
             .map_err(|err| GError::new(GEKind::FError(err), Token::default()))?;
 
-        self.make_bodies()?;
+        self.declare_funs()?;
+
+        self.define_funs()?;
 
         Ok(())
     }
 
-    fn make_globals(&mut self) -> Result {
+    fn declare_funs(&mut self) -> Result {
+        let mut represented = std::mem::take(&mut self.state.represented);
+
+        let mut signature = CrSignature::new(CrCallConv::Fast);
+
+        represented.retain(|&fun_id| {
+            let fun_ent = &self.state.funs[fun_id];
+            let id = fun_ent.id;
+            let alias = fun_ent.alias;
+            let linkage = fun_ent.linkage;
+            let fun = fun_ent.kind.represented();
+        
+            signature.clear(CrCallConv::Fast);
+            fun.sig.to_cr_signature(self.state, self.module.isa(), &mut signature);
+
+            let mut name = String::new();
+            write_radix(id.0, 16, &mut name);
+
+            let final_name = if let Some(alias) = alias {
+                self.state.display(&alias)
+            } else {
+                &name
+            };
+
+            let id = self.module.declare_function(
+                final_name,
+                linkage,
+                &signature,
+            ).unwrap();
+
+            let c_fun = CFun {
+                id,
+
+                ..Default::default()
+            };
+
+            self.state.funs[fun_id].kind.represented_mut().compiled = Some(c_fun);
+
+            linkage != Linkage::Import
+        });
+
+        self.state.represented = represented;
+
+        Ok(())
+    }
+
+    fn declare_and_define_globals(&mut self) -> Result {
         let mut resolved = std::mem::take(&mut self.state.resolved_globals);
         for global in resolved.drain(..) {
             let glob = &self.state.globals[global];
-            let (id, ty) = match &glob.kind {
-                &GKind::Represented(id, ty) => (id, ty),
+            let ty = match &glob.kind {
+                &GKind::Intermediate(ty) => ty,
                 _ => unreachable!(),
             };
+
+            let tls = self.collector.attr(&glob.attrs, ID::new("tls")).is_some();
+
+            let mut name = String::new();
+            write_radix(glob.id.0, 36, &mut name);
+
+            let final_name = if let Some(alias) = glob.alias {
+                self.state.display(&alias)
+            } else {
+                &name 
+            };
+
+            let id = self.module.declare_data(final_name, glob.linkage, glob.mutable, tls)
+                .unwrap();
+            
+            if glob.linkage == Linkage::Import {
+                continue;
+            }
+
             self
                 .context
                 .data_context
-                .define_zeroinit(self.ty(ty).size as usize);
+                .define_zeroinit(self.ty(ty).size.pick(self.s32) as usize);
             let ctx = unsafe {
                 std::mem::transmute::<&DataContext, &DataContext>(&self.context.data_context)
             };
-            self.program.module.define_data(id, ctx).unwrap();
+            self.module.define_data(id, ctx).unwrap();
             self.context.data_context.clear();
+
+            self.state.globals[global].kind = GKind::Represented(id, ty);
         }
 
         self.state.resolved_globals = resolved;
@@ -103,76 +193,66 @@ impl<'a, T: Module> Generator<'a, T> {
         Ok(())
     }
 
-    fn make_bodies(&mut self) -> Result {
+    fn define_funs(&mut self) -> Result {
+        let mut bytes = vec![];
+        let mut reloc_sink = MetaRelocSink::new();
         let mut fun_ctx = FunctionBuilderContext::new();
         let mut ctx = Context::new();
 
         let mut represented = std::mem::take(&mut self.state.represented);
 
-        for fun in represented.drain(..) {
-            crate::test_println!("{}", crate::functions::FunDisplay::new(&self.state, fun));
+        for fun_id in represented.drain(..) {
+            crate::test_println!("{}", crate::functions::FunDisplay::new(&self.state, fun_id));
 
             self.state.imported_funs.clear();
             self.state.imported_globals.clear();
             self.state.imported_signatures.clear();
 
-            let fun = &self.state.funs[fun];
-            let rid = fun.kind.unwrap_represented();
-            let fun_id = self.state.rfuns[rid].id;
-            if self
-                .program
-                .module
-                .declarations()
-                .get_function_decl(fun_id)
-                .linkage
-                == Linkage::Import
-            {
+            let fun = &self.state.funs[fun_id];
+            let repr = fun.kind.represented();
+                        
+            if repr.body.insts.len() == 0 {
                 continue;
             }
+            
+            repr.sig.to_cr_signature(self.state, self.module.isa(), &mut ctx.func.signature);
 
-            if self.state.rfuns[rid].body.insts.len() == 0 {
-                continue;
-            }
-
-            std::mem::swap(
-                &mut ctx.func.signature,
-                &mut self.state.rfuns[rid].ir_signature,
-            );
             let mut builder = FunctionBuilder::new(&mut ctx.func, &mut fun_ctx);
 
-            self.body(rid, &mut builder)?;
-
-            if !self.state.rfuns[rid].inline {
-                self.state.rfuns[rid].body.clear();
-                self.context
-                    .body_pool
-                    .push(std::mem::take(&mut self.state.rfuns[rid].body));
-            }
+            self.body(fun_id, &mut builder)?;
 
             builder.finalize();
 
             crate::test_println!("{}", ctx.func.display());
 
-            ctx.compute_cfg();
-            ctx.compute_domtree();
-            ctx.compute_loop_analysis();
-
-            self.program
-                .module
-                .define_function(
-                    fun_id,
-                    &mut ctx,
-                    &mut NullTrapSink::default(),
-                    &mut NullStackMapSink {},
-                )
-                .unwrap();
+            ctx.compile_and_emit(
+                self.module.isa(), 
+                &mut bytes, 
+                &mut reloc_sink, 
+                &mut MetaTrapSink {}, 
+                &mut NullStackMapSink {}
+            ).unwrap();
             
-            std::mem::swap(
-                &mut self.state.rfuns[rid].ir_signature,
-                &mut ctx.func.signature,
-            );
+            let compiled = self.state.funs[fun_id].kind
+                .represented_mut().compiled.as_mut().unwrap();
+            let id = compiled.id;
+
+            if self.jit {
+                compiled.jit.bytes = bytes.clone();
+                compiled.jit.relocs = reloc_sink.relocs.clone();
+            } else {
+                compiled.bin.bytes = bytes.clone();
+                compiled.bin.relocs = reloc_sink.relocs.clone();
+            }
+
+            self
+                .module
+                .define_function_bytes(id, &bytes, &reloc_sink.relocs)
+                .unwrap();
 
             ctx.clear();
+            reloc_sink.clear();
+            bytes.clear();
         }
 
         self.state.represented = represented;
@@ -180,7 +260,7 @@ impl<'a, T: Module> Generator<'a, T> {
         Ok(())
     }
 
-    fn body(&mut self, fun: RFun, builder: &mut FunctionBuilder) -> Result {
+    fn body(&mut self, fun: Fun, builder: &mut FunctionBuilder) -> Result {
         let mut stack = self.context.pool.get();
         stack.push((
             fun,
@@ -189,12 +269,14 @@ impl<'a, T: Module> Generator<'a, T> {
             Option::<Inst>::None,
             InlineState::None,
         ));
+        let mut temp = self.context.pool.get();
         let mut arg_buffer = self.context.pool.get();
 
         'o: while let Some((current_fun_ref, blocks, current_block, current_inst, return_block)) =
             stack.last_mut()
         {
-            let current_fun = *current_fun_ref;
+            let current_fun_ref = *current_fun_ref;
+            let mut current_fun = std::mem::take(&mut self.state.funs[current_fun_ref].kind).into_represented();
             while *current_block < blocks.len() {
                 let block = if let &mut Some(current_inst) = current_inst {
                     current_inst
@@ -205,44 +287,48 @@ impl<'a, T: Module> Generator<'a, T> {
                 };
 
                 if let Some(inlined_fun) =
-                    self.block(current_fun, block, *return_block, builder)?
+                    self.block(&mut current_fun, block, *return_block, builder)?
                 {
-                    match &self.inst(current_fun, inlined_fun).kind {
+                    match &current_fun.inst(inlined_fun).kind {
                         IKind::Call(id, args) => {
                             let id = *id;
+                            temp.clear();
+                            temp.extend_from_slice(args);
                             arg_buffer.clear();
                             arg_buffer.extend(
-                                args.iter()
-                                    .map(|arg| self.unwrap_val(current_fun, *arg, builder)),
+                                temp.iter()
+                                    .map(|arg| self.unwrap_val(&mut current_fun, *arg, builder)),
                             );
-                            let next_fun = self.state.funs[id].kind.unwrap_represented();
-                            if stack.iter().any(|i| i.0 == next_fun) {
-                                self.block(current_fun, block, InlineState::Broken, builder)?;
+                            if stack.iter().any(|i| i.0 == id) {
+                                self.block(&mut current_fun, block, InlineState::Broken, builder)?;
+                                self.state.funs[current_fun_ref].kind = FKind::Represented(current_fun);
                                 let len = stack.len();
                                 stack[len - 1].2 += 1;
                                 stack[len - 1].3 = None;
                                 continue 'o;
                             } 
-                            let blocks = self.collect_blocks(next_fun, builder);
+                            let blocks = self.collect_blocks(id, builder);
+                            let next_fun = std::mem::take(&mut self.state.funs[id].kind).into_represented();
                             builder.ins().jump(blocks[0].1, &*arg_buffer);
                             let return_block = builder.create_block();
-                            let sig = &self.state.rfuns[next_fun].ir_signature;
-                            if sig.returns.len() > 0 {
+                            let sig = &next_fun.sig;
+                            if let Some(ret) = sig.ret {
                                 let value = builder
-                                    .append_block_param(return_block, sig.returns[0].value_type);
-                                let return_value =
-                                self.inst(current_fun, inlined_fun).value.unwrap();
-                                self.wrap_val(current_fun, return_value, value);
+                                    .append_block_param(return_block, self.ty(ret).to_cr_type(self.module.isa()));
+                                let return_value = current_fun.inst(inlined_fun).value.unwrap();
+                                self.wrap_val(&mut current_fun, return_value, value);
                             }
                             let len = stack.len();
                             stack[len - 1].3 = Some(
-                                self.state.rfuns[current_fun]
+                                current_fun
                                     .body
                                     .insts
                                     .next(inlined_fun)
                                     .unwrap(),
                             );
-                            stack.push((next_fun, blocks, 0, None, InlineState::At(return_block)));
+                            self.state.funs[id].kind = FKind::Represented(next_fun);
+                            self.state.funs[current_fun_ref].kind = FKind::Represented(current_fun);
+                            stack.push((id, blocks, 0, None, InlineState::At(return_block)));
                             continue 'o;
                         }
                         _ => unreachable!(),
@@ -256,6 +342,8 @@ impl<'a, T: Module> Generator<'a, T> {
                 builder.switch_to_block(return_block);
             }
 
+            self.state.funs[current_fun_ref].kind = FKind::Represented(current_fun);
+
             stack.pop().unwrap();
         }
 
@@ -266,61 +354,65 @@ impl<'a, T: Module> Generator<'a, T> {
 
     fn collect_blocks(
         &mut self,
-        fun: RFun,
+        fun_id: Fun,
         builder: &mut FunctionBuilder,
     ) -> PoolRef<(Inst, CrBlock)> {
-        let entry_block = self.state.rfuns[fun].body.insts.first().unwrap();
+        let mut fun = std::mem::take(&mut self.state.funs[fun_id].kind).into_represented();
+        let entry_block = fun.body.insts.first().unwrap();
         let mut current = entry_block;
 
         let mut buffer = self.context.pool.get();
 
         loop {
             let cr_block = builder.create_block();
-            let block = self.inst_mut(fun, current).kind.block_mut();
+            let block = fun.inst_mut(current).kind.block_mut();
             block.block = Some(cr_block);
             let inst = block.end.unwrap();
             let args = std::mem::take(&mut block.args);
             for &arg in args.iter() {
-                let value = builder.append_block_param(cr_block, self.repr_of_val(fun, arg));
-                if self.value(fun, arg).on_stack {
-                    self.value_mut(fun, arg).value = FinalValue::Pointer(value)
+                let value = builder.append_block_param(cr_block, self.repr_of_val(&mut fun, arg));
+                if fun.value(arg).on_stack {
+                    fun.value_mut(arg).value = FinalValue::Pointer(value)
                 } else {
-                    self.wrap_val(fun, arg, value);
+                    self.wrap_val(&mut fun, arg, value);
                 }
             }
-            self.inst_mut(fun, current).kind.block_mut().args = args;
+            fun.inst_mut(current).kind.block_mut().args = args;
 
-            let next = self.state.rfuns[fun].body.insts.next(current).unwrap();
+            let next = fun.body.insts.next(current).unwrap();
 
             buffer.push((next, cr_block));
 
             debug_assert!(
-                matches!(self.inst(fun, inst).kind, IKind::BlockEnd(_)),
+                matches!(fun.inst(inst).kind, IKind::BlockEnd(_)),
                 "next block is not a block"
             );
 
-            if let Some(next) = self.state.rfuns[fun].body.insts.next(inst) {
+            if let Some(next) = fun.body.insts.next(inst) {
                 current = next;
             } else {
                 break;
             }
         }
 
+        self.state.funs[fun_id].kind = FKind::Represented(fun);
+
         buffer
     }
 
     fn block(
         &mut self,
-        fun: RFun,
+        fun: &mut RFun,
         mut current: Inst,
         inline_state: InlineState,
         builder: &mut FunctionBuilder,
     ) -> Result<Option<Inst>> {
         let mut call_buffer = self.context.pool.get();
         let mut arg_buffer = self.context.pool.get();
+        let mut temp = self.context.pool.get();
 
         loop {
-            let inst = &self.inst(fun, current);
+            let inst = &fun.inst(current);
             let value = inst.value;
 
             match &inst.kind {
@@ -332,31 +424,34 @@ impl<'a, T: Module> Generator<'a, T> {
                     arg_buffer.clear();
                     arg_buffer.extend(args);
 
-                    if let &FKind::Builtin(id) = &other.kind {
+                    if let FKind::Builtin(sig) = &other.kind {
                         let name = other.name.clone();
-                        let return_type = self.state.bfuns[id].ret_ty;
+                        let return_type = sig.ret;
                         self.call_builtin(fun, name, return_type, &arg_buffer, value, builder);
                     } else if other.module == Mod::new(0)
                         && matches!(self.state.display(&other.name), "sizeof")
                     {
                         self.call_generic_builtin(fun, id, &arg_buffer, value, builder);
                     } else {
-                        let rid = other.kind.unwrap_represented();
-                        let r_ent = &self.state.rfuns[rid];
-                        let inline = r_ent.inline && inline_state != InlineState::Broken;
-                        let fun_id = r_ent.id;
+                        let r_ent = match &other.kind {
+                            FKind::Represented(r_ent) => r_ent,
+                            FKind::Default => &fun,
+                            _ => unreachable!(),
+                        };
+                        let inline = other.inline && inline_state != InlineState::Broken;
+                        let fun_id = r_ent.compiled.as_ref().unwrap().id;
                         let map_id = ID(fun_id.as_u32() as u64);
 
                         let mut struct_return = false;
 
-                        if let Some(ret_ty) = r_ent.sig.ret_ty {
+                        if let Some(ret_ty) = r_ent.sig.ret {
                             if self.on_stack(ret_ty) {
                                 let size = self.ty(ret_ty).size;
                                 let last = arg_buffer[arg_buffer.len() - 1];
-                                let data = StackSlotData::new(StackSlotKind::ExplicitSlot, size);
+                                let data = StackSlotData::new(StackSlotKind::ExplicitSlot, align(size.pick(self.s32)));
                                 let slot = builder.create_stack_slot(data);
-                                self.value_mut(fun, last).value = FinalValue::StackSlot(slot);
-                                self.value_mut(fun, value.unwrap()).value =
+                                fun.value_mut(last).value = FinalValue::StackSlot(slot);
+                                fun.value_mut(value.unwrap()).value =
                                     FinalValue::StackSlot(slot);
                                 struct_return = true;
                             }
@@ -370,7 +465,6 @@ impl<'a, T: Module> Generator<'a, T> {
                                     fun_ref
                                 } else {
                                     let fun_ref = self
-                                        .program
                                         .module
                                         .declare_func_in_func(fun_id, builder.func);
                                     self.state.imported_funs.insert(map_id, fun_ref);
@@ -396,12 +490,11 @@ impl<'a, T: Module> Generator<'a, T> {
                 IKind::VarDecl(init) => {
                     let init = *init;
                     let value = value.unwrap();
-                    let ty = self.value(fun, value).ty;
-                    let size = self.ty(ty).size;
-                    let size = size + 8 * ((size & 7) != 0) as u32 - (size & 7); // align
-                    let val = self.value_mut(fun, value);
+                    let ty = fun.value(value).ty;
+                    let size = self.ty(ty).size.pick(self.s32);
+                    let val = fun.value_mut(value);
                     if val.on_stack {
-                        let data = StackSlotData::new(StackSlotKind::ExplicitSlot, size);
+                        let data = StackSlotData::new(StackSlotKind::ExplicitSlot, align(size));
                         let slot = builder.create_stack_slot(data);
                         val.value = FinalValue::StackSlot(slot);
                         self.assign_val(fun, value, init, builder)
@@ -412,26 +505,26 @@ impl<'a, T: Module> Generator<'a, T> {
                         self.assign_val(fun, value, init, builder)
                     } else {
                         let val = self.unwrap_val(fun, init, builder);
-                        self.value_mut(fun, value).value = FinalValue::Value(val);
+                        fun.value_mut(value).value = FinalValue::Value(val);
                     }
                 }
                 IKind::Zeroed => {
-                    self.value_mut(fun, value.unwrap()).value = FinalValue::Zero;
+                    fun.value_mut(value.unwrap()).value = FinalValue::Zero;
                 }
                 IKind::Uninitialized => {
-                    let val = &self.value(fun, value.unwrap());
+                    let val = &fun.value(value.unwrap());
                     if self.on_stack(val.ty) {
-                        let size = self.ty(val.ty).size;
-                        let data = StackSlotData::new(StackSlotKind::ExplicitSlot, size);
+                        let size = self.ty(val.ty).size.pick(self.s32);
+                        let data = StackSlotData::new(StackSlotKind::ExplicitSlot, align(size));
                         let slot = builder.create_stack_slot(data);
-                        self.value_mut(fun, value.unwrap()).value = FinalValue::StackSlot(slot);
+                        fun.value_mut(value.unwrap()).value = FinalValue::StackSlot(slot);
                     } else {
-                        self.value_mut(fun, value.unwrap()).value = FinalValue::Zero;
+                        fun.value_mut(value.unwrap()).value = FinalValue::Zero;
                     }
                 }
                 IKind::Lit(lit) => {
                     let value = value.unwrap();
-                    let ty = self.value(fun, value).ty;
+                    let ty = fun.value(value).ty;
                     let repr = self.repr(ty);
                     let lit = match lit {
                         LTKind::Int(val, _) => builder.ins().iconst(repr, *val),
@@ -459,7 +552,7 @@ impl<'a, T: Module> Generator<'a, T> {
                                 value
                             } else {
                                 let value =
-                                    self.program.module.declare_data_in_func(data, builder.func);
+                                    self.module.declare_data_in_func(data, builder.func);
                                 self.state.imported_globals.insert(map_id, value);
                                 value
                             };
@@ -467,19 +560,19 @@ impl<'a, T: Module> Generator<'a, T> {
                         }
                         lit => todo!("{}", lit),
                     };
-                    self.value_mut(fun, value).value = FinalValue::Value(lit);
+                    fun.value_mut(value).value = FinalValue::Value(lit);
                 }
-                IKind::Return(value) => {
+                &IKind::Return(value) => {
                     if let InlineState::At(return_block) = inline_state {
                         if let Some(value) = value {
-                            let value = self.unwrap_val(fun, *value, builder);
+                            let value = self.unwrap_val(fun, value, builder);
                             builder.ins().jump(return_block, &[value]);
                         } else {
                             builder.ins().jump(return_block, &[]);
                         }
                     } else {
                         if let Some(value) = value {
-                            let value = self.unwrap_val(fun, *value, builder);
+                            let value = self.unwrap_val(fun, value, builder);
                             builder.ins().return_(&[value]);
                         } else {
                             builder.ins().return_(&[]);
@@ -492,17 +585,20 @@ impl<'a, T: Module> Generator<'a, T> {
                 }
                 IKind::Jump(block, values) => {
                     let block = *block;
-
+                    temp.clear();
+                    temp.extend_from_slice(values);
                     call_buffer.clear();
-                    call_buffer.extend(values.iter().map(|&a| self.unwrap_val(fun, a, builder)));
+                    call_buffer.extend(temp.iter().map(|&a| self.unwrap_val(fun, a, builder)));
                     let block = self.unwrap_block(fun, block);
                     builder.ins().jump(block, &call_buffer);
                 }
                 IKind::JumpIfTrue(condition, block, values) => {
                     let condition = *condition;
                     let block = *block;
+                    temp.clear();
+                    temp.extend_from_slice(values);
                     call_buffer.clear();
-                    call_buffer.extend(values.iter().map(|&a| self.unwrap_val(fun, a, builder)));
+                    call_buffer.extend(temp.iter().map(|&a| self.unwrap_val(fun, a, builder)));
                     let block = self.unwrap_block(fun, block);
                     let value = self.unwrap_val(fun, condition, builder);
                     builder.ins().brnz(value, block, &call_buffer);
@@ -516,16 +612,16 @@ impl<'a, T: Module> Generator<'a, T> {
                     let assign = *assign;
                     let other = *other;
                     let val = self.unwrap_val_low(fun, other, builder, assign);
-                    self.value_mut(fun, value).value = FinalValue::Pointer(val);
+                    fun.value_mut(value).value = FinalValue::Pointer(val);
                 }
-                IKind::Ref(val) => {
-                    let val = self.unwrap_val_low(fun, *val, builder, true);
+                &IKind::Ref(val) => {
+                    let val = self.unwrap_val_low(fun, val, builder, true);
                     self.wrap_val(fun, value.unwrap(), val);
                 }
                 IKind::Cast(other) => {
                     let other = *other;
                     let value = value.unwrap();
-                    if self.value(fun, value).on_stack {
+                    if fun.value(value).on_stack {
                         self.pass(fun, other, value);
                     } else {
                         let target = self.repr_of_val(fun, value);
@@ -548,56 +644,53 @@ impl<'a, T: Module> Generator<'a, T> {
                     let data = if let Some(&data) = self.state.imported_globals.get(map_id) {
                         data
                     } else {
-                        let data = self.program.module.declare_data_in_func(id, builder.func);
+                        let data = self.module.declare_data_in_func(id, builder.func);
                         self.state.imported_globals.insert(map_id, data);
                         data
                     };
                     let val = builder.ins().global_value(self.repr(ty), data);
-                    let value = self.value_mut(fun, value.unwrap());
+                    let value = fun.value_mut(value.unwrap());
                     value.value = FinalValue::Pointer(val);
                 }
                 IKind::FunPointer(id) => {
                     let id = *id;
-                    let rid = match self.state.funs[id].kind {
-                        FKind::Represented(rid) => rid,
-                        _ => unreachable!(),
-                    };
-                    let fun_id = self.state.rfuns[rid].id;
+                    let fun_id = self.state.funs[id].kind
+                        .represented().compiled.as_ref().unwrap().id;
                     let map_id = ID(fun_id.as_u32() as u64);
 
                     let fun_ref = if let Some(&fun_ref) = self.state.imported_funs.get(map_id) {
                         fun_ref
                     } else {
                         let fun_ref = self
-                            .program
                             .module
                             .declare_func_in_func(fun_id, builder.func);
                         self.state.imported_funs.insert(map_id, fun_ref);
                         fun_ref
                     };
 
-                    let pointer = builder.ins().func_addr(ptr_ty(), fun_ref);
+                    let pointer = builder.ins().func_addr(self.ptr_ty, fun_ref);
 
                     self.wrap_val(fun, value.unwrap(), pointer);
                 }
                 IKind::FunPointerCall(pointer, args) => {
                     arg_buffer.clear();
                     arg_buffer.extend(args);
+                    let pointer = *pointer;
 
-                    let pointer_type = self.value(fun, *pointer).ty;
-                    let pointer = self.unwrap_val(fun, *pointer, builder);
+                    let pointer_type = fun.value(pointer).ty;
+                    let pointer = self.unwrap_val(fun, pointer, builder);
                     call_buffer.clear();
-                    call_buffer.extend(args.iter().map(|&a| self.unwrap_val(fun, a, builder)));
+                    call_buffer.extend(arg_buffer.iter().map(|&a| self.unwrap_val(fun, a, builder)));
 
                     let mut struct_return = false;
-                    if let Some(ret_ty) = value.map(|v| self.value(fun, v).ty) {
+                    if let Some(ret_ty) = value.map(|v| fun.value(v).ty) {
                         if self.on_stack(ret_ty) {
-                            let size = self.ty(ret_ty).size;
+                            let size = self.ty(ret_ty).size.pick(self.s32);
                             let last = arg_buffer[arg_buffer.len() - 1];
-                            let data = StackSlotData::new(StackSlotKind::ExplicitSlot, size);
+                            let data = StackSlotData::new(StackSlotKind::ExplicitSlot, align(size));
                             let slot = builder.create_stack_slot(data);
-                            self.value_mut(fun, last).value = FinalValue::StackSlot(slot);
-                            self.value_mut(fun, value.unwrap()).value = FinalValue::StackSlot(slot);
+                            fun.value_mut(last).value = FinalValue::StackSlot(slot);
+                            fun.value_mut(value.unwrap()).value = FinalValue::StackSlot(slot);
                             struct_return = true;
                         }
                     }
@@ -606,11 +699,9 @@ impl<'a, T: Module> Generator<'a, T> {
                     let sig = if let Some(&sig) = self.state.imported_signatures.get(sig_id) {
                         sig
                     } else {
-                        let ptr_ty = match self.ty(pointer_type).kind {
-                            TKind::FunPointer(id) => id,
-                            _ => unreachable!(),
-                        };
-                        let sig = self.state.signature_of_fun_pointer(ptr_ty);
+                        let ptr_ty = self.ty(pointer_type).kind.fun_pointer();
+                        let mut sig = CrSignature::new(CrCallConv::Fast);
+                        ptr_ty.to_cr_signature(self.state, self.module.isa(), &mut sig);
                         let sig = builder.import_signature(sig);
                         self.state.imported_signatures.insert(sig_id, sig);
                         sig
@@ -627,7 +718,7 @@ impl<'a, T: Module> Generator<'a, T> {
                 value => unreachable!("{:?}", value),
             }
 
-            current = self.state.rfuns[fun].body.insts.next(current).unwrap();
+            current = fun.body.insts.next(current).unwrap();
         }
 
         Ok(None)
@@ -635,7 +726,7 @@ impl<'a, T: Module> Generator<'a, T> {
 
     fn call_generic_builtin(
         &mut self,
-        fun: RFun,
+        fun: &mut RFun,
         other: Fun,
         _args: &[Value],
         target: Option<Value>,
@@ -645,8 +736,8 @@ impl<'a, T: Module> Generator<'a, T> {
         match self.state.display(&fun_ent.name) {
             "sizeof" => {
                 let value = target.unwrap();
-                let size = self.ty(fun_ent.params[0].1).size;
-                let size = builder.ins().iconst(ptr_ty(), size as i64);
+                let size = self.ty(fun_ent.params[0].1).size.pick(self.s32);
+                let size = builder.ins().iconst(self.ptr_ty, size as i64);
                 self.wrap_val(fun, value, size);
             }
             _ => unreachable!("{}", self.state.display(&fun_ent.name)),
@@ -655,7 +746,7 @@ impl<'a, T: Module> Generator<'a, T> {
 
     fn call_builtin(
         &mut self,
-        fun: RFun,
+        fun: &mut RFun,
         name: Span,
         return_type: Option<Type>,
         args: &[Value],
@@ -665,9 +756,9 @@ impl<'a, T: Module> Generator<'a, T> {
         let name = self.state.display(&name);
         match args.len() {
             1 => {
-                let val = &self.value(fun, args[0]);
-                let ty = val.ty;
                 let a = self.unwrap_val(fun, args[0], builder);
+                let val = &fun.value(args[0]);
+                let ty = val.ty;
                 let kind = BTKind::of(ty);
                 let repr = self.repr(ty);
 
@@ -757,7 +848,7 @@ impl<'a, T: Module> Generator<'a, T> {
                         "i32" | "u32" => builder.ins().bint(I32, a),
                         "i16" | "u16" => builder.ins().bint(I16, a),
                         "i8" | "u8" => builder.ins().bint(I8, a),
-                        "uint" | "int" => builder.ins().bint(types::ptr_ty(), a),
+                        "uint" | "int" => builder.ins().bint(self.ptr_ty, a),
                         "f32" => {
                             let value = builder.ins().bint(I32, a);
                             builder.ins().fcvt_from_uint(F32, value)
@@ -774,7 +865,7 @@ impl<'a, T: Module> Generator<'a, T> {
                 self.wrap_val(fun, target.unwrap(), value)
             }
             2 => {
-                let ty = self.value(fun, args[0]).ty;
+                let ty = fun.value(args[0]).ty;
                 let a = self.unwrap_val(fun, args[0], builder);
                 let b = self.unwrap_val(fun, args[1], builder);
                 let kind = BTKind::of(ty);
@@ -872,13 +963,13 @@ impl<'a, T: Module> Generator<'a, T> {
 
     fn assign_val(
         &mut self,
-        fun: RFun,
+        fun: &mut RFun,
         target_value: Value,
         source: Value,
         builder: &mut FunctionBuilder,
     ) {
-        let target = &self.value(fun, target_value);
-        let source_v = &self.value(fun, source);
+        let target = fun.value(target_value);
+        let source_v = fun.value(source);
         let ty = source_v.ty;
 
         debug_assert!(
@@ -887,21 +978,21 @@ impl<'a, T: Module> Generator<'a, T> {
             TypeDisplay::new(&self.state, ty),
             TypeDisplay::new(&self.state, target.ty),
             target,
-            self.inst(fun, source_v.inst.unwrap()).kind
+            fun.inst(source_v.inst.unwrap()).kind
         );
 
         match target.value.clone() {
             FinalValue::StackSlot(slot) => {
-                let size = self.ty(ty).size;
+                let size = self.ty(ty).size.pick(self.s32);
                 match source_v.value {
-                    FinalValue::Zero => static_stack_memset(slot, target.offset, 0, size, builder),
+                    FinalValue::Zero => static_stack_memset(slot, target.offset.pick(self.s32), 0, size, builder),
                     FinalValue::Value(value) => {
                         let value = if target.ty == self.state.builtin_repo.bool {
                             builder.ins().bint(I8, value)
                         } else {
                             value
                         };
-                        builder.ins().stack_store(value, slot, target.offset as i32);
+                        builder.ins().stack_store(value, slot, target.offset.pick(self.s32) as i32);
                     }
                     FinalValue::Var(var) => {
                         let value = builder.use_var(var);
@@ -910,24 +1001,24 @@ impl<'a, T: Module> Generator<'a, T> {
                         } else {
                             value
                         };
-                        builder.ins().stack_store(value, slot, target.offset as i32);
+                        builder.ins().stack_store(value, slot, target.offset.pick(self.s32) as i32);
                     }
                     FinalValue::StackSlot(other) => static_stack_memmove(
                         slot,
-                        target.offset,
+                        target.offset.pick(self.s32),
                         other,
-                        source_v.offset,
+                        source_v.offset.pick(self.s32),
                         size,
                         builder,
                     ),
                     FinalValue::Pointer(pointer) => {
-                        let pt = types::ptr_ty();
+                        let pt = self.ptr_ty;
                         let target_ptr = builder.ins().stack_addr(pt, slot, 0);
                         static_memmove(
                             target_ptr,
-                            target.offset,
+                            target.offset.pick(self.s32),
                             pointer,
-                            source_v.offset,
+                            source_v.offset.pick(self.s32),
                             size,
                             builder,
                         )
@@ -937,6 +1028,7 @@ impl<'a, T: Module> Generator<'a, T> {
             }
             FinalValue::Var(var) => {
                 let mut value = self.unwrap_val(fun, source, builder);
+                let target = fun.value(target_value);
                 let value_type = builder.func.dfg.value_type(value);
                 let val = builder.use_var(var);
                 let var_type = builder.func.dfg.value_type(val);
@@ -945,30 +1037,32 @@ impl<'a, T: Module> Generator<'a, T> {
                     for i in 0..value_type.bytes() {
                         mask |= 0xFF << (i * 8);
                     }
-                    mask <<= target.offset * 8;
+                    mask <<= target.offset.pick(self.s32) * 8;
                     mask = !mask;
                     let mask_value = builder.ins().iconst(var_type, mask);
                     let target_val = builder.ins().band(val, mask_value);
                     let source_value = builder.ins().uextend(var_type, value);
                     let source_value = builder
                         .ins()
-                        .ishl_imm(source_value, target.offset as i64 * 8);
+                        .ishl_imm(source_value, target.offset.pick(self.s32) as i64 * 8);
                     value = builder.ins().bor(target_val, source_value);
                 }
                 builder.def_var(var, value);
             }
             FinalValue::Pointer(pointer) => {
                 if source_v.value == FinalValue::Zero {
-                    static_memset(pointer, target.offset, 0, self.ty(ty).size, builder);
+                    static_memset(pointer, target.offset.pick(self.s32), 0, self.ty(ty).size.pick(self.s32), builder);
                 } else {
                     let mut value = self.unwrap_val(fun, source, builder);
+                    let target = fun.value(target_value);
+                    let source_v = fun.value(source);
                     if source_v.on_stack {
                         static_memmove(
                             pointer,
-                            target.offset,
+                            target.offset.pick(self.s32),
                             value,
-                            source_v.offset,
-                            self.ty(ty).size,
+                            source_v.offset.pick(self.s32),
+                            self.ty(ty).size.pick(self.s32),
                             builder,
                         );
                     } else {
@@ -977,7 +1071,7 @@ impl<'a, T: Module> Generator<'a, T> {
                         }
                         builder
                             .ins()
-                            .store(MemFlags::new(), value, pointer, target.offset as i32);
+                            .store(MemFlags::new(), value, pointer, target.offset.pick(self.s32) as i32);
                     }
                 }
             }
@@ -989,12 +1083,12 @@ impl<'a, T: Module> Generator<'a, T> {
 
     fn assign_raw_val(
         &mut self,
-        fun: RFun,
+        fun: &mut RFun,
         target: Value,
         mut source: CrValue,
         builder: &mut FunctionBuilder,
     ) {
-        let target = &self.value(fun, target);
+        let target = &fun.value(target);
 
         match target.value {
             FinalValue::StackSlot(slot) => {
@@ -1003,7 +1097,7 @@ impl<'a, T: Module> Generator<'a, T> {
                 }
                 builder
                     .ins()
-                    .stack_store(source, slot, target.offset as i32);
+                    .stack_store(source, slot, target.offset.pick(self.s32) as i32);
             }
             FinalValue::Pointer(pointer) => {
                 if target.ty == self.state.builtin_repo.bool {
@@ -1011,7 +1105,7 @@ impl<'a, T: Module> Generator<'a, T> {
                 }
                 builder
                     .ins()
-                    .store(MemFlags::new(), source, pointer, target.offset as i32);
+                    .store(MemFlags::new(), source, pointer, target.offset.pick(self.s32) as i32);
             }
             FinalValue::Var(var) => {
                 builder.def_var(var, source);
@@ -1020,27 +1114,27 @@ impl<'a, T: Module> Generator<'a, T> {
         };
     }
 
-    fn unwrap_block(&mut self, fun: RFun, block: Inst) -> CrBlock {
-        self.inst(fun, block).kind.block().block.unwrap()
+    fn unwrap_block(&mut self, fun: &mut RFun, block: Inst) -> CrBlock {
+        fun.inst(block).kind.block().block.unwrap()
     }
 
     #[inline]
-    fn wrap_val(&mut self, fun: RFun, target: Value, value: CrValue) {
-        self.value_mut(fun, target).value = FinalValue::Value(value);
+    fn wrap_val(&mut self, fun: &mut RFun, target: Value, value: CrValue) {
+        fun.value_mut(target).value = FinalValue::Value(value);
     }
 
-    fn unwrap_val(&self, fun: RFun, value: Value, builder: &mut FunctionBuilder) -> CrValue {
+    fn unwrap_val(&self, fun: &mut RFun, value: Value, builder: &mut FunctionBuilder) -> CrValue {
         self.unwrap_val_low(fun, value, builder, false)
     }
 
     fn unwrap_val_low(
         &self,
-        fun: RFun,
+        fun: &mut RFun,
         value: Value,
         builder: &mut FunctionBuilder,
         assign: bool,
     ) -> CrValue {
-        let value = &self.value(fun, value);
+        let value = &fun.value(value);
         let ty = value.ty;
         match value.value {
             FinalValue::None => unreachable!(),
@@ -1064,7 +1158,7 @@ impl<'a, T: Module> Generator<'a, T> {
                 let mut val = builder.use_var(var);
                 let value_type = builder.func.dfg.value_type(val);
                 if repr != value_type {
-                    val = builder.ins().ushr_imm(val, value.offset as i64 * 8);
+                    val = builder.ins().ushr_imm(val, value.offset.pick(self.s32) as i64 * 8);
                     val = builder.ins().ireduce(repr, val);
                 }
                 val
@@ -1074,10 +1168,10 @@ impl<'a, T: Module> Generator<'a, T> {
                     let repr = self.repr(ty);
                     builder
                         .ins()
-                        .load(repr, MemFlags::new(), pointer, value.offset as i32)
-                } else if value.offset != 0 {
-                    let ptr_type = types::ptr_ty();
-                    let offset = builder.ins().iconst(ptr_type, value.offset as i64);
+                        .load(repr, MemFlags::new(), pointer, value.offset.pick(self.s32) as i32)
+                } else if value.offset != Size::ZERO {
+                    let ptr_type = self.ptr_ty;
+                    let offset = builder.ins().iconst(ptr_type, value.offset.pick(self.s32) as i64);
                     builder.ins().iadd(pointer, offset)
                 } else {
                     pointer
@@ -1086,44 +1180,44 @@ impl<'a, T: Module> Generator<'a, T> {
             FinalValue::StackSlot(slot) => {
                 if !assign && (!value.on_stack || !self.on_stack(value.ty)) {
                     if value.ty == self.state.builtin_repo.bool {
-                        let value = builder.ins().stack_load(I8, slot, value.offset as i32);
+                        let value = builder.ins().stack_load(I8, slot, value.offset.pick(self.s32) as i32);
                         builder.ins().icmp_imm(IntCC::NotEqual, value, 0)
                     } else {
                         builder
                             .ins()
-                            .stack_load(self.repr(value.ty), slot, value.offset as i32)
+                            .stack_load(self.repr(value.ty), slot, value.offset.pick(self.s32) as i32)
                     }
                 } else {
                     builder
                         .ins()
-                        .stack_addr(types::ptr_ty(), slot, value.offset as i32)
+                        .stack_addr(self.ptr_ty, slot, value.offset.pick(self.s32) as i32)
                 }
             }
         }
     }
 
-    fn pass(&mut self, fun: RFun, from: Value, to: Value) {
-        let other_value = self.value(fun, from).value.clone();
-        self.value_mut(fun, to).value = other_value;
+    fn pass(&mut self, fun: &mut RFun, from: Value, to: Value) {
+        let other_value = fun.value(from).value.clone();
+        fun.value_mut(to).value = other_value;
     }
 
     #[inline]
-    fn repr_of_val(&self, fun: RFun, value: Value) -> CrType {
-        self.repr(self.value(fun, value).ty)
+    fn repr_of_val(&self, fun: &mut RFun, value: Value) -> CrType {
+        self.repr(fun.value(value).ty)
     }
 
     fn on_stack(&self, ty: Type) -> bool {
-        self.ty(ty).on_stack()
+        self.ty(ty).on_stack(self.ptr_ty)
     }
 
     fn repr(&self, ty: Type) -> CrType {
-        self.ty(ty).repr()
+        self.ty(ty).to_cr_type(self.module.isa())
     }
 
-    pub fn is_zero(&self, fun: RFun, value: Value) -> bool {
-        let inst = self.value(fun, value).inst;
+    pub fn is_zero(&self, fun: &mut RFun, value: Value) -> bool {
+        let inst = fun.value(value).inst;
         if let Some(inst) = inst {
-            let inst = &self.inst(fun, inst);
+            let inst = &fun.inst(inst);
             matches!(inst.kind, IKind::Zeroed)
         } else {
             false
@@ -1132,16 +1226,14 @@ impl<'a, T: Module> Generator<'a, T> {
 
     pub fn make_static_data(&mut self, data: &[u8], mutable: bool, tls: bool) -> DataId {
         let id = data.sdbm_hash().wrapping_add(STRING_SALT);
-        let mut name_buffer = self.context.pool.get();
-        functions::write_base36(id, &mut name_buffer);
-        let name = unsafe { std::str::from_utf8_unchecked(&name_buffer) };
-        if let Some(FuncOrDataId::Data(data_id)) = self.program.module.get_name(name) {
+        let mut name = String::new();
+        write_radix(id, 36, &mut name);
+        if let Some(FuncOrDataId::Data(data_id)) = self.module.get_name(&name) {
             data_id
         } else {
             let data_id = self
-                .program
                 .module
-                .declare_data(name, Linkage::Export, mutable, tls)
+                .declare_data(&name, Linkage::Export, mutable, tls)
                 .unwrap();
             let context = unsafe {
                 std::mem::transmute::<&mut DataContext, &mut DataContext>(
@@ -1149,7 +1241,7 @@ impl<'a, T: Module> Generator<'a, T> {
                 )
             };
             context.define(data.deref().to_owned().into_boxed_slice());
-            self.program.module.define_data(data_id, context).unwrap();
+            self.module.define_data(data_id, context).unwrap();
             context.clear();
             data_id
         }
@@ -1157,22 +1249,6 @@ impl<'a, T: Module> Generator<'a, T> {
 
     pub fn ty(&self, ty: Type) -> &TypeEnt {
         &self.state.types[ty]
-    }
-
-    pub fn inst(&self, fun: RFun, inst: Inst) -> &InstEnt {
-        &self.state.rfuns[fun].body.insts[inst]
-    }
-
-    pub fn inst_mut(&mut self, fun: RFun, inst: Inst) -> &mut InstEnt {
-        &mut self.state.rfuns[fun].body.insts[inst]
-    }
-
-    pub fn value(&self, fun: RFun, value: Value) -> &ValueEnt {
-        &self.state.rfuns[fun].body.values[value]
-    }
-
-    pub fn value_mut(&mut self, fun: RFun, value: Value) -> &mut ValueEnt {
-        &mut self.state.rfuns[fun].body.values[value]
     }
 }
 
@@ -1337,6 +1413,53 @@ fn walk_mem<F: FnMut(CrType, u32)>(size: u32, mut fun: F) {
     }
 }
 
+pub struct MetaTrapSink {
+}
+
+impl TrapSink for MetaTrapSink {
+    fn trap(&mut self, 
+        _offset: cranelift_codegen::binemit::CodeOffset, 
+        _loc: cranelift_codegen::ir::SourceLoc, 
+        _code: cranelift_codegen::ir::TrapCode
+    ) {
+       //println!("{:?} {:?} {:?}", _offset, _loc, _code);
+    }
+}
+
+pub struct MetaRelocSink {
+    pub relocs: Vec<RelocRecord>,
+}
+
+impl MetaRelocSink {
+    pub fn new() -> Self {
+        Self {
+            relocs: Vec::new(),
+        }
+    }
+
+    pub fn clear(&mut self) {
+        self.relocs.clear();
+    }
+}
+
+impl RelocSink for MetaRelocSink {
+    fn reloc_external(
+        &mut self,
+        offset: cranelift_codegen::binemit::CodeOffset,
+        _source_loc: cranelift_codegen::ir::SourceLoc,
+        reloc: cranelift_codegen::binemit::Reloc,
+        name: &cranelift_codegen::ir::ExternalName,
+        addend: cranelift_codegen::binemit::Addend,
+    ) {
+        self.relocs.push(RelocRecord {
+            offset,
+            reloc,
+            name: name.clone(),
+            addend,
+        });
+    }
+}
+
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub enum BTKind {
     Int,
@@ -1356,4 +1479,8 @@ impl BTKind {
             _ => panic!("cannot get builtin type of {:?}", tp),
         }
     }
+}
+
+fn align(size: u32) -> u32 {
+    size + 8 * ((size & 7) != 0) as u32 - (size & 7)
 }

@@ -1,7 +1,7 @@
 
 attr push(untraced)
 
-attr push(linkage(import), call_conv(platform), untraced)
+attr push(linkage(import), call_conv(platform))
 
 attr linkage(import, malloc)
 fun pub alloc(size: int) -> &u8

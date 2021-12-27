@@ -1,10 +1,10 @@
 use std::path::PathBuf;
 
-use traits::{MetaDeSer, MetaSer};
+use traits::MetaSer;
 
 use crate::util::sdbm::ID;
 
-pub fn load_incremental_data<T: MetaDeSer>(root_path: &str, arg_hash: ID) -> Option<(T, usize)> {
+pub fn load_incremental_data<T: MetaSer>(root_path: &str, arg_hash: ID) -> Option<(T, usize)> {
     let mut path = PathBuf::new();
     path.push(root_path);
     path.push("meta");
@@ -16,12 +16,12 @@ pub fn load_incremental_data<T: MetaDeSer>(root_path: &str, arg_hash: ID) -> Opt
     let mut file = std::fs::read(path).ok()?;
 
     let mut progress = 0;
-    let version = String::meta_de_ser(&mut progress, &mut file);
+    let version = String::de_ser(&mut progress, &mut file);
     if version != crate::VERSION {
         return None;
     }
 
-    let data = T::meta_de_ser(&mut progress, &mut file);
+    let data = T::de_ser(&mut progress, &mut file);
 
     Some((data, progress))
 }
@@ -34,9 +34,9 @@ pub fn save_incremental_data<T: MetaSer>(
 ) -> std::io::Result<()> {
     let mut buffer = Vec::with_capacity(size_hint.unwrap_or(1024 * 1024));
 
-    crate::VERSION.to_string().meta_ser(&mut buffer);
+    crate::VERSION.to_string().ser(&mut buffer);
 
-    data.meta_ser(&mut buffer);
+    data.ser(&mut buffer);
 
     let mut path = PathBuf::new();
     path.push(root_path);

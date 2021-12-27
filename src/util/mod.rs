@@ -109,6 +109,15 @@ impl Size {
     }
 }
 
+pub fn write_radix(mut number: u64, radix: u64, buffer: &mut String) {
+    while number > 0 {
+        let mut digit = (number % radix) as u8;
+        digit += (digit < 10) as u8 * b'0' + (digit >= 10) as u8 * (b'a' - 10);
+        buffer.push(digit as char);
+        number /= radix;
+    }
+}
+
 pub fn test() {
     storage::test();
     pool::test();

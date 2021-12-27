@@ -2,7 +2,29 @@ use proc_macro::TokenStream;
 use quote::format_ident;
 use syn::parse_quote;
 
-#[proc_macro_derive(MetaSer)]
+#[proc_macro_derive(MetaQuickSer)]
+pub fn derive_quick_ser(input: TokenStream) -> TokenStream {
+    let input = syn::parse_macro_input!(input as syn::DeriveInput);
+
+    let name = &input.ident;
+
+    let mut generics = input.generics.clone();
+
+    for param in generics.type_params_mut() {
+        param.bounds.push(parse_quote!(QuickSer));
+    }
+
+    let mut type_params = input.generics.clone();
+    for param in type_params.type_params_mut() {
+        param.bounds.clear();
+    }
+
+    quote::quote! {
+        impl #generics MetaQuickSer for #name #type_params {}
+    }.into()
+}
+
+#[proc_macro_derive(MetaSer, attributes(quick))]
 pub fn derive_ser(input: TokenStream) -> TokenStream {
     let input = syn::parse_macro_input!(input as syn::DeriveInput);
 
@@ -19,30 +41,34 @@ pub fn derive_ser(input: TokenStream) -> TokenStream {
         param.bounds.clear();
     }
 
-    let result = match input.data {
+    let ser = match &input.data {
         syn::Data::Struct(s) => {
             let is_tuple = s.fields.iter().next().map(|f| f.ident.is_none()).unwrap_or(false);
+            let func_names = s.fields.iter().map(|f| {
+                if f.attrs.iter().any(|a| a.path.is_ident("quick")) {
+                    format_ident!("quick_ser")
+                } else {
+                    format_ident!("ser")
+                }
+            });
             if is_tuple {
                 let names = (0..s.fields.len()).map(syn::Index::from);
+                
                 quote::quote! {
-                    impl #generics traits::MetaSer for #name #type_params {
-                        fn meta_ser(&self, buffer: &mut Vec<u8>) {
-                            #(
-                                self.#names.meta_ser(buffer);
-                            )*
-                        }
+                    fn ser(&self, buffer: &mut Vec<u8>) {
+                        #(
+                            self.#names.#func_names(buffer);
+                        )*
                     }
                 }
             } else {
                 let names = s.fields.iter().map(|f| f.ident.as_ref().unwrap());
                 
                 quote::quote! {
-                    impl #generics traits::MetaSer for #name #type_params {
-                        fn meta_ser(&self, buffer: &mut Vec<u8>) {
-                            #(
-                                self.#names.meta_ser(buffer);
-                            )*
-                        }
+                    fn ser(&self, buffer: &mut Vec<u8>) {
+                        #(
+                            self.#names.#func_names(buffer);
+                        )*
                     }
                 }
             }
@@ -59,9 +85,9 @@ pub fn derive_ser(input: TokenStream) -> TokenStream {
                     
                     quote::quote!(
                         #name::#ident( #( #fields ),* ) => {
-                            #index.meta_ser(buffer);
+                            #index.ser(buffer);
                             #(
-                                #fields2.meta_ser(buffer);
+                                #fields2.ser(buffer);
                             )*
                         }
                     )
@@ -71,9 +97,9 @@ pub fn derive_ser(input: TokenStream) -> TokenStream {
                     
                     quote::quote!(
                         #name::#ident { #( #fields ),* } => {
-                            #index.meta_ser(buffer);
+                            #index.ser(buffer);
                             #(
-                                #fields2.meta_ser(buffer);
+                                #fields2.ser(buffer);
                             )*
                         }
                     )
@@ -81,11 +107,9 @@ pub fn derive_ser(input: TokenStream) -> TokenStream {
             });
 
             quote::quote! {
-                impl #generics traits::MetaSer for #name #type_params {
-                    fn meta_ser(&self, buffer: &mut Vec<u8>) {
-                        match self {
-                            #( #variants )*
-                        }
+                fn ser(&self, buffer: &mut Vec<u8>) {
+                    match self {
+                        #( #variants )*
                     }
                 }
             }
@@ -93,51 +117,34 @@ pub fn derive_ser(input: TokenStream) -> TokenStream {
         syn::Data::Union(_) => panic!("union is not supported"),
     };
 
-    result.into()
-}
-
-#[proc_macro_derive(MetaDeSer)]
-pub fn derive_de_ser(input: TokenStream) -> TokenStream {
-    let input = syn::parse_macro_input!(input as syn::DeriveInput);
-
-    let name = &input.ident;
-
-    let mut generics = input.generics.clone();
-
-    for param in generics.type_params_mut() {
-        param.bounds.push(parse_quote!(MetaDeSer));
-    }
-
-    let mut type_params = input.generics.clone();
-    for param in type_params.type_params_mut() {
-        param.bounds.clear();
-    }
-
-    let result = match input.data {
+    let de_ser = match &input.data {
         syn::Data::Struct(s) => {
             let is_tuple = s.fields.iter().next().map(|f| f.ident.is_none()).unwrap_or(false);
+            let func_names = s.fields.iter().map(|f| {
+                if f.attrs.iter().any(|a| a.path.is_ident("quick")) {
+                    format_ident!("quick_de_ser")
+                } else {
+                    format_ident!("de_ser")
+                }
+            });
             if is_tuple {
                 let names = std::iter::repeat(format_ident!("traits")).take(s.fields.len());
 
                 quote::quote! {
-                    impl #generics traits::MetaDeSer for #name #type_params {
-                        fn meta_de_ser(progress: &mut usize, buffer: &[u8]) -> Self {
-                            Self(#(
-                                #names::MetaDeSer::meta_de_ser(progress, buffer),
-                            )*)
-                        }
+                    fn de_ser(progress: &mut usize, buffer: &[u8]) -> Self {
+                        Self(#(
+                            #names::MetaSer::#func_names(progress, buffer),
+                        )*)
                     }
                 }
             } else {
                 let names = s.fields.iter().map(|f| f.ident.as_ref().unwrap());
                 
                 quote::quote! {
-                    impl #generics traits::MetaDeSer for #name #type_params {
-                        fn meta_de_ser(progress: &mut usize, buffer: &[u8]) -> Self {
-                            Self {#(
-                                #names: traits::MetaDeSer::meta_de_ser(progress, buffer),
-                            )*}
-                        }
+                    fn de_ser(progress: &mut usize, buffer: &[u8]) -> Self {
+                        Self {#(
+                            #names: traits::MetaSer::#func_names(progress, buffer),
+                        )*}
                     }
                 }
             }
@@ -154,7 +161,7 @@ pub fn derive_de_ser(input: TokenStream) -> TokenStream {
                     quote::quote!(
                         #index => {
                             #name::#ident(#(
-                                #fields::MetaDeSer::meta_de_ser(progress, buffer),
+                                #fields::MetaSer::de_ser(progress, buffer),
                             )*)
                         }
                     )
@@ -164,7 +171,7 @@ pub fn derive_de_ser(input: TokenStream) -> TokenStream {
                     quote::quote!(
                         #index => {
                             #name::#ident {#(
-                                #fields: traits::MetaDeSer::meta_de_ser(progress, buffer),
+                                #fields: traits::MetaSer::de_ser(progress, buffer),
                             )*}
                         }
                     )
@@ -172,12 +179,10 @@ pub fn derive_de_ser(input: TokenStream) -> TokenStream {
             });
 
             quote::quote! {
-                impl #generics traits::MetaDeSer for #name #type_params {
-                    fn meta_de_ser(progress: &mut usize, buffer: &[u8]) -> Self {
-                        match traits::MetaDeSer::meta_de_ser(progress, buffer) {
-                            #( #variants )*
-                            _ => panic!("invalid variant"),
-                        }
+                fn de_ser(progress: &mut usize, buffer: &[u8]) -> Self {
+                    match traits::MetaSer::de_ser(progress, buffer) {
+                        #( #variants )*
+                        _ => panic!("invalid variant"),
                     }
                 }
             }
@@ -185,7 +190,12 @@ pub fn derive_de_ser(input: TokenStream) -> TokenStream {
         syn::Data::Union(_) => panic!("union is not supported"),
     };
 
-    result.into()
+    quote::quote! {
+        impl #generics traits::MetaSer for #name #type_params {
+            #ser
+            #de_ser
+        }
+    }.into()
 }
 
 #[proc_macro_derive(EnumGetters)]
@@ -295,6 +305,55 @@ pub fn derive_enum_getters(input: TokenStream) -> TokenStream {
             #( #functions )*
         }
     }.into()
+}
+
+#[proc_macro_derive(CustomDefault, attributes(default))]
+pub fn derive_custom_default(input: TokenStream) -> TokenStream {
+    let input = syn::parse_macro_input!(input as syn::DeriveInput);
+
+    let name = &input.ident;
+
+    let mut generics = input.generics.clone();
+    for param in generics.type_params_mut() {
+        param.bounds.push(parse_quote!(Default));
+    }
+
+    let mut type_params = input.generics.clone();
+    for param in type_params.type_params_mut() {
+        param.bounds.clear();
+    }
+
+    let data = match input.data {
+        syn::Data::Struct(data) => data,
+        _ => panic!("macro only supports structs"),
+    };
+
+    let fields = data.fields.iter().map(|f| {
+        let attr = f.attrs.iter().find(|a| a.path.is_ident("default"));
+
+        let ident = f.ident.as_ref().unwrap();
+
+        if let Some(attr) = attr {
+            let tokens = attr.tokens.clone();
+            quote::quote!(
+                #ident: #tokens
+            )
+        } else {
+            quote::quote!(
+                #ident: Default::default()
+            )
+        }
+    });
+
+    quote::quote!(
+        impl #generics Default for #name #type_params {
+            fn default() -> Self {
+                Self {
+                    #( #fields ),*
+                }
+            }
+        }
+    ).into()
 }
 
 fn pascal_to_snake(s: &str) -> String {

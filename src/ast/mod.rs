@@ -10,19 +10,16 @@ pub type Result<T = ()> = std::result::Result<T, AError>;
 pub struct AParser<'a> {
     main_state: &'a mut AMainState,
     state: &'a mut AState,
-    context: &'a mut AContext,
 }
 
 impl<'a> AParser<'a> {
     pub fn new(
         main_state: &'a mut AMainState,
         state: &'a mut AState,
-        context: &'a mut AContext,
     ) -> Self {
         Self {
             main_state,
             state,
-            context,
         }
     }
 
@@ -1023,7 +1020,7 @@ impl<'a> AParser<'a> {
     }
 
     fn ast(&mut self, kind: AKind) -> Ast {
-        self.context.ast(kind, self.state.token)
+        Ast::new(kind, self.state.token)
     }
 
     fn expect_str(&self, kind: TKind, message: &str) -> Result<()> {
@@ -1053,42 +1050,6 @@ impl<'a> AParser<'a> {
     fn join_token_with(&self, token: &mut Token, other: &Token, trim: bool) {
         self.main_state
             .join_spans(&mut token.span, &other.span, trim);
-    }
-}
-
-#[derive(Debug, Clone, Default)]
-pub struct AContext {
-    pub ast_pool: Vec<Ast>,
-    pub imports: Vec<Import>,
-}
-
-impl AContext {
-    pub fn new() -> Self {
-        Self {
-            ast_pool: Vec::new(),
-            imports: Vec::new(),
-        }
-    }
-
-    pub fn recycle(&mut self, ast: Ast) {
-        let mut i = self.ast_pool.len();
-        self.ast_pool.push(ast);
-        while i < self.ast_pool.len() {
-            let mut ast = std::mem::take(&mut self.ast_pool[i]);
-            ast.drain(..).for_each(|e| self.ast_pool.push(e));
-            self.ast_pool[i] = ast;
-            i += 1;
-        }
-    }
-
-    pub fn ast(&mut self, kind: AKind, token: Token) -> Ast {
-        if let Some(mut ast) = self.ast_pool.pop() {
-            ast.kind = kind;
-            ast.token = token;
-            ast
-        } else {
-            Ast::new(kind, token)
-        }
     }
 }
 
@@ -1402,9 +1363,8 @@ pub fn test() {
     };
     let source = a_main_state.sources.add(source);
     let mut a_state = a_main_state.a_state_for(source);
-    let mut context = AContext::new();
 
-    let mut a_parser = AParser::new(&mut a_main_state, &mut a_state, &mut context);
+    let mut a_parser = AParser::new(&mut a_main_state, &mut a_state);
     let ast = a_parser.parse().unwrap();
 
     println!("{}", AstDisplay::new(&a_main_state, &ast));

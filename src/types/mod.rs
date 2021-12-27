@@ -9,7 +9,10 @@ use crate::util::sdbm::ID;
 use crate::util::Size;
 use crate::util::storage::{IndexPointer, ReusableList, Table};
 use cranelift_codegen::ir::types::Type as CrType;
-use cranelift_codegen::ir::types::*;
+use cranelift_codegen::ir::{types::*, AbiParam, ArgumentPurpose};
+use cranelift_codegen::ir::Signature as CrSignature;
+use cranelift_codegen::isa::CallConv as CrCallConv;
+use cranelift_codegen::isa::TargetIsa;
 use meta_ser::EnumGetters;
 
 type Result<T = ()> = std::result::Result<T, TError>;
@@ -107,7 +110,7 @@ impl<'a> TParser<'a> {
                                 let calc = move |offset: Size| {
                                     let temp = Size::new(offset.s32 & (align.s32 - 1), offset.s64 & (align.s64 - 1));
                                     let add = (temp != Size::ZERO) as u32;
-                                    Size::new(temp.s32 * add - temp.s32, temp.s64 * add - temp.s64)
+                                    Size::new(align.s32 * add - temp.s32, align.s64 * add - temp.s64)
                                 };
 
                                 for field in &mut fields {
@@ -248,7 +251,6 @@ impl<'a> TParser<'a> {
         // we ruse ast since this is not a generic type
         if !is_instance {
             self.state.asts.remove(ast_id);
-            self.context.recycle(ast);
         } else {
             self.state.asts[ast_id] = ast;
         }
@@ -322,7 +324,13 @@ impl<'a> TParser<'a> {
             CallConv::Fast
         };
 
-        let id = self.function_type_of(module, args.as_slice(), ret, call_conv);
+        let sig = Signature {
+            args: args.clone(), 
+            ret, 
+            call_conv
+        };
+
+        let id = self.function_type_of(module, sig);
 
         Ok((module, id))
     }
@@ -416,15 +424,22 @@ impl<'a> TParser<'a> {
             }
         };
 
+        let &TypeEnt {
+            vis,
+            name,
+            attrs,
+            ..
+        } = ty_ent;
+
         let type_ent = TypeEnt {
             id,
             module,
-            vis: ty_ent.vis,
+            vis,
             params: params.clone(),
             kind: TKind::Unresolved(ast_id),
-            name: ty_ent.name.clone(),
+            name,
             hint: ast.token,
-            attrs: ty_ent.attrs.clone(),
+            attrs,
             size: Size::ZERO,
             align: Size::ZERO,
         };
@@ -611,19 +626,17 @@ impl<'a> TParser<'a> {
     pub fn function_type_of(
         &mut self,
         module: Mod,
-        args: &[Type],
-        ret: Option<Type>,
-        call_conv: CallConv,
+        sig: Signature,
     ) -> Type {
         let mut id = TYPE_SALT
             .add(ID::new("fun"))
-            .add(ID(unsafe { std::mem::transmute::<_, u8>(call_conv) } as u64));
+            .add(ID(unsafe { std::mem::transmute::<_, u8>(sig.call_conv) } as u64));
 
-        for arg in args.iter() {
+        for arg in sig.args.iter() {
             id = id.add(self.state.types[*arg].id);
         }
 
-        if let Some(ret) = ret {
+        if let Some(ret) = sig.ret {
             id = id.add(ID::new("->")).add(self.state.types[ret].id);
         }
 
@@ -631,15 +644,9 @@ impl<'a> TParser<'a> {
             return id;
         }
 
-        let fun = FunPointer {
-            call_conv,
-            args: args.to_vec(),
-            ret,
-        };
-
         let size = Size::POINTER;
         let type_ent = TypeEnt {
-            kind: TKind::FunPointer(fun),
+            kind: TKind::FunPointer(sig),
             params: vec![],
             hint: Token::default(),
             id,
@@ -783,8 +790,21 @@ impl Default for TypeEnt {
 }
 
 impl TypeEnt {
-    pub fn on_stack(&self) -> bool {
-        self.size > Size::POINTER
+    pub fn to_cr_type(&self, isa: &dyn TargetIsa) -> CrType {
+        match &self.kind {
+            TKind::Pointer(_) |
+            TKind::Array(_, _) |
+            TKind::FunPointer(_) |
+            TKind::Structure(_) => isa.pointer_type(),
+            &TKind::Builtin(ty) => ty,
+            TKind::Generic(_) |
+            TKind::Constant(_) |
+            TKind::Unresolved(_) => unreachable!(),
+        }
+    }
+
+    pub fn on_stack(&self, ptr_ty: CrType) -> bool {
+        self.size.pick(ptr_ty == I32) > ptr_ty.bytes() as u32
     }
 
     pub fn base(&self) -> Option<Type> {
@@ -801,7 +821,7 @@ pub enum TKind {
     Builtin(CrType),
     Pointer(Type),
     Array(Type, u32),
-    FunPointer(FunPointer),
+    FunPointer(Signature),
     Constant(TypeConst),
     Structure(SType),
     Generic(GAst),
@@ -814,11 +834,29 @@ impl Default for TKind {
     }
 }
 
-#[derive(Debug, Clone)]
-pub struct FunPointer {
+#[derive(Debug, Clone, Default)]
+pub struct Signature {
     pub call_conv: CallConv,
     pub args: Vec<Type>,
     pub ret: Option<Type>,
+}
+
+impl Signature {
+    pub fn to_cr_signature(&self, state: &TState, isa: &dyn TargetIsa, target: &mut CrSignature) {
+        target.call_conv = self.call_conv.to_cr_call_conv(isa);
+        target.params.extend(self.args.iter().map(|&ty| AbiParam::new(state.types[ty].to_cr_type(isa))));
+        if let Some(ret) = self.ret {
+            let ty = &state.types[ret];
+            let param = if ty.on_stack(isa.pointer_type()) {
+                let param = AbiParam::special(ty.to_cr_type(isa), ArgumentPurpose::StructReturn);
+                target.params.push(param);
+                param
+            } else {
+                AbiParam::new(ty.to_cr_type(isa))
+            };
+            target.returns.push(param);
+        }
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -1004,19 +1042,19 @@ macro_rules! define_repo {
 }
 
 define_repo!(
-    i8, I8, 1, 0;
-    i16, I16, 2, 0;
-    i32, I32, 4, 0;
-    i64, I64, 8, 0;
-    u8, I8, 1, 0;
-    u16, I16, 2, 0;
-    u32, I32, 4, 0;
-    u64, I64, 8, 0;
-    f32, F32, 4, 0;
-    f64, F64, 8, 0;
-    bool, B1, 1, 0;
-    int, INVALID, 0, 1;
-    uint, INVALID, 0, 1;
+    i8, I8, 1, 1;
+    i16, I16, 2, 2;
+    i32, I32, 4, 4;
+    i64, I64, 8, 8;
+    u8, I8, 1, 1;
+    u16, I16, 2, 2;
+    u32, I32, 4, 4;
+    u64, I64, 8, 8;
+    f32, F32, 4, 4;
+    f64, F64, 8, 8;
+    bool, B1, 1, 1;
+    int, INVALID, 4, 8;
+    uint, INVALID, 4, 8;
     array, INVALID, 0, 0
 );
 
@@ -1034,7 +1072,7 @@ pub enum CallConv {
     WasmtimeSystemV,
     WasmtimeFastcall,
     WasmtimeAppleAarch64,
-    Default,
+    Platform,
 }
 
 impl CallConv {
@@ -1052,9 +1090,16 @@ impl CallConv {
             "wasmtime_system_v" => Self::WasmtimeSystemV,
             "wasmtime_fastcall" => Self::WasmtimeFastcall,
             "wasmtime_apple_aarch64" => Self::WasmtimeAppleAarch64,
-            "default" => Self::Default,
+            "platform" => Self::Platform,
             _ => return None,
         })
+    }
+
+    pub fn to_cr_call_conv(&self, isa: &dyn TargetIsa) -> CrCallConv {
+        match self {
+            Self::Platform => isa.default_call_conv(),
+            _ => unsafe { std::mem::transmute(*self) },
+        }
     }
 }
 
@@ -1234,7 +1279,7 @@ pub fn call_conv_error(f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
     for cc in [
         "platform - picks call convention based of target platform",
         "fast",
-        "cold - then its unlikely this gets called",
+        "cold",
         "system_v",
         "windows_fastcall",
         "apple_aarch64",
@@ -1264,15 +1309,13 @@ pub fn test() {
     for module in std::mem::take(&mut state.module_order).drain(..).rev() {
         let mut ast = std::mem::take(&mut state.modules[module].ast);
 
-        let mut ast = AParser::new(&mut state, &mut ast, &mut context)
+        let mut ast = AParser::new(&mut state, &mut ast)
             .parse()
             .map_err(|err| panic!("\n{}", AErrorDisplay::new(&state, &err)))
             .unwrap();
 
-        collector.clear(&mut context);
+        collector.clear();
         collector.parse(&mut state, &mut ast, Vis::None);
-
-        context.recycle(ast);
 
         TParser::new(&mut state, &mut context, &mut collector)
             .parse(module)
