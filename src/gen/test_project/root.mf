@@ -1,6 +1,5 @@
 attr entry
 fun fine -> int:
-  return 0
   assert(1 - 1 == 0)
   assert(1 + 1 == 2)
   assert((if 1 == 1: 1 else: 0) == 1)
@@ -193,7 +192,6 @@ fun test_case_11:
   assert(a == 0)
     
 let a = 1
-
 
 fun test_case_12:
   assert(a == 1)

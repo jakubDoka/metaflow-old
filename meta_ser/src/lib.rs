@@ -11,7 +11,7 @@ pub fn derive_quick_ser(input: TokenStream) -> TokenStream {
     let mut generics = input.generics.clone();
 
     for param in generics.type_params_mut() {
-        param.bounds.push(parse_quote!(QuickSer));
+        param.bounds.push(parse_quote!(MetaQuickSer));
     }
 
     let mut type_params = input.generics.clone();

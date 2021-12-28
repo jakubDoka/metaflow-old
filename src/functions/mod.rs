@@ -8,7 +8,7 @@ use crate::lexer::{Span, Token, TokenDisplay};
 use crate::module_tree::*;
 use crate::types::Type;
 use crate::types::*;
-use crate::util::storage::{LinkedList, Table};
+use crate::util::storage::{LinkedList, Table, ImSlicePool, Range};
 use crate::util::Size;
 use crate::util::{
     sdbm::ID,
@@ -62,8 +62,6 @@ impl<'a> FParser<'a> {
 
         self.collect(module)?;
 
-        self.translate_globals()?;
-
         self.translate()?;
 
         Ok(())
@@ -81,54 +79,13 @@ impl<'a> FParser<'a> {
             Ok(())
         })?;
 
+        self.context.represented.push(self.state.main_fun_data.id);
+
         Ok(())
     }
 
-    fn translate_globals(&mut self) -> Result {
-        self.with_main_function(|s| {
-            let mut unresolved = std::mem::take(&mut s.state.unresolved_globals);
-            let fun = s.state.main_fun_data.id;
-    
-            for global in unresolved.drain(..) {
-                let glob = &mut s.state.globals[global];
-                let (ast, ty) = match &mut glob.kind {
-                    GKind::Normal(ast, ty) => (std::mem::take(ast), ty.clone()),
-                    _ => unreachable!(),
-                };
-                let module = glob.module;
-    
-                s.fun_mut(fun).module = module;
-    
-                let ty = if ast.kind != AKind::None {
-                    let value = s.expr(fun, &ast)?;
-                    let ty = s.value(value).ty;
-                    let target = s.new_anonymous_value(ty, true);
-                    s.add_inst(InstEnt::new(
-                        IKind::GlobalLoad(global),
-                        Some(target),
-                        &ast.token,
-                    ));
-    
-                    s.add_inst(InstEnt::new(IKind::Assign(target), Some(value), &ast.token));
-    
-                    ty
-                } else {
-                    ty.unwrap()
-                };
-    
-                s.state.globals[global].kind = GKind::Intermediate(ty);
-    
-                s.state.resolved_globals.push(global);
-            }
-    
-            s.state.unresolved_globals = unresolved;
-    
-            Ok(())
-        })
-    }
-
     fn translate(&mut self) -> Result {
-        while let Some(fun) = self.state.unresolved.pop() {
+        while let Some(fun) = self.context.unresolved.pop() {
             self.translate_fun(fun)?;
         }
 
@@ -193,7 +150,8 @@ impl<'a> FParser<'a> {
             }
         }
         self.fun_mut(fun).kind.normal_mut().sig.args = args;
-        self.inst_mut(entry_point).kind.block_mut().args = arg_buffer.clone();
+        let args = self.make_value_slice(&arg_buffer);
+        self.inst_mut(entry_point).kind.block_mut().args = args;
 
         let value = self.block(fun, &ast[1])?;
 
@@ -245,14 +203,15 @@ impl<'a> FParser<'a> {
 
         self.fun_mut(fun).kind = FKind::Represented(represented);
 
-        self.state.represented.push(fun);
+        self.context.represented.push(fun);
     }
 
     fn return_value(&mut self, fun: Fun, value: Value, token: &Token) -> Value {
         let ty = self.signature_of(fun).ret.unwrap();
         if self.ty(ty).on_stack(self.ptr_ty) {
             let entry = self.context.body.insts.first().unwrap();
-            let return_value = self.inst(entry).kind.block().args.last().unwrap().clone();
+            let args = self.value_slice(self.inst(entry).kind.block().args);
+            let return_value = args[args.len() - 1];
 
             let deref = self.new_temp_value(ty);
             self.add_inst(InstEnt::new(
@@ -314,7 +273,7 @@ impl<'a> FParser<'a> {
         })?;
 
         self.add_inst(InstEnt::new(
-            IKind::Jump(loop_header.start_block, vec![]),
+            IKind::Jump(loop_header.start_block, ValueSlice::empty()),
             None,
             &ast.token,
         ));
@@ -333,31 +292,31 @@ impl<'a> FParser<'a> {
 
         if ast[1].kind != AKind::None {
             let return_value = self.expr(fun, &ast[1])?;
-            let current_value = self
+            let args = self
                 .inst(loop_header.end_block)
                 .kind
                 .block()
-                .args
-                .first()
-                .cloned();
+                .args;
+            let current_value = self.value_slice(args).first();
             if current_value.is_none() {
                 let ty = self.value(return_value).ty;
                 let value = self.new_temp_value(ty);
+                let args = self.make_value_slice(&[value]);
                 self.inst_mut(loop_header.end_block)
                     .kind
                     .block_mut()
-                    .args
-                    .push(value);
+                    .args = args;
             }
 
+            let args = self.make_value_slice(&[return_value]);
             self.add_inst(InstEnt::new(
-                IKind::Jump(loop_header.end_block, vec![return_value]),
+                IKind::Jump(loop_header.end_block, args),
                 None,
                 &ast.token,
             ));
         } else {
             self.add_inst(InstEnt::new(
-                IKind::Jump(loop_header.end_block, vec![]),
+                IKind::Jump(loop_header.end_block, ValueSlice::empty()),
                 None,
                 &ast.token,
             ));
@@ -666,7 +625,7 @@ impl<'a> FParser<'a> {
         };
 
         self.add_inst(InstEnt::new(
-            IKind::Jump(start_block, vec![]),
+            IKind::Jump(start_block, ValueSlice::empty()),
             None,
             &ast.token,
         ));
@@ -681,17 +640,18 @@ impl<'a> FParser<'a> {
 
         if self.context.block.is_some() {
             self.add_inst(InstEnt::new(
-                IKind::Jump(start_block, vec![]),
+                IKind::Jump(start_block, ValueSlice::empty()),
                 None,
                 &ast.token,
             ));
         }
         self.make_block_current(end_block);
 
-        let value = if self.inst(end_block).kind.block().args.is_empty() {
+        let value = if self.inst(end_block).kind.block().args.len() == 0 {
             None
         } else {
-            Some(self.inst(end_block).kind.block().args[0])
+            let args = self.inst(end_block).kind.block().args;
+            Some(self.value_slice(args)[0])
         };
 
         Ok(value)
@@ -704,7 +664,7 @@ impl<'a> FParser<'a> {
 
         let then_block = self.new_block();
         self.add_inst(InstEnt::new(
-            IKind::JumpIfTrue(cond_val, then_block, vec![]),
+            IKind::JumpIfTrue(cond_val, then_block, ValueSlice::empty()),
             None,
             &cond_expr.token,
         ));
@@ -716,7 +676,7 @@ impl<'a> FParser<'a> {
         let else_branch = &ast[2];
         let else_block = if else_branch.kind == AKind::None {
             self.add_inst(InstEnt::new(
-                IKind::Jump(merge_block, vec![]),
+                IKind::Jump(merge_block, ValueSlice::empty()),
                 None,
                 &else_branch.token,
             ));
@@ -724,7 +684,7 @@ impl<'a> FParser<'a> {
         } else {
             let some_block = self.new_block();
             self.add_inst(InstEnt::new(
-                IKind::Jump(some_block, vec![]),
+                IKind::Jump(some_block, ValueSlice::empty()),
                 None,
                 &else_branch.token,
             ));
@@ -744,19 +704,21 @@ impl<'a> FParser<'a> {
                 return Err(FError::new(FEKind::MissingElseBranch, ast.token));
             }
 
+            let args = self.make_value_slice(&[val]);
             self.add_inst(InstEnt::new(
-                IKind::Jump(merge_block, vec![val]),
+                IKind::Jump(merge_block, args),
                 None,
                 &ast.token,
             ));
 
             let ty = self.value(val).ty;
             let value = self.new_temp_value(ty);
-            self.inst_mut(merge_block).kind.block_mut().args.push(value);
+            let args = self.make_value_slice(&[value]);
+            self.inst_mut(merge_block).kind.block_mut().args = args;
             result = Some(value);
         } else if self.context.block.is_some() {
             self.add_inst(InstEnt::new(
-                IKind::Jump(merge_block, vec![]),
+                IKind::Jump(merge_block, ValueSlice::empty()),
                 None,
                 &ast.token,
             ));
@@ -771,22 +733,19 @@ impl<'a> FParser<'a> {
 
             if let Some(val) = else_result {
                 let value_token = &else_branch.last().unwrap().token;
+                let args = self.make_value_slice(&[val]);
+                self.add_inst(InstEnt::new(
+                    IKind::Jump(merge_block, args),
+                    None,
+                    value_token,
+                ));
                 if result.is_some() {
-                    self.add_inst(InstEnt::new(
-                        IKind::Jump(merge_block, vec![val]),
-                        None,
-                        value_token,
-                    ));
+                    
                 } else if then_filled {
-                    self.add_inst(InstEnt::new(
-                        IKind::Jump(merge_block, vec![val]),
-                        None,
-                        value_token,
-                    ));
-
                     let ty = self.value(val).ty;
                     let value = self.new_temp_value(ty);
-                    self.inst_mut(merge_block).kind.block_mut().args.push(value);
+                    let args = self.make_value_slice(&[value]);
+                    self.inst_mut(merge_block).kind.block_mut().args = args;
                     result = Some(value);
                 } else {
                     return Err(FError::new(FEKind::UnexpectedValue, ast.token));
@@ -797,7 +756,7 @@ impl<'a> FParser<'a> {
                         return Err(FError::new(FEKind::ExpectedValue, ast.token));
                     }
                     self.add_inst(InstEnt::new(
-                        IKind::Jump(merge_block, vec![]),
+                        IKind::Jump(merge_block, ValueSlice::empty()),
                         None,
                         &ast.token,
                     ));
@@ -858,8 +817,9 @@ impl<'a> FParser<'a> {
                 }
 
                 let value = ret.map(|ty| self.new_temp_value(ty));
+                let args = self.make_value_slice(&values);
                 self.add_inst(InstEnt::new(
-                    IKind::FunPointerCall(pointer, values.clone()),
+                    IKind::FunPointerCall(pointer, args),
                     value,
                     &ast.token,
                 ));
@@ -1071,8 +1031,10 @@ impl<'a> FParser<'a> {
             return Err(FError::new(FEKind::VisibilityViolation, *token));
         }
 
+        let args = self.make_value_slice(&values);
+
         self.add_inst(InstEnt::new(
-            IKind::Call(other_fun, values.clone()),
+            IKind::Call(other_fun, args),
             value,
             token,
         ));
@@ -1090,7 +1052,7 @@ impl<'a> FParser<'a> {
             .add(ID(0))
             .add(self.state.modules[self.state.builtin_module].id);
         let pop = self.state.funs.index(pop).unwrap().clone();
-        self.add_inst(InstEnt::new(IKind::Call(pop, vec![]), None, &token));
+        self.add_inst(InstEnt::new(IKind::Call(pop, ValueSlice::empty()), None, &token));
     }
 
     fn gen_frame_push(&mut self, token: &Token) {
@@ -1111,10 +1073,11 @@ impl<'a> FParser<'a> {
             Some(column),
             token,
         ));
-        let file_name = unsafe {
-            std::mem::transmute::<&str, &str>(&self.state.sources[token.span.source].name)
-        };
-        let span = self.state.builtin_span(file_name);
+        let file_name = &self.state.sources[token.span.source].name;
+        let mut final_file_name = String::with_capacity(file_name.len() + 1);
+        final_file_name.push_str(file_name);
+        final_file_name.push('\x00');
+        let span = self.state.builtin_span(&final_file_name);
         let ptr = self.pointer_of(self.state.builtin_repo.u8);
         let file_name = self.new_temp_value(ptr);
         self.add_inst(InstEnt::new(
@@ -1123,8 +1086,9 @@ impl<'a> FParser<'a> {
             token,
         ));
 
+        let args = self.make_value_slice(&[line, column, file_name]);
         self.add_inst(InstEnt::new(
-            IKind::Call(push, vec![line, column, file_name]),
+            IKind::Call(push, args),
             None,
             token,
         ));
@@ -1252,10 +1216,7 @@ impl<'a> FParser<'a> {
             return Ok(None);
         };
 
-        let ty = match self.state.globals[found].kind {
-            GKind::Intermediate(ty) => ty,
-            _ => unreachable!(),
-        };
+        let ty = self.state.globals[found].ty;
 
         let value = self.new_anonymous_value(ty, self.state.globals[found].mutable);
         self.add_inst(InstEnt::new(IKind::GlobalLoad(found), Some(value), name));
@@ -1717,7 +1678,7 @@ impl<'a> FParser<'a> {
         debug_assert!(shadowed.is_none());
         self.state.modules[module].items.push(ModItem::Fun(id));
 
-        self.state.unresolved.push(id);
+        self.context.unresolved.push(id);
 
         Ok(Some(id))
     }
@@ -1733,17 +1694,28 @@ impl<'a> FParser<'a> {
     fn collect(&mut self, module: Mod) -> Result {
         let module_id = self.state.modules[module].id;
 
-        let mut globals = std::mem::take(&mut self.collector.globals);
-        for Item { attrs, ast, scope } in globals.drain(..) {
-            self.collect_global_var(ast, module, module_id, attrs, scope)?
-        }
-        self.collector.globals = globals;
-
         let mut functions = std::mem::take(&mut self.collector.functions);
         for Item { attrs, ast, scope } in functions.drain(..) {
             self.collect_fun(ast, module, module_id, attrs, scope)?
         }
         self.collector.functions = functions;
+
+        self.with_main_function(|s| {
+            let mut globals = std::mem::take(&mut s.collector.globals);
+            for Item { attrs, ast, scope } in globals.drain(..) {
+                s.collect_global_var(ast, module, module_id, attrs, scope)?
+            }
+            s.collector.globals = globals;
+
+            for i in 0..s.context.entry_points.len() {
+                let entry_point = s.context.entry_points[i];
+                s.add_entry(entry_point)?;                
+            }
+
+            s.context.entry_points.clear();
+
+            Ok(())
+        })?;
 
         Ok(())
     }
@@ -1782,6 +1754,8 @@ impl<'a> FParser<'a> {
         };
 
         let (linkage, alias) = self.resolve_linkage(attrs)?;
+        let fun = self.state.main_fun_data.id;
+        self.fun_mut(fun).module = module;
 
         for var_line in ast.iter_mut() {
             let ty = if var_line[1].kind != AKind::None {
@@ -1792,19 +1766,47 @@ impl<'a> FParser<'a> {
 
             let mut values = std::mem::take(&mut var_line[2]);
 
-            for (name, value) in var_line[0]
+            for (name, ast) in var_line[0]
                 .iter()
                 .zip(values.drain(..).chain(std::iter::repeat(Ast::none())))
             {
                 let hint = name.token;
                 let id = GLOBAL_SALT.add(hint.span.hash).add(scope_id).add(module_id);
+    
+                let (shadowed, global) = self.state.globals.insert(id, GlobalEnt::default());
+                if let Some(shadowed) = shadowed {
+                    return Err(FError::new(
+                        FEKind::RedefinedGlobal(shadowed.hint.clone()),
+                        name.token,
+                    ));
+                }
+                self.state.modules[module].items.push(ModItem::Global(global));
+
+                let ty = if ast.kind != AKind::None {
+                    let value = self.expr(fun, &ast)?;
+                    let ty = self.value(value).ty;
+                    let target = self.new_anonymous_value(ty, true);
+                    self.add_inst(InstEnt::new(
+                        IKind::GlobalLoad(global),
+                        Some(target),
+                        &ast.token,
+                    ));
+    
+                    self.add_inst(InstEnt::new(IKind::Assign(target), Some(value), &ast.token));
+    
+                    ty
+                } else {
+                    ty.unwrap()
+                };
 
                 let g_ent = GlobalEnt {
                     vis,
                     mutable,
                     id,
                     module,
-                    kind: GKind::Normal(value, ty),
+                    ty,
+                    ast,
+                    data_id: None,
                     hint,
                     attrs,
                     scope,
@@ -1812,16 +1814,9 @@ impl<'a> FParser<'a> {
                     alias,
                 };
 
-                let (shadowed, id) = self.state.globals.insert(id, g_ent);
-                if let Some(shadowed) = shadowed {
-                    return Err(FError::new(
-                        FEKind::RedefinedGlobal(shadowed.hint.clone()),
-                        name.token,
-                    ));
-                }
-                self.state.modules[module].items.push(ModItem::Global(id));
+                self.state.globals[global] = g_ent;
 
-                self.state.unresolved_globals.push(id);
+                self.context.resolved_globals.push(global);
             }
         }
 
@@ -2008,66 +2003,69 @@ impl<'a> FParser<'a> {
 
         if unresolved {
             if entry {
-                self.add_entry(id)?;
+                self.context.entry_points.push(id);
             }
-            self.state.unresolved.push(id);
+            self.context.unresolved.push(id);
         }
 
         Ok(())
     }
 
     fn add_entry(&mut self, id: Fun) -> Result {
-        self.with_main_function(|s| {
-            let signature = s.signature_of(id);
+        let signature = self.signature_of(id);
 
-            let ret = match signature.args.as_slice() {
-                &[] => {
-                    let value = signature.ret.map(|ty| s.new_temp_value(ty));
-                    s.add_inst(InstEnt::new(
-                        IKind::Call(id, vec![]),
-                        value,
-                        &s.fun(id).hint,
-                    ));
-                    value
-                }
-                &[count, args] => {
-                    let value = signature.ret.map(|ty| s.new_temp_value(ty));
-                    let temp_ptr = s.pointer_of(s.state.builtin_repo.int);
-                    if count != s.state.builtin_repo.int || args != s.pointer_of(temp_ptr) {
-                        return Err(FError::new(
-                            FEKind::InvalidEntrySignature,
-                            s.fun(id).hint,
-                        ));
-                    }
-                    s.add_inst(InstEnt::new(
-                        IKind::Call(id, vec![
-                            s.state.main_fun_data.arg1, 
-                            s.state.main_fun_data.arg2
-                        ]),
-                        value,
-                        &s.fun(id).hint,
-                    ));
-                    value
-                }
-                _ => {
+        let ret = match signature.args.as_slice() {
+            &[] => {
+                let value = signature.ret.map(|ty| self.new_temp_value(ty));
+                self.add_inst(InstEnt::new(
+                    IKind::Call(id, ValueSlice::empty()),
+                    value,
+                    &self.fun(id).hint,
+                ));
+                value
+            }
+            &[count, args] => {
+                let value = signature.ret.map(|ty| self.new_temp_value(ty));
+                let temp_ptr = self.pointer_of(self.state.builtin_repo.int);
+                if count != self.state.builtin_repo.int || args != self.pointer_of(temp_ptr) {
                     return Err(FError::new(
                         FEKind::InvalidEntrySignature,
-                        s.fun(id).hint,
+                        self.fun(id).hint,
                     ));
                 }
-            };
-    
-            if let Some(ret) = ret {
-                let value = s.context.vars[0];
-                s.add_inst(InstEnt::new(
-                    IKind::Assign(value),
-                    Some(ret),
-                    &s.fun(id).hint,
+                let args = self.make_value_slice(&[
+                    self.state.main_fun_data.arg1, 
+                    self.state.main_fun_data.arg2
+                ]);
+                self.add_inst(InstEnt::new(
+                    IKind::Call(id, args),
+                    value,
+                    &self.fun(id).hint,
+                ));
+                value
+            }
+            _ => {
+                return Err(FError::new(
+                    FEKind::InvalidEntrySignature,
+                    self.fun(id).hint,
                 ));
             }
+        };
 
-            Ok(())
-        })
+        if let Some(ret) = ret {
+            let value = self.state.main_fun_data.return_value;
+            self.add_inst(InstEnt::new(
+                IKind::Assign(value),
+                Some(ret),
+                &self.fun(id).hint,
+            ));
+        }
+
+        Ok(())
+    }
+
+    fn make_value_slice(&mut self, values: &[Value]) -> ValueSlice {
+        self.context.body.slices.add(values)
     }
 
     fn parse_signature(&mut self, module: Mod, header: &Ast) -> Result<Signature> {
@@ -2368,6 +2366,10 @@ impl<'a> FParser<'a> {
 
         Ok(())
     }
+
+    fn value_slice(&self, args: ValueSlice) -> &[Value] {
+        &self.context.body.slices[args]
+    }
 }
 
 impl<'a> ItemSearch<Fun> for FParser<'a> {
@@ -2613,6 +2615,7 @@ crate::def_displayer!(
             let sig = match &self.state.funs[*fun].kind {
                 FKind::Normal(n) => &n.sig,
                 FKind::Represented(r) => &r.sig,
+                FKind::Builtin(s) => s,
                 _ => unreachable!(),
             };
             writeln!(
@@ -2720,10 +2723,13 @@ pub struct FunEnt {
 
 crate::impl_wrapper!(LinkageWr, Linkage);
 
+type ValueSlice = Range<Value>;
+
 #[derive(Debug, Default, Clone, MetaSer)]
 pub struct FunBody {
     pub values: List<Value, ValueEnt>,
     pub insts: LinkedList<Inst, InstEnt>,
+    pub slices: ImSlicePool<Value, Value>
 }
 
 impl FunBody {
@@ -2783,6 +2789,14 @@ impl RFun {
 
     pub fn inst_mut(&mut self, inst: Inst) -> &mut InstEnt {
         &mut self.body.insts[inst]
+    }
+
+    pub fn slice(&self, slice: ValueSlice) -> &[Value] {
+        &self.body.slices[slice]
+    }
+
+    pub fn slice_mut(&mut self, slice: ValueSlice) -> &mut [Value] {
+        &mut self.body.slices[slice]
     }
 }
 
@@ -2849,7 +2863,7 @@ impl GenericElement {
 
 crate::index_pointer!(Inst);
 
-#[derive(Debug, Default, Clone, MetaSer)]
+#[derive(Debug, Default, Clone, Copy, MetaQuickSer)]
 pub struct InstEnt {
     pub kind: IKind,
     pub value: Option<Value>,
@@ -2868,13 +2882,13 @@ impl InstEnt {
     }
 }
 
-#[derive(Debug, Clone, MetaSer)]
+#[derive(Debug, Clone, Copy, MetaQuickSer)]
 pub enum IKind {
     NoOp,
     FunPointer(Fun),
-    FunPointerCall(Value, Vec<Value>),
+    FunPointerCall(Value, ValueSlice),
     GlobalLoad(Global),
-    Call(Fun, Vec<Value>),
+    Call(Fun, ValueSlice),
     UnresolvedDot(Value, ID),
     VarDecl(Value),
     Zeroed,
@@ -2884,8 +2898,8 @@ pub enum IKind {
     Assign(Value),
     Block(Block),
     BlockEnd(Inst),
-    Jump(Inst, Vec<Value>),
-    JumpIfTrue(Value, Inst, Vec<Value>),
+    Jump(Inst, ValueSlice),
+    JumpIfTrue(Value, Inst, ValueSlice),
     Offset(Value),
     Deref(Value, bool),
     Ref(Value),
@@ -2918,10 +2932,10 @@ impl Default for IKind {
     }
 }
 
-#[derive(Debug, Clone, Default, MetaSer)]
+#[derive(Debug, Clone, Copy, Default, MetaQuickSer)]
 pub struct Block {
     pub block: Option<CrBlockWr>,
-    pub args: Vec<Value>,
+    pub args: ValueSlice,
     pub end: Option<Inst>,
 }
 
@@ -2992,35 +3006,25 @@ impl Default for FinalValue {
 
 crate::index_pointer!(Global);
 
-#[derive(Debug, Clone, MetaSer)]
+#[derive(Debug, Clone, CustomDefault, MetaSer)]
 pub struct GlobalEnt {
     pub id: ID,
     pub vis: Vis,
     pub mutable: bool,
     pub module: Mod,
-    pub kind: GKind,
+    pub ast: Ast,
+    pub data_id: Option<DataIdWr>,   
+    pub ty: Type,
     pub hint: Token,
     pub attrs: Attrs,
     pub scope: Option<Scope>,
+    #[default(LinkageWr(Linkage::Export))]
     pub linkage: LinkageWr,
     pub alias: Option<Span>,
-}
 
-#[derive(Debug, Clone, MetaSer)]
-pub enum GKind {
-    Default,
-    Normal(Ast, Option<Type>),
-    Intermediate(Type),
-    Represented(DataIdWr, Type),
 }
 
 crate::impl_wrapper!(DataIdWr, DataId);
-
-impl Default for GKind {
-    fn default() -> Self {
-        GKind::Default
-    }
-}
 
 #[derive(Debug, Clone, Copy, Default, MetaQuickSer)]
 pub struct MainFunData {
@@ -3034,19 +3038,10 @@ pub struct MainFunData {
 #[derive(MetaSer)]
 pub struct FState {
     pub t_state: TState,
-
     pub funs: Table<Fun, FunEnt>,
-
     pub globals: Table<Global, GlobalEnt>,
-
     pub main_fun_data: MainFunData,
-
-    pub unresolved_globals: Vec<Global>,
-    pub resolved_globals: Vec<Global>,
-    pub unresolved: Vec<Fun>,
-    pub represented: Vec<Fun>,
     pub index_span: Span,
-
     pub do_stacktrace: bool,
 }
 
@@ -3057,13 +3052,9 @@ impl Default for FState {
         let mut state = Self {
             t_state: TState::default(),
             funs: Table::new(),
-            unresolved: Vec::new(),
-            represented: Vec::new(),
             index_span: Span::default(),
             globals: Table::new(),
-            unresolved_globals: Vec::new(),
             main_fun_data: MainFunData::default(),
-            resolved_globals: Vec::new(),
 
             do_stacktrace: false,
         };
@@ -3077,10 +3068,12 @@ impl Default for FState {
             .values
             .add(ValueEnt::temp(state.builtin_repo.int));
 
+        let args = body.slices.add(&[arg1, arg2]);
+
         let entry_point = body.insts.push(InstEnt::new(
             IKind::Block(Block {
                 block: None,
-                args: vec![arg1, arg2],
+                args,
                 end: None,
             }),
             None,
@@ -3269,6 +3262,11 @@ pub struct FContext {
     pub frames: Vec<usize>,
     pub body: FunBody,
     pub block: Option<Inst>,
+    pub unresolved_globals: Vec<Global>,
+    pub resolved_globals: Vec<Global>,
+    pub unresolved: Vec<Fun>,
+    pub entry_points: Vec<Fun>,
+    pub represented: Vec<Fun>,
 }
 
 crate::inherit!(FContext, t_context, TContext);

@@ -1,10 +1,6 @@
 use std::{
     marker::PhantomData,
     ops::{Index, IndexMut},
-    sync::{
-        atomic::{AtomicUsize, Ordering},
-        Arc,
-    },
 };
 
 use meta_ser::{MetaSer, MetaQuickSer};
@@ -871,24 +867,83 @@ impl<I: IndexPointer, T> IndexMut<I> for List<I, T> {
     }
 }
 
-#[derive(Debug, Clone, Default)]
-pub struct Cursor {
-    counter: Arc<AtomicUsize>,
+#[derive(Debug, Clone, MetaSer)]
+pub struct ImSlicePool<I: IndexPointer, T> {
+    data: Vec<T>,
+
+    p: PhantomData<I>,
 }
 
-impl Cursor {
+impl<I: IndexPointer, T: Clone> ImSlicePool<I, T> {
     pub fn new() -> Self {
+        Self::default()
+    }
+
+    pub fn add(&mut self, data: &[T]) -> Range<I> {
+        let start = I::new(self.data.len());
+        self.data.extend_from_slice(data);
+        let end = I::new(self.data.len());
+        Range::new(start, end)
+    }
+
+    pub fn clear(&mut self) {
+        self.data.clear();
+    }
+}
+
+impl<I: IndexPointer, T> Index<Range<I>> for ImSlicePool<I, T> {
+    type Output = [T];
+
+    fn index(&self, index: Range<I>) -> &Self::Output {
+        &self.data[index.start.raw()..index.end.raw()]
+    }
+}
+
+impl<I: IndexPointer, T> IndexMut<Range<I>> for ImSlicePool<I, T> {
+    fn index_mut(&mut self, index: Range<I>) -> &mut Self::Output {
+        &mut self.data[index.start.raw()..index.end.raw()]
+    }
+}
+
+impl<I: IndexPointer, T> Default for ImSlicePool<I, T> {
+    fn default() -> Self {
         Self {
-            counter: Arc::new(AtomicUsize::new(0)),
+            data: vec![],
+            p: PhantomData,
         }
     }
+}
 
-    pub fn next(&self) -> usize {
-        self.counter.fetch_add(1, Ordering::Relaxed)
+pub struct SlicePool<I: IndexPointer, T> {
+    _data: Vec<T>,
+
+    _size_index: Vec<Range<I>>,
+    _lookup_index: Vec<Range<I>>,
+
+    p: PhantomData<I>,
+}
+
+#[derive(Debug, Clone, Copy, Default, MetaQuickSer, PartialEq, Eq)]
+pub struct Range<I> {
+    start: I,
+    end: I,
+}
+
+impl<I> Range<I> {
+    pub fn new(start: I, end: I) -> Self {
+        Self { start, end }
     }
 
-    pub fn set(&self, value: usize) {
-        self.counter.store(value, Ordering::Relaxed)
+    pub fn empty() -> Self {
+        unsafe {
+            std::mem::zeroed()
+        }
+    }
+}
+
+impl<I: IndexPointer> Range<I> {
+    pub fn len(&self) -> usize {
+        (self.end.raw() - self.start.raw()) as usize
     }
 }
 

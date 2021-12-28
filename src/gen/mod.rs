@@ -144,10 +144,11 @@ pub fn generate_obj_file(args: &Arguments) -> Result<Vec<u8>> {
             return Err((Some(state), e));
         }
     }
-
+    
     Generator::new(&mut module, &mut state, &mut context, &mut collector, false)
         .finalize()
         .map_err(|err| (Some(state), err))?;
+
 
     Ok(module.finish().emit().unwrap())
 }
@@ -230,7 +231,7 @@ impl Into<GError> for GEKind {
 }
 
 pub fn test() {
-    let args = Arguments::from_str("root src/gen/test_project").unwrap();
+    let args = Arguments::from_str("root src/gen/test_project -trace").unwrap();
 
     compile(args)
         .map_err(|(state, e)| panic!("{}", GErrorDisplay::new(state.as_ref(), &e)))

@@ -10,11 +10,17 @@ fun pub realloc(ptr: &u8, size: int) -> &u8
 
 fun pub free(ptr: &u8)
 
+fun pub putchar(c: u32)
+
 fun pub memset(ptr: &u8, value: u8, size: int)
 
 fun pub memmove(dest: &u8, src: &u8, size: int)
 
 fun pub memcpy(dest: &u8, src: &u8, size: int)
+
+fun pub log10(x: f64) -> f64
+
+fun pub ceil(x: f64) -> f64
 
 attr linkage(import, printf)
 fun pub print(str: &u8)
@@ -29,7 +35,7 @@ struct pub StackFrame:
   pub line, column: int
   pub file: &u8
 
-attr inline
+# attr inline
 fun pub assert(cond: bool):
   if !cond: panic("assertion failed")
 
@@ -98,9 +104,8 @@ fun pub drop[T](ptr: &T):
 ## returns size of T in bytes
 fun pub sizeof[T] -> int
 
+# attr inline
 impl pub [T, L] [T, L]:
-  attr push(inline)
-
   fun __index__(a: &Self, index: int) -> &T:
     if index < 0 | index >= L:
       panic("index out of bounds")
@@ -117,18 +122,25 @@ impl pub [T, L] [T, L]:
 
   fun len(array: &Self) -> int:
     L
-  
-  attr pop()
 
 impl pub Seq[u8]:
   fun print_int(s: &Self, value: int):
-    var value = value
+    let 
+      prev_len = s.len
+      width = log10(value.f64()).int() + 1
+
+    s.reserve(prev_len + width)
+    s.len = prev_len + width
+    var 
+      i = width
+      value = value
     loop:
-      if value == 0:
+      if i == 0:
         break
       var digit = value % 10
       value = value / 10
-      s.push((digit.u32() + '0').u8())
+      *s.get_unchecked(prev_len + i - 1) = (digit.u32() + '0').u8()
+      i -= 1
   
   fun print(s: &Self, value: &u8):
     var i = 0
@@ -147,8 +159,9 @@ struct pub Seq[T]:
   len: int
   cap: int
 
+# attr inline
 impl pub [T] Seq[T]:
-  attr push(inline)
+  
 
   fun extend(s, other: &Self):
     let new_len = s.len + other.len
@@ -232,16 +245,13 @@ impl pub [T] Seq[T]:
   
   fun in_bounds(s: &Self, index: int) -> bool:
     index >= 0 & index < s.len
-  
-  attr pop()
-
 
 struct pub Option[T]:
   priv value: T
   priv is_some: bool
 
+# attr inline
 impl pub [T] Option[T]:
-  attr push(inline)
 
   fun some(value: T) -> Self:
     var option: Self
@@ -272,5 +282,3 @@ impl pub [T] Option[T]:
   
   fun unwrap_unchecked(option: Self) -> T:
     option.value
-
-  attr pop()
