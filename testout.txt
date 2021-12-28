@@ -2116,9 +2116,4 @@ Group "\n":
   Group ":":
    Lit "\"\r\nhello there\r\n  \""
 
-Some(SystemTime { intervals: 132847680434665571 })
-Some(SystemTime { intervals: 132832702030717124 })
-Some(SystemTime { intervals: 132848203804040719 })
-Some(SystemTime { intervals: 132848203847013644 })
-Some(SystemTime { intervals: 132848970153336304 })
-Some(SystemTime { intervals: 132851832593915260 })
+Some(SystemTime { intervals: 132851832593915260 }) Some(SystemTime { intervals: 132851883359943398 })
