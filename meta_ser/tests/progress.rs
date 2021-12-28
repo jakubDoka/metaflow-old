@@ -1,5 +1,5 @@
 use meta_ser::{MetaSer, EnumGetters, CustomDefault};
-use traits::MetaSer;
+use traits::*;
 
 #[derive(MetaSer, PartialEq, Eq, CustomDefault)]
 pub struct Something {

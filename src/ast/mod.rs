@@ -13,14 +13,8 @@ pub struct AParser<'a> {
 }
 
 impl<'a> AParser<'a> {
-    pub fn new(
-        main_state: &'a mut AMainState,
-        state: &'a mut AState,
-    ) -> Self {
-        Self {
-            main_state,
-            state,
-        }
+    pub fn new(main_state: &'a mut AMainState, state: &'a mut AState) -> Self {
+        Self { main_state, state }
     }
 
     pub fn parse_manifest(&mut self) -> Result<Manifest> {
@@ -590,8 +584,7 @@ impl<'a> AParser<'a> {
                     AKind::Ident,
                     Token::new(
                         TKind::Op,
-                        self.main_state
-                            .slice_span(&op.span, 0, op.span.len() - 1),
+                        self.main_state.slice_span(&op.span, 0, op.span.len() - 1),
                     ),
                 );
                 let eq = Ast::new(

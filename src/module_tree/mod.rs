@@ -66,20 +66,14 @@ impl<'a> MTParser<'a> {
                     manifest
                         .deps
                         .iter()
-                        .find(|dep| {
-                            dep.0 == id
-                        })
+                        .find(|dep| dep.0 == id)
                         .map(|dep| dep.1)
                         .ok_or_else(|| MTError::new(MTEKind::ImportNotFound, import.token))?
                         .clone()
                 };
 
-                let dependency = self.load_module(
-                    import.path,
-                    import.token,
-                    manifest,
-                    &mut path_buffer,
-                )?;
+                let dependency =
+                    self.load_module(import.path, import.token, manifest, &mut path_buffer)?;
                 frontier.push(dependency);
                 let nickname = MOD_SALT.add(
                     import
@@ -218,10 +212,7 @@ impl<'a> MTParser<'a> {
             path_buffer.set_extension(MANIFEST_EXT);
 
             let content = std::fs::read_to_string(&path_buffer).map_err(|err| {
-                MTError::new(
-                    MTEKind::ManifestReadError(path_buffer.clone(), err),
-                    token,
-                )
+                MTError::new(MTEKind::ManifestReadError(path_buffer.clone(), err), token)
             })?;
 
             let full_path = path_buffer
@@ -257,9 +248,9 @@ impl<'a> MTParser<'a> {
             let whole_len = Path::new(root_file).file_name().unwrap().len();
 
             let len = root_file_span.len();
-            let name = self
-                .state
-                .slice_span(&root_file_span, len - whole_len, len - whole_len + name_len);
+            let name =
+                self.state
+                    .slice_span(&root_file_span, len - whole_len, len - whole_len + name_len);
             let root_path = self.state.slice_span(&root_file_span, 0, parent_len);
 
             let manifest_ent = &mut self.state.manifests[manifest_id];

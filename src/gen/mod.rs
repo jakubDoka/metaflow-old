@@ -12,11 +12,11 @@ use std::process::Command;
 
 use crate::{
     ast::{AError, AErrorDisplay, AParser, Vis},
-    util::cli::Arguments,
     collector::Collector,
     functions::{FError, FErrorDisplay},
     lexer::{Token, TokenDisplay},
     module_tree::{MTError, MTErrorDisplay, MTParser},
+    util::cli::Arguments,
 };
 
 use super::*;
@@ -138,8 +138,8 @@ pub fn generate_obj_file(args: &Arguments) -> Result<Vec<u8>> {
         collector.clear();
         collector.parse(&mut state, &mut ast, Vis::None);
 
-        if let Err(e) =
-            Generator::new(&mut module, &mut state, &mut context, &mut collector, false).generate(module_id)
+        if let Err(e) = Generator::new(&mut module, &mut state, &mut context, &mut collector, false)
+            .generate(module_id)
         {
             return Err((Some(state), e));
         }
@@ -166,11 +166,7 @@ impl<'a> GErrorDisplay<'a> {
 impl std::fmt::Display for GErrorDisplay<'_> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         if let Some(state) = self.state {
-            writeln!(
-                f,
-                "{}",
-                TokenDisplay::new(state, &self.error.token)
-            )?;
+            writeln!(f, "{}", TokenDisplay::new(state, &self.error.token))?;
         }
 
         match &self.error.kind {

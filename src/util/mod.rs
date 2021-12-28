@@ -1,7 +1,7 @@
+pub mod cli;
 pub mod pool;
 pub mod sdbm;
 pub mod storage;
-pub mod cli;
 
 #[macro_export]
 macro_rules! inherit {

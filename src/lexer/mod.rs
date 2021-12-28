@@ -519,11 +519,7 @@ impl LMainState {
             other,
         );
 
-        let end = if trim {
-            other.start
-        } else {
-            other.end
-        } as usize;
+        let end = if trim { other.start } else { other.end } as usize;
 
         span.end = span.start
             + self.sources[span.source].content[span.start as usize..end]
@@ -549,7 +545,14 @@ impl LMainState {
     pub fn slice_span(&self, span: &Span, start: usize, end: usize) -> Span {
         let new_range = span.start as usize + start..span.start as usize + end;
         let hash = ID::new(&self.sources[span.source].content[new_range.clone()]);
-        Span::new(span.source, hash, new_range.start as u32, new_range.end as u32, span.line, span.column)
+        Span::new(
+            span.source,
+            hash,
+            new_range.start as u32,
+            new_range.end as u32,
+            span.line,
+            span.column,
+        )
     }
 
     pub fn lexer_for<'a>(&'a mut self, state: &'a mut LState) -> Lexer<'a> {
@@ -890,7 +893,7 @@ impl Span {
 
     pub fn len(&self) -> usize {
         (self.end - self.start) as usize
-    } 
+    }
 }
 
 pub fn test() {

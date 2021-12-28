@@ -6,11 +6,11 @@ use crate::collector::{Attrs, Collector, Item};
 use crate::lexer::{Span, TKind as LTKind, Token, TokenDisplay};
 use crate::module_tree::{self, MTContext, MTParser, MTState, Mod, TreeStorage};
 use crate::util::sdbm::ID;
-use crate::util::Size;
 use crate::util::storage::{IndexPointer, ReusableList, Table};
+use crate::util::Size;
 use cranelift_codegen::ir::types::Type as CrType;
-use cranelift_codegen::ir::{types::*, AbiParam, ArgumentPurpose};
 use cranelift_codegen::ir::Signature as CrSignature;
+use cranelift_codegen::ir::{types::*, AbiParam, ArgumentPurpose};
 use cranelift_codegen::isa::CallConv as CrCallConv;
 use cranelift_codegen::isa::TargetIsa;
 use meta_ser::EnumGetters;
@@ -108,9 +108,15 @@ impl<'a> TParser<'a> {
                         match kind {
                             SKind::Struct => {
                                 let calc = move |offset: Size| {
-                                    let temp = Size::new(offset.s32 & (align.s32 - 1), offset.s64 & (align.s64 - 1));
+                                    let temp = Size::new(
+                                        offset.s32 & (align.s32 - 1),
+                                        offset.s64 & (align.s64 - 1),
+                                    );
                                     let add = (temp != Size::ZERO) as u32;
-                                    Size::new(align.s32 * add - temp.s32, align.s64 * add - temp.s64)
+                                    Size::new(
+                                        align.s32 * add - temp.s32,
+                                        align.s64 * add - temp.s64,
+                                    )
                                 };
 
                                 for field in &mut fields {
@@ -317,17 +323,16 @@ impl<'a> TParser<'a> {
 
         let call_conv = if ast[ast.len() - 1].kind != AKind::None {
             let str = self.state.display(&ast[ast.len() - 1].token.span);
-            CallConv::from_str(str).ok_or_else(|| {
-                TError::new(TEKind::InvalidCallConv, ast[ast.len() - 1].token)
-            })?
+            CallConv::from_str(str)
+                .ok_or_else(|| TError::new(TEKind::InvalidCallConv, ast[ast.len() - 1].token))?
         } else {
             CallConv::Fast
         };
 
         let sig = Signature {
-            args: args.clone(), 
-            ret, 
-            call_conv
+            args: args.clone(),
+            ret,
+            call_conv,
         };
 
         let id = self.function_type_of(module, sig);
@@ -343,12 +348,7 @@ impl<'a> TParser<'a> {
         let (_, length) = self.resolve_type(module, length, depth)?;
         let length = match self.state.types[length].kind {
             TKind::Constant(TypeConst::Int(i)) => i,
-            _ => {
-                return Err(TError::new(
-                    TEKind::ExpectedIntConstant,
-                    ast[1].token,
-                ))
-            }
+            _ => return Err(TError::new(TEKind::ExpectedIntConstant, ast[1].token)),
         };
 
         Ok((module, self.array_of(element, length as usize)))
@@ -425,10 +425,7 @@ impl<'a> TParser<'a> {
         };
 
         let &TypeEnt {
-            vis,
-            name,
-            attrs,
-            ..
+            vis, name, attrs, ..
         } = ty_ent;
 
         let type_ent = TypeEnt {
@@ -578,7 +575,9 @@ impl<'a> TParser<'a> {
             vis: Vis::Public,
             kind: TKind::Array(element, length as u32),
 
-            size: self.state.types[element].size.mul(Size::new(length as u32, length as u32)),
+            size: self.state.types[element]
+                .size
+                .mul(Size::new(length as u32, length as u32)),
             align: self.state.types[element].align,
 
             ..Default::default()
@@ -623,14 +622,10 @@ impl<'a> TParser<'a> {
         self.state.types.index(id).cloned()
     }
 
-    pub fn function_type_of(
-        &mut self,
-        module: Mod,
-        sig: Signature,
-    ) -> Type {
-        let mut id = TYPE_SALT
-            .add(ID::new("fun"))
-            .add(ID(unsafe { std::mem::transmute::<_, u8>(sig.call_conv) } as u64));
+    pub fn function_type_of(&mut self, module: Mod, sig: Signature) -> Type {
+        let mut id = TYPE_SALT.add(ID::new("fun")).add(ID(unsafe {
+            std::mem::transmute::<_, u8>(sig.call_conv)
+        } as u64));
 
         for arg in sig.args.iter() {
             id = id.add(self.state.types[*arg].id);
@@ -683,9 +678,7 @@ impl<'a> TreeStorage<Type> for TParser<'a> {
     fn node_dep(&self, id: Type, idx: usize) -> Type {
         let node = &self.state.types[id];
         match &node.kind {
-            TKind::Structure(stype) => {
-                stype.fields[idx].ty
-            }
+            TKind::Structure(stype) => stype.fields[idx].ty,
             TKind::Array(ty, _) => *ty,
             TKind::FunPointer(fun) => {
                 if idx == fun.args.len() {
@@ -704,9 +697,7 @@ impl<'a> TreeStorage<Type> for TParser<'a> {
         match &node.kind {
             _ if node.module != self.module || node.size != Size::ZERO => 0,
             TKind::Builtin(_) | TKind::Pointer(..) => 0,
-            TKind::FunPointer(fun) => {
-                fun.args.len() + fun.ret.is_some() as usize
-            }
+            TKind::FunPointer(fun) => fun.args.len() + fun.ret.is_some() as usize,
             TKind::Array(..) => 1,
             TKind::Structure(stype) => stype.fields.len(),
             TKind::Generic(_) | TKind::Unresolved(_) | TKind::Constant(_) => unreachable!(),
@@ -792,14 +783,11 @@ impl Default for TypeEnt {
 impl TypeEnt {
     pub fn to_cr_type(&self, isa: &dyn TargetIsa) -> CrType {
         match &self.kind {
-            TKind::Pointer(_) |
-            TKind::Array(_, _) |
-            TKind::FunPointer(_) |
-            TKind::Structure(_) => isa.pointer_type(),
+            TKind::Pointer(_) | TKind::Array(_, _) | TKind::FunPointer(_) | TKind::Structure(_) => {
+                isa.pointer_type()
+            }
             &TKind::Builtin(ty) => ty,
-            TKind::Generic(_) |
-            TKind::Constant(_) |
-            TKind::Unresolved(_) => unreachable!(),
+            TKind::Generic(_) | TKind::Constant(_) | TKind::Unresolved(_) => unreachable!(),
         }
     }
 
@@ -844,7 +832,11 @@ pub struct Signature {
 impl Signature {
     pub fn to_cr_signature(&self, state: &TState, isa: &dyn TargetIsa, target: &mut CrSignature) {
         target.call_conv = self.call_conv.to_cr_call_conv(isa);
-        target.params.extend(self.args.iter().map(|&ty| AbiParam::new(state.types[ty].to_cr_type(isa))));
+        target.params.extend(
+            self.args
+                .iter()
+                .map(|&ty| AbiParam::new(state.types[ty].to_cr_type(isa))),
+        );
         if let Some(ret) = self.ret {
             let ty = &state.types[ret];
             let param = if ty.on_stack(isa.pointer_type()) {

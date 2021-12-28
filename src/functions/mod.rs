@@ -8,22 +8,19 @@ use crate::lexer::{Span, Token, TokenDisplay};
 use crate::module_tree::*;
 use crate::types::Type;
 use crate::types::*;
-use crate::util::Size;
 use crate::util::storage::{LinkedList, Table};
+use crate::util::Size;
 use crate::util::{
     sdbm::ID,
     storage::{IndexPointer, List},
 };
 
 use cranelift_codegen::ir::types::I64;
-use cranelift_codegen::ir::{
-    Block as CrBlock, StackSlot, Value as CrValue,
-    types::Type as CrType,
-};
+use cranelift_codegen::ir::{types::Type as CrType, Block as CrBlock, StackSlot, Value as CrValue};
 
 use cranelift_frontend::Variable as CrVar;
-use cranelift_module::{FuncId, RelocRecord, DataId, Linkage};
-use meta_ser::{EnumGetters, CustomDefault};
+use cranelift_module::{DataId, FuncId, Linkage, RelocRecord};
+use meta_ser::{CustomDefault, EnumGetters};
 
 type Result<T = ()> = std::result::Result<T, FError>;
 type ExprResult = Result<Option<Value>>;
@@ -97,7 +94,6 @@ impl<'a> FParser<'a> {
                 _ => unreachable!(),
             };
             let module = glob.module;
-
 
             self.fun_mut(fun).module = module;
 
@@ -200,9 +196,7 @@ impl<'a> FParser<'a> {
 
         let value = self.block(fun, &ast[1])?;
 
-        if let (Some(value), Some(_), Some(ret)) =
-            (value, self.state.bstate.block, ret)
-        {
+        if let (Some(value), Some(_), Some(ret)) = (value, self.state.bstate.block, ret) {
             let value_ty = self.value(value).ty;
             let token = &ast[1].last().unwrap().token;
             self.assert_type(value_ty, ret, token)?;
@@ -235,7 +229,7 @@ impl<'a> FParser<'a> {
         }
 
         self.finalize_fun(fun);
-        
+
         Ok(())
     }
 
@@ -383,8 +377,7 @@ impl<'a> FParser<'a> {
                 None
             }
         } else {
-            let ty =
-                ty.ok_or_else(|| FError::new(FEKind::UnexpectedReturnValue, ast[0].token))?;
+            let ty = ty.ok_or_else(|| FError::new(FEKind::UnexpectedReturnValue, ast[0].token))?;
             let value = self.expr(fun, &ast[0])?;
             let actual_type = self.value(value).ty;
             self.assert_type(actual_type, ty, &ast[0].token)?;
@@ -835,10 +828,7 @@ impl<'a> FParser<'a> {
                 let fp = match &self.ty(ty).kind {
                     TKind::FunPointer(fp) => fp,
                     _ => {
-                        return Err(FError::new(
-                            FEKind::ExpectedFunctionPointer,
-                            ast.token,
-                        ));
+                        return Err(FError::new(FEKind::ExpectedFunctionPointer, ast.token));
                     }
                 };
 
@@ -862,7 +852,6 @@ impl<'a> FParser<'a> {
                 }
 
                 let do_stacktrace = self.state.do_stacktrace;
-                
 
                 if do_stacktrace {
                     self.gen_frame_push(&ast.token);
@@ -1007,7 +996,6 @@ impl<'a> FParser<'a> {
                     self.create(other_fun, params, &types)?
                 }
             } else {
-                
                 self.create(other_fun, params, &types)?
             }
             .ok_or_else(|| {
@@ -1071,7 +1059,6 @@ impl<'a> FParser<'a> {
         let do_stacktrace = self.state.do_stacktrace
             && !self.fun(fun).untraced
             && !matches!(self.fun(other_fun).kind, FKind::Builtin(..));
-
 
         if do_stacktrace {
             self.gen_frame_push(&token);
@@ -1188,9 +1175,7 @@ impl<'a> FParser<'a> {
                     let dep = self
                         .state
                         .find_dep(module, &module_name.token)
-                        .ok_or_else(|| {
-                            FError::new(FEKind::UnknownModule, module_name.token)
-                        })?;
+                        .ok_or_else(|| FError::new(FEKind::UnknownModule, module_name.token))?;
                     let caller = self.parse_type(dep, caller_name)?;
 
                     Ok((Some(dep), Some(caller), name.token))
@@ -1407,10 +1392,7 @@ impl<'a> FParser<'a> {
         let header_datatype = self.value(header).ty;
         let mut path = vec![];
         if !self.find_field(header_datatype, field, &mut path) {
-            return Err(FError::new(
-                FEKind::UnknownField(header_datatype),
-                *token,
-            ));
+            return Err(FError::new(FEKind::UnknownField(header_datatype), *token));
         }
 
         let mut offset = Size::ZERO;
@@ -1435,10 +1417,7 @@ impl<'a> FParser<'a> {
                         TKind::Structure(stype) => {
                             let field = &stype.fields[i];
                             if !self.state.can_access(module, ty.module, field.vis) {
-                                return Err(FError::new(
-                                    FEKind::FieldVisibilityViolation,
-                                    *token,
-                                ));
+                                return Err(FError::new(FEKind::FieldVisibilityViolation, *token));
                             }
                             offset = field.offset;
                             current_type = field.ty;
@@ -1653,7 +1632,7 @@ impl<'a> FParser<'a> {
             fun_ent.kind.generic_mut().signature.elements = elements;
             return Ok(None);
         }
-        
+
         let &mut FunEnt {
             module,
             untraced,
@@ -1669,7 +1648,7 @@ impl<'a> FParser<'a> {
         let g_ent = fun_ent.kind.generic_mut();
         g_ent.signature.elements = elements;
         let call_conv = g_ent.call_conv;
-        let g_params = std::mem::take(&mut g_ent.signature.params); 
+        let g_params = std::mem::take(&mut g_ent.signature.params);
         let mut id = FUN_SALT.add(fun_ent.name.hash);
         let ast_id = g_ent.ast;
         let fun_module_id = self.state.modules[module].id;
@@ -1678,9 +1657,7 @@ impl<'a> FParser<'a> {
         let mut final_params = self.context.pool.get();
         for i in 0..params.len() {
             if let Some(ty) = params[i] {
-                let id = TYPE_SALT
-                    .add(g_params[i])
-                    .add(fun_module_id);
+                let id = TYPE_SALT.add(g_params[i]).add(fun_module_id);
                 shadowed.push((id, self.state.types.link(id, ty)));
                 final_params.push((id, ty));
             } else {
@@ -1749,10 +1726,7 @@ impl<'a> FParser<'a> {
         if actual == expected {
             Ok(())
         } else {
-            Err(FError::new(
-                FEKind::TypeMismatch(actual, expected),
-                *token,
-            ))
+            Err(FError::new(FEKind::TypeMismatch(actual, expected), *token))
         }
     }
 
@@ -1912,8 +1886,9 @@ impl<'a> FParser<'a> {
                     None
                 }
             }) {
-            
-            let str = self.state.display(&attr.get(1).unwrap_or(&attr[0]).token.span);
+            let str = self
+                .state
+                .display(&attr.get(1).unwrap_or(&attr[0]).token.span);
             CallConv::from_str(str)
                 .ok_or_else(|| FError::new(FEKind::InvalidCallConv, attr.token))?
         } else {
@@ -1997,10 +1972,7 @@ impl<'a> FParser<'a> {
 
             (nm, id, FKind::Generic(g_ent), false)
         } else {
-            return Err(FError::new(
-                FEKind::InvalidFunctionHeader,
-                name.token,
-            ));
+            return Err(FError::new(FEKind::InvalidFunctionHeader, name.token));
         };
 
         if let Some((id, shadowed)) = shadowed {
@@ -2017,18 +1989,12 @@ impl<'a> FParser<'a> {
             params: vec![],
             kind,
             name,
-            untraced: self
-                .collector
-                .attr(&attrs, ID::new("untraced"))
-                .is_some(),
-            inline: self
-                .collector
-                .attr(&attrs, ID::new("inline"))
-                .is_some(),
+            untraced: self.collector.attr(&attrs, ID::new("untraced")).is_some(),
+            inline: self.collector.attr(&attrs, ID::new("inline")).is_some(),
             attrs,
-            scope, 
+            scope,
             linkage,
-            alias,          
+            alias,
         };
 
         let (shadowed, id) = self.state.funs.insert(id, fun_ent);
@@ -2038,9 +2004,7 @@ impl<'a> FParser<'a> {
                 hint,
             ));
         }
-        
-        
-        
+
         if unresolved {
             if entry {
                 self.add_entry(id)?;
@@ -2053,15 +2017,15 @@ impl<'a> FParser<'a> {
 
     fn add_entry(&mut self, id: Fun) -> Result {
         std::mem::swap(&mut self.state.main_bstate, &mut self.state.bstate);
-        
+
         let signature = self.signature_of(id);
 
         let ret = match signature.args.as_slice() {
             &[] => {
                 let value = signature.ret.map(|ty| self.new_temp_value(ty));
                 self.add_inst(InstEnt::new(
-                    IKind::Call(id, vec![]), 
-                    value, 
+                    IKind::Call(id, vec![]),
+                    value,
                     &self.fun(id).hint,
                 ));
                 value
@@ -2069,16 +2033,15 @@ impl<'a> FParser<'a> {
             &[count, args] => {
                 let value = signature.ret.map(|ty| self.new_temp_value(ty));
                 let temp_ptr = self.pointer_of(self.state.builtin_repo.int);
-                if count != self.state.builtin_repo.int ||
-                    args != self.pointer_of(temp_ptr) {
+                if count != self.state.builtin_repo.int || args != self.pointer_of(temp_ptr) {
                     return Err(FError::new(
                         FEKind::InvalidEntrySignature,
                         self.fun(id).hint,
                     ));
                 }
                 self.add_inst(InstEnt::new(
-                    IKind::Call(id, vec![Value::new(0), Value::new(1)]), 
-                    value, 
+                    IKind::Call(id, vec![Value::new(0), Value::new(1)]),
+                    value,
                     &self.fun(id).hint,
                 ));
                 value
@@ -2331,15 +2294,10 @@ impl<'a> FParser<'a> {
         TParser::new(self.state, self.context, self.collector).array_of(ty, length)
     }
 
-    fn function_type_of(&mut self, module: Mod, fun: Fun) -> Result<Type> {        
+    fn function_type_of(&mut self, module: Mod, fun: Fun) -> Result<Type> {
         let sig = self.signature_of(fun).clone();
 
-        Ok(
-            TParser::new(self.state, self.context, self.collector).function_type_of(
-                module,
-                sig,
-            ),
-        )
+        Ok(TParser::new(self.state, self.context, self.collector).function_type_of(module, sig))
     }
 
     fn clear_vars(&mut self) {
@@ -3157,10 +3115,10 @@ impl Default for FState {
             ret: Option<Type>,
         ) {
             let id = salt.add(name.hash).add(state.types[args[0]].id).add(module);
-            let sig = Signature { 
+            let sig = Signature {
                 call_conv: CallConv::Fast,
-                args: args.to_vec(), 
-                ret 
+                args: args.to_vec(),
+                ret,
             };
 
             let fun_ent = FunEnt {

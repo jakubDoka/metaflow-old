@@ -375,4 +375,3 @@ fn pascal_to_snake(s: &str) -> String {
     }
     result
 }
-
