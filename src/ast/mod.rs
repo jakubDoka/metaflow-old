@@ -1,3 +1,6 @@
+use meta_ser::{MetaQuickSer, MetaSer};
+use traits::MetaQuickSer;
+
 use crate::{lexer::*, util::sdbm::ID};
 
 use std::{
@@ -1046,7 +1049,7 @@ impl<'a> AParser<'a> {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, MetaSer)]
 pub struct AMainState {
     pub l_main_state: LMainState,
     pub equal_sign: ID,
@@ -1087,7 +1090,7 @@ impl AMainState {
     }
 }
 
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Clone, Default, Copy, MetaQuickSer)]
 pub struct AState {
     pub l_state: LState,
     peeked: Token,
@@ -1116,7 +1119,7 @@ impl Manifest {
     }
 }
 
-#[derive(Clone, Debug, Default)]
+#[derive(Clone, Debug, Copy, Default)]
 pub struct Dep {
     pub path: Span,
     pub name: Span,
@@ -1150,7 +1153,7 @@ pub fn precedence(op: &str) -> i64 {
     }
 }
 
-#[derive(Debug, Clone, Default, PartialEq)]
+#[derive(Debug, Clone, Default, PartialEq, MetaSer)]
 pub struct Ast {
     pub kind: AKind,
     pub children: Vec<Ast>,
@@ -1220,7 +1223,7 @@ impl std::fmt::Display for AstDisplay<'_> {
     }
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, Copy, PartialEq, MetaQuickSer)]
 pub enum AKind {
     UseStatement(bool),
 
@@ -1277,7 +1280,7 @@ impl Default for AKind {
     }
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, MetaQuickSer)]
 pub enum Vis {
     Public,
     None,
@@ -1353,6 +1356,7 @@ pub fn test() {
     let source = SourceEnt {
         name: "text_code.mf".to_string(),
         content: crate::testing::TEST_CODE.to_string(),
+        ..Default::default()
     };
     let source = a_main_state.sources.add(source);
     let mut a_state = a_main_state.a_state_for(source);

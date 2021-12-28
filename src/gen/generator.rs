@@ -1,34 +1,36 @@
 use cranelift_codegen::{
-    binemit::RelocSink,
     binemit::{NullStackMapSink, TrapSink},
     entity::EntityRef,
     ir::{
         condcodes::{FloatCC, IntCC},
         types::*,
+        Signature as CrSignature,
         Block as CrBlock, FuncRef, GlobalValue, InstBuilder, MemFlags, SigRef,
-        Signature as CrSignature, StackSlot, StackSlotData, StackSlotKind, Type as CrType,
-        Value as CrValue,
+        StackSlot, StackSlotData, StackSlotKind, Type as CrType, Value as CrValue,
     },
-    isa::CallConv as CrCallConv,
-    Context,
+    Context, isa::{
+        CallConv as CrCallConv,
+    },
+    binemit::RelocSink,
 };
 use cranelift_frontend::{FunctionBuilder, FunctionBuilderContext, Variable as CrVar};
 use cranelift_module::{DataContext, DataId, FuncOrDataId, Linkage, Module, RelocRecord};
+use meta_ser::{MetaSer, CustomDefault};
 use std::ops::{Deref, DerefMut};
 
 use crate::{
     collector::Collector,
     functions::{
-        CFun, FContext, FKind, FParser, FState, FinalValue, Fun, GKind, IKind, Inst, RFun, Value,
+        FContext, FKind, FParser, FState, FinalValue, Fun, GKind, IKind, Inst, RFun,
+        Value, CFun, FuncIdWr, DataIdWr, CrBlockWr,
     },
     lexer::{Span, TKind as LTKind, Token},
     module_tree::Mod,
-    types::{TKind, Type, TypeDisplay, TypeEnt},
+    types::{TKind, Type, TypeDisplay, TypeEnt, CrTypeWr},
     util::{
         pool::PoolRef,
         sdbm::{SdbmHash, ID},
-        storage::{IndexPointer, Map},
-        write_radix, Size,
+        storage::{IndexPointer, Map}, write_radix, Size,
     },
 };
 
@@ -60,8 +62,9 @@ impl<'a, T: Module> Generator<'a, T> {
         let ptr_ty = module.isa().pointer_type();
         let int = state.builtin_repo.int;
         let uint = state.builtin_repo.uint;
-        state.types[int].kind = TKind::Builtin(ptr_ty);
-        state.types[uint].kind = TKind::Builtin(ptr_ty);
+        state.types[int].kind = TKind::Builtin(CrTypeWr(ptr_ty));
+        state.types[uint].kind = TKind::Builtin(CrTypeWr(ptr_ty));
+
 
         Self {
             jit,
@@ -111,10 +114,9 @@ impl<'a, T: Module> Generator<'a, T> {
             let alias = fun_ent.alias;
             let linkage = fun_ent.linkage;
             let fun = fun_ent.kind.represented();
-
+        
             signature.clear(CrCallConv::Fast);
-            fun.sig
-                .to_cr_signature(self.state, self.module.isa(), &mut signature);
+            fun.sig.to_cr_signature(self.state, self.module.isa(), &mut signature);
 
             let mut name = String::new();
             write_radix(id.0, 16, &mut name);
@@ -125,20 +127,21 @@ impl<'a, T: Module> Generator<'a, T> {
                 &name
             };
 
-            let id = self
-                .module
-                .declare_function(final_name, linkage, &signature)
-                .unwrap();
+            let id = self.module.declare_function(
+                final_name,
+                linkage.0,
+                &signature,
+            ).unwrap();
 
             let c_fun = CFun {
-                id,
+                id: FuncIdWr(id),
 
                 ..Default::default()
             };
 
             self.state.funs[fun_id].kind.represented_mut().compiled = Some(c_fun);
 
-            linkage != Linkage::Import
+            linkage.0 != Linkage::Import
         });
 
         self.state.represented = represented;
@@ -163,19 +166,18 @@ impl<'a, T: Module> Generator<'a, T> {
             let final_name = if let Some(alias) = glob.alias {
                 self.state.display(&alias)
             } else {
-                &name
+                &name 
             };
 
-            let id = self
-                .module
-                .declare_data(final_name, glob.linkage, glob.mutable, tls)
+            let id = self.module.declare_data(final_name, glob.linkage.0, glob.mutable, tls)
                 .unwrap();
-
-            if glob.linkage == Linkage::Import {
+            
+            if glob.linkage.0 == Linkage::Import {
                 continue;
             }
 
-            self.context
+            self
+                .context
                 .data_context
                 .define_zeroinit(self.ty(ty).size.pick(self.s32) as usize);
             let ctx = unsafe {
@@ -184,7 +186,7 @@ impl<'a, T: Module> Generator<'a, T> {
             self.module.define_data(id, ctx).unwrap();
             self.context.data_context.clear();
 
-            self.state.globals[global].kind = GKind::Represented(id, ty);
+            self.state.globals[global].kind = GKind::Represented(DataIdWr(id), ty);
         }
 
         self.state.resolved_globals = resolved;
@@ -203,19 +205,18 @@ impl<'a, T: Module> Generator<'a, T> {
         for fun_id in represented.drain(..) {
             crate::test_println!("{}", crate::functions::FunDisplay::new(&self.state, fun_id));
 
-            self.state.imported_funs.clear();
-            self.state.imported_globals.clear();
-            self.state.imported_signatures.clear();
+            self.context.imported_funs.clear();
+            self.context.imported_globals.clear();
+            self.context.imported_signatures.clear();
 
             let fun = &self.state.funs[fun_id];
             let repr = fun.kind.represented();
-
+                        
             if repr.body.insts.len() == 0 {
                 continue;
             }
-
-            repr.sig
-                .to_cr_signature(self.state, self.module.isa(), &mut ctx.func.signature);
+            
+            repr.sig.to_cr_signature(self.state, self.module.isa(), &mut ctx.func.signature);
 
             let mut builder = FunctionBuilder::new(&mut ctx.func, &mut fun_ctx);
 
@@ -226,32 +227,32 @@ impl<'a, T: Module> Generator<'a, T> {
             crate::test_println!("{}", ctx.func.display());
 
             ctx.compile_and_emit(
-                self.module.isa(),
-                &mut bytes,
-                &mut reloc_sink,
-                &mut MetaTrapSink {},
-                &mut NullStackMapSink {},
-            )
-            .unwrap();
-
-            let compiled = self.state.funs[fun_id]
-                .kind
-                .represented_mut()
-                .compiled
-                .as_mut()
-                .unwrap();
+                self.module.isa(), 
+                &mut bytes, 
+                &mut reloc_sink, 
+                &mut MetaTrapSink {}, 
+                &mut NullStackMapSink {}
+            ).unwrap();
+            
+            let compiled = self.state.funs[fun_id].kind
+                .represented_mut().compiled.as_mut().unwrap();
             let id = compiled.id;
 
             if self.jit {
                 compiled.jit.bytes = bytes.clone();
-                compiled.jit.relocs = reloc_sink.relocs.clone();
+                compiled.jit.relocs = unsafe {
+                    std::mem::transmute(reloc_sink.relocs.clone())
+                };
             } else {
                 compiled.bin.bytes = bytes.clone();
-                compiled.bin.relocs = reloc_sink.relocs.clone();
+                compiled.bin.relocs = unsafe {
+                    std::mem::transmute(reloc_sink.relocs.clone())
+                };
             }
 
-            self.module
-                .define_function_bytes(id, &bytes, &reloc_sink.relocs)
+            self
+                .module
+                .define_function_bytes(id.0, &bytes, &reloc_sink.relocs)
                 .unwrap();
 
             ctx.clear();
@@ -280,8 +281,7 @@ impl<'a, T: Module> Generator<'a, T> {
             stack.last_mut()
         {
             let current_fun_ref = *current_fun_ref;
-            let mut current_fun =
-                std::mem::take(&mut self.state.funs[current_fun_ref].kind).into_represented();
+            let mut current_fun = std::mem::take(&mut self.state.funs[current_fun_ref].kind).into_represented();
             while *current_block < blocks.len() {
                 let block = if let &mut Some(current_inst) = current_inst {
                     current_inst
@@ -306,30 +306,31 @@ impl<'a, T: Module> Generator<'a, T> {
                             );
                             if stack.iter().any(|i| i.0 == id) {
                                 self.block(&mut current_fun, block, InlineState::Broken, builder)?;
-                                self.state.funs[current_fun_ref].kind =
-                                    FKind::Represented(current_fun);
+                                self.state.funs[current_fun_ref].kind = FKind::Represented(current_fun);
                                 let len = stack.len();
                                 stack[len - 1].2 += 1;
                                 stack[len - 1].3 = None;
                                 continue 'o;
-                            }
+                            } 
                             let blocks = self.collect_blocks(id, builder);
-                            let next_fun =
-                                std::mem::take(&mut self.state.funs[id].kind).into_represented();
+                            let next_fun = std::mem::take(&mut self.state.funs[id].kind).into_represented();
                             builder.ins().jump(blocks[0].1, &*arg_buffer);
                             let return_block = builder.create_block();
                             let sig = &next_fun.sig;
                             if let Some(ret) = sig.ret {
-                                let value = builder.append_block_param(
-                                    return_block,
-                                    self.ty(ret).to_cr_type(self.module.isa()),
-                                );
+                                let value = builder
+                                    .append_block_param(return_block, self.ty(ret).to_cr_type(self.module.isa()));
                                 let return_value = current_fun.inst(inlined_fun).value.unwrap();
                                 self.wrap_val(&mut current_fun, return_value, value);
                             }
                             let len = stack.len();
-                            stack[len - 1].3 =
-                                Some(current_fun.body.insts.next(inlined_fun).unwrap());
+                            stack[len - 1].3 = Some(
+                                current_fun
+                                    .body
+                                    .insts
+                                    .next(inlined_fun)
+                                    .unwrap(),
+                            );
                             self.state.funs[id].kind = FKind::Represented(next_fun);
                             self.state.funs[current_fun_ref].kind = FKind::Represented(current_fun);
                             stack.push((id, blocks, 0, None, InlineState::At(return_block)));
@@ -370,7 +371,7 @@ impl<'a, T: Module> Generator<'a, T> {
         loop {
             let cr_block = builder.create_block();
             let block = fun.inst_mut(current).kind.block_mut();
-            block.block = Some(cr_block);
+            block.block = Some(CrBlockWr(cr_block));
             let inst = block.end.unwrap();
             let args = std::mem::take(&mut block.args);
             for &arg in args.iter() {
@@ -444,7 +445,7 @@ impl<'a, T: Module> Generator<'a, T> {
                         };
                         let inline = other.inline && inline_state != InlineState::Broken;
                         let fun_id = r_ent.compiled.as_ref().unwrap().id;
-                        let map_id = ID(fun_id.as_u32() as u64);
+                        let map_id = ID(fun_id.0.as_u32() as u64);
 
                         let mut struct_return = false;
 
@@ -452,13 +453,11 @@ impl<'a, T: Module> Generator<'a, T> {
                             if self.on_stack(ret_ty) {
                                 let size = self.ty(ret_ty).size;
                                 let last = arg_buffer[arg_buffer.len() - 1];
-                                let data = StackSlotData::new(
-                                    StackSlotKind::ExplicitSlot,
-                                    align(size.pick(self.s32)),
-                                );
+                                let data = StackSlotData::new(StackSlotKind::ExplicitSlot, align(size.pick(self.s32)));
                                 let slot = builder.create_stack_slot(data);
                                 fun.value_mut(last).value = FinalValue::StackSlot(slot);
-                                fun.value_mut(value.unwrap()).value = FinalValue::StackSlot(slot);
+                                fun.value_mut(value.unwrap()).value =
+                                    FinalValue::StackSlot(slot);
                                 struct_return = true;
                             }
                         }
@@ -467,12 +466,13 @@ impl<'a, T: Module> Generator<'a, T> {
                             return Ok(Some(current));
                         } else {
                             let fun_ref =
-                                if let Some(&fun_ref) = self.state.imported_funs.get(map_id) {
+                                if let Some(&fun_ref) = self.context.imported_funs.get(map_id) {
                                     fun_ref
                                 } else {
-                                    let fun_ref =
-                                        self.module.declare_func_in_func(fun_id, builder.func);
-                                    self.state.imported_funs.insert(map_id, fun_ref);
+                                    let fun_ref = self
+                                        .module
+                                        .declare_func_in_func(fun_id.0, builder.func);
+                                    self.context.imported_funs.insert(map_id, fun_ref);
                                     fun_ref
                                 };
 
@@ -552,12 +552,13 @@ impl<'a, T: Module> Generator<'a, T> {
                             let data = self.make_static_data(data, false, false);
                             let map_id = ID(data.as_u32() as u64);
                             let value = if let Some(&value) =
-                                self.state.imported_globals.get(map_id)
+                                self.context.imported_globals.get(map_id)
                             {
                                 value
                             } else {
-                                let value = self.module.declare_data_in_func(data, builder.func);
-                                self.state.imported_globals.insert(map_id, value);
+                                let value =
+                                    self.module.declare_data_in_func(data, builder.func);
+                                self.context.imported_globals.insert(map_id, value);
                                 value
                             };
                             builder.ins().global_value(repr, value)
@@ -643,13 +644,13 @@ impl<'a, T: Module> Generator<'a, T> {
                         &GKind::Represented(id, ty) => (id, ty),
                         _ => unreachable!(),
                     };
-                    let map_id = ID(id.as_u32() as u64);
+                    let map_id = ID(id.0.as_u32() as u64);
 
-                    let data = if let Some(&data) = self.state.imported_globals.get(map_id) {
+                    let data = if let Some(&data) = self.context.imported_globals.get(map_id) {
                         data
                     } else {
-                        let data = self.module.declare_data_in_func(id, builder.func);
-                        self.state.imported_globals.insert(map_id, data);
+                        let data = self.module.declare_data_in_func(id.0, builder.func);
+                        self.context.imported_globals.insert(map_id, data);
                         data
                     };
                     let val = builder.ins().global_value(self.repr(ty), data);
@@ -658,20 +659,17 @@ impl<'a, T: Module> Generator<'a, T> {
                 }
                 IKind::FunPointer(id) => {
                     let id = *id;
-                    let fun_id = self.state.funs[id]
-                        .kind
-                        .represented()
-                        .compiled
-                        .as_ref()
-                        .unwrap()
-                        .id;
-                    let map_id = ID(fun_id.as_u32() as u64);
+                    let fun_id = self.state.funs[id].kind
+                        .represented().compiled.as_ref().unwrap().id;
+                    let map_id = ID(fun_id.0.as_u32() as u64);
 
-                    let fun_ref = if let Some(&fun_ref) = self.state.imported_funs.get(map_id) {
+                    let fun_ref = if let Some(&fun_ref) = self.context.imported_funs.get(map_id) {
                         fun_ref
                     } else {
-                        let fun_ref = self.module.declare_func_in_func(fun_id, builder.func);
-                        self.state.imported_funs.insert(map_id, fun_ref);
+                        let fun_ref = self
+                            .module
+                            .declare_func_in_func(fun_id.0, builder.func);
+                        self.context.imported_funs.insert(map_id, fun_ref);
                         fun_ref
                     };
 
@@ -687,8 +685,7 @@ impl<'a, T: Module> Generator<'a, T> {
                     let pointer_type = fun.value(pointer).ty;
                     let pointer = self.unwrap_val(fun, pointer, builder);
                     call_buffer.clear();
-                    call_buffer
-                        .extend(arg_buffer.iter().map(|&a| self.unwrap_val(fun, a, builder)));
+                    call_buffer.extend(arg_buffer.iter().map(|&a| self.unwrap_val(fun, a, builder)));
 
                     let mut struct_return = false;
                     if let Some(ret_ty) = value.map(|v| fun.value(v).ty) {
@@ -704,14 +701,14 @@ impl<'a, T: Module> Generator<'a, T> {
                     }
 
                     let sig_id = self.ty(pointer_type).id;
-                    let sig = if let Some(&sig) = self.state.imported_signatures.get(sig_id) {
+                    let sig = if let Some(&sig) = self.context.imported_signatures.get(sig_id) {
                         sig
                     } else {
                         let ptr_ty = self.ty(pointer_type).kind.fun_pointer();
                         let mut sig = CrSignature::new(CrCallConv::Fast);
                         ptr_ty.to_cr_signature(self.state, self.module.isa(), &mut sig);
                         let sig = builder.import_signature(sig);
-                        self.state.imported_signatures.insert(sig_id, sig);
+                        self.context.imported_signatures.insert(sig_id, sig);
                         sig
                     };
 
@@ -993,18 +990,14 @@ impl<'a, T: Module> Generator<'a, T> {
             FinalValue::StackSlot(slot) => {
                 let size = self.ty(ty).size.pick(self.s32);
                 match source_v.value {
-                    FinalValue::Zero => {
-                        static_stack_memset(slot, target.offset.pick(self.s32), 0, size, builder)
-                    }
+                    FinalValue::Zero => static_stack_memset(slot, target.offset.pick(self.s32), 0, size, builder),
                     FinalValue::Value(value) => {
                         let value = if target.ty == self.state.builtin_repo.bool {
                             builder.ins().bint(I8, value)
                         } else {
                             value
                         };
-                        builder
-                            .ins()
-                            .stack_store(value, slot, target.offset.pick(self.s32) as i32);
+                        builder.ins().stack_store(value, slot, target.offset.pick(self.s32) as i32);
                     }
                     FinalValue::Var(var) => {
                         let value = builder.use_var(var);
@@ -1013,9 +1006,7 @@ impl<'a, T: Module> Generator<'a, T> {
                         } else {
                             value
                         };
-                        builder
-                            .ins()
-                            .stack_store(value, slot, target.offset.pick(self.s32) as i32);
+                        builder.ins().stack_store(value, slot, target.offset.pick(self.s32) as i32);
                     }
                     FinalValue::StackSlot(other) => static_stack_memmove(
                         slot,
@@ -1065,13 +1056,7 @@ impl<'a, T: Module> Generator<'a, T> {
             }
             FinalValue::Pointer(pointer) => {
                 if source_v.value == FinalValue::Zero {
-                    static_memset(
-                        pointer,
-                        target.offset.pick(self.s32),
-                        0,
-                        self.ty(ty).size.pick(self.s32),
-                        builder,
-                    );
+                    static_memset(pointer, target.offset.pick(self.s32), 0, self.ty(ty).size.pick(self.s32), builder);
                 } else {
                     let mut value = self.unwrap_val(fun, source, builder);
                     let target = fun.value(target_value);
@@ -1089,12 +1074,9 @@ impl<'a, T: Module> Generator<'a, T> {
                         if target.ty == self.state.builtin_repo.bool {
                             value = builder.ins().bint(I8, value)
                         }
-                        builder.ins().store(
-                            MemFlags::new(),
-                            value,
-                            pointer,
-                            target.offset.pick(self.s32) as i32,
-                        );
+                        builder
+                            .ins()
+                            .store(MemFlags::new(), value, pointer, target.offset.pick(self.s32) as i32);
                     }
                 }
             }
@@ -1126,12 +1108,9 @@ impl<'a, T: Module> Generator<'a, T> {
                 if target.ty == self.state.builtin_repo.bool {
                     source = builder.ins().bint(I8, source)
                 }
-                builder.ins().store(
-                    MemFlags::new(),
-                    source,
-                    pointer,
-                    target.offset.pick(self.s32) as i32,
-                );
+                builder
+                    .ins()
+                    .store(MemFlags::new(), source, pointer, target.offset.pick(self.s32) as i32);
             }
             FinalValue::Var(var) => {
                 builder.def_var(var, source);
@@ -1141,7 +1120,7 @@ impl<'a, T: Module> Generator<'a, T> {
     }
 
     fn unwrap_block(&mut self, fun: &mut RFun, block: Inst) -> CrBlock {
-        fun.inst(block).kind.block().block.unwrap()
+        fun.inst(block).kind.block().block.unwrap().0
     }
 
     #[inline]
@@ -1184,9 +1163,7 @@ impl<'a, T: Module> Generator<'a, T> {
                 let mut val = builder.use_var(var);
                 let value_type = builder.func.dfg.value_type(val);
                 if repr != value_type {
-                    val = builder
-                        .ins()
-                        .ushr_imm(val, value.offset.pick(self.s32) as i64 * 8);
+                    val = builder.ins().ushr_imm(val, value.offset.pick(self.s32) as i64 * 8);
                     val = builder.ins().ireduce(repr, val);
                 }
                 val
@@ -1194,17 +1171,12 @@ impl<'a, T: Module> Generator<'a, T> {
             FinalValue::Pointer(pointer) => {
                 if !assign && (!value.on_stack || !self.on_stack(value.ty)) {
                     let repr = self.repr(ty);
-                    builder.ins().load(
-                        repr,
-                        MemFlags::new(),
-                        pointer,
-                        value.offset.pick(self.s32) as i32,
-                    )
+                    builder
+                        .ins()
+                        .load(repr, MemFlags::new(), pointer, value.offset.pick(self.s32) as i32)
                 } else if value.offset != Size::ZERO {
                     let ptr_type = self.ptr_ty;
-                    let offset = builder
-                        .ins()
-                        .iconst(ptr_type, value.offset.pick(self.s32) as i64);
+                    let offset = builder.ins().iconst(ptr_type, value.offset.pick(self.s32) as i64);
                     builder.ins().iadd(pointer, offset)
                 } else {
                     pointer
@@ -1213,17 +1185,12 @@ impl<'a, T: Module> Generator<'a, T> {
             FinalValue::StackSlot(slot) => {
                 if !assign && (!value.on_stack || !self.on_stack(value.ty)) {
                     if value.ty == self.state.builtin_repo.bool {
-                        let value =
-                            builder
-                                .ins()
-                                .stack_load(I8, slot, value.offset.pick(self.s32) as i32);
+                        let value = builder.ins().stack_load(I8, slot, value.offset.pick(self.s32) as i32);
                         builder.ins().icmp_imm(IntCC::NotEqual, value, 0)
                     } else {
-                        builder.ins().stack_load(
-                            self.repr(value.ty),
-                            slot,
-                            value.offset.pick(self.s32) as i32,
-                        )
+                        builder
+                            .ins()
+                            .stack_load(self.repr(value.ty), slot, value.offset.pick(self.s32) as i32)
                     }
                 } else {
                     builder
@@ -1303,31 +1270,27 @@ pub enum InlineState {
     Broken,
 }
 
-#[derive(Default)]
+#[derive(Default, MetaSer)]
 pub struct GState {
     pub f_state: FState,
-    pub imported_signatures: Map<SigRef>,
-    pub imported_funs: Map<FuncRef>,
-    pub imported_globals: Map<GlobalValue>,
 }
 
 crate::inherit!(GState, f_state, FState);
 
+#[derive(CustomDefault)]
 pub struct GContext {
+    #[default(DataContext::new())]
     pub data_context: DataContext,
     pub f_context: FContext,
+    #[default(Map::new())]
+    pub imported_signatures: Map<SigRef>,
+    #[default(Map::new())]
+    pub imported_funs: Map<FuncRef>,
+    #[default(Map::new())]
+    pub imported_globals: Map<GlobalValue>,
 }
 
 crate::inherit!(GContext, f_context, FContext);
-
-impl Default for GContext {
-    fn default() -> Self {
-        Self {
-            data_context: DataContext::new(),
-            f_context: Default::default(),
-        }
-    }
-}
 
 const MOVERS: &'static [CrType] = &[I8, I16, I32, I64];
 const MOVER_SIZES: &'static [u32] = &[1, 2, 4, 8];
@@ -1451,16 +1414,16 @@ fn walk_mem<F: FnMut(CrType, u32)>(size: u32, mut fun: F) {
     }
 }
 
-pub struct MetaTrapSink {}
+pub struct MetaTrapSink {
+}
 
 impl TrapSink for MetaTrapSink {
-    fn trap(
-        &mut self,
-        _offset: cranelift_codegen::binemit::CodeOffset,
-        _loc: cranelift_codegen::ir::SourceLoc,
-        _code: cranelift_codegen::ir::TrapCode,
+    fn trap(&mut self, 
+        _offset: cranelift_codegen::binemit::CodeOffset, 
+        _loc: cranelift_codegen::ir::SourceLoc, 
+        _code: cranelift_codegen::ir::TrapCode
     ) {
-        //println!("{:?} {:?} {:?}", _offset, _loc, _code);
+       //println!("{:?} {:?} {:?}", _offset, _loc, _code);
     }
 }
 
@@ -1470,7 +1433,9 @@ pub struct MetaRelocSink {
 
 impl MetaRelocSink {
     pub fn new() -> Self {
-        Self { relocs: Vec::new() }
+        Self {
+            relocs: Vec::new(),
+        }
     }
 
     pub fn clear(&mut self) {

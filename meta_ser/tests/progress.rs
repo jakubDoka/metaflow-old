@@ -25,7 +25,6 @@ pub enum SomeEnum {
 
 #[derive(MetaSer, PartialEq, Eq)]
 pub struct SomeStruct {
-    #[quick]
     pub a: Vec<u8>,
 }
 

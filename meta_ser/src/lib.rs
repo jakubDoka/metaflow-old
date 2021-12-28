@@ -24,7 +24,7 @@ pub fn derive_quick_ser(input: TokenStream) -> TokenStream {
     }.into()
 }
 
-#[proc_macro_derive(MetaSer, attributes(quick))]
+#[proc_macro_derive(MetaSer)]
 pub fn derive_ser(input: TokenStream) -> TokenStream {
     let input = syn::parse_macro_input!(input as syn::DeriveInput);
 
@@ -44,20 +44,13 @@ pub fn derive_ser(input: TokenStream) -> TokenStream {
     let ser = match &input.data {
         syn::Data::Struct(s) => {
             let is_tuple = s.fields.iter().next().map(|f| f.ident.is_none()).unwrap_or(false);
-            let func_names = s.fields.iter().map(|f| {
-                if f.attrs.iter().any(|a| a.path.is_ident("quick")) {
-                    format_ident!("quick_ser")
-                } else {
-                    format_ident!("ser")
-                }
-            });
             if is_tuple {
                 let names = (0..s.fields.len()).map(syn::Index::from);
                 
                 quote::quote! {
                     fn ser(&self, buffer: &mut Vec<u8>) {
                         #(
-                            self.#names.#func_names(buffer);
+                            self.#names.ser(buffer);
                         )*
                     }
                 }
@@ -67,7 +60,7 @@ pub fn derive_ser(input: TokenStream) -> TokenStream {
                 quote::quote! {
                     fn ser(&self, buffer: &mut Vec<u8>) {
                         #(
-                            self.#names.#func_names(buffer);
+                            self.#names.ser(buffer);
                         )*
                     }
                 }
@@ -120,20 +113,13 @@ pub fn derive_ser(input: TokenStream) -> TokenStream {
     let de_ser = match &input.data {
         syn::Data::Struct(s) => {
             let is_tuple = s.fields.iter().next().map(|f| f.ident.is_none()).unwrap_or(false);
-            let func_names = s.fields.iter().map(|f| {
-                if f.attrs.iter().any(|a| a.path.is_ident("quick")) {
-                    format_ident!("quick_de_ser")
-                } else {
-                    format_ident!("de_ser")
-                }
-            });
             if is_tuple {
                 let names = std::iter::repeat(format_ident!("traits")).take(s.fields.len());
 
                 quote::quote! {
                     fn de_ser(progress: &mut usize, buffer: &[u8]) -> Self {
                         Self(#(
-                            #names::MetaSer::#func_names(progress, buffer),
+                            #names::MetaSer::de_ser(progress, buffer),
                         )*)
                     }
                 }
@@ -143,7 +129,7 @@ pub fn derive_ser(input: TokenStream) -> TokenStream {
                 quote::quote! {
                     fn de_ser(progress: &mut usize, buffer: &[u8]) -> Self {
                         Self {#(
-                            #names: traits::MetaSer::#func_names(progress, buffer),
+                            #names: traits::MetaSer::de_ser(progress, buffer),
                         )*}
                     }
                 }

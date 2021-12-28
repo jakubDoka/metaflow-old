@@ -1,10 +1,9 @@
-use std::fmt::Write;
 use std::ops::{Deref, DerefMut};
 
 use crate::ast::{AError, AErrorDisplay, AKind, AParser, Ast, Vis};
 use crate::collector::{Attrs, Collector, Item};
 use crate::lexer::{Span, TKind as LTKind, Token, TokenDisplay};
-use crate::module_tree::{self, MTContext, MTParser, MTState, Mod, TreeStorage};
+use crate::module_tree::{self, MTContext, MTParser, MTState, Mod, ModItem, TreeStorage};
 use crate::util::sdbm::ID;
 use crate::util::storage::{IndexPointer, ReusableList, Table};
 use crate::util::Size;
@@ -13,7 +12,9 @@ use cranelift_codegen::ir::Signature as CrSignature;
 use cranelift_codegen::ir::{types::*, AbiParam, ArgumentPurpose};
 use cranelift_codegen::isa::CallConv as CrCallConv;
 use cranelift_codegen::isa::TargetIsa;
-use meta_ser::EnumGetters;
+use meta_ser::{EnumGetters, MetaSer};
+use meta_ser::MetaQuickSer;
+use traits::MetaQuickSer;
 
 type Result<T = ()> = std::result::Result<T, TError>;
 
@@ -156,7 +157,7 @@ impl<'a> TParser<'a> {
     }
 
     fn connect(&mut self) -> Result {
-        while let Some((id, depth)) = self.state.unresolved.pop() {
+        while let Some(UnresolvedRef(id, depth)) = self.state.unresolved.pop() {
             if depth > Self::MAX_TYPE_INSTANTIATION_DEPTH {
                 return Err(TError::new(
                     TEKind::InstantiationDepthExceeded,
@@ -335,7 +336,7 @@ impl<'a> TParser<'a> {
             call_conv,
         };
 
-        let id = self.function_type_of(module, sig);
+        let id = self.state.function_type_of(module, sig);
 
         Ok((module, id))
     }
@@ -351,7 +352,7 @@ impl<'a> TParser<'a> {
             _ => return Err(TError::new(TEKind::ExpectedIntConstant, ast[1].token)),
         };
 
-        Ok((module, self.array_of(element, length as usize)))
+        Ok((module, self.state.array_of(element, length as usize)))
     }
 
     fn resolve_constant(&mut self, module: Mod, token: &Token) -> Result<(Mod, Type)> {
@@ -365,14 +366,14 @@ impl<'a> TParser<'a> {
             _ => unreachable!("{:?}", token.kind),
         };
 
-        let ty = self.constant_of(constant);
+        let ty = self.state.constant_of(constant);
 
         Ok((module, ty))
     }
 
     fn resolve_pointer(&mut self, module: Mod, ast: &Ast, depth: usize) -> Result<(Mod, Type)> {
         let (module, datatype) = self.resolve_type(module, &ast[0], depth)?;
-        let datatype = self.pointer_of(datatype);
+        let datatype = self.state.pointer_of(datatype);
 
         Ok((module, datatype))
     }
@@ -441,10 +442,9 @@ impl<'a> TParser<'a> {
             align: Size::ZERO,
         };
 
-        let (shadowed, ty) = self.state.types.insert(id, type_ent);
-        debug_assert!(shadowed.is_none());
+        let ty = self.state.add_type(type_ent);
 
-        self.state.unresolved.push((ty, depth));
+        self.state.unresolved.push(UnresolvedRef(ty, depth));
 
         Ok((module, ty))
     }
@@ -515,8 +515,10 @@ impl<'a> TParser<'a> {
                         return Err(TError::new(TEKind::Redefinition(other.hint), hint.clone()));
                     }
 
+                    self.state.modules[module].items.push(ModItem::Type(id));
+
                     if let TKind::Unresolved(_) = &self.state.types[id].kind {
-                        self.state.unresolved.push((id, 0));
+                        self.state.unresolved.push(UnresolvedRef(id, 0));
                     }
                 }
                 _ => unreachable!("{:?}", ast.kind),
@@ -526,137 +528,8 @@ impl<'a> TParser<'a> {
         Ok(())
     }
 
-    pub fn pointer_of(&mut self, ty: Type) -> Type {
-        let module = self.state.types[ty].module;
-        let name = "&";
-        let id = TYPE_SALT
-            .add(ID::new(name))
-            .add(self.state.types[ty].id)
-            .add(self.state.modules[module].id);
-
-        if let Some(index) = self.type_index(id) {
-            return index;
-        }
-
-        let size = Size::POINTER;
-
-        let pointer_type = TypeEnt {
-            vis: Vis::Public,
-            id,
-            params: vec![],
-            kind: TKind::Pointer(ty),
-            name: Span::default(),
-            hint: Token::default(),
-            module,
-            attrs: Attrs::default(),
-            size,
-            align: size,
-        };
-
-        let (_, ty) = self.state.types.insert(id, pointer_type);
-
-        ty
-    }
-
-    pub fn array_of(&mut self, element: Type, length: usize) -> Type {
-        let element_id = self.state.types[element].id;
-
-        let id = TYPE_SALT
-            .add(ID::new("[]"))
-            .add(element_id)
-            .add(ID(length as u64));
-
-        if let Some(&index) = self.state.types.index(id) {
-            return index;
-        }
-
-        let ty_ent = TypeEnt {
-            id,
-            vis: Vis::Public,
-            kind: TKind::Array(element, length as u32),
-
-            size: self.state.types[element]
-                .size
-                .mul(Size::new(length as u32, length as u32)),
-            align: self.state.types[element].align,
-
-            ..Default::default()
-        };
-
-        let (shadow, ty_id) = self.state.types.insert(id, ty_ent);
-        debug_assert!(shadow.is_none());
-
-        ty_id
-    }
-
-    pub fn constant_of(&mut self, constant: TypeConst) -> Type {
-        self.context.constant_buffer.clear();
-        write!(
-            self.context.constant_buffer,
-            "{}",
-            TypeConstDisplay::new(self.state, &constant)
-        )
-        .unwrap();
-
-        let id = TYPE_SALT.add(ID::new(&self.context.constant_buffer));
-
-        if let Some(&tp) = self.state.types.index(id) {
-            return tp;
-        }
-
-        let ty_ent = TypeEnt {
-            id,
-            vis: Vis::Public,
-            kind: TKind::Constant(constant),
-
-            ..Default::default()
-        };
-
-        let (shadow, ty) = self.state.types.insert(id, ty_ent);
-        debug_assert!(shadow.is_none());
-
-        ty
-    }
-
     fn type_index(&self, id: ID) -> Option<Type> {
         self.state.types.index(id).cloned()
-    }
-
-    pub fn function_type_of(&mut self, module: Mod, sig: Signature) -> Type {
-        let mut id = TYPE_SALT.add(ID::new("fun")).add(ID(unsafe {
-            std::mem::transmute::<_, u8>(sig.call_conv)
-        } as u64));
-
-        for arg in sig.args.iter() {
-            id = id.add(self.state.types[*arg].id);
-        }
-
-        if let Some(ret) = sig.ret {
-            id = id.add(ID::new("->")).add(self.state.types[ret].id);
-        }
-
-        if let Some(&id) = self.state.types.index(id) {
-            return id;
-        }
-
-        let size = Size::POINTER;
-        let type_ent = TypeEnt {
-            kind: TKind::FunPointer(sig),
-            params: vec![],
-            hint: Token::default(),
-            id,
-            module,
-            vis: Vis::None,
-            name: Span::default(),
-            attrs: Attrs::default(),
-            size,
-            align: size,
-        };
-
-        let (shadowed, id) = self.state.types.insert(id, type_ent);
-        debug_assert!(shadowed.is_none());
-
-        id
     }
 }
 
@@ -749,7 +622,7 @@ pub trait ItemSearch<T: IndexPointer> {
 
 crate::index_pointer!(Type);
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, MetaSer)]
 pub struct TypeEnt {
     pub id: ID,
     pub module: Mod,
@@ -786,7 +659,7 @@ impl TypeEnt {
             TKind::Pointer(_) | TKind::Array(_, _) | TKind::FunPointer(_) | TKind::Structure(_) => {
                 isa.pointer_type()
             }
-            &TKind::Builtin(ty) => ty,
+            &TKind::Builtin(ty) => ty.0,
             TKind::Generic(_) | TKind::Constant(_) | TKind::Unresolved(_) => unreachable!(),
         }
     }
@@ -804,9 +677,9 @@ impl TypeEnt {
     }
 }
 
-#[derive(Debug, Clone, EnumGetters)]
+#[derive(Debug, Clone, EnumGetters, MetaSer)]
 pub enum TKind {
-    Builtin(CrType),
+    Builtin(CrTypeWr),
     Pointer(Type),
     Array(Type, u32),
     FunPointer(Signature),
@@ -816,13 +689,15 @@ pub enum TKind {
     Unresolved(GAst),
 }
 
+crate::impl_wrapper!(CrTypeWr, CrType);
+
 impl Default for TKind {
     fn default() -> Self {
-        TKind::Builtin(INVALID)
+        TKind::Builtin(CrTypeWr(INVALID))
     }
 }
 
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Clone, Default, MetaSer)]
 pub struct Signature {
     pub call_conv: CallConv,
     pub args: Vec<Type>,
@@ -851,7 +726,7 @@ impl Signature {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Copy, MetaQuickSer)]
 pub enum TypeConst {
     Bool(bool),
     Int(i64),
@@ -885,13 +760,13 @@ impl std::fmt::Display for TypeConstDisplay<'_> {
 
 crate::index_pointer!(GAst);
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, MetaSer)]
 pub struct SType {
     pub kind: SKind,
     pub fields: Vec<SField>,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Copy, MetaQuickSer)]
 pub struct SField {
     pub embedded: bool,
     pub vis: Vis,
@@ -901,7 +776,7 @@ pub struct SField {
     pub hint: Token,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, MetaQuickSer)]
 pub enum SKind {
     Struct,
     Union,
@@ -916,45 +791,140 @@ pub struct TContext {
 
 crate::inherit!(TContext, mt_context, MTContext);
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, MetaSer)]
 pub struct TState {
     pub builtin_repo: BuiltinRepo,
     pub types: Table<Type, TypeEnt>,
     pub asts: ReusableList<GAst, Ast>,
     pub mt_state: MTState,
-    pub unresolved: Vec<(Type, usize)>,
+    pub unresolved: Vec<UnresolvedRef>,
     pub resolved: Vec<Type>,
     pub parsed_ast: Ast,
 }
 
+#[derive(Debug, Clone, Copy, MetaQuickSer)]
+pub struct UnresolvedRef(Type, usize);
+
 impl TState {
-    /*pub fn signature_of_fun_pointer(&self, fun: FunPointer) -> Signature {
-        let fun = &self.fun_pointers[fun];
+    pub fn pointer_of(&mut self, ty: Type) -> Type {
+        let module = self.types[ty].module;
+        let name = "&";
+        let id = TYPE_SALT
+            .add(ID::new(name))
+            .add(self.types[ty].id)
+            .add(self.modules[module].id);
 
-        let mut params = fun
-            .args
-            .iter()
-            .map(|&ty| AbiParam::new(self.types[ty].repr()))
-            .collect::<Vec<_>>();
-
-        let mut returns = Vec::new();
-        if let Some(ret) = fun.ret {
-            let ret = &self.types[ret];
-            if ret.on_stack() {
-                let param = AbiParam::special(ret.repr(), ArgumentPurpose::StructReturn);
-                params.push(param);
-                returns.push(param);
-            } else {
-                returns.push(AbiParam::new(ret.repr()));
-            }
+        if let Some(&index) = self.types.index(id) {
+            return index;
         }
 
-        Signature {
-            params,
-            returns,
-            call_conv: fun.call_conv,
+        let size = Size::POINTER;
+
+        let pointer_type = TypeEnt {
+            vis: Vis::Public,
+            id,
+            params: vec![],
+            kind: TKind::Pointer(ty),
+            name: Span::default(),
+            hint: Token::default(),
+            module,
+            attrs: Attrs::default(),
+            size,
+            align: size,
+        };
+
+        self.add_type(pointer_type)
+    }
+
+    pub fn array_of(&mut self, element: Type, length: usize) -> Type {
+        let element_id = self.types[element].id;
+
+        let id = TYPE_SALT
+            .add(ID::new("[]"))
+            .add(element_id)
+            .add(ID(length as u64));
+
+        if let Some(&index) = self.types.index(id) {
+            return index;
         }
-    }*/
+
+        let ty_ent = TypeEnt {
+            id,
+            vis: Vis::Public,
+            kind: TKind::Array(element, length as u32),
+
+            size: self.types[element]
+                .size
+                .mul(Size::new(length as u32, length as u32)),
+            align: self.types[element].align,
+
+            ..Default::default()
+        };
+
+        self.add_type(ty_ent)
+    }
+
+    pub fn constant_of(&mut self, constant: TypeConst) -> Type {
+        let display = format!("{}", TypeConstDisplay::new(self, &constant));
+
+        let id = TYPE_SALT.add(ID::new(&display));
+
+        if let Some(&tp) = self.types.index(id) {
+            return tp;
+        }
+
+        let ty_ent = TypeEnt {
+            id,
+            vis: Vis::Public,
+            kind: TKind::Constant(constant),
+
+            ..Default::default()
+        };
+
+        self.add_type(ty_ent)
+    }
+
+    pub fn function_type_of(&mut self, module: Mod, sig: Signature) -> Type {
+        let mut id = TYPE_SALT.add(ID::new("fun")).add(ID(unsafe {
+            std::mem::transmute::<_, u8>(sig.call_conv)
+        } as u64));
+
+        for arg in sig.args.iter() {
+            id = id.add(self.types[*arg].id);
+        }
+
+        if let Some(ret) = sig.ret {
+            id = id.add(ID::new("->")).add(self.types[ret].id);
+        }
+
+        if let Some(&id) = self.types.index(id) {
+            return id;
+        }
+
+        let size = Size::POINTER;
+        let type_ent = TypeEnt {
+            kind: TKind::FunPointer(sig),
+            params: vec![],
+            hint: Token::default(),
+            id,
+            module,
+            vis: Vis::None,
+            name: Span::default(),
+            attrs: Attrs::default(),
+            size,
+            align: size,
+        };
+
+        self.add_type(type_ent)
+    }
+
+    pub fn add_type(&mut self, ent: TypeEnt) -> Type {
+        let module = ent.module;
+        let (shadow, ty) = self.types.insert(ent.id, ent);
+        self.modules[module].items.push(ModItem::Type(ty));
+        debug_assert!(shadow.is_none());
+        ty
+    }
 }
 
 crate::inherit!(TState, mt_state, MTState);
@@ -981,7 +951,7 @@ macro_rules! define_repo {
     (
         $($name:ident, $repr:expr, $s32:expr, $s64:expr);+
     ) => {
-        #[derive(Clone, Debug)]
+        #[derive(Clone, Debug, Copy, MetaQuickSer)]
         pub struct BuiltinRepo {
             $(pub $name: Type,)+
         }
@@ -1007,7 +977,7 @@ macro_rules! define_repo {
                     let type_ent = TypeEnt {
                         id,
                         vis: Vis::Public,
-                        kind: TKind::Builtin($repr),
+                        kind: TKind::Builtin(CrTypeWr($repr)),
                         size: Size::new($s32, $s64),
                         align: Size::new($s32, $s64).min(Size::new(4, 8)),
                         module,
@@ -1016,7 +986,7 @@ macro_rules! define_repo {
                         params: vec![],
                         attrs: Attrs::default(),
                     };
-                    let (_, $name) = state.types.insert(id, type_ent);
+                    let $name = state.add_type(type_ent);
                 )+
 
                 Self {
@@ -1050,7 +1020,7 @@ define_repo!(
     array, INVALID, 0, 0
 );
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, MetaQuickSer)]
 pub enum CallConv {
     Fast,
     Cold,

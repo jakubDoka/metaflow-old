@@ -7,15 +7,21 @@ use std::{
     },
 };
 
+use meta_ser::{MetaSer, MetaQuickSer};
+use traits::{MetaSer, MetaQuickSer};
+
 use super::sdbm::ID;
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, MetaSer)]
 pub struct Map<V> {
-    cache: Vec<Vec<(ID, V)>>,
+    cache: Vec<Vec<Value<V>>>,
     size: u32,
     mod_mask: u64,
     count: usize,
 }
+
+#[derive(Clone, Debug, MetaSer)]
+pub struct Value<V>(ID, V);
 
 impl<V> Map<V> {
     pub fn new() -> Self {
@@ -58,7 +64,7 @@ impl<V> Map<V> {
             }
 
             self.count += 1;
-            vals.push((key, value));
+            vals.push(Value(key, value));
         }
         if (self.count & 4) == 4 {
             self.ensure_load_rate();
@@ -146,7 +152,7 @@ impl<V> Map<V> {
     {
         let mut removed = 0;
         for i in 0..self.cache.len() {
-            self.cache[i].retain(|(k, v)| {
+            self.cache[i].retain(|Value(k, v)| {
                 let keep = (f)(*k, v);
                 if !keep {
                     removed += 1;
@@ -186,7 +192,7 @@ impl<V> Map<V> {
         let new_lim = self.lim();
         self.mod_mask = (new_lim as u64) - 1;
 
-        let mut vec: Vec<Vec<(ID, V)>> = Vec::new();
+        let mut vec: Vec<Vec<Value<V>>> = Vec::new();
 
         vec.append(&mut self.cache);
 
@@ -295,16 +301,16 @@ impl<V> Map<V> {
     }
 }
 
-impl<V> Default for Map<V> {
+impl<V: MetaSer> Default for Map<V> {
     fn default() -> Self {
         Map::new()
     }
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, MetaSer)]
 pub struct Table<I: IndexPointer, T> {
     map: Map<I>,
-    data: List<I, (ID, T)>,
+    data: List<I, Value<T>>,
 }
 
 impl<I: IndexPointer, T> Table<I, T> {
@@ -321,7 +327,7 @@ impl<I: IndexPointer, T> Table<I, T> {
     }
 
     pub fn add_hidden(&mut self, value: T) -> I {
-        self.data.add((ID(0), value))
+        self.data.add(Value(ID(0), value))
     }
 
     pub fn insert(&mut self, id: ID, data: T) -> (Option<T>, I) {
@@ -330,9 +336,20 @@ impl<I: IndexPointer, T> Table<I, T> {
                 return (Some(std::mem::replace(&mut self.data[i].1, data)), i);
             }
         }
-        let i = self.data.add((id, data));
+        let i = self.data.add(Value(id, data));
         self.map.insert(id, i);
         (None, i)
+    }
+
+    pub fn index_or_insert(&mut self, id: ID, data: T) -> I {
+        if let Some(&i) = self.map.get(id) {
+            if id == self.data[i].0 {
+                return i;
+            }
+        }
+        let i = self.data.add(Value(id, data));
+        self.map.insert(id, i);
+        i
     }
 
     pub fn index(&self, id: ID) -> Option<&I> {
@@ -419,15 +436,19 @@ impl<I: IndexPointer, T> Default for Table<I, T> {
     }
 }
 
+#[derive(MetaSer)]
 pub struct LinkedList<I: IndexPointer, T> {
-    data: Vec<(I, T, I)>,
+    data: Vec<LinkedNode<I, T>>,
     free: Vec<I>,
 }
+
+#[derive(MetaSer, Clone)]
+pub struct LinkedNode<I: IndexPointer, T>(I, T, I);
 
 impl<I: IndexPointer + std::fmt::Debug, T: Default> LinkedList<I, T> {
     pub fn new() -> Self {
         Self {
-            data: vec![(I::new(0), T::default(), I::new(0))],
+            data: vec![LinkedNode(I::new(0), T::default(), I::new(0))],
             free: vec![],
         }
     }
@@ -562,10 +583,10 @@ impl<I: IndexPointer + std::fmt::Debug, T: Default> LinkedList<I, T> {
 
     fn allocate(&mut self, previous: I, data: T, after: I) -> I {
         if let Some(id) = self.free.pop() {
-            self.data[id.raw()] = (previous, data, after);
+            self.data[id.raw()] = LinkedNode(previous, data, after);
             id
         } else {
-            self.data.push((previous, data, after));
+            self.data.push(LinkedNode(previous, data, after));
             I::new(self.data.len() - 1)
         }
     }
@@ -691,7 +712,7 @@ impl<I: IndexPointer, T> IndexMut<I> for LockedList<I, T> {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, MetaSer)]
 pub struct ReusableList<I: IndexPointer, T> {
     inner: List<I, T>,
     map: Vec<bool>,
@@ -770,7 +791,7 @@ impl<I: IndexPointer, T> Default for ReusableList<I, T> {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, MetaSer)]
 pub struct List<I: IndexPointer, T> {
     data: Vec<T>,
 
@@ -874,7 +895,7 @@ impl Cursor {
 #[macro_export]
 macro_rules! index_pointer {
     ($id:ident) => {
-        #[derive(Clone, Copy, PartialEq, Eq, Debug, Default)]
+        #[derive(Clone, Copy, PartialEq, Eq, Debug, Default, MetaQuickSer)]
         pub struct $id(u32);
 
         impl IndexPointer for $id {
@@ -895,7 +916,7 @@ macro_rules! index_pointer {
     };
 }
 
-pub trait IndexPointer: Copy + Clone + PartialEq + Eq {
+pub trait IndexPointer: Copy + Clone + PartialEq + Eq + MetaQuickSer {
     fn new(value: usize) -> Self;
     fn raw(&self) -> usize;
 }

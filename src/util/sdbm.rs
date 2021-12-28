@@ -1,6 +1,9 @@
 use std::cmp::Ordering;
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Default, Hash)]
+use meta_ser::MetaQuickSer;
+use traits::MetaQuickSer;
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Default, Hash, MetaQuickSer)]
 pub struct ID(pub u64);
 
 impl ID {

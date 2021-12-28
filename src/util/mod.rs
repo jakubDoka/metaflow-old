@@ -1,3 +1,6 @@
+use meta_ser::MetaQuickSer;
+use traits::MetaQuickSer;
+
 pub mod cli;
 pub mod pool;
 pub mod sdbm;
@@ -62,7 +65,7 @@ macro_rules! unwrap_enum {
     };
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Default, PartialOrd, Ord)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Default, MetaQuickSer, PartialOrd, Ord)]
 pub struct Size {
     pub s32: u32,
     pub s64: u32,
@@ -116,6 +119,14 @@ pub fn write_radix(mut number: u64, radix: u64, buffer: &mut String) {
         buffer.push(digit as char);
         number /= radix;
     }
+}
+
+#[macro_export]
+macro_rules! impl_wrapper {
+    ($name:ident, $type:ty) => {
+        #[derive(Clone, Copy, Debug, PartialEq, Eq, MetaQuickSer)]
+        pub struct $name(pub $type);
+    };
 }
 
 pub fn test() {

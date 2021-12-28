@@ -6,6 +6,9 @@ use crate::{
     },
 };
 
+use meta_ser::MetaQuickSer;
+use traits::MetaQuickSer;
+
 crate::index_pointer!(Attr);
 
 /// Collector organizes ast so it can be quickly accessed by the compiler.
@@ -143,5 +146,5 @@ pub struct Item {
     pub ast: Ast,
 }
 
-#[derive(Debug, Clone, Copy, Default)]
+#[derive(Debug, Clone, Copy, Default, MetaQuickSer)]
 pub struct Attrs(u32, u32);
