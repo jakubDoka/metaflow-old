@@ -37,6 +37,7 @@ dependencies = [
  "cranelift-entity",
  "gimli",
  "log",
+ "quick-proc",
  "regalloc",
  "smallvec",
  "target-lexicon",
@@ -56,6 +57,9 @@ version = "0.79.0"
 [[package]]
 name = "cranelift-entity"
 version = "0.79.0"
+dependencies = [
+ "quick-proc",
+]
 
 [[package]]
 name = "cranelift-frontend"
@@ -63,6 +67,7 @@ version = "0.79.0"
 dependencies = [
  "cranelift-codegen",
  "log",
+ "quick-proc",
  "smallvec",
  "target-lexicon",
 ]
@@ -73,6 +78,7 @@ version = "0.79.0"
 dependencies = [
  "anyhow",
  "cranelift-codegen",
+ "quick-proc",
 ]
 
 [[package]]
@@ -82,6 +88,27 @@ dependencies = [
  "cranelift-codegen",
  "libc",
  "target-lexicon",
+]
+
+[[package]]
+name = "cranelift-object"
+version = "0.79.0"
+dependencies = [
+ "anyhow",
+ "cranelift-codegen",
+ "cranelift-module",
+ "log",
+ "object",
+ "target-lexicon",
+]
+
+[[package]]
+name = "crc32fast"
+version = "1.3.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "738c290dfaea84fc1ca15ad9c168d083b05a714e1efddd8edaab678dc28d2836"
+dependencies = [
+ "cfg-if",
 ]
 
 [[package]]
@@ -133,6 +160,12 @@ dependencies = [
 ]
 
 [[package]]
+name = "memchr"
+version = "2.4.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "308cc39be01b73d0d18f82a0e7b2a3df85245f84af96fdddc5d202d27e47b86a"
+
+[[package]]
 name = "metaflow"
 version = "0.1.0"
 dependencies = [
@@ -146,9 +179,22 @@ name = "metaflow-cranelift"
 version = "0.79.0"
 dependencies = [
  "cranelift-codegen",
+ "cranelift-entity",
  "cranelift-frontend",
  "cranelift-module",
  "cranelift-native",
+ "cranelift-object",
+]
+
+[[package]]
+name = "object"
+version = "0.27.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "67ac1d3f9a1d3616fd9a60c8d74296f22406a238b6a72f5cc1e6f314df4ffbf9"
+dependencies = [
+ "crc32fast",
+ "indexmap",
+ "memchr",
 ]
 
 [[package]]

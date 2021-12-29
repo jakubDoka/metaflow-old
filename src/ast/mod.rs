@@ -1,11 +1,14 @@
-use meta_ser::{MetaQuickSer, MetaSer};
-use traits::MetaQuickSer;
+
+
+
+use cranelift::{entity::{ListPool, EntityList, PrimaryMap}, codegen::packed_option::{ReservedValue, PackedOption}};
+use quick_proc::{QuickSer, RealQuickSer, QuickDefault};
 
 use crate::{lexer::*, util::sdbm::ID};
 
 use std::{
     fmt::Write,
-    ops::{Deref, DerefMut},
+    ops::{Deref, DerefMut}, time::Instant,
 };
 
 pub type Result<T = ()> = std::result::Result<T, AError>;
@@ -13,17 +16,18 @@ pub type Result<T = ()> = std::result::Result<T, AError>;
 pub struct AParser<'a> {
     main_state: &'a mut AMainState,
     state: &'a mut AState,
+    context: &'a mut AContext,
 }
 
 impl<'a> AParser<'a> {
-    pub fn new(main_state: &'a mut AMainState, state: &'a mut AState) -> Self {
-        Self { main_state, state }
+    pub fn new(main_state: &'a mut AMainState, state: &'a mut AState, context: &'a mut AContext) -> Self {
+        Self { main_state, state, context }
     }
 
     pub fn parse_manifest(&mut self) -> Result<Manifest> {
         let mut manifest = Manifest::default();
         loop {
-            match self.state.token.kind {
+            match self.token.kind {
                 TKind::Eof => break,
                 TKind::Indent(_) => {
                     self.next()?;
@@ -34,17 +38,17 @@ impl<'a> AParser<'a> {
                     return Err(self.unexpected_str("every item in manifest starts with identifier"))
                 }
             }
-            let name = self.state.token.span;
+            let name = self.token.span;
             self.next()?;
-            match self.state.token.kind {
-                TKind::Op if self.state.token.span.hash == self.main_state.equal_sign => {
+            match self.token.kind {
+                TKind::Op if self.token.span.hash == ID::new("=") => {
                     self.next()?;
 
-                    if !matches!(self.state.token.kind, TKind::String(_)) {
+                    if !matches!(self.token.kind, TKind::String(_)) {
                         return Err(self.unexpected_str("expected string literal"));
                     }
 
-                    let mut value = self.state.token.span;
+                    let mut value = self.token.span;
                     value.start += 1;
                     value.end -= 1;
 
@@ -116,11 +120,11 @@ impl<'a> AParser<'a> {
     }
 
     pub fn take_imports(&mut self, imports: &mut Vec<Import>) -> Result {
-        while let TKind::Indent(_) = self.state.token.kind {
+        while let TKind::Indent(_) = self.token.kind {
             self.next()?;
         }
 
-        if self.state.token == TKind::Use {
+        if self.token == TKind::Use {
             self.next()?;
             self.walk_block(|s| s.import_line(imports))?;
         }
@@ -129,18 +133,18 @@ impl<'a> AParser<'a> {
     }
 
     fn import_line(&mut self, imports: &mut Vec<Import>) -> Result {
-        let mut token = self.state.token;
+        let mut token = self.token;
 
-        let nickname = if self.state.token == TKind::Ident {
-            let nickname = self.state.token.span;
+        let nickname = if self.token == TKind::Ident {
+            let nickname = self.token.span;
             self.next()?;
             Some(nickname)
         } else {
             None
         };
 
-        let path = if let TKind::String(_) = self.state.token.kind {
-            let mut path = self.state.token.span;
+        let path = if let TKind::String(_) = self.token.kind {
+            let mut path = self.token.span;
             path.start += 1;
             path.end -= 1;
             path
@@ -160,164 +164,205 @@ impl<'a> AParser<'a> {
         Ok(())
     }
 
-    pub fn parse(&mut self) -> Result<Ast> {
-        let mut ast = self.ast(AKind::Group);
-        while self.state.token.kind != TKind::Eof {
-            match self.state.token.kind {
-                TKind::Impl => ast.push(self.impl_block()?),
-                TKind::Fun => ast.push(self.fun()?),
-                TKind::Attr => ast.push(self.attr()?),
-                TKind::Struct => ast.push(self.struct_declaration()?),
-                TKind::Var | TKind::Let => ast.push(self.var_statement(true)?),
-                TKind::Comment(_) => {
-                    let ast = ast.push(self.ast(AKind::Comment));
-                    self.next()?;
-                    ast
-                }
-                TKind::Indent(_) => self.next()?,
-                _ => {
-                    return Err(self.unexpected_str(
-                        "expected 'fun' or 'attr' or 'struct' or 'let' or 'var' or 'impl' or '##'",
-                    ))
-                }
-            }
+    pub fn parse(&mut self) -> Result {
+        while self.token.kind != TKind::Eof {
+            self.top_item(
+                Ast::reserved_value(), 
+                "expected 'fun' or 'attr' or 'struct' or 'let' or 'var' or 'impl' or '##'"
+            )?;
         }
-        Ok(ast)
+
+        Ok(())
     }
 
-    fn impl_block(&mut self) -> Result<Ast> {
-        let mut ast = self.ast(AKind::None);
+    fn impl_block(&mut self) -> Result {
+        let mut ast_ent = self.ast_ent(AKind::None);
 
         self.next()?;
 
         let vis = self.vis()?;
 
-        ast.kind = AKind::Impl(vis);
+        ast_ent.kind = AKind::Impl(vis);
 
-        ast.push(if self.state.token == TKind::LBra {
-            let mut ast = self.ast(AKind::Group);
+        let generics = if self.token == TKind::LBra {
+            let mut ast_ent = self.ast_ent(AKind::Group);
             self.list(
-                &mut ast,
+                &mut ast_ent,
                 TKind::LBra,
                 TKind::Comma,
                 TKind::RBra,
                 Self::ident,
             )?;
-            ast
+            self.add(ast_ent)
         } else {
-            Ast::none()
-        });
+            Ast::reserved_value()
+        };
 
-        ast.push(self.type_expr()?);
+        self.push(&mut ast_ent.sons, generics);
 
-        let mut body = self.ast(AKind::Group);
+        let expr = self.type_expr()?;
+        self.push(&mut ast_ent.sons, expr);
+
+        let impl_ast = self.add(ast_ent);
+
         self.expect_str(TKind::Colon, "expected ':' after 'impl' type")?;
         self.next()?;
-        self.walk_block(|s| {
-            match s.state.token.kind {
-                TKind::Fun => body.push(s.fun()?),
-                TKind::Attr => body.push(s.attr()?),
-                TKind::Var | TKind::Let => body.push(s.var_statement(true)?),
-                TKind::Comment(_) => {
-                    let ast = ast.push(s.ast(AKind::Comment));
-                    s.next()?;
-                    ast
-                }
-                _ => {
-                    return Err(
-                        s.unexpected_str("expected 'fun' or 'attr' or 'let' or 'var' or '##'")
-                    )
-                }
-            }
-            Ok(())
-        })?;
-        ast.push(body);
+        self.walk_block(|s| s.top_item(impl_ast, "expected 'fun' or 'attr' or 'let' or 'var' or '##'"))?;
 
-        Ok(ast)
+        Ok(())
+    }
+
+    fn top_item(&mut self, impl_ast: Ast, message: &'static str) -> Result {
+        let kind = self.token.kind;
+        let collect_attributes = matches!(kind, TKind::Struct | TKind::Fun | TKind::Var | TKind::Let);
+
+        let attributes = if collect_attributes {
+            self.context.current_attributes.extend_from_slice(&self.context.attrib_stack);
+            if !self.context.current_attributes.is_empty() {
+                let sons = EntityList::from_slice(&self.context.current_attributes, &mut self.state.cons);
+                self.context.current_attributes.clear();
+                self.add(AstEnt::with_children(AKind::Group, Token::default(), sons))
+            } else {
+                Ast::reserved_value()
+            }
+        } else {
+            Ast::reserved_value()
+        };
+
+        match kind {
+            TKind::Impl if impl_ast == Ast::reserved_value() => {
+                self.context.attrib_frames.push(self.context.attrib_stack.len());
+                self.context.attrib_stack.extend_from_slice(&self.context.current_attributes);
+                self.impl_block()?;
+                self.context.attrib_stack.truncate(self.context.attrib_frames.pop().unwrap());
+            },
+            TKind::Struct if impl_ast == Ast::reserved_value() => {
+                let item = self.struct_declaration()?;
+                self.state.types.extend([item, attributes, Ast::reserved_value()], &mut self.state.cons);
+            },
+            TKind::Fun => {
+                let item = self.fun()?;
+                self.state.funs.extend([item, attributes, impl_ast], &mut self.state.cons);
+            },
+            TKind::Var | TKind::Let => {
+                let item = self.var_statement(true)?;
+                self.state.globals.extend([item, attributes, impl_ast], &mut self.state.cons);
+            },
+            TKind::Attr => {
+                self.attr()?;
+            },
+            TKind::Comment(_) => {
+                let ast = self.ast(AKind::Comment);
+                self.context.current_attributes.push(ast);
+                self.next()?;
+            }
+            TKind::Indent(_) => {
+                self.next()?;
+            },
+            
+            _ => return Err(self.unexpected_str(message)),
+        }
+
+        Ok(())
     }
 
     fn struct_declaration(&mut self) -> Result<Ast> {
-        let mut ast = self.ast(AKind::None);
+        let mut ast_ent = self.ast_ent(AKind::None);
         self.next()?;
 
-        ast.kind = AKind::StructDeclaration(self.vis()?);
+        ast_ent.kind = AKind::StructDeclaration(self.vis()?);
 
-        ast.push(self.type_expr()?);
+        let expr = self.type_expr()?;
+        self.push(&mut ast_ent.sons, expr);
 
-        if self.state.token == TKind::Colon {
-            ast.push(self.block(Self::struct_field)?);
+        let body = if self.token == TKind::Colon {
+            self.block(Self::struct_field)?
         } else {
-            ast.push(Ast::none());
-        }
+            Ast::reserved_value()
+        };
 
-        Ok(ast)
+        self.push(&mut ast_ent.sons, body);
+
+        Ok(self.add(ast_ent))
     }
 
     fn struct_field(&mut self) -> Result<Ast> {
-        if self.state.token.kind == TKind::Attr {
-            return self.attr();
-        }
-
         let vis = self.vis()?;
 
-        let embedded = if self.state.token == TKind::Embed {
+        let embedded = if self.token == TKind::Embed {
             self.next()?;
             true
         } else {
             false
         };
 
-        let mut ast = self.ast(AKind::StructField(vis, embedded));
+        let mut ast_ent = self.ast_ent(AKind::StructField(vis, embedded));
 
         self.list(
-            &mut ast,
+            &mut ast_ent,
             TKind::None,
             TKind::Comma,
             TKind::Colon,
             Self::ident,
         )?;
 
-        ast.push(self.type_expr()?);
+        let expr =  self.type_expr()?;
+        self.push(&mut ast_ent.sons, expr);
 
-        self.join_token(&mut ast.token);
+        self.join_token(&mut ast_ent.token);
 
-        Ok(ast)
+        Ok(self.add(ast_ent))
     }
 
-    fn attr(&mut self) -> Result<Ast> {
-        let mut ast = self.ast(AKind::Attribute);
+    fn attr(&mut self) -> Result {
+        let mut ast_ent = self.ast_ent(AKind::Attribute);
         self.next()?;
 
         self.list(
-            &mut ast,
+            &mut ast_ent,
             TKind::None,
             TKind::Comma,
             TKind::None,
             Self::attr_element,
         )?;
 
-        self.join_token(&mut ast.token);
+        for &ast in self.state.slice(ast_ent.sons) {
+            let hash = self.token(ast).span.hash;
+            if hash == ID::new("push") {
+                self.context.attrib_frames.push(self.context.attrib_stack.len());
+                for &ast in self.state.slice(self.sons(ast)) {
+                    self.context.attrib_stack.push(ast);
+                }
+            } else if hash == ID::new("pop") {
+                let len = self.context.attrib_frames.pop().unwrap();
+                self.context.attrib_stack.truncate(len);
+            } else {
+                self.context.current_attributes.push(ast);
+            }
+        }
 
-        Ok(ast)
+        Ok(())
     }
 
     fn attr_element(&mut self) -> Result<Ast> {
-        let mut ast = self.ast(AKind::AttributeElement);
-        ast.push(self.ident()?);
+        let mut ast_ent = self.ast_ent(AKind::AttributeElement);
+        let ident = self.ident()?;
+        self.push(&mut ast_ent.sons, ident);
 
-        match self.state.token.kind {
+        match self.token.kind {
             TKind::LPar => self.list(
-                &mut ast,
+                &mut ast_ent,
                 TKind::LPar,
                 TKind::Comma,
                 TKind::RPar,
                 Self::attr_element,
             )?,
             TKind::Op => {
-                if self.state.token.span.hash == self.main_state.equal_sign {
-                    ast.kind = AKind::AttributeAssign;
+                if self.token.span.hash == ID::new("=") {
+                    ast_ent.kind = AKind::AttributeAssign;
                     self.next()?;
-                    ast.push(self.expr()?);
+                    let expr = self.expr()?;
+                    self.push(&mut ast_ent.sons, expr);
                 } else {
                     return Err(self.unexpected_str("expected '=' or '('"));
                 }
@@ -325,56 +370,58 @@ impl<'a> AParser<'a> {
             _ => (),
         }
 
-        self.join_token(&mut ast.token);
+        self.join_token(&mut ast_ent.token);
 
-        Ok(ast)
+        Ok(self.add(ast_ent))
     }
 
     fn fun(&mut self) -> Result<Ast> {
-        let mut ast = self.ast(AKind::None);
+        let mut ast_ent = self.ast_ent(AKind::None);
         let (header, visibility) = self.fun_header(false)?;
-        ast.push(header);
-        ast.kind = AKind::Fun(visibility);
+        self.push(&mut ast_ent.sons, header);
+        ast_ent.kind = AKind::Fun(visibility);
 
-        ast.push(
-            if self.state.token == TKind::Colon && !self.state.is_type_expr {
-                self.stmt_block()?
-            } else {
-                Ast::none()
-            },
-        );
+        let body = if self.token == TKind::Colon && !self.is_type_expr {
+            self.stmt_block()?
+        } else {
+            Ast::reserved_value()
+        };
 
-        self.join_token(&mut ast.token);
+        self.push(&mut ast_ent.sons, body);
 
-        Ok(ast)
+        self.join_token(&mut ast_ent.token);
+
+        Ok(self.add(ast_ent))
     }
 
     fn fun_header(&mut self, anonymous: bool) -> Result<(Ast, Vis)> {
-        let mut ast = self.ast(AKind::None);
+        let mut ast_ent = self.ast_ent(AKind::None);
         self.next()?;
 
         let visibility = if anonymous { Vis::None } else { self.vis()? };
 
-        let previous = self.state.is_type_expr;
-        self.state.is_type_expr = true;
-        let is_op = self.state.token.kind == TKind::Op;
-        ast.push(match self.state.token.kind {
+        let previous = self.is_type_expr;
+        self.is_type_expr = true;
+        let is_op = self.token.kind == TKind::Op;
+        let ident = match self.token.kind {
             TKind::Ident | TKind::Op if !anonymous => self.ident_expr()?,
-            _ => Ast::none(),
-        });
-        self.state.is_type_expr = previous;
+            _ => Ast::reserved_value(),
+        };
+        self.push(&mut ast_ent.sons, ident);
+        self.is_type_expr = previous;
 
-        if self.state.token == TKind::LPar {
-            let parser = if self.state.is_type_expr {
+        if self.token == TKind::LPar {
+            let parser = if self.is_type_expr {
                 Self::expr
             } else {
                 Self::fun_argument
             };
-            self.list(&mut ast, TKind::LPar, TKind::Comma, TKind::RPar, parser)?;
+            self.list(&mut ast_ent, TKind::LPar, TKind::Comma, TKind::RPar, parser)?;
         }
 
         let kind = if is_op {
-            let arg_count = ast[1..].iter().fold(0, |acc, i| acc + i.len() - 1);
+            let arg_count = self.slice(ast_ent.sons)[1..].iter().fold(
+                0, |acc, &i| acc + self.len(i) - 1);
             match arg_count {
                 1 => OpKind::Unary,
                 2 => OpKind::Binary,
@@ -383,54 +430,59 @@ impl<'a> AParser<'a> {
                         "operator functions can have either 1 or 2 arguments, (unary and binary)"
                             .to_string(),
                     ),
-                    ast.token,
+                    ast_ent.token,
                 )),
             }
         } else {
             OpKind::Normal
         };
 
-        ast.kind = AKind::FunHeader(kind);
+        ast_ent.kind = AKind::FunHeader(kind);
 
-        ast.push(if self.state.token == TKind::RArrow {
+        let ret = if self.token == TKind::RArrow {
             self.next()?;
             self.type_expr()?
         } else {
-            Ast::none()
-        });
+            Ast::reserved_value()
+        };
+        self.push(&mut ast_ent.sons, ret);
 
         // call convention
-        if self.state.token == TKind::Ident {
-            ast.push(self.ast(AKind::Ident));
+        let call_conv = if self.token == TKind::Ident {
+            let call_conv = self.ast(AKind::Ident);
             self.next()?;
+            call_conv
         } else {
-            ast.push(Ast::none());
-        }
+            Ast::reserved_value()
+        };
+        self.push(&mut ast_ent.sons, call_conv);
 
-        self.join_token(&mut ast.token);
+        self.join_token(&mut ast_ent.token);
 
-        Ok((ast, visibility))
+        Ok((self.add(ast_ent), visibility))
     }
 
     fn fun_argument(&mut self) -> Result<Ast> {
-        let mutable = if self.state.token.kind == TKind::Var {
+        let mutable = if self.token.kind == TKind::Var {
             self.next()?;
             true
         } else {
             false
         };
-        let mut ast = self.ast(AKind::FunArgument(mutable));
-        self.list(&mut ast, TKind::None, TKind::Comma, TKind::Colon, |s| {
+        let mut ast_ent = self.ast_ent(AKind::FunArgument(mutable));
+        self.list(&mut ast_ent, TKind::None, TKind::Comma, TKind::Colon, |s| {
             s.expect_str(TKind::Ident, "expected ident")?;
-            let ident = s.ast(AKind::Ident);
+            let ident = s.state.ast(AKind::Ident);
             s.next()?;
             Ok(ident)
         })?;
-        ast.push(self.type_expr()?);
 
-        self.join_token(&mut ast.token);
+        let expr =  self.type_expr()?;
+        self.push(&mut ast_ent.sons, expr);
 
-        Ok(ast)
+        self.join_token(&mut ast_ent.token);
+
+        Ok(self.add(ast_ent))
     }
 
     fn stmt_block(&mut self) -> Result<Ast> {
@@ -438,7 +490,7 @@ impl<'a> AParser<'a> {
     }
 
     fn statement(&mut self) -> Result<Ast> {
-        match self.state.token.kind {
+        match self.token.kind {
             TKind::Return => self.return_statement(),
             TKind::Var | TKind::Let => self.var_statement(false),
             TKind::Break => return self.break_statement(),
@@ -448,26 +500,27 @@ impl<'a> AParser<'a> {
     }
 
     fn var_statement(&mut self, top_level: bool) -> Result<Ast> {
-        let mutable = self.state.token.kind == TKind::Var;
-        let mut ast = self.ast(AKind::None);
+        let mutable = self.token.kind == TKind::Var;
+        let mut ast_ent = self.ast_ent(AKind::None);
         self.next()?;
 
         let vis = if top_level { self.vis()? } else { Vis::None };
-        ast.kind = AKind::VarStatement(vis, mutable);
+        ast_ent.kind = AKind::VarStatement(vis, mutable);
 
         self.walk_block(|s| {
-            ast.push(s.var_statement_line()?);
+            let line = s.var_statement_line()?;
+            s.state.push(&mut ast_ent.sons , line);
             Ok(())
         })?;
 
-        self.join_token(&mut ast.token);
+        self.join_token(&mut ast_ent.token);
 
-        Ok(ast)
+        Ok(self.add(ast_ent))
     }
 
     fn var_statement_line(&mut self) -> Result<Ast> {
-        let mut ast = self.ast(AKind::VarAssign);
-        let mut ident_group = self.ast(AKind::Group);
+        let mut ast_ent = self.ast_ent(AKind::VarAssign);
+        let mut ident_group = self.ast_ent(AKind::Group);
         self.list(
             &mut ident_group,
             TKind::None,
@@ -476,15 +529,15 @@ impl<'a> AParser<'a> {
             Self::ident,
         )?;
 
-        let datatype = if self.state.token == TKind::Colon {
+        let datatype = if self.token == TKind::Colon {
             self.next()?;
             self.type_expr()?
         } else {
-            Ast::none()
+            Ast::reserved_value()
         };
 
-        let values = if self.state.token.span.hash == self.main_state.equal_sign {
-            let mut values = self.ast(AKind::Group);
+        let values = if self.token.span.hash == ID::new("=") {
+            let mut values = self.ast_ent(AKind::Group);
             self.next()?;
             self.list(
                 &mut values,
@@ -493,29 +546,30 @@ impl<'a> AParser<'a> {
                 TKind::None,
                 Self::expr,
             )?;
-            if values.len() == 1 {
-                std::iter::repeat(ident_group[0].clone())
-                    .take(ident_group.len() - 1)
-                    .for_each(|n| values.push(n));
-            } else if values.len() != ident_group.len() {
+            if values.sons.len(&self.cons) == 1 {
+                std::iter::repeat(ident_group.sons.get(0, &self.cons).unwrap())
+                    .take(ident_group.sons.len(&self.cons) - 1)
+                    .for_each(|n| self.push(&mut values.sons, n));
+            } else if values.sons.len(&self.cons) != ident_group.sons.len(&self.cons) {
                 return Err(
                     self.unexpected_str("expected one value per ident or one value for all idents")
                 );
             }
-            values
+            self.add(values)
         } else {
-            Ast::none()
+            Ast::reserved_value()
         };
 
-        if datatype.kind == AKind::None && values.kind == AKind::None {
+        if datatype == Ast::reserved_value() && values == Ast::reserved_value() {
             return Err(self.unexpected_str("expected '=' or ':' type"));
         }
 
-        ast.children = vec![ident_group, datatype, values];
+        ast_ent.sons = EntityList::from_slice(
+            &[self.add(ident_group), datatype, values], &mut self.cons);
 
-        self.join_token(&mut ast.token);
+        self.join_token(&mut ast_ent.token);
 
-        Ok(ast)
+        Ok(self.add(ast_ent))
     }
 
     fn ident(&mut self) -> Result<Ast> {
@@ -526,26 +580,26 @@ impl<'a> AParser<'a> {
     }
 
     fn return_statement(&mut self) -> Result<Ast> {
-        let mut ast = self.ast(AKind::ReturnStatement);
+        let mut ast_ent = self.ast_ent(AKind::ReturnStatement);
         self.next()?;
-        let ret_val = if let TKind::Indent(_) | TKind::Eof = self.state.token.kind {
-            Ast::none()
+        let ret_val = if let TKind::Indent(_) | TKind::Eof = self.token.kind {
+            Ast::reserved_value()
         } else {
             self.expr()?
         };
-        ast.push(ret_val);
+        self.push(&mut ast_ent.sons, ret_val);
 
-        self.join_token(&mut ast.token);
+        self.join_token(&mut ast_ent.token);
 
-        Ok(ast)
+        Ok(self.add(ast_ent))
     }
 
     fn type_expr(&mut self) -> Result<Ast> {
-        self.state.is_type_expr = true;
+        self.is_type_expr = true;
 
         let result = self.simple_expr();
 
-        self.state.is_type_expr = false;
+        self.is_type_expr = false;
 
         result
     }
@@ -557,63 +611,78 @@ impl<'a> AParser<'a> {
 
     fn expr_low(&mut self, previous: Ast) -> Result<Ast> {
         let mut result = previous;
-        while self.state.token == TKind::Op {
-            let op = self.state.token;
-            let pre = precedence(self.main_state.display(&op.span));
+        while self.token == TKind::Op {
+            let op = self.ast_ent(AKind::Ident);
+            let pre = precedence(self.main_state.display(&op.token.span));
 
             self.next()?;
             self.ignore_newlines()?;
 
             let mut next = self.simple_expr()?;
 
-            if self.state.token == TKind::Op {
-                let dif = pre - precedence(self.main_state.display(&self.state.token.span));
+            if self.token == TKind::Op {
+                let dif = pre - precedence(self.main_state.display(&self.token.span));
 
                 if dif > 0 {
                     next = self.expr_low(next)?;
                 }
             }
 
-            let mut token = result.token;
+            let mut token = *self.token(previous);
 
-            self.join_token_with(&mut token, &next.token, false);
+            self.join_token_with(&mut token, self.token(next), false);
 
             // this handles the '{op}=' sugar
             result = if pre == ASSIGN_PRECEDENCE
-                && op.span.len() != 1
-                && self.main_state.display(&op.span).chars().last().unwrap() == '='
+                && op.token.span.len() != 1
+                && self.main_state.display(&op.token.span).chars().last().unwrap() == '='
             {
-                let operator = Ast::new(
+                let operator = AstEnt::new(
                     AKind::Ident,
                     Token::new(
                         TKind::Op,
-                        self.main_state.slice_span(&op.span, 0, op.span.len() - 1),
+                        self.main_state.slice_span(&op.token.span, 0, op.token.span.len() - 1),
                     ),
                 );
-                let eq = Ast::new(
+                let operator = self.add(operator);
+                let eq = AstEnt::new(
                     AKind::Ident,
                     Token::new(
                         TKind::Op,
                         self.main_state
-                            .slice_span(&op.span, op.span.len() - 1, op.span.len()),
+                            .slice_span(&op.token.span, op.token.span.len() - 1, op.token.span.len()),
                     ),
                 );
+                let eq = self.add(eq);
+                let expr = AstEnt::with_children(
+                    AKind::BinaryOp, 
+                    token, 
+                    EntityList::from_slice(&[
+                        operator, result, next
+                    ], &mut self.cons),
+                );
+                let expr = self.add(expr);
 
-                Ast::with_children(
+                let final_expr = AstEnt::with_children(
                     AKind::BinaryOp,
                     token,
-                    vec![
+                    EntityList::from_slice(&[
                         eq,
                         result.clone(),
-                        Ast::with_children(AKind::BinaryOp, token, vec![operator, result, next]),
-                    ],
-                )
+                        expr,    
+                    ], &mut self.cons),
+                );
+                self.add(final_expr)
             } else {
-                Ast::with_children(
+                let expr = AstEnt::with_children(
                     AKind::BinaryOp,
                     token,
-                    vec![Ast::new(AKind::Ident, op), result, next],
-                )
+                    EntityList::from_slice(&[
+                        self.add(op), result, next,
+                    ], &mut self.cons),
+                );
+
+                self.add(expr)
             };
         }
 
@@ -625,7 +694,7 @@ impl<'a> AParser<'a> {
     }
 
     fn simple_expr_low(&mut self, nested: bool) -> Result<Ast> {
-        let mut ast = match self.state.token.kind {
+        let mut ast = match self.token.kind {
             TKind::Ident => self.ident_expr()?,
             TKind::Int(..)
             | TKind::Uint(..)
@@ -634,35 +703,38 @@ impl<'a> AParser<'a> {
             | TKind::Float(..)
             | TKind::String(..) => self.ast(AKind::Lit),
             TKind::LPar => {
-                let token = self.state.token;
+                let mut token = self.token;
                 self.next()?;
-                let mut expr = self.expr()?;
+                let expr = self.expr()?;
                 self.expect_str(TKind::RPar, "expected ')'")?;
                 self.next()?;
-                expr.token = token;
+                self.join_token(&mut token);
+                self.asts[expr].token = token;
                 expr
             }
             TKind::If => return self.if_expr(),
             TKind::Loop => return self.loop_expr(),
             TKind::Op => {
-                let mut ast = self.ast(AKind::UnaryOp);
-                match self.main_state.display(&self.state.token.span) {
+                let mut ast_ent = self.ast_ent(AKind::UnaryOp);
+                match self.main_state.display(&self.token.span) {
                     "&" => {
                         self.next()?;
-                        ast.kind = AKind::Ref;
+                        ast_ent.kind = AKind::Ref;
                     }
                     "*" => {
                         self.next()?;
-                        ast.kind = AKind::Deref;
+                        ast_ent.kind = AKind::Deref;
                     }
                     _ => {
-                        ast.push(self.ast(AKind::Ident));
+                        let ast = self.ast(AKind::Ident);
+                        self.push(&mut ast_ent.sons, ast);
                         self.next()?;
                     }
                 }
-                ast.push(self.simple_expr()?);
-                self.join_token(&mut ast.token);
-                return Ok(ast);
+                let ast = self.simple_expr()?;
+                self.push(&mut ast_ent.sons, ast);
+                self.join_token(&mut ast_ent.token);
+                return Ok(self.add(ast_ent));
             }
             TKind::Pass => {
                 let ast = self.ast(AKind::Pass);
@@ -670,36 +742,42 @@ impl<'a> AParser<'a> {
                 return Ok(ast);
             }
             TKind::LBra => {
-                let mut ast = self.ast(AKind::Array);
-                self.list(&mut ast, TKind::LBra, TKind::Comma, TKind::RBra, Self::expr)?;
-                return Ok(ast);
+                let mut ast_ent = self.ast_ent(AKind::Array);
+                self.list(&mut ast_ent, TKind::LBra, TKind::Comma, TKind::RBra, Self::expr)?;
+                return Ok(self.add(ast_ent));
             }
             TKind::Fun => return Ok(self.fun_header(true)?.0),
-            _ => todo!("unmatched simple expr pattern {:?}", self.state.token),
+            _ => todo!("unmatched simple expr pattern {:?}", self.token),
         };
 
-        if ast.kind == AKind::Lit {
+        if self.kind(ast) == AKind::Lit {
             self.next()?;
         }
 
-        if !nested && !self.state.is_type_expr {
+        if !nested && !self.is_type_expr {
             loop {
-                match self.state.token.kind {
+                let new_ast = match self.token.kind {
                     TKind::Dot => {
-                        let mut new_ast = Ast::new(AKind::DotExpr, ast.token);
-                        new_ast.push(ast);
+                        let mut new_ast = AstEnt::new(AKind::DotExpr, *self.token(ast));
+                        self.push(&mut new_ast.sons, ast);
                         self.next()?;
-                        new_ast.push(self.simple_expr_low(true)?);
-                        ast = new_ast;
+                        let expr = self.simple_expr_low(true)?;
+                        self.push(&mut new_ast.sons, expr);
+                        new_ast
                     }
                     TKind::LPar => {
-                        let mut new_ast = Ast::new(AKind::None, ast.token);
-                        if ast.kind == AKind::DotExpr {
+                        let AstEnt { mut sons, token, ..} = self.asts[ast];
+                        let mut new_ast = AstEnt::new(AKind::None, token);
+                        if self.kind(ast) == AKind::DotExpr {
                             new_ast.kind = AKind::Call(true);
-                            ast.drain(..).rev().for_each(|e| new_ast.push(e));
+                            new_ast.sons = EntityList::from_slice(&[
+                                sons.get(1, &self.cons).unwrap(),
+                                sons.get(0, &self.cons).unwrap(),
+                            ], &mut self.cons);
+                            sons.clear(&mut self.cons);
                         } else {
                             new_ast.kind = AKind::Call(false);
-                            new_ast.push(ast);
+                            self.push(&mut new_ast.sons, ast);
                         }
 
                         self.list(
@@ -710,145 +788,163 @@ impl<'a> AParser<'a> {
                             Self::expr,
                         )?;
 
-                        ast = new_ast;
+                        new_ast
                     }
                     TKind::LBra => {
-                        let mut new_ast = Ast::new(AKind::Index, ast.token);
-                        new_ast.push(ast);
+                        let AstEnt { token, .. } = self.asts[ast];
+                        let mut new_ast = AstEnt::new(AKind::Index, token);
+                        self.push(&mut new_ast.sons, ast);
                         self.next()?;
                         self.ignore_newlines()?;
-                        new_ast.push(self.expr()?);
+                        let expr = self.expr()?;
+                        self.push(&mut new_ast.sons, expr);
                         self.ignore_newlines()?;
                         self.expect_str(TKind::RBra, "expected ']'")?;
                         self.next()?;
 
-                        ast = new_ast;
+                        new_ast
                     }
 
                     _ => break,
-                }
+                };
+
+                ast = self.add(new_ast);
             }
         }
 
-        if ast.kind != AKind::Ident {
-            self.join_token(&mut ast.token);
+        let mut ast_ent = self.asts[ast];
+        if ast_ent.kind != AKind::Ident {
+            self.join_token(&mut ast_ent.token);
         }
+        self.asts[ast] = ast_ent;
 
         Ok(ast)
     }
 
     fn continue_statement(&mut self) -> Result<Ast> {
-        let mut ast = self.ast(AKind::Continue);
+        let mut ast_ent = self.ast_ent(AKind::Continue);
         self.next()?;
 
-        ast.push(self.optional_label()?);
+        let label = self.optional_label()?;
+        self.push(&mut ast_ent.sons, label);
 
-        self.join_token(&mut ast.token);
+        self.join_token(&mut ast_ent.token);
 
-        Ok(ast)
+        Ok(self.add(ast_ent))
     }
 
     fn break_statement(&mut self) -> Result<Ast> {
-        let mut ast = self.ast(AKind::Break);
+        let mut ast_ent = self.ast_ent(AKind::Break);
         self.next()?;
 
-        ast.push(self.optional_label()?);
+        let label = self.optional_label()?;
+        self.push(&mut ast_ent.sons, label);
 
-        ast.push(if let TKind::Indent(_) = self.state.token.kind {
-            Ast::none()
+
+        let ret = if let TKind::Indent(_) = self.token.kind {
+            Ast::reserved_value()
         } else {
             self.expr()?
-        });
+        };
+        self.push(&mut ast_ent.sons, ret);
 
-        self.join_token(&mut ast.token);
+        self.join_token(&mut ast_ent.token);
 
-        Ok(ast)
+        Ok(self.add(ast_ent))
     }
 
     fn loop_expr(&mut self) -> Result<Ast> {
-        let mut ast = self.ast(AKind::Loop);
+        let mut ast_ent = self.ast_ent(AKind::Loop);
         self.next()?;
 
-        ast.push(self.optional_label()?);
+        let label = self.optional_label()?;
+        self.push(&mut ast_ent.sons, label);
 
-        ast.push(self.stmt_block()?);
+        let body = self.stmt_block()?;
+        self.push(&mut ast_ent.sons, body);
 
-        self.join_token(&mut ast.token);
+        self.join_token(&mut ast_ent.token);
 
-        Ok(ast)
+        Ok(self.add(ast_ent))
     }
 
     fn optional_label(&mut self) -> Result<Ast> {
-        Ok(if self.state.token == TKind::Label {
+        Ok(if self.token == TKind::Label {
             let ast = self.ast(AKind::Ident);
             self.next()?;
             ast
         } else {
-            Ast::none()
+            Ast::reserved_value()
         })
     }
 
     fn ident_expr(&mut self) -> Result<Ast> {
-        let mut ast = self.ast(AKind::Ident);
+        let mut ast_ent = self.ast_ent(AKind::Ident);
         self.next()?;
+        let mut ast = self.add(ast_ent);
 
         self.peek()?;
-        if self.state.token == TKind::DoubleColon && self.state.peeked == TKind::Ident {
-            let mut temp_ast = Ast::new(AKind::Path, ast.token);
-            temp_ast.push(ast);
+        if self.token == TKind::DoubleColon && self.peeked == TKind::Ident {
+            let mut temp_ast = AstEnt::new(AKind::Path, ast_ent.token);
+            self.push(&mut temp_ast.sons, ast);
             self.next()?;
-            temp_ast.push(self.ident()?);
+            let ident = self.ident()?;
+            self.push(&mut temp_ast.sons, ident);
             self.peek()?;
-            if self.state.token == TKind::DoubleColon && self.state.peeked == TKind::Ident {
+            if self.token == TKind::DoubleColon && self.peeked == TKind::Ident {
                 self.next()?;
-                temp_ast.push(self.ident()?);
+                let ident = self.ident()?;
+                self.push(&mut temp_ast.sons, ident);
             }
-            ast = temp_ast;
-            self.join_token(&mut ast.token);
+            ast_ent = temp_ast;
+            self.join_token(&mut ast_ent.token);
+            ast = self.add(ast_ent);
         }
 
-        let is_instantiation = self.state.is_type_expr && self.state.token == TKind::LBra
-            || self.state.token == TKind::DoubleColon;
+        let is_instantiation = self.is_type_expr && self.token == TKind::LBra
+            || self.token == TKind::DoubleColon;
 
         if is_instantiation {
-            if self.state.token == TKind::DoubleColon {
+            if self.token == TKind::DoubleColon {
                 self.next()?;
             }
             self.expect_str(
                 TKind::LBra,
                 "expected '[' as a start of generic instantiation",
             )?;
-            let mut temp_ast = Ast::new(AKind::Instantiation, ast.token);
-            temp_ast.push(ast);
-            ast = temp_ast;
-            self.list(&mut ast, TKind::LBra, TKind::Comma, TKind::RBra, Self::expr)?;
+            let mut temp_ast = AstEnt::new(AKind::Instantiation, ast_ent.token);
+            self.push(&mut temp_ast.sons, ast);
+            ast_ent = temp_ast;
+            self.list(&mut ast_ent, TKind::LBra, TKind::Comma, TKind::RBra, Self::expr)?;
 
-            self.join_token(&mut ast.token);
+            self.join_token(&mut ast_ent.token);
+            ast = self.add(ast_ent);
         }
 
         Ok(ast)
     }
 
     fn if_expr(&mut self) -> Result<Ast> {
-        let mut ast = self.ast(AKind::IfExpr);
+        let ast = self.ast(AKind::IfExpr);
         self.next()?;
         let condition = self.expr()?;
         let then_block = self.stmt_block()?;
 
-        let else_block = match self.state.token.kind {
+        let else_block = match self.token.kind {
             TKind::Else => {
                 self.next()?;
                 self.stmt_block()?
             }
             TKind::Elif => {
                 // simplify later parsing
-                let mut ast = self.ast(AKind::Group);
-                ast.push(self.if_expr()?);
-                ast
+                let mut ast_ent = self.ast_ent(AKind::Group);
+                let expr = self.if_expr()?;
+                self.push(&mut ast_ent.sons, expr);
+                self.add(ast_ent)
             }
             TKind::Indent(_) => {
                 self.peek()?;
-                match self.state.peeked.kind {
+                match self.peeked.kind {
                     TKind::Else => {
                         self.next()?;
                         self.next()?;
@@ -858,25 +954,29 @@ impl<'a> AParser<'a> {
                     TKind::Elif => {
                         self.next()?;
                         // simplify later parsing
-                        let mut ast = self.ast(AKind::Group);
-                        ast.push(self.if_expr()?);
-                        ast
+                        let mut ast_ent = self.ast_ent(AKind::Group);
+                        let expr = self.if_expr()?;
+                        self.push(&mut ast_ent.sons, expr);
+                        self.add(ast_ent)
                     }
-                    _ => Ast::none(),
+                    _ => Ast::reserved_value(),
                 }
             }
-            _ => Ast::none(),
+            _ => Ast::reserved_value(),
         };
 
-        ast.children = vec![condition, then_block, else_block];
+        let mut ast_ent = self.asts[ast];
+        ast_ent.sons = EntityList::from_slice(
+            &[condition, then_block, else_block], &mut self.cons);
 
-        self.join_token(&mut ast.token);
+        self.join_token(&mut ast_ent.token);
+        self.asts[ast] = ast_ent;
 
         Ok(ast)
     }
 
     fn vis(&mut self) -> Result<Vis> {
-        Ok(match self.state.token.kind {
+        Ok(match self.token.kind {
             TKind::Pub => {
                 self.next()?;
                 Vis::Public
@@ -889,14 +989,14 @@ impl<'a> AParser<'a> {
         })
     }
 
-    fn walk_block<F: FnMut(&mut Self) -> Result<()>>(&mut self, mut parser: F) -> Result<()> {
-        if let TKind::Indent(level) = self.state.token.kind {
-            if level > self.state.level + 1 {
+    fn walk_block<F: FnMut(&mut Self) -> Result>(&mut self, mut parser: F) -> Result {
+        if let TKind::Indent(level) = self.token.kind {
+            if level > self.level + 1 {
                 return Err(self.unexpected_str(
                     "too deep indentation, one indentation level is equal 2 spaces or one tab",
                 ));
             }
-            self.state.level += 1;
+            self.level += 1;
             while self.level_continues()? {
                 parser(self)?;
             }
@@ -908,24 +1008,25 @@ impl<'a> AParser<'a> {
 
     fn block<F: FnMut(&mut Self) -> Result<Ast>>(&mut self, mut parser: F) -> Result<Ast> {
         self.expect_str(TKind::Colon, "expected ':' as a start of block")?;
-        let mut ast = self.ast(AKind::Group);
+        let mut ast_ent = self.ast_ent(AKind::Group);
         self.next()?;
         self.walk_block(|s| {
-            ast.push(parser(s)?);
+            let expr = parser(s)?;
+            s.state.push(&mut ast_ent.sons, expr);
             Ok(())
         })?;
 
-        Ok(ast)
+        Ok(self.add(ast_ent))
     }
 
     fn level_continues(&mut self) -> Result<bool> {
-        if !matches!(self.state.token.kind, TKind::Indent(_) | TKind::Eof) {
+        if !matches!(self.token.kind, TKind::Indent(_) | TKind::Eof) {
             return Err(self.unexpected_str("expected indentation"));
         }
 
         loop {
             self.peek()?;
-            match self.state.peeked.kind {
+            match self.peeked.kind {
                 TKind::Indent(_) => {
                     self.next()?;
                 }
@@ -934,13 +1035,13 @@ impl<'a> AParser<'a> {
             }
         }
 
-        match self.state.token.kind {
+        match self.token.kind {
             TKind::Indent(level) => {
-                if level == self.state.level {
+                if level == self.level {
                     self.next()?;
                     Ok(true)
-                } else if level < self.state.level {
-                    self.state.level -= 1;
+                } else if level < self.level {
+                    self.level -= 1;
                     Ok(false)
                 } else {
                     return Err(self.unexpected_str("unexpected indentation dive"));
@@ -952,29 +1053,31 @@ impl<'a> AParser<'a> {
 
     fn list<F: FnMut(&mut Self) -> Result<Ast>>(
         &mut self,
-        ast: &mut Ast,
+        ast: &mut AstEnt,
         start: TKind,
         separator: TKind,
         end: TKind,
         mut parser: F,
-    ) -> Result<()> {
+    ) -> Result {
         if start != TKind::None {
             self.expect(start.clone(), format!("expected {}", start))?;
             self.next()?;
             self.ignore_newlines()?;
         }
 
-        if end != TKind::None && self.state.token == end {
+        if end != TKind::None && self.token == end {
             self.next()?;
             return Ok(());
         }
 
-        ast.push(parser(self)?);
+        let expr = parser(self)?;
+        self.push(&mut ast.sons, expr);
 
-        while self.state.token == separator {
+        while self.token == separator {
             self.next()?;
             self.ignore_newlines()?;
-            ast.push(parser(self)?);
+            let expr = parser(self)?;
+            self.push(&mut ast.sons, expr);
         }
 
         if end != TKind::None {
@@ -987,7 +1090,7 @@ impl<'a> AParser<'a> {
     }
 
     fn ignore_newlines(&mut self) -> Result {
-        while let TKind::Indent(_) = self.state.token.kind {
+        while let TKind::Indent(_) = self.token.kind {
             self.next()?;
         }
 
@@ -995,13 +1098,13 @@ impl<'a> AParser<'a> {
     }
 
     fn peek(&mut self) -> Result {
-        let mut state = self.state.l_state.clone();
+        let mut state = self.l_state.clone();
         let token = self
             .main_state
             .lexer_for(&mut state)
             .next()
             .map_err(|err| AError::new(AEKind::LError(err), Token::default()))?;
-        self.state.peeked = token;
+        self.peeked = token;
         Ok(())
     }
 
@@ -1011,20 +1114,16 @@ impl<'a> AParser<'a> {
             .lexer_for(&mut self.state.l_state)
             .next()
             .map_err(|err| AError::new(AEKind::LError(err), Token::default()))?;
-        self.state.token = token;
+        self.token = token;
         Ok(())
     }
 
-    fn ast(&mut self, kind: AKind) -> Ast {
-        Ast::new(kind, self.state.token)
-    }
-
-    fn expect_str(&self, kind: TKind, message: &str) -> Result<()> {
+    fn expect_str(&self, kind: TKind, message: &str) -> Result {
         self.expect(kind, message.to_string())
     }
 
-    fn expect(&self, kind: TKind, message: String) -> Result<()> {
-        if self.state.token.kind == kind {
+    fn expect(&self, kind: TKind, message: String) -> Result {
+        if self.token.kind == kind {
             Ok(())
         } else {
             Err(self.unexpected(message))
@@ -1036,11 +1135,11 @@ impl<'a> AParser<'a> {
     }
 
     fn unexpected(&self, message: String) -> AError {
-        AError::new(AEKind::UnexpectedToken(message), self.state.token)
+        AError::new(AEKind::UnexpectedToken(message), self.token)
     }
 
     fn join_token(&self, token: &mut Token) {
-        self.join_token_with(token, &self.state.token, true);
+        self.join_token_with(token, &self.token, true);
     }
 
     fn join_token_with(&self, token: &mut Token, other: &Token, trim: bool) {
@@ -1049,10 +1148,23 @@ impl<'a> AParser<'a> {
     }
 }
 
-#[derive(Debug, Clone, MetaSer)]
+impl<'a> Deref for AParser<'a> {
+    type Target = AState;
+
+    fn deref(&self) -> &Self::Target {
+        &self.state
+    }
+}
+
+impl<'a> DerefMut for AParser<'a> {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        &mut self.state
+    }
+}
+
+#[derive(Debug, Clone, QuickSer)]
 pub struct AMainState {
     pub l_main_state: LMainState,
-    pub equal_sign: ID,
 }
 
 crate::inherit!(AMainState, l_main_state, LMainState);
@@ -1061,24 +1173,26 @@ impl Default for AMainState {
     fn default() -> Self {
         Self {
             l_main_state: LMainState::default(),
-            equal_sign: ID::new("="),
         }
     }
 }
 
 impl AMainState {
-    pub fn a_state_for(&mut self, source: Source) -> AState {
+    pub fn a_state_for(&mut self, source: Source, target: &mut AState) {
         let mut l_state = LState::new(source);
         let mut lexer = self.lexer_for(&mut l_state);
         let token = lexer.next().unwrap();
 
-        AState {
-            l_state,
-            peeked: token,
-            token,
-            is_type_expr: false,
-            level: 0,
-        }
+        target.l_state = l_state;
+        target.token = token;
+        target.peeked = token;
+        target.level = 0;
+        target.asts.clear();
+        target.cons.clear();
+
+        target.funs = EntityList::new();
+        target.types = EntityList::new();
+        target.globals = EntityList::new();
     }
 
     pub fn attr_of(&self, manifest: &Manifest, name: &str) -> Option<Span> {
@@ -1090,13 +1204,58 @@ impl AMainState {
     }
 }
 
-#[derive(Debug, Clone, Default, Copy, MetaQuickSer)]
+#[derive(Debug, Clone, QuickDefault, QuickSer)]
 pub struct AState {
     pub l_state: LState,
     peeked: Token,
     pub token: Token,
     is_type_expr: bool,
     level: usize,
+    asts: PrimaryMap<Ast, AstEnt>,
+    #[default(ListPool::new())]
+    cons: ListPool<Ast>,
+
+    funs: EntityList<Ast>,
+    types: EntityList<Ast>,
+    globals: EntityList<Ast>,
+}
+
+impl AState {
+    fn ast(&mut self, kind: AKind) -> Ast {
+        self.asts.push(AstEnt::new(kind, self.token))
+    }
+    
+    fn add(&mut self, ast_ent: AstEnt) -> Ast {
+        self.asts.push(ast_ent)
+    }
+
+    fn ast_ent(&mut self, kind: AKind) -> AstEnt {
+        AstEnt::new(kind, self.token)
+    }
+
+    fn kind(&self, ast: Ast) -> AKind {
+        self.asts[ast].kind
+    }
+    
+    fn sons(&self, ast: Ast) -> EntityList<Ast> {
+        self.asts[ast].sons
+    }
+
+    fn token(&self, ast: Ast) -> &Token {
+        &self.asts[ast].token
+    }
+
+    fn push(&mut self, target: &mut EntityList<Ast>, value: Ast) {
+        target.push(value, &mut self.cons);
+    }
+
+    fn slice(&self, sons: EntityList<Ast>) -> &[Ast] {
+        sons.as_slice(&self.cons)
+    }
+
+    fn len(&self, ast: Ast) -> usize {
+        self.sons(ast).len(&self.cons)
+    }
 }
 
 #[derive(Clone, Debug, Default)]
@@ -1153,60 +1312,72 @@ pub fn precedence(op: &str) -> i64 {
     }
 }
 
-#[derive(Debug, Clone, Default, PartialEq, MetaSer)]
-pub struct Ast {
+crate::impl_entity!(Ast);
+
+#[derive(Debug, Clone, Copy, Default, PartialEq, RealQuickSer)]
+pub struct AstEnt {
     pub kind: AKind,
-    pub children: Vec<Ast>,
+    pub sons: EntityList<Ast>,
     pub token: Token,
 }
 
-impl Ast {
-    pub fn new(kind: AKind, token: Token) -> Ast {
-        Self::with_children(kind, token, vec![])
-    }
-
-    pub fn none() -> Ast {
-        Self::new(AKind::None, Token::eof())
-    }
-
-    pub fn with_children(kind: AKind, token: Token, children: Vec<Ast>) -> Ast {
-        Ast {
+impl AstEnt {
+    pub fn new(kind: AKind, token: Token) -> Self {
+        Self {
             kind,
-            children,
+            sons: EntityList::new(),
             token,
         }
     }
 
-    pub fn push(&mut self, ast: Ast) {
-        self.children.push(ast);
+    pub fn none() -> Self {
+        Self::new(AKind::None, Token::eof())
+    }
+
+    fn with_children(kind: AKind, token: Token, sons: EntityList<Ast>) -> AstEnt {
+        Self {
+            kind,
+            sons,
+            token,
+        }
     }
 }
 
-crate::inherit!(Ast, children, Vec<Ast>);
+#[derive(Debug, Clone, Default)]
+pub struct AContext {
+    attrib_stack: Vec<Ast>,
+    attrib_frames: Vec<usize>,
+    current_attributes: Vec<Ast>,
+}
 
 pub struct AstDisplay<'a> {
-    state: &'a AMainState,
-    ast: &'a Ast,
+    main_state: &'a AMainState,
+    state: &'a AState,
+    ast: Ast,
 }
 
 impl<'a> AstDisplay<'a> {
-    pub fn new(state: &'a AMainState, ast: &'a Ast) -> Self {
-        Self { state, ast }
+    pub fn new(main_state: &'a AMainState, state: &'a AState, ast: Ast) -> Self {
+        Self { main_state, state, ast }
     }
 
-    fn log(&self, ast: &Ast, level: usize, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+    fn log(&self, ast: Ast, level: usize, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         std::iter::repeat(())
             .take(level)
             .for_each(|_| f.write_char(' ').unwrap());
+        if ast == Ast::reserved_value() {
+            return writeln!(f, "None");
+        }
+        let AstEnt { kind, sons, token } = self.state.asts[ast];
         write!(
             f,
             "{:?} {:?}",
-            ast.kind,
-            self.state.display(&ast.token.span)
+            kind,
+            self.main_state.display(&token.span)
         )?;
-        if ast.children.len() > 0 {
+        if sons.len(&self.state.cons) > 0 {
             write!(f, ":\n")?;
-            for child in &ast.children {
+            for &child in sons.as_slice(&self.state.cons) {
                 self.log(child, level + 1, f)?;
             }
         } else {
@@ -1223,7 +1394,7 @@ impl std::fmt::Display for AstDisplay<'_> {
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, MetaQuickSer)]
+#[derive(Debug, Clone, Copy, PartialEq, RealQuickSer)]
 pub enum AKind {
     UseStatement(bool),
 
@@ -1280,7 +1451,7 @@ impl Default for AKind {
     }
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq, MetaQuickSer)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, RealQuickSer)]
 pub enum Vis {
     Public,
     None,
@@ -1358,11 +1529,45 @@ pub fn test() {
         content: crate::testing::TEST_CODE.to_string(),
         ..Default::default()
     };
-    let source = a_main_state.sources.add(source);
-    let mut a_state = a_main_state.a_state_for(source);
 
-    let mut a_parser = AParser::new(&mut a_main_state, &mut a_state);
-    let ast = a_parser.parse().unwrap();
+    let source = a_main_state.sources.push(source);
+    let mut context = AContext::default();
+    let mut a_state = AState::default();
 
-    println!("{}", AstDisplay::new(&a_main_state, &ast));
+    let now = Instant::now();
+    for _ in 0..1000 {
+        a_main_state.a_state_for(source, &mut a_state);
+        let mut a_parser = AParser::new(&mut a_main_state, &mut a_state, &mut context);
+        a_parser.parse().unwrap();
+    }
+    println!("{:?}", now.elapsed().as_secs_f64());
+    
+    for i in (0..a_state.globals.len(&a_state.cons)).step_by(3) {
+        if let [fun, attrs, header] = a_state.globals.as_slice(&a_state.cons)[i..i + 3] {
+            println!("===global===");
+            print!("{}", AstDisplay::new(&a_main_state, &a_state, header));
+            print!("{}", AstDisplay::new(&a_main_state, &a_state, attrs));
+            print!("{}", AstDisplay::new(&a_main_state, &a_state, fun));
+        } 
+    }
+    
+    for i in (0..a_state.types.len(&a_state.cons)).step_by(3) {
+        if let [fun, attrs, header] = a_state.types.as_slice(&a_state.cons)[i..i + 3] {
+            println!("===type===");
+            print!("{}", AstDisplay::new(&a_main_state, &a_state, header));
+            print!("{}", AstDisplay::new(&a_main_state, &a_state, attrs));
+            print!("{}", AstDisplay::new(&a_main_state, &a_state, fun));
+        } 
+    }
+
+
+    for i in (0..a_state.funs.len(&a_state.cons)).step_by(3) {
+        if let [fun, attrs, header] = a_state.funs.as_slice(&a_state.cons)[i..i + 3] {
+            println!("===fun===");
+            print!("{}", AstDisplay::new(&a_main_state, &a_state, header));
+            print!("{}", AstDisplay::new(&a_main_state, &a_state, attrs));
+            print!("{}", AstDisplay::new(&a_main_state, &a_state, fun));
+        } 
+    }
+    
 }

@@ -1,3 +1,4 @@
 [submodule "wasmtime"]
+	branch = main
 	path = wasmtime
 	url = https://github.com/jakubDoka/wasmtime

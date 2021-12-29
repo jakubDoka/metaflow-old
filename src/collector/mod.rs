@@ -1,15 +1,17 @@
+use quick_proc::RealQuickSer;
+
 use crate::{
     ast::{AKind, AMainState, Ast, AstDisplay, Vis},
     util::{
         sdbm::ID,
-        storage::{IndexPointer, List, ReusableList},
+        storage::{EntityRef, PrimaryMap, ReusableList},
     },
 };
 
-use meta_ser::MetaQuickSer;
-use traits::MetaQuickSer;
 
-crate::index_pointer!(Attr);
+
+
+crate::impl_entity!(Attr);
 
 /// Collector organizes ast so it can be quickly accessed by the compiler.
 /// It builds a structure that preserves attributes for quick lookup.
@@ -18,7 +20,7 @@ pub struct Collector {
     pub globals: Vec<Item>,
     pub types: Vec<Item>,
     pub functions: Vec<Item>,
-    pub scopes: List<Scope, ScopeEnt>,
+    pub scopes: PrimaryMap<Scope, ScopeEnt>,
     scope: Option<Scope>,
 
     pub attributes: ReusableList<Attr, Ast>,
@@ -130,7 +132,7 @@ impl Collector {
     }
 }
 
-crate::index_pointer!(Scope);
+crate::impl_entity!(Scope);
 
 #[derive(Debug, Clone, Default)]
 pub struct ScopeEnt {
@@ -146,5 +148,5 @@ pub struct Item {
     pub ast: Ast,
 }
 
-#[derive(Debug, Clone, Copy, Default, MetaQuickSer)]
+#[derive(Debug, Clone, Copy, Default, RealQuickSer)]
 pub struct Attrs(u32, u32);

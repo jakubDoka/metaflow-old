@@ -1,16 +1,17 @@
-use meta_ser::{CustomDefault, MetaSer, MetaQuickSer};
-use traits::MetaQuickSer;
+
+
+
+use quick_proc::{QuickDefault, QuickSer, RealQuickSer};
 
 use crate::util::{
     sdbm::ID,
-    storage::{IndexPointer, Map},
+    storage::Map,
 };
 use std::{
     fmt::{Debug, Display},
     time::SystemTime,
 };
-
-use crate::util::storage::List;
+use cranelift::entity::PrimaryMap;
 
 type Result<T = Token> = std::result::Result<T, LError>;
 
@@ -466,8 +467,9 @@ pub trait IsOperator {
     fn is_operator(&self) -> bool;
 }
 
-#[derive(Default, Debug, Clone, Copy, MetaQuickSer)]
+#[derive(QuickDefault, Debug, Clone, Copy, RealQuickSer)]
 pub struct LState {
+    #[default(Source(0))]
     pub source: Source,
     pub progress: usize,
     pub line: usize,
@@ -485,9 +487,9 @@ impl LState {
     }
 }
 
-#[derive(Debug, Clone, MetaSer)]
+#[derive(Debug, Clone, QuickSer)]
 pub struct LMainState {
-    pub sources: List<Source, SourceEnt>,
+    pub sources: PrimaryMap<Source, SourceEnt>,
     pub builtin_source: Source,
     pub builtin_spans: Map<Range>,
     pub string_lit_buffer: String,
@@ -495,8 +497,8 @@ pub struct LMainState {
 
 impl LMainState {
     pub fn new() -> Self {
-        let mut sources = List::new();
-        let builtin_source = sources.add(SourceEnt {
+        let mut sources = PrimaryMap::new();
+        let builtin_source = sources.push(SourceEnt {
             name: String::from("builtin_spans.mf"),
             content: String::new(),
             ..Default::default()
@@ -579,9 +581,9 @@ impl Default for LMainState {
     }
 }
 
-crate::index_pointer!(Source);
+crate::impl_entity!(Source);
 
-#[derive(Debug, Clone, CustomDefault, MetaSer)]
+#[derive(Debug, Clone, QuickDefault, QuickSer)]
 pub struct SourceEnt {
     pub name: String,
     pub content: String,
@@ -589,7 +591,7 @@ pub struct SourceEnt {
     pub modified: SystemTime,
 }
 
-#[derive(Debug, Clone, Copy, Default, MetaQuickSer)]
+#[derive(Debug, Clone, Copy, Default, RealQuickSer)]
 pub struct Token {
     pub kind: TKind,
     pub span: Span,
@@ -627,7 +629,7 @@ impl PartialEq<TKind> for Token {
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, MetaQuickSer)]
+#[derive(Debug, Clone, Copy, PartialEq, RealQuickSer)]
 pub enum TKind {
     Pub,
     Priv,
@@ -878,8 +880,9 @@ impl Display for SpanDisplay<'_> {
     }
 }
 
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, MetaQuickSer)]
+#[derive(Debug, Clone, Copy, QuickDefault, PartialEq, Eq, RealQuickSer)]
 pub struct Span {
+    #[default(Source(0))]
     pub source: Source,
     pub hash: ID,
     pub start: u32,
@@ -905,7 +908,7 @@ impl Span {
     }
 }
 
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, MetaQuickSer)]
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, RealQuickSer)]
 pub struct Range(u32, u32);
 
 pub fn test() {
@@ -915,7 +918,7 @@ pub fn test() {
         content: crate::testing::TEST_CODE.to_string(),
         ..Default::default()
     };
-    let source = main_state.sources.add(source_ent);
+    let source = main_state.sources.push(source_ent);
     let mut state = LState::new(source);
 
     loop {

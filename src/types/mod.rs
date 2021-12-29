@@ -3,18 +3,20 @@ use std::ops::{Deref, DerefMut};
 use crate::ast::{AError, AErrorDisplay, AKind, AParser, Ast, Vis};
 use crate::collector::{Attrs, Collector, Item};
 use crate::lexer::{Span, TKind as LTKind, Token, TokenDisplay};
-use crate::module_tree::{self, MTContext, MTParser, MTState, Mod, ModItem, TreeStorage};
+use crate::module_tree::{self, MTContext, MTParser, MTState, Mod, TreeStorage};
 use crate::util::sdbm::ID;
-use crate::util::storage::{IndexPointer, ReusableList, Table};
+use crate::util::storage::Table;
 use crate::util::Size;
-use cranelift_codegen::ir::types::Type as CrType;
-use cranelift_codegen::ir::Signature as CrSignature;
-use cranelift_codegen::ir::{types::*, AbiParam, ArgumentPurpose};
-use cranelift_codegen::isa::CallConv as CrCallConv;
-use cranelift_codegen::isa::TargetIsa;
-use meta_ser::{EnumGetters, MetaSer};
-use meta_ser::MetaQuickSer;
-use traits::MetaQuickSer;
+use cranelift::codegen::ir::types::Type as CrType;
+use cranelift::codegen::ir::Signature as CrSignature;
+use cranelift::codegen::ir::{types::*, AbiParam, ArgumentPurpose};
+use cranelift::codegen::isa::CallConv as CrCallConv;
+use cranelift::codegen::isa::TargetIsa;
+use cranelift::entity::EntityRef;
+use quick_proc::{QuickSer, QuickEnumGets, RealQuickSer};
+
+
+
 
 type Result<T = ()> = std::result::Result<T, TError>;
 
@@ -514,8 +516,7 @@ impl<'a> TParser<'a> {
                     if let Some(other) = replaced {
                         return Err(TError::new(TEKind::Redefinition(other.hint), hint.clone()));
                     }
-
-                    self.state.modules[module].items.push(ModItem::Type(id));
+                    self.state.modules[module].types.push(id);
 
                     if let TKind::Unresolved(_) = &self.state.types[id].kind {
                         self.state.unresolved.push(UnresolvedRef(id, 0));
@@ -582,7 +583,7 @@ impl<'a> TreeStorage<Type> for TParser<'a> {
     }
 }
 
-pub trait ItemSearch<T: IndexPointer> {
+pub trait ItemSearch<T: EntityRef> {
     fn find(&self, id: ID) -> Option<T>;
     fn scopes(&self, module: Mod, buffer: &mut Vec<(Mod, ID)>);
     fn module_id(&self, module: Mod) -> ID;
@@ -620,9 +621,9 @@ pub trait ItemSearch<T: IndexPointer> {
     }
 }
 
-crate::index_pointer!(Type);
+crate::impl_entity!(Type);
 
-#[derive(Debug, Clone, MetaSer)]
+#[derive(Debug, Clone, QuickSer)]
 pub struct TypeEnt {
     pub id: ID,
     pub module: Mod,
@@ -677,7 +678,7 @@ impl TypeEnt {
     }
 }
 
-#[derive(Debug, Clone, EnumGetters, MetaSer)]
+#[derive(Debug, Clone, QuickEnumGets, QuickSer)]
 pub enum TKind {
     Builtin(CrTypeWr),
     Pointer(Type),
@@ -697,7 +698,7 @@ impl Default for TKind {
     }
 }
 
-#[derive(Debug, Clone, Default, MetaSer)]
+#[derive(Debug, Clone, Default, QuickSer)]
 pub struct Signature {
     pub call_conv: CallConv,
     pub args: Vec<Type>,
@@ -726,7 +727,7 @@ impl Signature {
     }
 }
 
-#[derive(Debug, Clone, Copy, MetaQuickSer)]
+#[derive(Debug, Clone, Copy, RealQuickSer)]
 pub enum TypeConst {
     Bool(bool),
     Int(i64),
@@ -758,15 +759,15 @@ impl std::fmt::Display for TypeConstDisplay<'_> {
     }
 }
 
-crate::index_pointer!(GAst);
+crate::impl_entity!(GAst);
 
-#[derive(Debug, Clone, MetaSer)]
+#[derive(Debug, Clone, QuickSer)]
 pub struct SType {
     pub kind: SKind,
     pub fields: Vec<SField>,
 }
 
-#[derive(Debug, Clone, Copy, MetaQuickSer)]
+#[derive(Debug, Clone, Copy, RealQuickSer)]
 pub struct SField {
     pub embedded: bool,
     pub vis: Vis,
@@ -776,7 +777,7 @@ pub struct SField {
     pub hint: Token,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, MetaQuickSer)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, RealQuickSer)]
 pub enum SKind {
     Struct,
     Union,
@@ -791,7 +792,7 @@ pub struct TContext {
 
 crate::inherit!(TContext, mt_context, MTContext);
 
-#[derive(Debug, Clone, MetaSer)]
+#[derive(Debug, Clone, QuickSer)]
 pub struct TState {
     pub builtin_repo: BuiltinRepo,
     pub types: Table<Type, TypeEnt>,
@@ -802,7 +803,7 @@ pub struct TState {
     pub parsed_ast: Ast,
 }
 
-#[derive(Debug, Clone, Copy, MetaQuickSer)]
+#[derive(Debug, Clone, Copy, RealQuickSer)]
 pub struct UnresolvedRef(Type, usize);
 
 impl TState {
@@ -921,7 +922,7 @@ impl TState {
     pub fn add_type(&mut self, ent: TypeEnt) -> Type {
         let module = ent.module;
         let (shadow, ty) = self.types.insert(ent.id, ent);
-        self.modules[module].items.push(ModItem::Type(ty));
+        self.modules[module].types.push(ty);
         debug_assert!(shadow.is_none());
         ty
     }
@@ -951,7 +952,7 @@ macro_rules! define_repo {
     (
         $($name:ident, $repr:expr, $s32:expr, $s64:expr);+
     ) => {
-        #[derive(Clone, Debug, Copy, MetaQuickSer)]
+        #[derive(Clone, Debug, Copy, RealQuickSer)]
         pub struct BuiltinRepo {
             $(pub $name: Type,)+
         }
@@ -1020,7 +1021,7 @@ define_repo!(
     array, INVALID, 0, 0
 );
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, MetaQuickSer)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, RealQuickSer)]
 pub enum CallConv {
     Fast,
     Cold,

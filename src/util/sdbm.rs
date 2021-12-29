@@ -1,9 +1,11 @@
 use std::cmp::Ordering;
 
-use meta_ser::MetaQuickSer;
-use traits::MetaQuickSer;
+use quick_proc::RealQuickSer;
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Default, Hash, MetaQuickSer)]
+
+
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Default, Hash, RealQuickSer)]
 pub struct ID(pub u64);
 
 impl ID {

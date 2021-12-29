@@ -12,17 +12,15 @@ use crate::util::storage::{LinkedList, Table, ImSlicePool, Range};
 use crate::util::Size;
 use crate::util::{
     sdbm::ID,
-    storage::{IndexPointer, List},
+    storage::{EntityRef, PrimaryMap},
 };
 
-use cranelift_codegen::ir::types::I64;
-use cranelift_codegen::ir::{types::Type as CrType, Block as CrBlock, StackSlot, Value as CrValue};
+use cranelift::codegen::ir::types::I64;
+use cranelift::codegen::ir::{Type as CrType, Block as CrBlock, Value as CrValue, StackSlot};
+use cranelift::frontend::Variable as CrVar;
+use cranelift::module::{Linkage, FuncId, RelocRecord, DataId};
+use quick_proc::{QuickDefault, QuickSer, QuickEnumGets, gen_quick_copy, RealQuickSer};
 
-use cranelift_frontend::Variable as CrVar;
-use cranelift_module::{DataId, FuncId, Linkage, RelocRecord};
-use meta_ser::{CustomDefault, EnumGetters, MetaSer, MetaQuickSer};
-use traits::MetaSer;
-use traits::MetaQuickSer;
 
 type Result<T = ()> = std::result::Result<T, FError>;
 type ExprResult = Result<Option<Value>>;
@@ -1676,7 +1674,7 @@ impl<'a> FParser<'a> {
 
         let (shadowed, id) = self.state.funs.insert(id, new_fun_ent);
         debug_assert!(shadowed.is_none());
-        self.state.modules[module].items.push(ModItem::Fun(id));
+        self.state.modules[module].functions.push(id);
 
         self.context.unresolved.push(id);
 
@@ -1780,7 +1778,7 @@ impl<'a> FParser<'a> {
                         name.token,
                     ));
                 }
-                self.state.modules[module].items.push(ModItem::Global(global));
+                self.state.modules[module].globals.push(global);
 
                 let ty = if ast.kind != AKind::None {
                     let value = self.expr(fun, &ast)?;
@@ -1999,7 +1997,7 @@ impl<'a> FParser<'a> {
                 hint,
             ));
         }
-        self.state.modules[module].items.push(ModItem::Fun(id));
+        self.state.modules[module].functions.push(id);
 
         if unresolved {
             if entry {
@@ -2701,9 +2699,9 @@ pub enum DotInstr {
     Ref,
 }
 
-crate::index_pointer!(Fun);
+crate::impl_entity!(Fun);
 
-#[derive(Debug, Clone, CustomDefault, MetaSer)]
+#[derive(Debug, Clone, QuickDefault, QuickSer)]
 pub struct FunEnt {
     pub id: ID,
     pub module: Mod,
@@ -2725,9 +2723,9 @@ crate::impl_wrapper!(LinkageWr, Linkage);
 
 type ValueSlice = Range<Value>;
 
-#[derive(Debug, Default, Clone, MetaSer)]
+#[derive(Debug, Default, Clone, QuickSer)]
 pub struct FunBody {
-    pub values: List<Value, ValueEnt>,
+    pub values: PrimaryMap<Value, ValueEnt>,
     pub insts: LinkedList<Inst, InstEnt>,
     pub slices: ImSlicePool<Value, Value>
 }
@@ -2739,7 +2737,7 @@ impl FunBody {
     }
 }
 
-#[derive(Debug, Clone, EnumGetters, MetaSer)]
+#[derive(Debug, Clone, QuickEnumGets, QuickSer)]
 pub enum FKind {
     Default,
     Builtin(Signature),
@@ -2754,20 +2752,20 @@ impl Default for FKind {
     }
 }
 
-#[derive(Debug, Clone, Default, MetaSer)]
+#[derive(Debug, Clone, Default, QuickSer)]
 pub struct NFun {
     pub sig: Signature,
     pub ast: GAst,
 }
 
-#[derive(Debug, Clone, Default, MetaSer)]
+#[derive(Debug, Clone, Default, QuickSer)]
 pub struct GFun {
     pub call_conv: CallConv,
     pub signature: GenericSignature,
     pub ast: GAst,
 }
 
-#[derive(Debug, Clone, MetaSer)]
+#[derive(Debug, Clone, QuickSer)]
 pub struct RFun {
     pub sig: Signature,
     pub body: FunBody,
@@ -2800,7 +2798,7 @@ impl RFun {
     }
 }
 
-#[derive(Debug, Clone, CustomDefault, MetaSer)]
+#[derive(Debug, Clone, QuickDefault, QuickSer)]
 pub struct CFun {
     pub bin: CompiledData,
     pub jit: CompiledData,
@@ -2810,7 +2808,7 @@ pub struct CFun {
 
 crate::impl_wrapper!(FuncIdWr, FuncId);
 
-#[derive(Clone, Default, MetaSer)]
+#[derive(Clone, Default, QuickSer)]
 pub struct CompiledData {
     pub bytes: Vec<u8>,
     pub relocs: Vec<RelocRecordWr>,
@@ -2819,8 +2817,8 @@ pub struct CompiledData {
 #[derive(Clone)]
 pub struct RelocRecordWr(RelocRecord);
 
-impl MetaSer for RelocRecordWr {
-    traits::gen_quick_copy!();
+impl QuickSer for RelocRecordWr {
+    gen_quick_copy!();
 }
 
 impl std::fmt::Debug for CompiledData {
@@ -2832,14 +2830,14 @@ impl std::fmt::Debug for CompiledData {
     }
 }
 
-#[derive(Debug, Clone, Default, MetaSer)]
+#[derive(Debug, Clone, Default, QuickSer)]
 pub struct GenericSignature {
     pub params: Vec<ID>,
     pub elements: Vec<GenericElement>,
     pub arg_count: usize,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Copy, MetaQuickSer)]
+#[derive(Debug, Clone, PartialEq, Eq, Copy, RealQuickSer)]
 pub enum GenericElement {
     ScopeStart,
     ScopeEnd,
@@ -2861,9 +2859,9 @@ impl GenericElement {
     }
 }
 
-crate::index_pointer!(Inst);
+crate::impl_entity!(Inst);
 
-#[derive(Debug, Default, Clone, Copy, MetaQuickSer)]
+#[derive(Debug, Default, Clone, Copy, RealQuickSer)]
 pub struct InstEnt {
     pub kind: IKind,
     pub value: Option<Value>,
@@ -2882,7 +2880,7 @@ impl InstEnt {
     }
 }
 
-#[derive(Debug, Clone, Copy, MetaQuickSer)]
+#[derive(Debug, Clone, Copy, RealQuickSer)]
 pub enum IKind {
     NoOp,
     FunPointer(Fun),
@@ -2932,7 +2930,7 @@ impl Default for IKind {
     }
 }
 
-#[derive(Debug, Clone, Copy, Default, MetaQuickSer)]
+#[derive(Debug, Clone, Copy, Default, RealQuickSer)]
 pub struct Block {
     pub block: Option<CrBlockWr>,
     pub args: ValueSlice,
@@ -2948,9 +2946,9 @@ pub struct Loop {
     end_block: Inst,
 }
 
-crate::index_pointer!(Value);
+crate::impl_entity!(Value);
 
-#[derive(Debug, Clone, Default, MetaSer)]
+#[derive(Debug, Clone, Default, QuickSer)]
 pub struct ValueEnt {
     pub id: ID,
     pub ty: Type,
@@ -2988,7 +2986,7 @@ impl ValueEnt {
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, MetaQuickSer)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, RealQuickSer)]
 pub enum FinalValue {
     None,
     Zero,
@@ -3004,9 +3002,9 @@ impl Default for FinalValue {
     }
 }
 
-crate::index_pointer!(Global);
+crate::impl_entity!(Global);
 
-#[derive(Debug, Clone, CustomDefault, MetaSer)]
+#[derive(Debug, Clone, QuickDefault, QuickSer)]
 pub struct GlobalEnt {
     pub id: ID,
     pub vis: Vis,
@@ -3026,7 +3024,7 @@ pub struct GlobalEnt {
 
 crate::impl_wrapper!(DataIdWr, DataId);
 
-#[derive(Debug, Clone, Copy, Default, MetaQuickSer)]
+#[derive(Debug, Clone, Copy, Default, RealQuickSer)]
 pub struct MainFunData {
     id: Fun,
     arg1: Value,
@@ -3035,7 +3033,7 @@ pub struct MainFunData {
     current_block: Option<Inst>,
 }
 
-#[derive(MetaSer)]
+#[derive(QuickSer)]
 pub struct FState {
     pub t_state: TState,
     pub funs: Table<Fun, FunEnt>,

@@ -1,21 +1,22 @@
-use cranelift_codegen::{
-    binemit::{NullStackMapSink, TrapSink},
+use cranelift::codegen::{
+    binemit::{NullStackMapSink, TrapSink, CodeOffset, Reloc, Addend},
     entity::EntityRef,
     ir::{
         condcodes::{FloatCC, IntCC},
         types::*,
         Signature as CrSignature,
         Block as CrBlock, FuncRef, GlobalValue, InstBuilder, MemFlags, SigRef,
-        StackSlot, StackSlotData, StackSlotKind, Type as CrType, Value as CrValue,
+        StackSlot, StackSlotData, StackSlotKind, Type as CrType, Value as CrValue, SourceLoc, ExternalName, TrapCode,
     },
     Context, isa::{
         CallConv as CrCallConv,
     },
     binemit::RelocSink,
 };
-use cranelift_frontend::{FunctionBuilder, FunctionBuilderContext, Variable as CrVar};
-use cranelift_module::{DataContext, DataId, FuncOrDataId, Linkage, Module, RelocRecord};
-use meta_ser::{MetaSer, CustomDefault};
+use cranelift::frontend::{FunctionBuilder, FunctionBuilderContext, Variable as CrVar};
+use cranelift::module::{DataContext, DataId, FuncOrDataId, Linkage, Module, RelocRecord};
+use quick_proc::{QuickDefault, QuickSer};
+
 use std::ops::{Deref, DerefMut};
 
 use crate::{
@@ -30,7 +31,7 @@ use crate::{
     util::{
         pool::PoolRef,
         sdbm::{SdbmHash, ID},
-        storage::{IndexPointer, Map}, write_radix, Size,
+        storage::{EntityRef, Map}, write_radix, Size,
     },
 };
 
@@ -1253,14 +1254,14 @@ pub enum InlineState {
     Broken,
 }
 
-#[derive(Default, MetaSer)]
+#[derive(Default, QuickSer)]
 pub struct GState {
     pub f_state: FState,
 }
 
 crate::inherit!(GState, f_state, FState);
 
-#[derive(CustomDefault)]
+#[derive(QuickDefault)]
 pub struct GContext {
     #[default(DataContext::new())]
     pub data_context: DataContext,
@@ -1402,9 +1403,9 @@ pub struct MetaTrapSink {
 
 impl TrapSink for MetaTrapSink {
     fn trap(&mut self, 
-        _offset: cranelift_codegen::binemit::CodeOffset, 
-        _loc: cranelift_codegen::ir::SourceLoc, 
-        _code: cranelift_codegen::ir::TrapCode
+        _offset: CodeOffset, 
+        _loc: SourceLoc, 
+        _code: TrapCode
     ) {
        //println!("{:?} {:?} {:?}", _offset, _loc, _code);
     }
@@ -1429,11 +1430,11 @@ impl MetaRelocSink {
 impl RelocSink for MetaRelocSink {
     fn reloc_external(
         &mut self,
-        offset: cranelift_codegen::binemit::CodeOffset,
-        _source_loc: cranelift_codegen::ir::SourceLoc,
-        reloc: cranelift_codegen::binemit::Reloc,
-        name: &cranelift_codegen::ir::ExternalName,
-        addend: cranelift_codegen::binemit::Addend,
+        offset: CodeOffset,
+        _source_loc: SourceLoc,
+        reloc: Reloc,
+        name: &ExternalName,
+        addend: Addend,
     ) {
         self.relocs.push(RelocRecord {
             offset,
@@ -1454,7 +1455,7 @@ pub enum BTKind {
 
 impl BTKind {
     pub fn of(tp: Type) -> Self {
-        match IndexPointer::raw(&tp) {
+        match EntityRef::raw(&tp) {
             0..=3 | 11 => Self::Int,
             4..=7 | 12 => Self::Uint,
             8 => Self::Float(32),

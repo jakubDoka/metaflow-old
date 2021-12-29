@@ -2,12 +2,12 @@ pub mod generator;
 
 use generator::*;
 
-use cranelift_codegen::{
+use cranelift::codegen::{
     isa::{self, LookupError},
     settings::{self, Configurable, SetError},
 };
 
-use cranelift_object::{ObjectBuilder, ObjectModule};
+use cranelift::object::{ObjectBuilder, ObjectModule};
 use std::process::Command;
 
 use crate::{
@@ -106,11 +106,11 @@ pub fn generate_obj_file(args: &Arguments) -> Result<Vec<u8>> {
             .map_err(|e| (None, GEKind::InvalidTriplet(e).into()))?
             .finish(flags)
     } else {
-        cranelift_native::builder().unwrap().finish(flags)
+        cranelift::native::builder().unwrap().finish(flags)
     };
 
     let builder =
-        ObjectBuilder::new(isa, "all", cranelift_module::default_libcall_names()).unwrap();
+        ObjectBuilder::new(isa, "all", cranelift::module::default_libcall_names()).unwrap();
 
     let stacktrace = args.enabled("trace");
 

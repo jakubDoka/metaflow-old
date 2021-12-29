@@ -1,14 +1,13 @@
 use std::{
-    marker::PhantomData,
     ops::{Index, IndexMut},
 };
 
-use meta_ser::{MetaSer, MetaQuickSer};
-use traits::{MetaSer, MetaQuickSer};
+use cranelift::codegen::entity::{EntityRef, PrimaryMap};
+use quick_proc::QuickSer;
 
 use super::sdbm::ID;
 
-#[derive(Clone, Debug, MetaSer)]
+#[derive(Clone, Debug, QuickSer)]
 pub struct Map<V> {
     cache: Vec<Vec<Value<V>>>,
     size: u32,
@@ -16,7 +15,7 @@ pub struct Map<V> {
     count: usize,
 }
 
-#[derive(Clone, Debug, MetaSer)]
+#[derive(Clone, Debug, QuickSer)]
 pub struct Value<V>(ID, V);
 
 impl<V> Map<V> {
@@ -297,23 +296,23 @@ impl<V> Map<V> {
     }
 }
 
-impl<V: MetaSer> Default for Map<V> {
+impl<V> Default for Map<V> {
     fn default() -> Self {
         Map::new()
     }
 }
 
-#[derive(Clone, Debug, MetaSer)]
-pub struct Table<I: IndexPointer, T> {
+#[derive(Clone, Debug, QuickSer)]
+pub struct Table<I: EntityRef, T> {
     map: Map<I>,
-    data: List<I, Value<T>>,
+    data: PrimaryMap<I, Value<T>>,
 }
 
-impl<I: IndexPointer, T> Table<I, T> {
+impl<I: EntityRef, T> Table<I, T> {
     pub fn new() -> Self {
         Self {
             map: Map::new(),
-            data: List::new(),
+            data: PrimaryMap::new(),
         }
     }
 
@@ -323,7 +322,7 @@ impl<I: IndexPointer, T> Table<I, T> {
     }
 
     pub fn add_hidden(&mut self, value: T) -> I {
-        self.data.add(Value(ID(0), value))
+        self.data.push(Value(ID(0), value))
     }
 
     pub fn insert(&mut self, id: ID, data: T) -> (Option<T>, I) {
@@ -332,7 +331,7 @@ impl<I: IndexPointer, T> Table<I, T> {
                 return (Some(std::mem::replace(&mut self.data[i].1, data)), i);
             }
         }
-        let i = self.data.add(Value(id, data));
+        let i = self.data.push(Value(id, data));
         self.map.insert(id, i);
         (None, i)
     }
@@ -343,7 +342,7 @@ impl<I: IndexPointer, T> Table<I, T> {
                 return i;
             }
         }
-        let i = self.data.add(Value(id, data));
+        let i = self.data.push(Value(id, data));
         self.map.insert(id, i);
         i
     }
@@ -394,7 +393,7 @@ impl<I: IndexPointer, T> Table<I, T> {
     }
 }
 
-impl<I: IndexPointer, T> Index<I> for Table<I, T> {
+impl<I: EntityRef, T> Index<I> for Table<I, T> {
     type Output = T;
 
     #[inline]
@@ -403,14 +402,14 @@ impl<I: IndexPointer, T> Index<I> for Table<I, T> {
     }
 }
 
-impl<I: IndexPointer, T> IndexMut<I> for Table<I, T> {
+impl<I: EntityRef, T> IndexMut<I> for Table<I, T> {
     #[inline]
     fn index_mut(&mut self, id: I) -> &mut Self::Output {
         &mut self.data[id].1
     }
 }
 
-impl<I: IndexPointer, T> Index<ID> for Table<I, T> {
+impl<I: EntityRef, T> Index<ID> for Table<I, T> {
     type Output = T;
 
     fn index(&self, id: ID) -> &Self::Output {
@@ -419,32 +418,42 @@ impl<I: IndexPointer, T> Index<ID> for Table<I, T> {
     }
 }
 
-impl<I: IndexPointer, T> IndexMut<ID> for Table<I, T> {
+impl<I: EntityRef, T> IndexMut<ID> for Table<I, T> {
     fn index_mut(&mut self, id: ID) -> &mut Self::Output {
         let i = *self.map.get(id).expect("invalid ID");
         &mut self.data[i].1
     }
 }
 
-impl<I: IndexPointer, T> Default for Table<I, T> {
+impl<I: EntityRef, T> Default for Table<I, T> {
     fn default() -> Self {
         Self::new()
     }
 }
 
-#[derive(MetaSer)]
-pub struct LinkedList<I: IndexPointer, T> {
+#[derive(QuickSer)]
+pub struct LinkedList<I: EntityRef, T> {
     data: Vec<LinkedNode<I, T>>,
     free: Vec<I>,
 }
 
-#[derive(MetaSer, Clone)]
-pub struct LinkedNode<I: IndexPointer, T>(I, T, I);
+#[derive(QuickSer, Clone)]
+pub struct LinkedNode<I: EntityRef, T> {
+    prev: I, 
+    next: I,
+    value: T, 
+}
 
-impl<I: IndexPointer + std::fmt::Debug, T: Default> LinkedList<I, T> {
+impl<I: EntityRef, T> From<(I, I, T)> for LinkedNode<I, T> {
+    fn from((prev, next, value): (I, I, T)) -> Self {
+        Self { prev, next, value }
+    }
+}
+
+impl<I: EntityRef + std::fmt::Debug, T: Default> LinkedList<I, T> {
     pub fn new() -> Self {
         Self {
-            data: vec![LinkedNode(I::new(0), T::default(), I::new(0))],
+            data: vec![(I::new(0), I::new(0), T::default()).into()],
             free: vec![],
         }
     }
@@ -454,36 +463,36 @@ impl<I: IndexPointer + std::fmt::Debug, T: Default> LinkedList<I, T> {
     }
 
     pub fn push(&mut self, data: T) -> I {
-        let last = self.data[0].0;
+        let last = self.data[0].prev;
 
         let id = self.allocate(last, data, I::new(0));
 
-        self.data[id.raw()].0 = last;
-        self.data[0].0 = id;
-        self.data[last.raw()].2 = id;
+        self.data[id.index()].prev = last;
+        self.data[0].prev = id;
+        self.data[last.index()].next = id;
         id
     }
 
     pub fn insert(&mut self, id: I, data: T) -> I {
         let previous = id;
-        let after = self.data[previous.raw()].2;
+        let after = self.data[previous.index()].next;
 
         let id = self.allocate(previous, data, after);
 
-        self.data[previous.raw()].2 = id;
-        self.data[after.raw()].0 = id;
+        self.data[previous.index()].next = id;
+        self.data[after.index()].prev = id;
 
         id
     }
 
     pub fn insert_before(&mut self, id: I, data: T) -> I {
-        let previous = self.data[id.raw()].0;
+        let previous = self.data[id.index()].prev;
         let after = id;
 
         let id = self.allocate(previous, data, after);
 
-        self.data[previous.raw()].2 = id;
-        self.data[after.raw()].0 = id;
+        self.data[previous.index()].next = id;
+        self.data[after.index()].prev = id;
 
         id
     }
@@ -493,35 +502,35 @@ impl<I: IndexPointer + std::fmt::Debug, T: Default> LinkedList<I, T> {
     }
 
     pub fn hide(&mut self, id: I) {
-        let previous = self.data[id.raw()].0;
-        let after = self.data[id.raw()].2;
+        let previous = self.data[id.index()].prev;
+        let after = self.data[id.index()].next;
 
-        self.data[previous.raw()].2 = after;
-        self.data[after.raw()].0 = previous;
+        self.data[previous.index()].next = after;
+        self.data[after.index()].prev = previous;
 
-        self.data[id.raw()].0 = I::new(0);
-        self.data[id.raw()].2 = I::new(0);
+        self.data[id.index()].prev = I::new(0);
+        self.data[id.index()].next = I::new(0);
     }
 
     pub fn show_as_last(&mut self, id: I) {
-        let last = self.data[0].0;
+        let last = self.data[0].prev;
         self.show(id, last);
     }
 
     pub fn show(&mut self, id: I, at: I) {
         debug_assert!(
-            self.data[id.raw()].0 == I::new(0) && self.data[id.raw()].2 == I::new(0),
+            self.data[id.index()].prev == I::new(0) && self.data[id.index()].next == I::new(0),
             "element is already visible",
         );
 
         let previous = at;
-        let after = self.data[at.raw()].2;
+        let after = self.data[at.index()].next;
 
-        self.data[previous.raw()].2 = id;
-        self.data[after.raw()].0 = id;
+        self.data[previous.index()].next = id;
+        self.data[after.index()].prev = id;
 
-        self.data[id.raw()].0 = previous;
-        self.data[id.raw()].2 = after;
+        self.data[id.index()].prev = previous;
+        self.data[id.index()].next = after;
     }
 
     pub fn last(&self) -> Option<I> {
@@ -533,15 +542,15 @@ impl<I: IndexPointer + std::fmt::Debug, T: Default> LinkedList<I, T> {
     }
 
     pub fn remove(&mut self, id: I) -> T {
-        let previous = self.data[id.raw()].0;
-        let after = self.data[id.raw()].2;
+        let previous = self.data[id.index()].prev;
+        let after = self.data[id.index()].next;
 
-        self.data[previous.raw()].2 = after;
-        self.data[after.raw()].0 = previous;
+        self.data[previous.index()].next = after;
+        self.data[after.index()].prev = previous;
 
         self.free.push(id);
 
-        std::mem::take(&mut self.data[id.raw()].1)
+        std::mem::take(&mut self.data[id.index()].value)
     }
 
     pub fn iter(&self) -> impl Iterator<Item = (I, &T)> {
@@ -555,12 +564,12 @@ impl<I: IndexPointer + std::fmt::Debug, T: Default> LinkedList<I, T> {
     pub fn clear(&mut self) {
         self.data.truncate(1);
         self.free.clear();
-        self.data[0].0 = I::new(0);
-        self.data[0].2 = I::new(0);
+        self.data[0].prev = I::new(0);
+        self.data[0].next = I::new(0);
     }
 
     pub fn next(&self, id: I) -> Option<I> {
-        let id = self.data[id.raw()].2;
+        let id = self.data[id.index()].next;
         if id == I::new(0) {
             None
         } else {
@@ -569,7 +578,7 @@ impl<I: IndexPointer + std::fmt::Debug, T: Default> LinkedList<I, T> {
     }
 
     pub fn previous(&self, id: I) -> Option<I> {
-        let id = self.data[id.raw()].0;
+        let id = self.data[id.index()].prev;
         if id == I::new(0) {
             None
         } else {
@@ -579,16 +588,16 @@ impl<I: IndexPointer + std::fmt::Debug, T: Default> LinkedList<I, T> {
 
     fn allocate(&mut self, previous: I, data: T, after: I) -> I {
         if let Some(id) = self.free.pop() {
-            self.data[id.raw()] = LinkedNode(previous, data, after);
+            self.data[id.index()] = (previous, after, data).into();
             id
         } else {
-            self.data.push(LinkedNode(previous, data, after));
+            self.data.push((previous, after, data).into());
             I::new(self.data.len() - 1)
         }
     }
 }
 
-impl<I: IndexPointer + std::fmt::Debug, T: std::fmt::Debug + Default> std::fmt::Debug
+impl<I: EntityRef + std::fmt::Debug, T: std::fmt::Debug + Default> std::fmt::Debug
     for LinkedList<I, T>
 {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
@@ -596,27 +605,27 @@ impl<I: IndexPointer + std::fmt::Debug, T: std::fmt::Debug + Default> std::fmt::
     }
 }
 
-impl<I: IndexPointer, T> Index<I> for LinkedList<I, T> {
+impl<I: EntityRef, T> Index<I> for LinkedList<I, T> {
     type Output = T;
 
     fn index(&self, index: I) -> &Self::Output {
-        &self.data[index.raw()].1
+        &self.data[index.index()].value
     }
 }
 
-impl<I: IndexPointer, T> IndexMut<I> for LinkedList<I, T> {
+impl<I: EntityRef, T> IndexMut<I> for LinkedList<I, T> {
     fn index_mut(&mut self, index: I) -> &mut Self::Output {
-        &mut self.data[index.raw()].1
+        &mut self.data[index.index()].value
     }
 }
 
-impl<I: IndexPointer + std::fmt::Debug, T: Default> Default for LinkedList<I, T> {
+impl<I: EntityRef + std::fmt::Debug, T: Default> Default for LinkedList<I, T> {
     fn default() -> Self {
         Self::new()
     }
 }
 
-impl<I: IndexPointer, T: Clone> Clone for LinkedList<I, T> {
+impl<I: EntityRef, T: Clone> Clone for LinkedList<I, T> {
     fn clone(&self) -> Self {
         Self {
             data: self.data.clone(),
@@ -627,12 +636,12 @@ impl<I: IndexPointer, T: Clone> Clone for LinkedList<I, T> {
 
 macro_rules! impl_linked_iter {
     ($name:ident $($modifier:tt)*) => {
-        pub struct $name<'a, I: IndexPointer, T: 'a> {
+        pub struct $name<'a, I: EntityRef, T: 'a> {
             list: &'a $($modifier)* LinkedList<I, T>,
             current: Option<I>,
         }
 
-        impl <'a, I: IndexPointer, T: 'a> $name<'a, I, T> {
+        impl <'a, I: EntityRef, T: 'a> $name<'a, I, T> {
             pub fn new(list: &'a $($modifier)* LinkedList<I, T>) -> Self {
                 Self {
                     current: Some(I::new(0)),
@@ -643,15 +652,15 @@ macro_rules! impl_linked_iter {
 
 
 
-        impl <'a, I: IndexPointer, T: 'a> Iterator for $name<'a, I, T> {
+        impl <'a, I: EntityRef, T: 'a> Iterator for $name<'a, I, T> {
             type Item = (I, &'a $($modifier)* T);
 
             fn next(&mut self) -> Option<Self::Item> {
                 self.current.map(|id| {
-                    let next =  self.list.data[id.raw()].2;
+                    let next =  self.list.data[id.index()].next;
                     let (_, data, _) = unsafe {
                         std::mem::transmute::<_, & $($modifier)* (I, T, I)>(
-                            & $($modifier)* self.list.data[next.raw()]
+                            & $($modifier)* self.list.data[next.index()]
                         )
                     };
                     if I::new(0) == next {
@@ -668,330 +677,3 @@ macro_rules! impl_linked_iter {
 
 impl_linked_iter!(LinkedListIter);
 impl_linked_iter!(LinkedListIterMut mut);
-
-#[derive(Debug)]
-pub struct LockedList<I: IndexPointer, T> {
-    inner: List<I, T>,
-}
-
-impl<I: IndexPointer, T> LockedList<I, T> {
-    pub fn new(inner: List<I, T>) -> Self {
-        Self { inner }
-    }
-
-    // SAFETY: ensure that LockedList does not get dropped
-    // while reference still lives
-    pub unsafe fn get<'a>(&self, id: I) -> &'a T {
-        std::mem::transmute::<_, &T>(&self.inner[id])
-    }
-}
-
-impl<I: IndexPointer, T> Default for LockedList<I, T> {
-    fn default() -> Self {
-        Self {
-            inner: Default::default(),
-        }
-    }
-}
-
-impl<I: IndexPointer, T> Index<I> for LockedList<I, T> {
-    type Output = T;
-
-    fn index(&self, id: I) -> &Self::Output {
-        &self.inner[id]
-    }
-}
-
-impl<I: IndexPointer, T> IndexMut<I> for LockedList<I, T> {
-    fn index_mut(&mut self, id: I) -> &mut Self::Output {
-        &mut self.inner[id]
-    }
-}
-
-#[derive(Debug, MetaSer)]
-pub struct ReusableList<I: IndexPointer, T> {
-    inner: List<I, T>,
-    map: Vec<bool>,
-    free: Vec<I>,
-}
-
-impl<I: IndexPointer, T> ReusableList<I, T> {
-    pub fn new() -> Self {
-        Self {
-            inner: List::new(),
-            map: Vec::new(),
-            free: Vec::new(),
-        }
-    }
-
-    pub fn add(&mut self, data: T) -> I {
-        if let Some(id) = self.free.pop() {
-            self.map[id.raw()] = true;
-            self.inner[id] = data;
-            id
-        } else {
-            self.map.push(true);
-            self.inner.add(data)
-        }
-    }
-}
-
-impl<I: IndexPointer, T: Default> ReusableList<I, T> {
-    pub fn remove(&mut self, id: I) -> T {
-        self.map[id.raw()] = false;
-        self.free.push(id);
-        std::mem::take(&mut self.inner[id])
-    }
-
-    pub fn retain<F: FnMut(&mut T) -> bool>(&mut self, mut f: F) {
-        for i in 0..self.map.len() {
-            if self.map[i] {
-                let id = I::new(i);
-                if !f(&mut self.inner[id]) {
-                    self.remove(id);
-                }
-            }
-        }
-    }
-}
-
-impl<I: IndexPointer, T> Index<I> for ReusableList<I, T> {
-    type Output = T;
-
-    fn index(&self, id: I) -> &Self::Output {
-        debug_assert!(self.map[id.raw()]);
-        &self.inner[id]
-    }
-}
-
-impl<I: IndexPointer, T> IndexMut<I> for ReusableList<I, T> {
-    fn index_mut(&mut self, id: I) -> &mut Self::Output {
-        debug_assert!(self.map[id.raw()]);
-        &mut self.inner[id]
-    }
-}
-
-impl<I: IndexPointer, T: Clone> Clone for ReusableList<I, T> {
-    fn clone(&self) -> Self {
-        Self {
-            inner: self.inner.clone(),
-            map: self.map.clone(),
-            free: self.free.clone(),
-        }
-    }
-}
-
-impl<I: IndexPointer, T> Default for ReusableList<I, T> {
-    fn default() -> Self {
-        Self::new()
-    }
-}
-
-#[derive(Debug, MetaSer)]
-pub struct List<I: IndexPointer, T> {
-    data: Vec<T>,
-
-    p: PhantomData<I>,
-}
-
-impl<I: IndexPointer, T> List<I, T> {
-    pub fn new() -> Self {
-        Self {
-            data: vec![],
-            p: PhantomData,
-        }
-    }
-
-    pub fn add(&mut self, data: T) -> I {
-        self.data.push(data);
-        I::new(self.data.len() - 1)
-    }
-
-    pub fn clear(&mut self) {
-        self.data.clear();
-    }
-
-    pub fn pop(&mut self) -> Option<T> {
-        self.data.pop()
-    }
-
-    pub fn iter(&self) -> impl Iterator<Item = (I, &T)> {
-        self.data
-            .iter()
-            .enumerate()
-            .map(move |(i, d)| (I::new(i), d))
-    }
-
-    pub fn iter_mut(&mut self) -> impl Iterator<Item = (I, &mut T)> {
-        self.data
-            .iter_mut()
-            .enumerate()
-            .map(move |(i, d)| (I::new(i), d))
-    }
-
-    pub fn ids(&self) -> impl Iterator<Item = I> {
-        (0..self.data.len()).map(I::new)
-    }
-
-    pub fn len(&self) -> usize {
-        self.data.len()
-    }
-}
-
-impl<I: IndexPointer, T: Clone> Clone for List<I, T> {
-    fn clone(&self) -> Self {
-        Self {
-            data: self.data.clone(),
-            p: PhantomData,
-        }
-    }
-}
-
-impl<I: IndexPointer, T> Default for List<I, T> {
-    fn default() -> Self {
-        Self::new()
-    }
-}
-
-impl<I: IndexPointer, T> Index<I> for List<I, T> {
-    type Output = T;
-
-    fn index(&self, id: I) -> &Self::Output {
-        &self.data[id.raw()]
-    }
-}
-
-impl<I: IndexPointer, T> IndexMut<I> for List<I, T> {
-    fn index_mut(&mut self, id: I) -> &mut Self::Output {
-        &mut self.data[id.raw()]
-    }
-}
-
-#[derive(Debug, Clone, MetaSer)]
-pub struct ImSlicePool<I: IndexPointer, T> {
-    data: Vec<T>,
-
-    p: PhantomData<I>,
-}
-
-impl<I: IndexPointer, T: Clone> ImSlicePool<I, T> {
-    pub fn new() -> Self {
-        Self::default()
-    }
-
-    pub fn add(&mut self, data: &[T]) -> Range<I> {
-        let start = I::new(self.data.len());
-        self.data.extend_from_slice(data);
-        let end = I::new(self.data.len());
-        Range::new(start, end)
-    }
-
-    pub fn clear(&mut self) {
-        self.data.clear();
-    }
-}
-
-impl<I: IndexPointer, T> Index<Range<I>> for ImSlicePool<I, T> {
-    type Output = [T];
-
-    fn index(&self, index: Range<I>) -> &Self::Output {
-        &self.data[index.start.raw()..index.end.raw()]
-    }
-}
-
-impl<I: IndexPointer, T> IndexMut<Range<I>> for ImSlicePool<I, T> {
-    fn index_mut(&mut self, index: Range<I>) -> &mut Self::Output {
-        &mut self.data[index.start.raw()..index.end.raw()]
-    }
-}
-
-impl<I: IndexPointer, T> Default for ImSlicePool<I, T> {
-    fn default() -> Self {
-        Self {
-            data: vec![],
-            p: PhantomData,
-        }
-    }
-}
-
-pub struct SlicePool<I: IndexPointer, T> {
-    _data: Vec<T>,
-
-    _size_index: Vec<Range<I>>,
-    _lookup_index: Vec<Range<I>>,
-
-    p: PhantomData<I>,
-}
-
-#[derive(Debug, Clone, Copy, Default, MetaQuickSer, PartialEq, Eq)]
-pub struct Range<I> {
-    start: I,
-    end: I,
-}
-
-impl<I> Range<I> {
-    pub fn new(start: I, end: I) -> Self {
-        Self { start, end }
-    }
-
-    pub fn empty() -> Self {
-        unsafe {
-            std::mem::zeroed()
-        }
-    }
-}
-
-impl<I: IndexPointer> Range<I> {
-    pub fn len(&self) -> usize {
-        (self.end.raw() - self.start.raw()) as usize
-    }
-}
-
-#[macro_export]
-macro_rules! index_pointer {
-    ($id:ident) => {
-        #[derive(Clone, Copy, PartialEq, Eq, Debug, Default, MetaQuickSer)]
-        pub struct $id(u32);
-
-        impl IndexPointer for $id {
-            fn new(idx: usize) -> Self {
-                Self(idx as u32)
-            }
-
-            fn raw(&self) -> usize {
-                self.0 as usize
-            }
-        }
-
-        impl std::fmt::Display for $id {
-            fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
-                write!(f, "{}{}", stringify!($id), self.0)
-            }
-        }
-    };
-}
-
-pub trait IndexPointer: Copy + Clone + PartialEq + Eq + MetaQuickSer {
-    fn new(value: usize) -> Self;
-    fn raw(&self) -> usize;
-}
-
-crate::index_pointer!(Dummy);
-
-pub fn test() {
-    let mut ll = LinkedList::<Dummy, usize>::new();
-
-    println!("{}", ll.push(0));
-
-    println!("{:?}", ll.iter().collect::<Vec<_>>());
-
-    println!("{:?}", ll.remove(Dummy::new(1)));
-
-    println!("{:?}", ll.add_hidden(0));
-
-    println!("{:?}", ll.iter().collect::<Vec<_>>());
-
-    ll.show_as_last(Dummy::new(1));
-
-    println!("{:?}", ll.iter().collect::<Vec<_>>());
-}

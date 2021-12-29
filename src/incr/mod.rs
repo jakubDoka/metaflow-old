@@ -1,10 +1,12 @@
 use std::path::PathBuf;
 
-use traits::MetaSer;
+
+
+use quick_proc::QuickSer;
 
 use crate::util::sdbm::ID;
 
-pub fn load_incremental_data<T: MetaSer>(root_path: &str, arg_hash: ID) -> Option<(T, usize)> {
+pub fn load_incremental_data<T: QuickSer>(root_path: &str, arg_hash: ID) -> Option<(T, usize)> {
     let mut path = PathBuf::new();
     path.push(root_path);
     path.push("meta");
@@ -26,7 +28,7 @@ pub fn load_incremental_data<T: MetaSer>(root_path: &str, arg_hash: ID) -> Optio
     Some((data, progress))
 }
 
-pub fn save_incremental_data<T: MetaSer>(
+pub fn save_incremental_data<T: QuickSer>(
     root_path: &str,
     data: &T,
     arg_hash: ID,

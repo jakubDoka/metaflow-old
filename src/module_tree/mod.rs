@@ -2,16 +2,18 @@ use std::ops::{Deref, DerefMut};
 use std::path::{Path, PathBuf};
 use std::time::SystemTime;
 
-use crate::ast::{AError, AErrorDisplay, AMainState, AParser, AState, Dep, Vis};
+use quick_proc::{RealQuickSer, QuickSer};
+
+use crate::ast::{AError, AErrorDisplay, AMainState, AParser, AState, Dep, Vis, Ast};
 use crate::functions::{Fun, Global};
 use crate::lexer::Token;
 use crate::lexer::{Source, SourceEnt, Span, TokenDisplay};
 use crate::types::Type;
 use crate::util::pool::{Pool, PoolRef};
 use crate::util::sdbm::ID;
-use crate::util::storage::{IndexPointer, Table};
-use meta_ser::{MetaQuickSer, MetaSer};
-use traits::MetaQuickSer;
+use crate::util::storage::{EntityRef, Table};
+
+
 
 type Result<T = ()> = std::result::Result<T, MTError>;
 
@@ -223,12 +225,16 @@ impl<'a> MTParser<'a> {
             id,
             dependency: vec![],
             dependant: vec![],
-            items: vec![],
             a_state: ast,
             manifest: manifest_id,
             name,
             clean: false,
             seen: false,
+            functions: todo!(),
+            types: todo!(),
+            globals: todo!(),
+            entry_point: todo!(),
+            attributes: todo!(),
         };
 
         let (_, module) = self.state.modules.insert(id, ent);
@@ -425,7 +431,7 @@ impl<'a> MTParser<'a> {
     }
 }
 
-pub fn create_order<I: IndexPointer + 'static, S: TreeStorage<I>>(
+pub fn create_order<I: EntityRef + 'static, S: TreeStorage<I>>(
     storage: &S,
     root: I,
     pool: &mut Pool,
@@ -460,7 +466,7 @@ pub fn create_order<I: IndexPointer + 'static, S: TreeStorage<I>>(
     final_result
 }
 
-pub fn detect_cycles<I: IndexPointer, S: TreeStorage<I>>(
+pub fn detect_cycles<I: EntityRef, S: TreeStorage<I>>(
     storage: &S,
     root: I,
     stack: &mut Vec<(I, usize)>,
@@ -533,9 +539,9 @@ pub trait TreeStorage<I> {
     fn len(&self) -> usize;
 }
 
-crate::index_pointer!(Manifest);
+crate::impl_entity!(Manifest);
 
-#[derive(Debug, Clone, Default, MetaSer)]
+#[derive(Debug, Clone, Default, QuickSer)]
 pub struct ManifestEnt {
     pub id: ID,
     pub base_path: String,
@@ -546,17 +552,17 @@ pub struct ManifestEnt {
     pub seen: bool,
 }
 
-#[derive(Debug, Clone, Copy, Default, MetaQuickSer)]
+#[derive(Debug, Clone, Copy, Default, RealQuickSer)]
 pub struct DepRecord(Dep, Manifest);
 
-#[derive(Debug, Clone, Copy, MetaQuickSer)]
+#[derive(Debug, Clone, Copy, RealQuickSer)]
 pub enum ModItem {
     Fun(Fun),
     Type(Type),
     Global(Global),
 }
 
-#[derive(Debug, Clone, MetaSer)]
+#[derive(Debug, Clone, QuickSer)]
 pub struct MTState {
     pub a_main_state: AMainState,
     pub builtin_module: Mod,
@@ -636,9 +642,9 @@ pub struct MTContext {
     pub pool: Pool,
 }
 
-crate::index_pointer!(Mod);
+crate::impl_entity!(Mod);
 
-#[derive(Debug, Clone, Default, MetaSer)]
+#[derive(Debug, Clone, Default, QuickSer)]
 pub struct ModEnt {
     pub id: ID,
     pub name: Span,
@@ -649,14 +655,14 @@ pub struct ModEnt {
     pub globals: Vec<Global>,
     pub entry_point: Option<Fun>,
     pub attributes: Vec<Ast>,
-    
+
     pub a_state: AState,
     pub manifest: Manifest,
     pub clean: bool,
     pub seen: bool,
 }
 
-#[derive(Debug, Clone, Copy, Default, MetaQuickSer)]
+#[derive(Debug, Clone, Copy, Default, RealQuickSer)]
 pub struct ModDep(ID, Mod);
 
 crate::def_displayer!(

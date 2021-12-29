@@ -1,5 +1,7 @@
-use meta_ser::MetaQuickSer;
-use traits::MetaQuickSer;
+use quick_proc::RealQuickSer;
+
+
+
 
 pub mod cli;
 pub mod pool;
@@ -65,7 +67,7 @@ macro_rules! unwrap_enum {
     };
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Default, MetaQuickSer, PartialOrd, Ord)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Default, RealQuickSer, PartialOrd, Ord)]
 pub struct Size {
     pub s32: u32,
     pub s64: u32,
@@ -124,13 +126,22 @@ pub fn write_radix(mut number: u64, radix: u64, buffer: &mut String) {
 #[macro_export]
 macro_rules! impl_wrapper {
     ($name:ident, $type:ty) => {
-        #[derive(Clone, Copy, Debug, PartialEq, Eq, MetaQuickSer)]
+        #[derive(Clone, Copy, Debug, PartialEq, Eq, RealQuickSer)]
         pub struct $name(pub $type);
     };
 }
 
+#[macro_export]
+macro_rules! impl_entity {
+    ($name:ident) => {
+        #[derive(Clone, Copy, Debug, PartialEq, Eq, RealQuickSer)]
+        pub struct $name(u32);
+        
+        cranelift::entity::entity_impl!($name);
+    };
+}
+
 pub fn test() {
-    storage::test();
     pool::test();
     cli::test();
 }

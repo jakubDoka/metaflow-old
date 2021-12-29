@@ -8,6 +8,6 @@ edition = "2018"
 testing = []
 
 [dependencies]
-metaflow-cranelift = { path = "wasmtime/cranelift/metaflow", version = "0.79.0" }
+cranelift = { package = "metaflow-cranelift", path = "wasmtime/cranelift/metaflow", features = ["enable-quick-proc"], version = "0.79.0" }
 quick-proc = { path = "wasmtime/crates/quick-proc" }
 target-lexicon = "0.12.2"
