@@ -5,7 +5,7 @@ use super::sdbm::ID;
 #[derive(Debug)]
 pub struct Arguments {
     _filename: String,
-    _hash: ID,
+    hash: ID,
     flags: Vec<String>,
     field_flags: Vec<(String, String)>,
     args: Vec<String>,
@@ -22,8 +22,9 @@ impl Arguments {
             flags: vec![],
             field_flags: vec![],
             args: vec![],
-            _hash: args
+            hash: args
                 .iter()
+                .skip(1)
                 .fold(ID(0), |acc, i| acc.add(ID::new(i.as_str()))),
         };
 
@@ -52,6 +53,10 @@ impl Arguments {
         }
 
         Ok(result)
+    }
+
+    pub fn hash(&self) -> ID {
+        self.hash
     }
 
     fn collect_arg<T: Iterator<Item = String>>(arg: &mut String, args: &mut T) {

@@ -76,7 +76,7 @@ impl<'a> MTParser<'a> {
                 continue;
             }
 
-            AParser::new(&mut self.state, &mut module.ast)
+            AParser::new(&mut self.state, &mut module.a_state)
                 .take_imports(&mut imports)
                 .map_err(Into::into)?;
 
@@ -187,14 +187,14 @@ impl<'a> MTParser<'a> {
             .map_err(|err| MTError::new(MTEKind::FileReadError(path_buffer.clone(), err), token))?
             .modified()
             .ok();
-
+        
         let last_source = if let Some(&module) = self.state.modules.index(id) {
-            let source = self.state.modules[module].ast.l_state.source;
+            let source = self.state.modules[module].a_state.l_state.source;
             if modified == Some(self.state.sources[source].modified) {
                 path_buffer.clear();
                 return Ok(module);
             }
-            
+
             Some(source)
         } else {
             None
@@ -224,7 +224,7 @@ impl<'a> MTParser<'a> {
             dependency: vec![],
             dependant: vec![],
             items: vec![],
-            ast,
+            a_state: ast,
             manifest: manifest_id,
             name,
             clean: false,
@@ -588,7 +588,7 @@ impl Default for MTState {
 
         let builtin_module = ModEnt {
             id: MOD_SALT.add(ID::new("builtin")),
-            ast,
+            a_state: ast,
             ..Default::default()
         };
 
@@ -644,8 +644,13 @@ pub struct ModEnt {
     pub name: Span,
     pub dependency: Vec<ModDep>,
     pub dependant: Vec<Mod>,
-    pub items: Vec<ModItem>,
-    pub ast: AState,
+    pub functions: Vec<Fun>,
+    pub types: Vec<Type>,
+    pub globals: Vec<Global>,
+    pub entry_point: Option<Fun>,
+    pub attributes: Vec<Ast>,
+    
+    pub a_state: AState,
     pub manifest: Manifest,
     pub clean: bool,
     pub seen: bool,
@@ -691,7 +696,7 @@ crate::def_displayer!(
         MTEKind::CyclicDependency(cycle) => {
             writeln!(f, "cyclic module dependency detected:")?;
             for &id in cycle.iter() {
-                writeln!(f, "  {}", self.state.sources[self.state.modules[id].ast.l_state.source].name)?;
+                writeln!(f, "  {}", self.state.sources[self.state.modules[id].a_state.l_state.source].name)?;
             }
         },
         MTEKind::CyclicManifests(cycle) => {

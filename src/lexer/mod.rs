@@ -585,7 +585,7 @@ crate::index_pointer!(Source);
 pub struct SourceEnt {
     pub name: String,
     pub content: String,
-    #[default(SystemTime::now())]
+    #[default(SystemTime::UNIX_EPOCH)]
     pub modified: SystemTime,
 }
 

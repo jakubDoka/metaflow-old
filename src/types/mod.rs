@@ -1269,7 +1269,7 @@ pub fn test() {
     let mut collector = Collector::default();
 
     for module in std::mem::take(&mut state.module_order).drain(..).rev() {
-        let mut ast = std::mem::take(&mut state.modules[module].ast);
+        let mut ast = std::mem::take(&mut state.modules[module].a_state);
 
         let mut ast = AParser::new(&mut state, &mut ast)
             .parse()

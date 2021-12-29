@@ -874,7 +874,7 @@ impl<'a> FParser<'a> {
         token: &Token,
     ) -> ExprResult {
         let mut values = self.context.pool.get();
-        values.extend(original_values.iter().cloned());
+        values.extend_from_slice(original_values);
         let mut types = self.context.pool.get();
         types.extend(values.iter().map(|&v| self.value(v).ty));
         let module = self.fun(fun).module;
@@ -3347,7 +3347,7 @@ pub fn test() {
     let mut collector = Collector::default();
 
     for module in std::mem::take(&mut state.module_order).drain(..).rev() {
-        let mut ast = std::mem::take(&mut state.modules[module].ast);
+        let mut ast = std::mem::take(&mut state.modules[module].a_state);
 
         let mut ast = AParser::new(&mut state, &mut ast)
             .parse()

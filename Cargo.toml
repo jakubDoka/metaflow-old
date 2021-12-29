@@ -1,5 +1,5 @@
 [package]
-name = "prometh"
+name = "metaflow"
 version = "0.1.0"
 edition = "2018"
 
@@ -8,13 +8,6 @@ edition = "2018"
 testing = []
 
 [dependencies]
-cranelift-frontend = "0.78.0"
-cranelift-codegen = "0.78.0"
-cranelift-module = "0.78.0"
-cranelift-object = "0.78.0"
-cranelift-native = "0.78.0"
-cranelift-preopt = "0.78.0"
+metaflow-cranelift = { path = "wasmtime/cranelift/metaflow", version = "0.79.0" }
+quick-proc = { path = "wasmtime/crates/quick-proc" }
 target-lexicon = "0.12.2"
-
-meta_ser = { path = "meta_ser" }
-traits = { path = "meta_ser/traits" }

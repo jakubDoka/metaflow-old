@@ -40,7 +40,7 @@ impl Collector {
                 | AKind::StructDeclaration(_) => {
                     let start = self.marker;
                     let no_stack_end = self.ordering.len();
-                    self.ordering.extend(&self.stack);
+                    self.ordering.extend_from_slice(&self.stack);
                     self.marker = self.ordering.len();
                     let end = self.marker;
                     let mut item = Item {

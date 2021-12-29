@@ -116,7 +116,7 @@ pub fn generate_obj_file(args: &Arguments) -> Result<Vec<u8>> {
 
     let mut module = ObjectModule::new(builder);
 
-    let mut state = GState::default();
+    let (mut state, size_hint): (GState, _) = incr::load_incremental_data(&args[0], args.hash()).unwrap_or_default();
     state.do_stacktrace = stacktrace;
     let mut context = GContext::default();
 
@@ -125,11 +125,17 @@ pub fn generate_obj_file(args: &Arguments) -> Result<Vec<u8>> {
     }
 
     let mut collector = Collector::default();
-
+    
     for module_id in std::mem::take(&mut state.module_order).drain(..).rev() {
-        let mut ast = std::mem::take(&mut state.modules[module_id].ast);
+        let module_ent = &mut state.modules[module_id];
+        if module_ent.clean {
+            continue;
+        }
+        module_ent.clean = true;
+        let mut a_state = std::mem::take(&mut module_ent.a_state);
 
-        let result = AParser::new(&mut state, &mut ast).parse();
+
+        let result = AParser::new(&mut state, &mut a_state).parse();
         let mut ast = match result {
             Ok(ast) => ast,
             Err(e) => return Err((Some(state), GEKind::AError(e).into())),
@@ -143,12 +149,16 @@ pub fn generate_obj_file(args: &Arguments) -> Result<Vec<u8>> {
         {
             return Err((Some(state), e));
         }
+
+        state.modules[module_id].a_state = a_state;
     }
     
-    Generator::new(&mut module, &mut state, &mut context, &mut collector, false)
-        .finalize()
-        .map_err(|err| (Some(state), err))?;
+    if let Err(err) = Generator::new(&mut module, &mut state, &mut context, &mut collector, false).finalize() {
+        return Err((Some(state), err));
+    }
 
+    incr::save_incremental_data(&args[0], &state, args.hash(), Some(size_hint))
+        .unwrap();
 
     Ok(module.finish().emit().unwrap())
 }
