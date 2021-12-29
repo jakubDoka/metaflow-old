@@ -1624,8 +1624,71 @@ Ok(Arguments { _filename: "file", hash: ID(0), flags: [], field_flags: [], args:
 | hello there
 |   "
 | ^^^^^^^^^^^
-0.0839414
-fun:
+0.109588
+===global===
+None
+None
+VarStatement(None, true) "var something = [1, 2, 3]":
+ VarAssign "something = [1, 2, 3]":
+  Group "something":
+   Ident "something"
+  None
+  Group "=":
+   Array "[":
+    Lit "1"
+    Lit "2"
+    Lit "3"
+===global===
+None
+None
+VarStatement(None, false) "let hello = \"hello\"":
+ VarAssign "hello = \"hello\"":
+  Group "hello":
+   Ident "hello"
+  None
+  Group "=":
+   Lit "\"hello\""
+===type===
+None
+Group "":
+ Comment "##[\r\n  multiline doc comment\r\n]#"
+StructDeclaration(None) "struct":
+ Ident "Scope"
+ None
+===type===
+None
+None
+StructDeclaration(None) "struct":
+ Instantiation "Template[T]":
+  Ident "Template"
+  Ident "T"
+ None
+===type===
+None
+None
+StructDeclaration(None) "struct":
+ Ident "Foo"
+ Group ":":
+  StructField(None, false) "a, b, c: int":
+   Ident "a"
+   Ident "b"
+   Ident "c"
+   Ident "int"
+===type===
+None
+None
+StructDeclaration(None) "struct":
+ Ident "Goo"
+ Group ":":
+  StructField(None, true) "foo: Foo":
+   Ident "foo"
+   Ident "Foo"
+  StructField(None, false) "gva: int":
+   Ident "gva"
+   Ident "int"
+===fun===
+None
+None
 Fun(None) "fun pointed_function(a: Int, b: Int) -> int:\r\n  return a + b":
  FunHeader(Normal) "fun pointed_function(a: Int, b: Int) -> int":
   Ident "pointed_function"
@@ -1636,84 +1699,82 @@ Fun(None) "fun pointed_function(a: Int, b: Int) -> int:\r\n  return a + b":
    Ident "b"
    Ident "Int"
   Ident "int"
-  None Group ":":
+  None
+ Group ":":
   ReturnStatement "return a + b":
    BinaryOp "a + b":
     Ident "+"
     Ident "a"
     Ident "b"
-
-attrs:
+===fun===
 None
-header:
-None
-fun:
+Group "":
+ Comment "## doc comment\r"
 Fun(None) "fun something -> fun(int, int) -> int:\r\n  # ignored comment\r\n  return #[ even more ignored comment ]# pointed_function":
  FunHeader(Normal) "fun something -> fun(int, int) -> int":
   Ident "something"
   FunHeader(Normal) "fun(int, int) -> int":
-   None   Ident "int"
+   None
    Ident "int"
    Ident "int"
-   None  None Group ":":
+   Ident "int"
+   None
+  None
+ Group ":":
   ReturnStatement "return #[ even more ignored comment ]# pointed_function":
    Ident "pointed_function"
-
-attrs:
-Group "":
- Comment "## doc comment\r"
-
-header:
+===fun===
+Impl(None) "impl":
+ None
+ Ident "Scope"
 None
-fun:
 Fun(None) "fun new -> Self:\r\n    return":
  FunHeader(Normal) "fun new -> Self":
   Ident "new"
   Ident "Self"
-  None Group ":":
+  None
+ Group ":":
   ReturnStatement "return":
    None
-attrs:
-None
-header:
+===fun===
 Impl(None) "impl":
- None Ident "Scope"
-
-fun:
+ None
+ Ident "Scope"
+None
 Fun(None) "fun do_nothing(s: Self):\r\n    pass":
  FunHeader(Normal) "fun do_nothing(s: Self)":
   Ident "do_nothing"
   FunArgument(false) "s: Self":
    Ident "s"
    Ident "Self"
-  None  None Group ":":
+  None
+  None
+ Group ":":
   Pass "pass"
-
-attrs:
-None
-header:
-Impl(None) "impl":
- None Ident "Scope"
-
-fun:
-Fun(None) "fun new -> Self:\r\n    return":
- FunHeader(Normal) "fun new -> Self":
-  Ident "new"
-  Ident "Self"
-  None Group ":":
-  ReturnStatement "return":
-   None
-attrs:
-None
-header:
+===fun===
 Impl(None) "impl":
  Group "[":
   Ident "T"
  Instantiation "Template[T]":
   Ident "Template"
   Ident "T"
-
-fun:
+None
+Fun(None) "fun new -> Self:\r\n    return":
+ FunHeader(Normal) "fun new -> Self":
+  Ident "new"
+  Ident "Self"
+  None
+ Group ":":
+  ReturnStatement "return":
+   None
+===fun===
+Impl(None) "impl":
+ Group "[":
+  Ident "T"
+ Instantiation "Template[T]":
+  Ident "Template"
+  Ident "T"
+None
 Fun(None) "fun do_nothing(s: Self, value: T) -> T:\r\n    value":
  FunHeader(Normal) "fun do_nothing(s: Self, value: T) -> T":
   Ident "do_nothing"
@@ -1724,24 +1785,18 @@ Fun(None) "fun do_nothing(s: Self, value: T) -> T:\r\n    value":
    Ident "value"
    Ident "T"
   Ident "T"
-  None Group ":":
+  None
+ Group ":":
   Ident "value"
-
-attrs:
+===fun===
 None
-header:
-Impl(None) "impl":
- Group "[":
-  Ident "T"
- Instantiation "Template[T]":
-  Ident "Template"
-  Ident "T"
-
-fun:
+None
 Fun(None) "fun use_chain:\r\n  module::Type::method::[param]()":
  FunHeader(Normal) "fun use_chain":
   Ident "use_chain"
-  None  None Group ":":
+  None
+  None
+ Group ":":
   Call(false) "module::Type::method::[param]()":
    Instantiation "module::Type::method::[param]":
     Path "module::Type::method":
@@ -1749,34 +1804,29 @@ Fun(None) "fun use_chain:\r\n  module::Type::method::[param]()":
      Ident "Type"
      Ident "method"
     Ident "param"
-
-attrs:
+===fun===
 None
-header:
 None
-fun:
 Fun(None) "fun flo: pass":
  FunHeader(Normal) "fun flo":
   Ident "flo"
-  None  None Group ":":
+  None
+  None
+ Group ":":
   Pass "pass"
-
-attrs:
+===fun===
 None
-header:
 None
-fun:
 Fun(None) "fun foo(): pass":
  FunHeader(Normal) "fun foo()":
   Ident "foo"
-  None  None Group ":":
+  None
+  None
+ Group ":":
   Pass "pass"
-
-attrs:
+===fun===
 None
-header:
 None
-fun:
 Fun(None) "fun goo(a: i8, b: i8): pass":
  FunHeader(Normal) "fun goo(a: i8, b: i8)":
   Ident "goo"
@@ -1786,18 +1836,19 @@ Fun(None) "fun goo(a: i8, b: i8): pass":
   FunArgument(false) "b: i8":
    Ident "b"
    Ident "i8"
-  None  None Group ":":
+  None
+  None
+ Group ":":
   Pass "pass"
-
-attrs:
+===fun===
 None
-header:
 None
-fun:
 Fun(None) "fun loo:\r\n  noo::loo::[i8]()\r\n\r\n  let array = [1, 2, 3]\r\n  array[0] = 3\r\n  array[2] = always[1]\r\n  array[1] = 1\r\n\r\n  pass":
  FunHeader(Normal) "fun loo":
   Ident "loo"
-  None  None Group ":":
+  None
+  None
+ Group ":":
   Call(false) "noo::loo::[i8]()":
    Instantiation "noo::loo::[i8]":
     Path "noo::loo":
@@ -1808,7 +1859,8 @@ Fun(None) "fun loo:\r\n  noo::loo::[i8]()\r\n\r\n  let array = [1, 2, 3]\r\n  ar
    VarAssign "array = [1, 2, 3]":
     Group "array":
      Ident "array"
-    None    Group "=":
+    None
+    Group "=":
      Array "[":
       Lit "1"
       Lit "2"
@@ -1834,17 +1886,15 @@ Fun(None) "fun loo:\r\n  noo::loo::[i8]()\r\n\r\n  let array = [1, 2, 3]\r\n  ar
     Lit "1"
    Lit "1"
   Pass "pass"
-
-attrs:
+===fun===
 None
-header:
 None
-fun:
 Fun(None) "fun main -> i64:\r\n  return 10 + 4 - 2 * 1 + 8":
  FunHeader(Normal) "fun main -> i64":
   Ident "main"
   Ident "i64"
-  None Group ":":
+  None
+ Group ":":
   ReturnStatement "return 10 + 4 - 2 * 1 + 8":
    BinaryOp "10 + 4 - 2 * 1 + 8":
     Ident "-"
@@ -1859,17 +1909,15 @@ Fun(None) "fun main -> i64:\r\n  return 10 + 4 - 2 * 1 + 8":
       Lit "2"
       Lit "1"
      Lit "8"
-
-attrs:
+===fun===
 None
-header:
 None
-fun:
 Fun(None) "fun operator_stress_test -> i64:\r\n  return 10 + 2 * 1 - 9 | 4 & 1 ^ 2 >> 1 << 7 min 20 max 10":
  FunHeader(Normal) "fun operator_stress_test -> i64":
   Ident "operator_stress_test"
   Ident "i64"
-  None Group ":":
+  None
+ Group ":":
   ReturnStatement "return 10 + 2 * 1 - 9 | 4 & 1 ^ 2 >> 1 << 7 min 20 max 10":
    BinaryOp "10 + 2 * 1 - 9 | 4 & 1 ^ 2 >> 1 << 7 min 20 max 10":
     Ident "+"
@@ -1902,17 +1950,15 @@ Fun(None) "fun operator_stress_test -> i64:\r\n  return 10 + 2 * 1 - 9 | 4 & 1 ^
          Lit "7"
         Lit "20"
        Lit "10"
-
-attrs:
+===fun===
 None
-header:
 None
-fun:
 Fun(None) "fun conditional -> i64:\r\n  if false:\r\n    return 10\r\n  elif true:\r\n    return if true: 10 else: 20\r\n  else:\r\n    return 0":
  FunHeader(Normal) "fun conditional -> i64":
   Ident "conditional"
   Ident "i64"
-  None Group ":":
+  None
+ Group ":":
   IfExpr "if false:\r\n    return 10\r\n  elif true:\r\n    return if true: 10 else: 20\r\n  else:\r\n    return 0":
    Lit "false"
    Group ":":
@@ -1932,21 +1978,8 @@ Fun(None) "fun conditional -> i64:\r\n  if false:\r\n    return 10\r\n  elif tru
      Group ":":
       ReturnStatement "return 0":
        Lit "0"
-
-attrs:
+===fun===
 None
-header:
-None
-fun:
-Fun(None) "fun inline_fn -> u32:\r\n  return 10":
- FunHeader(Normal) "fun inline_fn -> u32":
-  Ident "inline_fn"
-  Ident "u32"
-  None Group ":":
-  ReturnStatement "return 10":
-   Lit "10"
-
-attrs:
 Group "":
  AttributeAssign "inline = always":
   Ident "inline"
@@ -1954,10 +1987,17 @@ Group "":
  AttributeAssign "call_conv = cold":
   Ident "call_conv"
   Ident "cold"
-
-header:
+Fun(None) "fun inline_fn -> u32:\r\n  return 10":
+ FunHeader(Normal) "fun inline_fn -> u32":
+  Ident "inline_fn"
+  Ident "u32"
+  None
+ Group ":":
+  ReturnStatement "return 10":
+   Lit "10"
+===fun===
 None
-fun:
+None
 Fun(None) "fun fib(v: i64) -> i64:\r\n  return if v == 0 | v == 1:\r\n    1\r\n  else:\r\n    fib(v - 1) + fib(v - 2)":
  FunHeader(Normal) "fun fib(v: i64) -> i64":
   Ident "fib"
@@ -1965,7 +2005,8 @@ Fun(None) "fun fib(v: i64) -> i64:\r\n  return if v == 0 | v == 1:\r\n    1\r\n 
    Ident "v"
    Ident "i64"
   Ident "i64"
-  None Group ":":
+  None
+ Group ":":
   ReturnStatement "return if v == 0 | v == 1:\r\n    1\r\n  else:\r\n    fib(v - 1) + fib(v - 2)":
    IfExpr "if v == 0 | v == 1:\r\n    1\r\n  else:\r\n    fib(v - 1) + fib(v - 2)":
     BinaryOp "v == 0 | v == 1":
@@ -1995,12 +2036,9 @@ Fun(None) "fun fib(v: i64) -> i64:\r\n  return if v == 0 | v == 1:\r\n    1\r\n 
         Ident "-"
         Ident "v"
         Lit "2"
-
-attrs:
+===fun===
 None
-header:
 None
-fun:
 Fun(None) "fun fib_loop(v: i64) -> i64:\r\n  var a, b, c = 1\r\n  loop'a:\r\n    c = a + b\r\n    a = b\r\n    b = c\r\n    v = v - 1\r\n    if v == 0:\r\n      break'a\r\n  return c":
  FunHeader(Normal) "fun fib_loop(v: i64) -> i64":
   Ident "fib_loop"
@@ -2008,14 +2046,16 @@ Fun(None) "fun fib_loop(v: i64) -> i64:\r\n  var a, b, c = 1\r\n  loop'a:\r\n   
    Ident "v"
    Ident "i64"
   Ident "i64"
-  None Group ":":
+  None
+ Group ":":
   VarStatement(None, true) "var a, b, c = 1":
    VarAssign "a, b, c = 1":
     Group "a":
      Ident "a"
      Ident "b"
      Ident "c"
-    None    Group "=":
+    None
+    Group "=":
      Lit "1"
      Ident "a"
      Ident "a"
@@ -2052,14 +2092,13 @@ Fun(None) "fun fib_loop(v: i64) -> i64:\r\n  var a, b, c = 1\r\n  loop'a:\r\n   
      Group ":":
       Break "break'a":
        Ident "'a"
-       None     None  ReturnStatement "return c":
+       None
+     None
+  ReturnStatement "return c":
    Ident "c"
-
-attrs:
+===fun===
 None
-header:
 None
-fun:
 Fun(None) "fun unary_operators(a: i64) -> i64:\r\n  return -a + ~a + !a + ++a + --a":
  FunHeader(Normal) "fun unary_operators(a: i64) -> i64":
   Ident "unary_operators"
@@ -2067,7 +2106,8 @@ Fun(None) "fun unary_operators(a: i64) -> i64:\r\n  return -a + ~a + !a + ++a + 
    Ident "a"
    Ident "i64"
   Ident "i64"
-  None Group ":":
+  None
+ Group ":":
   ReturnStatement "return -a + ~a + !a + ++a + --a":
    BinaryOp "-a + ~a + !a + ++a + --a":
     Ident "+"
@@ -2092,31 +2132,27 @@ Fun(None) "fun unary_operators(a: i64) -> i64:\r\n  return -a + ~a + !a + ++a + 
     UnaryOp "--a":
      Ident "--"
      Ident "a"
-
-attrs:
+===fun===
 None
-header:
 None
-fun:
 Fun(None) "fun strings -> i64:\r\n  var hello = \"hello\"\r\n  return 0":
  FunHeader(Normal) "fun strings -> i64":
   Ident "strings"
   Ident "i64"
-  None Group ":":
+  None
+ Group ":":
   VarStatement(None, true) "var hello = \"hello\"":
    VarAssign "hello = \"hello\"":
     Group "hello":
      Ident "hello"
-    None    Group "=":
+    None
+    Group "=":
      Lit "\"hello\""
   ReturnStatement "return 0":
    Lit "0"
-
-attrs:
+===fun===
 None
-header:
 None
-fun:
 Fun(None) "fun mutable_ref(a: &Foo):\r\n  a.a = 10\r\n  a.b = 20\r\n  a.c = 30":
  FunHeader(Normal) "fun mutable_ref(a: &Foo)":
   Ident "mutable_ref"
@@ -2124,7 +2160,9 @@ Fun(None) "fun mutable_ref(a: &Foo):\r\n  a.a = 10\r\n  a.b = 20\r\n  a.c = 30":
    Ident "a"
    Ref "&Foo":
     Ident "Foo"
-  None  None Group ":":
+  None
+  None
+ Group ":":
   BinaryOp "a.a = 10":
    Ident "="
    DotExpr "a.a":
@@ -2143,21 +2181,14 @@ Fun(None) "fun mutable_ref(a: &Foo):\r\n  a.a = 10\r\n  a.b = 20\r\n  a.c = 30":
     Ident "a"
     Ident "c"
    Lit "30"
-
-attrs:
+===fun===
 None
-header:
 None
-fun:
 Fun(None) "fun some_string -> &u8:\r\n  \"\r\nhello there\r\n  \"":
  FunHeader(Normal) "fun some_string -> &u8":
   Ident "some_string"
   Ref "&u8":
    Ident "u8"
-  None Group ":":
+  None
+ Group ":":
   Lit "\"\r\nhello there\r\n  \""
-
-attrs:
-None
-header:
-None
