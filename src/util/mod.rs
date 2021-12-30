@@ -1,8 +1,5 @@
 use quick_proc::RealQuickSer;
 
-
-
-
 pub mod cli;
 pub mod pool;
 pub mod sdbm;
@@ -136,7 +133,7 @@ macro_rules! impl_entity {
     ($name:ident) => {
         #[derive(Clone, Copy, Debug, PartialEq, Eq, RealQuickSer)]
         pub struct $name(u32);
-        
+
         cranelift::entity::entity_impl!($name);
     };
 }

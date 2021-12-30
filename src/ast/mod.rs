@@ -1,14 +1,18 @@
+use cranelift::{
+    codegen::packed_option::ReservedValue,
+    entity::{EntityList, ListPool, PrimaryMap},
+};
+use quick_proc::{QuickDefault, QuickSer, RealQuickSer};
 
-
-
-use cranelift::{entity::{ListPool, EntityList, PrimaryMap}, codegen::packed_option::{ReservedValue, PackedOption}};
-use quick_proc::{QuickSer, RealQuickSer, QuickDefault};
-
-use crate::{lexer::*, util::sdbm::ID};
+use crate::{
+    entities::{Ast, Source},
+    lexer::*,
+    util::sdbm::ID,
+};
 
 use std::{
     fmt::Write,
-    ops::{Deref, DerefMut}, time::Instant,
+    ops::{Deref, DerefMut},
 };
 
 pub type Result<T = ()> = std::result::Result<T, AError>;
@@ -20,8 +24,16 @@ pub struct AParser<'a> {
 }
 
 impl<'a> AParser<'a> {
-    pub fn new(main_state: &'a mut AMainState, state: &'a mut AState, context: &'a mut AContext) -> Self {
-        Self { main_state, state, context }
+    pub fn new(
+        main_state: &'a mut AMainState,
+        state: &'a mut AState,
+        context: &'a mut AContext,
+    ) -> Self {
+        Self {
+            main_state,
+            state,
+            context,
+        }
     }
 
     pub fn parse_manifest(&mut self) -> Result<Manifest> {
@@ -167,8 +179,8 @@ impl<'a> AParser<'a> {
     pub fn parse(&mut self) -> Result {
         while self.token.kind != TKind::Eof {
             self.top_item(
-                Ast::reserved_value(), 
-                "expected 'fun' or 'attr' or 'struct' or 'let' or 'var' or 'impl' or '##'"
+                Ast::reserved_value(),
+                "expected 'fun' or 'attr' or 'struct' or 'let' or 'var' or 'impl' or '##'",
             )?;
         }
 
@@ -176,7 +188,7 @@ impl<'a> AParser<'a> {
     }
 
     fn impl_block(&mut self) -> Result {
-        let mut ast_ent = self.ast_ent(AKind::None);
+        let mut ast_ent = self.ast_ent(AKind::Pass);
 
         self.next()?;
 
@@ -207,19 +219,28 @@ impl<'a> AParser<'a> {
 
         self.expect_str(TKind::Colon, "expected ':' after 'impl' type")?;
         self.next()?;
-        self.walk_block(|s| s.top_item(impl_ast, "expected 'fun' or 'attr' or 'let' or 'var' or '##'"))?;
+        self.walk_block(|s| {
+            s.top_item(
+                impl_ast,
+                "expected 'fun' or 'attr' or 'let' or 'var' or '##'",
+            )
+        })?;
 
         Ok(())
     }
 
     fn top_item(&mut self, impl_ast: Ast, message: &'static str) -> Result {
         let kind = self.token.kind;
-        let collect_attributes = matches!(kind, TKind::Struct | TKind::Fun | TKind::Var | TKind::Let);
+        let collect_attributes =
+            matches!(kind, TKind::Struct | TKind::Fun | TKind::Var | TKind::Let);
 
         let attributes = if collect_attributes {
-            self.context.current_attributes.extend_from_slice(&self.context.attrib_stack);
+            self.context
+                .current_attributes
+                .extend_from_slice(&self.context.attrib_stack);
             if !self.context.current_attributes.is_empty() {
-                let sons = EntityList::from_slice(&self.context.current_attributes, &mut self.state.cons);
+                let sons =
+                    EntityList::from_slice(&self.context.current_attributes, &mut self.state.cons);
                 self.context.current_attributes.clear();
                 self.add(AstEnt::with_children(AKind::Group, Token::default(), sons))
             } else {
@@ -231,26 +252,38 @@ impl<'a> AParser<'a> {
 
         match kind {
             TKind::Impl if impl_ast == Ast::reserved_value() => {
-                self.context.attrib_frames.push(self.context.attrib_stack.len());
-                self.context.attrib_stack.extend_from_slice(&self.context.current_attributes);
+                self.context
+                    .attrib_frames
+                    .push(self.context.attrib_stack.len());
+                self.context
+                    .attrib_stack
+                    .extend_from_slice(&self.context.current_attributes);
                 self.impl_block()?;
-                self.context.attrib_stack.truncate(self.context.attrib_frames.pop().unwrap());
-            },
+                self.context
+                    .attrib_stack
+                    .truncate(self.context.attrib_frames.pop().unwrap());
+            }
             TKind::Struct if impl_ast == Ast::reserved_value() => {
                 let item = self.struct_declaration()?;
-                self.state.types.extend([item, attributes, Ast::reserved_value()], &mut self.state.cons);
-            },
+                self.state
+                    .types
+                    .extend([item, attributes], &mut self.state.cons);
+            }
             TKind::Fun => {
                 let item = self.fun()?;
-                self.state.funs.extend([item, attributes, impl_ast], &mut self.state.cons);
-            },
+                self.state
+                    .funs
+                    .extend([item, attributes, impl_ast], &mut self.state.cons);
+            }
             TKind::Var | TKind::Let => {
                 let item = self.var_statement(true)?;
-                self.state.globals.extend([item, attributes, impl_ast], &mut self.state.cons);
-            },
+                self.state
+                    .globals
+                    .extend([item, attributes, impl_ast], &mut self.state.cons);
+            }
             TKind::Attr => {
                 self.attr()?;
-            },
+            }
             TKind::Comment(_) => {
                 let ast = self.ast(AKind::Comment);
                 self.context.current_attributes.push(ast);
@@ -258,8 +291,8 @@ impl<'a> AParser<'a> {
             }
             TKind::Indent(_) => {
                 self.next()?;
-            },
-            
+            }
+
             _ => return Err(self.unexpected_str(message)),
         }
 
@@ -267,7 +300,7 @@ impl<'a> AParser<'a> {
     }
 
     fn struct_declaration(&mut self) -> Result<Ast> {
-        let mut ast_ent = self.ast_ent(AKind::None);
+        let mut ast_ent = self.ast_ent(AKind::Pass);
         self.next()?;
 
         ast_ent.kind = AKind::StructDeclaration(self.vis()?);
@@ -306,7 +339,7 @@ impl<'a> AParser<'a> {
             Self::ident,
         )?;
 
-        let expr =  self.type_expr()?;
+        let expr = self.type_expr()?;
         self.push(&mut ast_ent.sons, expr);
 
         self.join_token(&mut ast_ent.token);
@@ -329,7 +362,9 @@ impl<'a> AParser<'a> {
         for &ast in self.state.slice(ast_ent.sons) {
             let hash = self.token(ast).span.hash;
             if hash == ID::new("push") {
-                self.context.attrib_frames.push(self.context.attrib_stack.len());
+                self.context
+                    .attrib_frames
+                    .push(self.context.attrib_stack.len());
                 for &ast in self.state.slice(self.sons(ast)) {
                     self.context.attrib_stack.push(ast);
                 }
@@ -376,7 +411,7 @@ impl<'a> AParser<'a> {
     }
 
     fn fun(&mut self) -> Result<Ast> {
-        let mut ast_ent = self.ast_ent(AKind::None);
+        let mut ast_ent = self.ast_ent(AKind::Pass);
         let (header, visibility) = self.fun_header(false)?;
         self.push(&mut ast_ent.sons, header);
         ast_ent.kind = AKind::Fun(visibility);
@@ -395,7 +430,7 @@ impl<'a> AParser<'a> {
     }
 
     fn fun_header(&mut self, anonymous: bool) -> Result<(Ast, Vis)> {
-        let mut ast_ent = self.ast_ent(AKind::None);
+        let mut ast_ent = self.ast_ent(AKind::Pass);
         self.next()?;
 
         let visibility = if anonymous { Vis::None } else { self.vis()? };
@@ -420,8 +455,9 @@ impl<'a> AParser<'a> {
         }
 
         let kind = if is_op {
-            let arg_count = self.slice(ast_ent.sons)[1..].iter().fold(
-                0, |acc, &i| acc + self.len(i) - 1);
+            let arg_count = self.slice(ast_ent.sons)[1..]
+                .iter()
+                .fold(0, |acc, &i| acc + self.ast_len(i) - 1);
             match arg_count {
                 1 => OpKind::Unary,
                 2 => OpKind::Binary,
@@ -477,7 +513,7 @@ impl<'a> AParser<'a> {
             Ok(ident)
         })?;
 
-        let expr =  self.type_expr()?;
+        let expr = self.type_expr()?;
         self.push(&mut ast_ent.sons, expr);
 
         self.join_token(&mut ast_ent.token);
@@ -501,7 +537,7 @@ impl<'a> AParser<'a> {
 
     fn var_statement(&mut self, top_level: bool) -> Result<Ast> {
         let mutable = self.token.kind == TKind::Var;
-        let mut ast_ent = self.ast_ent(AKind::None);
+        let mut ast_ent = self.ast_ent(AKind::Pass);
         self.next()?;
 
         let vis = if top_level { self.vis()? } else { Vis::None };
@@ -509,7 +545,7 @@ impl<'a> AParser<'a> {
 
         self.walk_block(|s| {
             let line = s.var_statement_line()?;
-            s.state.push(&mut ast_ent.sons , line);
+            s.state.push(&mut ast_ent.sons, line);
             Ok(())
         })?;
 
@@ -564,8 +600,8 @@ impl<'a> AParser<'a> {
             return Err(self.unexpected_str("expected '=' or ':' type"));
         }
 
-        ast_ent.sons = EntityList::from_slice(
-            &[self.add(ident_group), datatype, values], &mut self.cons);
+        ast_ent.sons =
+            EntityList::from_slice(&[self.add(ident_group), datatype, values], &mut self.cons);
 
         self.join_token(&mut ast_ent.token);
 
@@ -635,13 +671,20 @@ impl<'a> AParser<'a> {
             // this handles the '{op}=' sugar
             result = if pre == ASSIGN_PRECEDENCE
                 && op.token.span.len() != 1
-                && self.main_state.display(&op.token.span).chars().last().unwrap() == '='
+                && self
+                    .main_state
+                    .display(&op.token.span)
+                    .chars()
+                    .last()
+                    .unwrap()
+                    == '='
             {
                 let operator = AstEnt::new(
                     AKind::Ident,
                     Token::new(
                         TKind::Op,
-                        self.main_state.slice_span(&op.token.span, 0, op.token.span.len() - 1),
+                        self.main_state
+                            .slice_span(&op.token.span, 0, op.token.span.len() - 1),
                     ),
                 );
                 let operator = self.add(operator);
@@ -649,37 +692,32 @@ impl<'a> AParser<'a> {
                     AKind::Ident,
                     Token::new(
                         TKind::Op,
-                        self.main_state
-                            .slice_span(&op.token.span, op.token.span.len() - 1, op.token.span.len()),
+                        self.main_state.slice_span(
+                            &op.token.span,
+                            op.token.span.len() - 1,
+                            op.token.span.len(),
+                        ),
                     ),
                 );
                 let eq = self.add(eq);
                 let expr = AstEnt::with_children(
-                    AKind::BinaryOp, 
-                    token, 
-                    EntityList::from_slice(&[
-                        operator, result, next
-                    ], &mut self.cons),
+                    AKind::BinaryOp,
+                    token,
+                    EntityList::from_slice(&[operator, result, next], &mut self.cons),
                 );
                 let expr = self.add(expr);
 
                 let final_expr = AstEnt::with_children(
                     AKind::BinaryOp,
                     token,
-                    EntityList::from_slice(&[
-                        eq,
-                        result.clone(),
-                        expr,    
-                    ], &mut self.cons),
+                    EntityList::from_slice(&[eq, result.clone(), expr], &mut self.cons),
                 );
                 self.add(final_expr)
             } else {
                 let expr = AstEnt::with_children(
                     AKind::BinaryOp,
                     token,
-                    EntityList::from_slice(&[
-                        self.add(op), result, next,
-                    ], &mut self.cons),
+                    EntityList::from_slice(&[self.add(op), result, next], &mut self.cons),
                 );
 
                 self.add(expr)
@@ -743,7 +781,13 @@ impl<'a> AParser<'a> {
             }
             TKind::LBra => {
                 let mut ast_ent = self.ast_ent(AKind::Array);
-                self.list(&mut ast_ent, TKind::LBra, TKind::Comma, TKind::RBra, Self::expr)?;
+                self.list(
+                    &mut ast_ent,
+                    TKind::LBra,
+                    TKind::Comma,
+                    TKind::RBra,
+                    Self::expr,
+                )?;
                 return Ok(self.add(ast_ent));
             }
             TKind::Fun => return Ok(self.fun_header(true)?.0),
@@ -766,14 +810,19 @@ impl<'a> AParser<'a> {
                         new_ast
                     }
                     TKind::LPar => {
-                        let AstEnt { mut sons, token, ..} = self.asts[ast];
-                        let mut new_ast = AstEnt::new(AKind::None, token);
+                        let AstEnt {
+                            mut sons, token, ..
+                        } = self.asts[ast];
+                        let mut new_ast = AstEnt::new(AKind::Pass, token);
                         if self.kind(ast) == AKind::DotExpr {
                             new_ast.kind = AKind::Call(true);
-                            new_ast.sons = EntityList::from_slice(&[
-                                sons.get(1, &self.cons).unwrap(),
-                                sons.get(0, &self.cons).unwrap(),
-                            ], &mut self.cons);
+                            new_ast.sons = EntityList::from_slice(
+                                &[
+                                    sons.get(1, &self.cons).unwrap(),
+                                    sons.get(0, &self.cons).unwrap(),
+                                ],
+                                &mut self.cons,
+                            );
                             sons.clear(&mut self.cons);
                         } else {
                             new_ast.kind = AKind::Call(false);
@@ -840,7 +889,6 @@ impl<'a> AParser<'a> {
         let label = self.optional_label()?;
         self.push(&mut ast_ent.sons, label);
 
-
         let ret = if let TKind::Indent(_) = self.token.kind {
             Ast::reserved_value()
         } else {
@@ -901,8 +949,8 @@ impl<'a> AParser<'a> {
             ast = self.add(ast_ent);
         }
 
-        let is_instantiation = self.is_type_expr && self.token == TKind::LBra
-            || self.token == TKind::DoubleColon;
+        let is_instantiation =
+            self.is_type_expr && self.token == TKind::LBra || self.token == TKind::DoubleColon;
 
         if is_instantiation {
             if self.token == TKind::DoubleColon {
@@ -915,7 +963,13 @@ impl<'a> AParser<'a> {
             let mut temp_ast = AstEnt::new(AKind::Instantiation, ast_ent.token);
             self.push(&mut temp_ast.sons, ast);
             ast_ent = temp_ast;
-            self.list(&mut ast_ent, TKind::LBra, TKind::Comma, TKind::RBra, Self::expr)?;
+            self.list(
+                &mut ast_ent,
+                TKind::LBra,
+                TKind::Comma,
+                TKind::RBra,
+                Self::expr,
+            )?;
 
             self.join_token(&mut ast_ent.token);
             ast = self.add(ast_ent);
@@ -966,8 +1020,7 @@ impl<'a> AParser<'a> {
         };
 
         let mut ast_ent = self.asts[ast];
-        ast_ent.sons = EntityList::from_slice(
-            &[condition, then_block, else_block], &mut self.cons);
+        ast_ent.sons = EntityList::from_slice(&[condition, then_block, else_block], &mut self.cons);
 
         self.join_token(&mut ast_ent.token);
         self.asts[ast] = ast_ent;
@@ -1220,41 +1273,87 @@ pub struct AState {
     globals: EntityList<Ast>,
 }
 
+crate::inherit!(AState, l_state, LState);
+
 impl AState {
-    fn ast(&mut self, kind: AKind) -> Ast {
+    pub fn ast(&mut self, kind: AKind) -> Ast {
         self.asts.push(AstEnt::new(kind, self.token))
     }
-    
-    fn add(&mut self, ast_ent: AstEnt) -> Ast {
+
+    pub fn add(&mut self, ast_ent: AstEnt) -> Ast {
         self.asts.push(ast_ent)
     }
 
-    fn ast_ent(&mut self, kind: AKind) -> AstEnt {
+    pub fn ast_ent(&mut self, kind: AKind) -> AstEnt {
         AstEnt::new(kind, self.token)
     }
 
-    fn kind(&self, ast: Ast) -> AKind {
+    pub fn kind(&self, ast: Ast) -> AKind {
         self.asts[ast].kind
     }
-    
-    fn sons(&self, ast: Ast) -> EntityList<Ast> {
+
+    pub fn son_ent(&self, ast: Ast, index: usize) -> &AstEnt {
+        &self.asts[self.son(ast, index)]
+    }
+
+    pub fn son(&self, ast: Ast, index: usize) -> Ast {
+        self.sons(ast).get(index, &self.cons).unwrap()
+    }
+
+    pub fn sons(&self, ast: Ast) -> EntityList<Ast> {
         self.asts[ast].sons
     }
 
-    fn token(&self, ast: Ast) -> &Token {
+    pub fn token(&self, ast: Ast) -> &Token {
         &self.asts[ast].token
     }
 
-    fn push(&mut self, target: &mut EntityList<Ast>, value: Ast) {
+    pub fn push(&mut self, target: &mut EntityList<Ast>, value: Ast) {
         target.push(value, &mut self.cons);
     }
 
-    fn slice(&self, sons: EntityList<Ast>) -> &[Ast] {
+    pub fn slice(&self, sons: EntityList<Ast>) -> &[Ast] {
         sons.as_slice(&self.cons)
     }
 
-    fn len(&self, ast: Ast) -> usize {
+    pub fn len(&self, list: EntityList<Ast>) -> usize {
+        list.len(&self.cons)
+    }
+
+    pub fn ast_len(&self, ast: Ast) -> usize {
         self.sons(ast).len(&self.cons)
+    }
+
+    pub fn is_empty(&self, ast: Ast) -> bool {
+        self.ast_len(ast) == 0
+    }
+
+    pub fn son_len(&self, ast: Ast, index: usize) -> usize {
+        self.son_ent(ast, index).sons.len(&self.cons)
+    }
+
+    pub fn get(&self, sons: EntityList<Ast>, index: usize) -> Ast {
+        sons.get(index, &self.cons).unwrap()
+    }
+
+    pub fn load(&self, ast: Ast) -> &AstEnt {
+        &self.asts[ast]
+    }
+
+    pub fn funs(&self) -> &[Ast] {
+        self.funs.as_slice(&self.cons)
+    }
+
+    pub fn types(&self) -> &[Ast] {
+        self.types.as_slice(&self.cons)
+    }
+
+    pub fn globals(&self) -> &[Ast] {
+        self.globals.as_slice(&self.cons)
+    }
+
+    pub fn get_ent(&self, sons: EntityList<Ast>, index: usize) -> &AstEnt {
+        &self.asts[self.get(sons, index)]
     }
 }
 
@@ -1278,7 +1377,7 @@ impl Manifest {
     }
 }
 
-#[derive(Clone, Debug, Copy, Default)]
+#[derive(Clone, Debug, Copy, Default, RealQuickSer)]
 pub struct Dep {
     pub path: Span,
     pub name: Span,
@@ -1312,8 +1411,6 @@ pub fn precedence(op: &str) -> i64 {
     }
 }
 
-crate::impl_entity!(Ast);
-
 #[derive(Debug, Clone, Copy, Default, PartialEq, RealQuickSer)]
 pub struct AstEnt {
     pub kind: AKind,
@@ -1330,16 +1427,8 @@ impl AstEnt {
         }
     }
 
-    pub fn none() -> Self {
-        Self::new(AKind::None, Token::eof())
-    }
-
     fn with_children(kind: AKind, token: Token, sons: EntityList<Ast>) -> AstEnt {
-        Self {
-            kind,
-            sons,
-            token,
-        }
+        Self { kind, sons, token }
     }
 }
 
@@ -1358,7 +1447,11 @@ pub struct AstDisplay<'a> {
 
 impl<'a> AstDisplay<'a> {
     pub fn new(main_state: &'a AMainState, state: &'a AState, ast: Ast) -> Self {
-        Self { main_state, state, ast }
+        Self {
+            main_state,
+            state,
+            ast,
+        }
     }
 
     fn log(&self, ast: Ast, level: usize, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
@@ -1369,12 +1462,7 @@ impl<'a> AstDisplay<'a> {
             return writeln!(f, "None");
         }
         let AstEnt { kind, sons, token } = self.state.asts[ast];
-        write!(
-            f,
-            "{:?} {:?}",
-            kind,
-            self.main_state.display(&token.span)
-        )?;
+        write!(f, "{:?} {:?}", kind, self.main_state.display(&token.span))?;
         if sons.len(&self.state.cons) > 0 {
             write!(f, ":\n")?;
             for &child in sons.as_slice(&self.state.cons) {
@@ -1441,13 +1529,11 @@ pub enum AKind {
     Ident,
     Instantiation,
     Lit,
-
-    None,
 }
 
 impl Default for AKind {
     fn default() -> Self {
-        AKind::None
+        AKind::Pass
     }
 }
 
@@ -1534,32 +1620,26 @@ pub fn test() {
     let mut context = AContext::default();
     let mut a_state = AState::default();
 
-    let now = Instant::now();
-    for _ in 0..1000 {
-        a_main_state.a_state_for(source, &mut a_state);
-        let mut a_parser = AParser::new(&mut a_main_state, &mut a_state, &mut context);
-        a_parser.parse().unwrap();
-    }
-    println!("{:?}", now.elapsed().as_secs_f64());
-    
+    a_main_state.a_state_for(source, &mut a_state);
+    let mut a_parser = AParser::new(&mut a_main_state, &mut a_state, &mut context);
+    a_parser.parse().unwrap();
+
     for i in (0..a_state.globals.len(&a_state.cons)).step_by(3) {
         if let [fun, attrs, header] = a_state.globals.as_slice(&a_state.cons)[i..i + 3] {
             println!("===global===");
             print!("{}", AstDisplay::new(&a_main_state, &a_state, header));
             print!("{}", AstDisplay::new(&a_main_state, &a_state, attrs));
             print!("{}", AstDisplay::new(&a_main_state, &a_state, fun));
-        } 
-    }
-    
-    for i in (0..a_state.types.len(&a_state.cons)).step_by(3) {
-        if let [fun, attrs, header] = a_state.types.as_slice(&a_state.cons)[i..i + 3] {
-            println!("===type===");
-            print!("{}", AstDisplay::new(&a_main_state, &a_state, header));
-            print!("{}", AstDisplay::new(&a_main_state, &a_state, attrs));
-            print!("{}", AstDisplay::new(&a_main_state, &a_state, fun));
-        } 
+        }
     }
 
+    for i in (0..a_state.types.len(&a_state.cons)).step_by(2) {
+        if let [fun, attrs] = a_state.types.as_slice(&a_state.cons)[i..i + 2] {
+            println!("===type===");
+            print!("{}", AstDisplay::new(&a_main_state, &a_state, attrs));
+            print!("{}", AstDisplay::new(&a_main_state, &a_state, fun));
+        }
+    }
 
     for i in (0..a_state.funs.len(&a_state.cons)).step_by(3) {
         if let [fun, attrs, header] = a_state.funs.as_slice(&a_state.cons)[i..i + 3] {
@@ -1567,7 +1647,6 @@ pub fn test() {
             print!("{}", AstDisplay::new(&a_main_state, &a_state, header));
             print!("{}", AstDisplay::new(&a_main_state, &a_state, attrs));
             print!("{}", AstDisplay::new(&a_main_state, &a_state, fun));
-        } 
+        }
     }
-    
 }

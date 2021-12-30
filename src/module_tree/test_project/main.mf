@@ -1,4 +1,6 @@
-use "dummy"
+use 
+  "dummy"
+  "main/sub"
 
 fun main -> int:
-    return the_answer()
+  return the_answer()

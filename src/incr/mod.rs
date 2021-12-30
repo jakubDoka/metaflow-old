@@ -6,7 +6,7 @@ use quick_proc::QuickSer;
 
 use crate::util::sdbm::ID;
 
-pub fn load_incremental_data<T: QuickSer>(root_path: &str, arg_hash: ID) -> Option<(T, usize)> {
+pub fn load_data<T: QuickSer>(root_path: &str, arg_hash: ID) -> Option<(T, usize)> {
     let mut path = PathBuf::new();
     path.push(root_path);
     path.push("meta");
@@ -28,7 +28,7 @@ pub fn load_incremental_data<T: QuickSer>(root_path: &str, arg_hash: ID) -> Opti
     Some((data, progress))
 }
 
-pub fn save_incremental_data<T: QuickSer>(
+pub fn save_data<T: QuickSer>(
     root_path: &str,
     data: &T,
     arg_hash: ID,

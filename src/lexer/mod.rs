@@ -1,17 +1,14 @@
-
-
-
 use quick_proc::{QuickDefault, QuickSer, RealQuickSer};
 
-use crate::util::{
-    sdbm::ID,
-    storage::Map,
+use crate::{
+    entities::Source,
+    util::{sdbm::ID, storage::Map},
 };
+use cranelift::entity::{EntityRef, PrimaryMap};
 use std::{
     fmt::{Debug, Display},
     time::SystemTime,
 };
-use cranelift::entity::PrimaryMap;
 
 type Result<T = Token> = std::result::Result<T, LError>;
 
@@ -469,7 +466,7 @@ pub trait IsOperator {
 
 #[derive(QuickDefault, Debug, Clone, Copy, RealQuickSer)]
 pub struct LState {
-    #[default(Source(0))]
+    #[default(Source::new(0))]
     pub source: Source,
     pub progress: usize,
     pub line: usize,
@@ -580,8 +577,6 @@ impl Default for LMainState {
         Self::new()
     }
 }
-
-crate::impl_entity!(Source);
 
 #[derive(Debug, Clone, QuickDefault, QuickSer)]
 pub struct SourceEnt {
@@ -882,7 +877,7 @@ impl Display for SpanDisplay<'_> {
 
 #[derive(Debug, Clone, Copy, QuickDefault, PartialEq, Eq, RealQuickSer)]
 pub struct Span {
-    #[default(Source(0))]
+    #[default(Source::new(0))]
     pub source: Source,
     pub hash: ID,
     pub start: u32,

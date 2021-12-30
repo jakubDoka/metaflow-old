@@ -1,6 +1,4 @@
-use std::{
-    ops::{Index, IndexMut},
-};
+use std::ops::{Index, IndexMut};
 
 use cranelift::codegen::entity::{EntityRef, PrimaryMap};
 use quick_proc::QuickSer;
@@ -439,9 +437,9 @@ pub struct LinkedList<I: EntityRef, T> {
 
 #[derive(QuickSer, Clone)]
 pub struct LinkedNode<I: EntityRef, T> {
-    prev: I, 
+    prev: I,
     next: I,
-    value: T, 
+    value: T,
 }
 
 impl<I: EntityRef, T> From<(I, I, T)> for LinkedNode<I, T> {

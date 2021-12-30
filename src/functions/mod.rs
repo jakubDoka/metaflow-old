@@ -1,22 +1,20 @@
 use core::panic;
 use std::ops::{Deref, DerefMut};
 
-use crate::ast::{AKind, AParser, Ast, AstDisplay, OpKind, Vis};
-use crate::collector::{Attrs, Collector, Item, Scope};
+use crate::ast::{AKind, AParser, AstDisplay, OpKind, Vis};
+use crate::entities::{Fun, Ast, Ty, Mod};
 use crate::lexer::TKind as LTKind;
 use crate::lexer::{Span, Token, TokenDisplay};
 use crate::module_tree::*;
-use crate::types::Type;
 use crate::types::*;
-use crate::util::storage::{LinkedList, Table, ImSlicePool, Range};
+use crate::util::storage::{LinkedList, Table};
 use crate::util::Size;
-use crate::util::{
-    sdbm::ID,
-    storage::{EntityRef, PrimaryMap},
-};
+use crate::util::sdbm::ID;
 
 use cranelift::codegen::ir::types::I64;
-use cranelift::codegen::ir::{Type as CrType, Block as CrBlock, Value as CrValue, StackSlot};
+use cranelift::codegen::ir::{Type, Block, Value, StackSlot, Inst, GlobalValue, Function};
+use cranelift::codegen::packed_option::{PackedOption, ReservedValue};
+use cranelift::entity::{EntityList, PrimaryMap, ListPool};
 use cranelift::frontend::Variable as CrVar;
 use cranelift::module::{Linkage, FuncId, RelocRecord, DataId};
 use quick_proc::{QuickDefault, QuickSer, QuickEnumGets, gen_quick_copy, RealQuickSer};
@@ -34,25 +32,23 @@ pub const GLOBAL_SALT: ID = ID(0x2849437252);
 pub struct FParser<'a> {
     state: &'a mut FState,
     context: &'a mut FContext,
-    collector: &'a mut Collector,
-    ptr_ty: CrType,
+    ptr_ty: Type,
 }
 
 impl<'a> FParser<'a> {
     pub fn new(
         state: &'a mut FState,
         context: &'a mut FContext,
-        collector: &'a mut Collector,
-        ptr_ty: CrType,
+        ptr_ty: Type,
     ) -> Self {
         Self {
             state,
             context,
-            collector,
             ptr_ty,
         }
     }
 
+    /*
     pub fn parse(&mut self, module: Mod) -> Result {
         TParser::new(self.state, self.context, self.collector)
             .parse(module)
@@ -112,7 +108,7 @@ impl<'a> FParser<'a> {
         }
 
         if let Some(scope) = scope {
-            let ty = unsafe { std::mem::transmute::<&Ast, &Ast>(&self.collector.scopes[scope].ty) };
+            let ty = unsafe { std::mem::transmute::<Ast, Ast>(&self.collector.scopes[scope].ty) };
             let ty = self.parse_type(module, ty)?;
             let id = TYPE_SALT
                 .add(ID::new("Self"))
@@ -169,7 +165,7 @@ impl<'a> FParser<'a> {
             self.add_inst(InstEnt::new(
                 IKind::Return(None),
                 None,
-                &ast[1].last().unwrap_or(&Ast::none()).token,
+                &ast[1].last().unwrap_or(Ast::none()).token,
             ));
         }
 
@@ -224,7 +220,7 @@ impl<'a> FParser<'a> {
         }
     }
 
-    fn block(&mut self, fun: Fun, ast: &Ast) -> ExprResult {
+    fn block(&mut self, fun: Fun, ast: Ast) -> ExprResult {
         if ast.is_empty() {
             return Ok(None);
         }
@@ -249,7 +245,7 @@ impl<'a> FParser<'a> {
         Ok(value)
     }
 
-    fn statement(&mut self, fun: Fun, statement: &Ast) -> ExprResult {
+    fn statement(&mut self, fun: Fun, statement: Ast) -> ExprResult {
         match statement.kind {
             AKind::VarStatement(..) => self.var_statement(fun, statement)?,
             AKind::ReturnStatement => self.return_statement(fun, statement)?,
@@ -261,7 +257,7 @@ impl<'a> FParser<'a> {
         Ok(None)
     }
 
-    fn continue_statement(&mut self, ast: &Ast) -> Result {
+    fn continue_statement(&mut self, ast: Ast) -> Result {
         let loop_header = self.find_loop(&ast[0].token).map_err(|outside| {
             if outside {
                 FError::new(FEKind::ContinueOutsideLoop, ast.token)
@@ -271,7 +267,7 @@ impl<'a> FParser<'a> {
         })?;
 
         self.add_inst(InstEnt::new(
-            IKind::Jump(loop_header.start_block, ValueSlice::empty()),
+            IKind::Jump(loop_header.start_block, EntityList<Value>::empty()),
             None,
             &ast.token,
         ));
@@ -279,7 +275,7 @@ impl<'a> FParser<'a> {
         Ok(())
     }
 
-    fn break_statement(&mut self, fun: Fun, ast: &Ast) -> Result {
+    fn break_statement(&mut self, fun: Fun, ast: Ast) -> Result {
         let loop_header = self.find_loop(&ast[0].token).map_err(|outside| {
             if outside {
                 FError::new(FEKind::BreakOutsideLoop, ast.token)
@@ -314,7 +310,7 @@ impl<'a> FParser<'a> {
             ));
         } else {
             self.add_inst(InstEnt::new(
-                IKind::Jump(loop_header.end_block, ValueSlice::empty()),
+                IKind::Jump(loop_header.end_block, EntityList<Value>::empty()),
                 None,
                 &ast.token,
             ));
@@ -323,7 +319,7 @@ impl<'a> FParser<'a> {
         Ok(())
     }
 
-    fn return_statement(&mut self, fun: Fun, ast: &Ast) -> Result {
+    fn return_statement(&mut self, fun: Fun, ast: Ast) -> Result {
         let ty = self.signature_of(fun).ret;
 
         let value = if ast[0].kind == AKind::None {
@@ -347,7 +343,7 @@ impl<'a> FParser<'a> {
         Ok(())
     }
 
-    fn var_statement(&mut self, fun: Fun, statement: &Ast) -> Result {
+    fn var_statement(&mut self, fun: Fun, statement: Ast) -> Result {
         let mutable = statement.kind == AKind::VarStatement(Vis::None, true);
         let module = self.fun(fun).module;
 
@@ -403,12 +399,12 @@ impl<'a> FParser<'a> {
         Ok(())
     }
 
-    fn expr(&mut self, fun: Fun, ast: &Ast) -> Result<Value> {
+    fn expr(&mut self, fun: Fun, ast: Ast) -> Result<Value> {
         self.expr_low(fun, ast)?
             .ok_or_else(|| FError::new(FEKind::ExpectedValue, ast.token))
     }
 
-    fn expr_low(&mut self, fun: Fun, ast: &Ast) -> ExprResult {
+    fn expr_low(&mut self, fun: Fun, ast: Ast) -> ExprResult {
         match ast.kind {
             AKind::BinaryOp => self.binary_op(fun, ast),
             AKind::Lit => self.lit(ast),
@@ -427,7 +423,7 @@ impl<'a> FParser<'a> {
         }
     }
 
-    fn index(&mut self, fun: Fun, ast: &Ast) -> ExprResult {
+    fn index(&mut self, fun: Fun, ast: Ast) -> ExprResult {
         let target = self.expr(fun, &ast[0])?;
         let index = self.expr(fun, &ast[1])?;
         let args = &[target, index];
@@ -441,7 +437,7 @@ impl<'a> FParser<'a> {
         Ok(Some(result))
     }
 
-    fn array(&mut self, fun: Fun, ast: &Ast) -> ExprResult {
+    fn array(&mut self, fun: Fun, ast: Ast) -> ExprResult {
         let mut values = self.context.pool.get();
 
         let mut element_ty = None;
@@ -483,7 +479,7 @@ impl<'a> FParser<'a> {
         Ok(Some(result))
     }
 
-    fn ref_expr(&mut self, fun: Fun, ast: &Ast) -> ExprResult {
+    fn ref_expr(&mut self, fun: Fun, ast: Ast) -> ExprResult {
         let value = self.expr(fun, &ast[0])?;
 
         let reference = self.ref_expr_low(value, &ast.token);
@@ -522,7 +518,7 @@ impl<'a> FParser<'a> {
         reference
     }
 
-    fn deref_expr(&mut self, fun: Fun, ast: &Ast) -> ExprResult {
+    fn deref_expr(&mut self, fun: Fun, ast: Ast) -> ExprResult {
         let expr = self.expr(fun, &ast[0])?;
 
         let value = self.deref_expr_low(expr, &ast.token)?;
@@ -540,7 +536,7 @@ impl<'a> FParser<'a> {
         Ok(val)
     }
 
-    fn unary_op(&mut self, fun: Fun, ast: &Ast) -> ExprResult {
+    fn unary_op(&mut self, fun: Fun, ast: Ast) -> ExprResult {
         let value = self.expr(fun, &ast[1])?;
 
         let mut values = self.context.pool.get();
@@ -557,7 +553,7 @@ impl<'a> FParser<'a> {
         )
     }
 
-    fn dot_expr(&mut self, fun: Fun, ast: &Ast) -> ExprResult {
+    fn dot_expr(&mut self, fun: Fun, ast: Ast) -> ExprResult {
         let module = self.fun(fun).module;
         let header = self.expr(fun, &ast[0])?;
         let mutable = self.value(header).mutable;
@@ -572,7 +568,7 @@ impl<'a> FParser<'a> {
         Ok(Some(value))
     }
 
-    fn find_field(&mut self, ty: Type, field_id: ID, path: &mut Vec<usize>) -> bool {
+    fn find_field(&mut self, ty: Ty, field_id: ID, path: &mut Vec<usize>) -> bool {
         let mut frontier = self.context.pool.get();
         frontier.push((usize::MAX, 0, ty));
 
@@ -610,7 +606,7 @@ impl<'a> FParser<'a> {
         false
     }
 
-    fn loop_expr(&mut self, fun: Fun, ast: &Ast) -> ExprResult {
+    fn loop_expr(&mut self, fun: Fun, ast: Ast) -> ExprResult {
         let name = ast[0].token.span.hash;
 
         let start_block = self.new_block();
@@ -623,7 +619,7 @@ impl<'a> FParser<'a> {
         };
 
         self.add_inst(InstEnt::new(
-            IKind::Jump(start_block, ValueSlice::empty()),
+            IKind::Jump(start_block, EntityList<Value>::empty()),
             None,
             &ast.token,
         ));
@@ -638,7 +634,7 @@ impl<'a> FParser<'a> {
 
         if self.context.block.is_some() {
             self.add_inst(InstEnt::new(
-                IKind::Jump(start_block, ValueSlice::empty()),
+                IKind::Jump(start_block, EntityList<Value>::empty()),
                 None,
                 &ast.token,
             ));
@@ -655,14 +651,14 @@ impl<'a> FParser<'a> {
         Ok(value)
     }
 
-    fn if_expr(&mut self, fun: Fun, ast: &Ast) -> ExprResult {
+    fn if_expr(&mut self, fun: Fun, ast: Ast) -> ExprResult {
         let cond_expr = &ast[0];
         let cond_val = self.expr(fun, cond_expr)?;
         let cond_type = self.value(cond_val).ty;
 
         let then_block = self.new_block();
         self.add_inst(InstEnt::new(
-            IKind::JumpIfTrue(cond_val, then_block, ValueSlice::empty()),
+            IKind::JumpIfTrue(cond_val, then_block, EntityList<Value>::empty()),
             None,
             &cond_expr.token,
         ));
@@ -674,7 +670,7 @@ impl<'a> FParser<'a> {
         let else_branch = &ast[2];
         let else_block = if else_branch.kind == AKind::None {
             self.add_inst(InstEnt::new(
-                IKind::Jump(merge_block, ValueSlice::empty()),
+                IKind::Jump(merge_block, EntityList<Value>::empty()),
                 None,
                 &else_branch.token,
             ));
@@ -682,7 +678,7 @@ impl<'a> FParser<'a> {
         } else {
             let some_block = self.new_block();
             self.add_inst(InstEnt::new(
-                IKind::Jump(some_block, ValueSlice::empty()),
+                IKind::Jump(some_block, EntityList<Value>::empty()),
                 None,
                 &else_branch.token,
             ));
@@ -716,7 +712,7 @@ impl<'a> FParser<'a> {
             result = Some(value);
         } else if self.context.block.is_some() {
             self.add_inst(InstEnt::new(
-                IKind::Jump(merge_block, ValueSlice::empty()),
+                IKind::Jump(merge_block, EntityList<Value>::empty()),
                 None,
                 &ast.token,
             ));
@@ -754,7 +750,7 @@ impl<'a> FParser<'a> {
                         return Err(FError::new(FEKind::ExpectedValue, ast.token));
                     }
                     self.add_inst(InstEnt::new(
-                        IKind::Jump(merge_block, ValueSlice::empty()),
+                        IKind::Jump(merge_block, EntityList<Value>::empty()),
                         None,
                         &ast.token,
                     ));
@@ -767,7 +763,7 @@ impl<'a> FParser<'a> {
         Ok(result)
     }
 
-    fn call(&mut self, fun: Fun, ast: &Ast) -> ExprResult {
+    fn call(&mut self, fun: Fun, ast: Ast) -> ExprResult {
         let mut values = self.context.pool.get();
         for value in ast[1..].iter() {
             let value = self.expr(fun, value)?;
@@ -864,10 +860,10 @@ impl<'a> FParser<'a> {
         &mut self,
         fun: Fun,
         target: Option<Mod>,
-        caller: Option<Option<Type>>,
+        caller: Option<Option<Ty>>,
         salt: ID,
         name: &Span,
-        params: &[Type],
+        params: &[Ty],
         original_values: &[Value],
         token: &Token,
     ) -> ExprResult {
@@ -1050,7 +1046,7 @@ impl<'a> FParser<'a> {
             .add(ID(0))
             .add(self.state.modules[self.state.builtin_module].id);
         let pop = self.state.funs.index(pop).unwrap().clone();
-        self.add_inst(InstEnt::new(IKind::Call(pop, ValueSlice::empty()), None, &token));
+        self.add_inst(InstEnt::new(IKind::Call(pop, EntityList<Value>::empty()), None, &token));
     }
 
     fn gen_frame_push(&mut self, token: &Token) {
@@ -1092,7 +1088,7 @@ impl<'a> FParser<'a> {
         ));
     }
 
-    fn ident(&mut self, fun: Fun, ast: &Ast) -> ExprResult {
+    fn ident(&mut self, fun: Fun, ast: Ast) -> ExprResult {
         let module = self.fun(fun).module;
         let (target, caller, name) = self.parse_ident(module, ast)?;
         let can_be_local = target.is_none() && caller.is_none();
@@ -1126,8 +1122,8 @@ impl<'a> FParser<'a> {
     fn parse_ident(
         &mut self,
         module: Mod,
-        name: &Ast,
-    ) -> Result<(Option<Mod>, Option<Type>, Token)> {
+        name: Ast,
+    ) -> Result<(Option<Mod>, Option<Ty>, Token)> {
         if name.kind == AKind::Ident {
             Ok((None, None, name.token))
         } else {
@@ -1254,7 +1250,7 @@ impl<'a> FParser<'a> {
         }
     }
 
-    fn lit(&mut self, ast: &Ast) -> ExprResult {
+    fn lit(&mut self, ast: Ast) -> ExprResult {
         let ty = match ast.token.kind {
             LTKind::Int(_, base) => match base {
                 8 => self.state.builtin_repo.i8,
@@ -1291,7 +1287,7 @@ impl<'a> FParser<'a> {
         Ok(Some(value))
     }
 
-    fn binary_op(&mut self, fun: Fun, ast: &Ast) -> ExprResult {
+    fn binary_op(&mut self, fun: Fun, ast: Ast) -> ExprResult {
         match self.state.display(&ast[0].token.span) {
             "=" => return self.assignment(fun, ast),
             "as" => return self.bit_cast(fun, ast),
@@ -1316,7 +1312,7 @@ impl<'a> FParser<'a> {
         )
     }
 
-    fn bit_cast(&mut self, fun: Fun, ast: &Ast) -> ExprResult {
+    fn bit_cast(&mut self, fun: Fun, ast: Ast) -> ExprResult {
         let module = self.fun(fun).module;
         let target = self.expr(fun, &ast[1])?;
         let ty = self.parse_type(module, &ast[2])?;
@@ -1345,7 +1341,7 @@ impl<'a> FParser<'a> {
         value: Value,
         token: &Token,
         module: Mod,
-    ) -> Result<Type> {
+    ) -> Result<Ty> {
         let mutable = self.value(header).mutable || self.base_of(self.value(header).ty).is_some();
         let header_datatype = self.value(header).ty;
         let mut path = vec![];
@@ -1406,13 +1402,13 @@ impl<'a> FParser<'a> {
         Ok(current_type)
     }
 
-    pub fn add_variable(&mut self, name: ID, ty: Type, mutable: bool) -> Value {
+    pub fn add_variable(&mut self, name: ID, ty: Ty, mutable: bool) -> Value {
         let val = self.new_value(name, ty, mutable);
         self.context.vars.push(val);
         val
     }
 
-    fn assignment(&mut self, fun: Fun, ast: &Ast) -> ExprResult {
+    fn assignment(&mut self, fun: Fun, ast: Ast) -> ExprResult {
         let target = self.expr(fun, &ast[1])?;
         let value = self.expr(fun, &ast[2])?;
         let target_datatype = self.value(target).ty;
@@ -1435,17 +1431,17 @@ impl<'a> FParser<'a> {
     }
 
     #[inline]
-    fn new_temp_value(&mut self, ty: Type) -> Value {
+    fn new_temp_value(&mut self, ty: Ty) -> Value {
         self.new_anonymous_value(ty, false)
     }
 
     #[inline]
-    fn new_anonymous_value(&mut self, ty: Type, mutable: bool) -> Value {
+    fn new_anonymous_value(&mut self, ty: Ty, mutable: bool) -> Value {
         self.new_value(ID(0), ty, mutable)
     }
 
     #[inline]
-    fn new_value(&mut self, name: ID, ty: Type, mutable: bool) -> Value {
+    fn new_value(&mut self, name: ID, ty: Ty, mutable: bool) -> Value {
         let value = ValueEnt::new(name, ty, mutable);
         self.context.body.values.add(value)
     }
@@ -1506,8 +1502,8 @@ impl<'a> FParser<'a> {
     fn create(
         &mut self,
         fun: Fun,
-        explicit_params: &[Type],
-        values: &[Type],
+        explicit_params: &[Ty],
+        values: &[Ty],
     ) -> Result<Option<Fun>> {
         let g_ent = self.state.funs[fun].kind.generic_mut();
         let g_ent_len = g_ent.signature.elements.len();
@@ -1626,7 +1622,7 @@ impl<'a> FParser<'a> {
         self.fun_mut(fun).kind.generic_mut().signature.params = g_params;
 
         if let Some(scope) = scope {
-            let ty = unsafe { std::mem::transmute::<&Ast, &Ast>(&self.collector.scopes[scope].ty) };
+            let ty = unsafe { std::mem::transmute::<Ast, Ast>(&self.collector.scopes[scope].ty) };
             let ty = self.parse_type(module, ty)?;
             let id = TYPE_SALT.add(ID::new("Self")).add(fun_module_id);
             shadowed.push((id, self.state.types.link(id, ty)));
@@ -1681,7 +1677,7 @@ impl<'a> FParser<'a> {
         Ok(Some(id))
     }
 
-    fn assert_type(&self, actual: Type, expected: Type, token: &Token) -> Result {
+    fn assert_type(&self, actual: Ty, expected: Ty, token: &Token) -> Result {
         if actual == expected {
             Ok(())
         } else {
@@ -2016,7 +2012,7 @@ impl<'a> FParser<'a> {
             &[] => {
                 let value = signature.ret.map(|ty| self.new_temp_value(ty));
                 self.add_inst(InstEnt::new(
-                    IKind::Call(id, ValueSlice::empty()),
+                    IKind::Call(id, EntityList<Value>::empty()),
                     value,
                     &self.fun(id).hint,
                 ));
@@ -2062,11 +2058,11 @@ impl<'a> FParser<'a> {
         Ok(())
     }
 
-    fn make_value_slice(&mut self, values: &[Value]) -> ValueSlice {
+    fn make_value_slice(&mut self, values: &[Value]) -> EntityList<Value> {
         self.context.body.slices.add(values)
     }
 
-    fn parse_signature(&mut self, module: Mod, header: &Ast) -> Result<Signature> {
+    fn parse_signature(&mut self, module: Mod, header: Ast) -> Result<Signature> {
         let mut args = self.context.pool.get();
 
         for arg_section in &header[1..header.len() - 2] {
@@ -2094,7 +2090,7 @@ impl<'a> FParser<'a> {
         &mut self,
         module: Mod,
         scope: Option<Scope>,
-        ast: &Ast,
+        ast: Ast,
         params: &[ID],
         buffer: &mut Vec<GenericElement>,
     ) -> Result {
@@ -2115,7 +2111,7 @@ impl<'a> FParser<'a> {
                 AKind::Ident => {
                     if ast.token.span.hash == ID::new("Self") && scope.is_some() {
                         let ast = unsafe {
-                            std::mem::transmute::<&Ast, &Ast>(
+                            std::mem::transmute::<Ast, Ast>(
                                 &self.collector.scopes[scope.unwrap()].ty,
                             )
                         };
@@ -2158,9 +2154,9 @@ impl<'a> FParser<'a> {
 
     fn load_arg_from_datatype(
         &mut self,
-        ty: Type,
+        ty: Ty,
         arg_buffer: &mut Vec<GenericElement>,
-        stack: &mut Vec<(Type, bool)>,
+        stack: &mut Vec<(Ty, bool)>,
     ) {
         stack.push((ty, false));
 
@@ -2216,35 +2212,35 @@ impl<'a> FParser<'a> {
             .ok_or_else(|| self.context.loops.is_empty())
     }
 
-    fn base_of_err(&mut self, ty: Type, token: &Token) -> Result<Type> {
+    fn base_of_err(&mut self, ty: Ty, token: &Token) -> Result<Ty> {
         self.base_of(ty)
             .ok_or_else(|| FError::new(FEKind::NonPointerDereference, *token))
     }
 
-    fn base_of(&self, ty: Type) -> Option<Type> {
+    fn base_of(&self, ty: Ty) -> Option<Ty> {
         match self.ty(ty).kind {
             TKind::Pointer(pointed) => Some(pointed),
             _ => None,
         }
     }
 
-    fn parse_type(&mut self, module: Mod, ast: &Ast) -> Result<Type> {
+    fn parse_type(&mut self, module: Mod, ast: Ast) -> Result<Ty> {
         TParser::new(self.state, self.context, self.collector)
             .parse_type(module, ast)
             .map(|t| t.1)
             .map_err(|err| FError::new(FEKind::TypeError(err), Token::default()))
     }
 
-    fn pointer_of(&mut self, ty: Type) -> Type {
+    fn pointer_of(&mut self, ty: Ty) -> Ty {
         self.state.pointer_of(ty)
     }
 
-    fn constant_of(&mut self, constant: TypeConst) -> Type {
+    fn constant_of(&mut self, constant: TypeConst) -> Ty {
         self.state.constant_of(constant)
     }
 
     #[inline]
-    pub fn is_pointer(&self, ty: Type) -> bool {
+    pub fn is_pointer(&self, ty: Ty) -> bool {
         matches!(self.ty(ty).kind, TKind::Pointer(..))
     }
 
@@ -2267,7 +2263,7 @@ impl<'a> FParser<'a> {
             .cloned()
     }
 
-    fn ty(&self, ty: Type) -> &TypeEnt {
+    fn ty(&self, ty: Ty) -> &TypeEnt {
         &self.state.types[ty]
     }
 
@@ -2287,11 +2283,11 @@ impl<'a> FParser<'a> {
         &mut self.context.body.values[value]
     }
 
-    fn array_of(&mut self, ty: Type, length: usize) -> Type {
+    fn array_of(&mut self, ty: Ty, length: usize) -> Ty {
         self.state.array_of(ty, length)
     }
 
-    fn function_type_of(&mut self, module: Mod, fun: Fun) -> Type {
+    fn function_type_of(&mut self, module: Mod, fun: Fun) -> Ty {
         let sig = self.signature_of(fun).clone();
         self.state.function_type_of(module, sig)
     }
@@ -2365,9 +2361,9 @@ impl<'a> FParser<'a> {
         Ok(())
     }
 
-    fn value_slice(&self, args: ValueSlice) -> &[Value] {
+    fn value_slice(&self, args: EntityList<Value>) -> &[Value] {
         &self.context.body.slices[args]
-    }
+    }*/
 }
 
 impl<'a> ItemSearch<Fun> for FParser<'a> {
@@ -2384,8 +2380,8 @@ impl<'a> ItemSearch<Fun> for FParser<'a> {
     }
 }
 
-impl<'a> ItemSearch<Global> for FParser<'a> {
-    fn find(&self, id: ID) -> Option<Global> {
+impl<'a> ItemSearch<GlobalValue> for FParser<'a> {
+    fn find(&self, id: ID) -> Option<GlobalValue> {
         self.state.globals.index(id).cloned()
     }
 
@@ -2619,16 +2615,32 @@ crate::def_displayer!(
             writeln!(
                 f,
                 "function argument types are '({})' but you provided '({})'",
-                sig.args.iter().map(|&a| format!("{}", TypeDisplay::new(&self.state, a))).collect::<Vec<_>>().join(", "),
-                arguments.iter().map(|&a| format!("{}", TypeDisplay::new(&self.state, a))).collect::<Vec<_>>().join(", ")
+                sig.args
+                    .as_slice(&self.state.type_slices)
+                    .iter()
+                    .map(|&a| format!("{}", TypeDisplay::new(&self.state, a)))
+                    .collect::<Vec<_>>().join(", "),
+                arguments
+                    .iter()
+                    .map(|&a| format!("{}", TypeDisplay::new(&self.state, a)))
+                    .collect::<Vec<_>>().join(", ")
             )?;
         },
         FEKind::FunPointerArgMismatch(ty, arguments) => {
             writeln!(
                 f,
                 "function pointer argument types are '({})' but you provided '({})'",
-                self.state.types[*ty].kind.fun_pointer().args.iter().map(|&a| format!("{}", TypeDisplay::new(&self.state, a))).collect::<Vec<_>>().join(", "),
-                arguments.iter().map(|&a| format!("{}", TypeDisplay::new(&self.state, a))).collect::<Vec<_>>().join(", ")
+                self.state.types[*ty].kind
+                    .fun_pointer()
+                    .args.as_slice(&self.state.type_slices)
+                    .iter()
+                    .map(|&a| format!("{}", TypeDisplay::new(&self.state, a)))
+                    .collect::<Vec<_>>().join(", "),
+                arguments
+                    .iter()
+                    .map(|&a| format!("{}", TypeDisplay::new(&self.state, a)))
+                    .collect::<Vec<_>>()
+                    .join(", ")
             )?;
         },
         FEKind::ExpectedFunctionPointer => {
@@ -2651,9 +2663,9 @@ impl FError {
 
 #[derive(Debug)]
 pub enum FEKind {
-    FunPointerArgMismatch(Type, Vec<Type>),
+    FunPointerArgMismatch(Ty, Vec<Ty>),
     ExpectedFunctionPointer,
-    FunArgMismatch(Fun, Vec<Type>),
+    FunArgMismatch(Fun, Vec<Ty>),
     GlobalVisibilityViolation,
     FieldVisibilityViolation,
     VisibilityViolation,
@@ -2673,15 +2685,15 @@ pub enum FEKind {
     InvalidBitCast(Size, Size),
     AssignToImmutable,
     ExpectedValue,
-    TypeMismatch(Type, Type),
-    FunctionNotFound(Span, Vec<Type>),
-    GenericMismatch(Span, Vec<Type>),
+    TypeMismatch(Ty, Ty),
+    FunctionNotFound(Span, Vec<Ty>),
+    GenericMismatch(Span, Vec<Ty>),
     UnexpectedValue,
     UnexpectedReturnValue,
     UnexpectedAuto,
     UndefinedVariable,
     UnresolvedType,
-    UnknownField(Type),
+    UnknownField(Ty),
     MutableRefOfImmutable,
     MissingElseBranch,
     ContinueOutsideLoop,
@@ -2690,7 +2702,7 @@ pub enum FEKind {
     NonPointerDereference,
     InvalidFunctionHeader,
     AmbiguousFunction(Fun, Fun),
-    AmbiguousGlobal(Global, Global),
+    AmbiguousGlobal(GlobalValue, GlobalValue),
 }
 
 pub enum DotInstr {
@@ -2699,42 +2711,139 @@ pub enum DotInstr {
     Ref,
 }
 
-crate::impl_entity!(Fun);
-
-#[derive(Debug, Clone, QuickDefault, QuickSer)]
+#[derive(Debug, Clone, QuickSer)]
 pub struct FunEnt {
     pub id: ID,
     pub module: Mod,
     pub hint: Token,
-    pub params: Vec<(ID, Type)>,
+    pub params: Vec<(ID, Ty)>,
     pub kind: FKind,
     pub name: Span,
-    pub attrs: Attrs,
-    pub scope: Option<Scope>,
+    pub attrs: Ast,
+    pub scope: Ast,
     pub alias: Option<Span>,
     pub vis: Vis,
-    #[default(LinkageWr(Linkage::Export))]
-    pub linkage: LinkageWr,
+    pub linkage: Linkage,
     pub untraced: bool,
     pub inline: bool,
 }
 
-crate::impl_wrapper!(LinkageWr, Linkage);
+impl Default for FunEnt {
+    fn default() -> Self {
+        FunEnt {
+            id: ID::default(),
+            module: Mod::reserved_value(),
+            hint: Token::default(),
+            params: Vec::default(),
+            kind: Default::default(),
+            name: Span::default(),
+            attrs: Ast::reserved_value(),
+            scope: Ast::reserved_value(),
+            alias: None,
+            vis: Vis::default(),
+            linkage: Linkage::default(),
+            untraced: false,
+            inline: false,
+        }
+    }
+}
 
-type ValueSlice = Range<Value>;
-
-#[derive(Debug, Default, Clone, QuickSer)]
+#[derive(Debug, QuickDefault, Clone, Copy, RealQuickSer)]
 pub struct FunBody {
-    pub values: PrimaryMap<Value, ValueEnt>,
-    pub insts: LinkedList<Inst, InstEnt>,
-    pub slices: ImSlicePool<Value, Value>
+    pub current_block: PackedOption<Block>,
+    pub entry_block: PackedOption<Block>,
+    pub last_block: PackedOption<Block>,
+    
+    pub used_blocks: EntityList<Block>,
+    pub used_insts: EntityList<Inst>,
+    pub used_values: EntityList<Value>,
 }
 
 impl FunBody {
-    pub fn clear(&mut self) {
-        self.values.clear();
-        self.insts.clear();
+    pub fn clear(&mut self, state: &mut FState) {
+        self.entry_block = PackedOption::default();
+        self.last_block = PackedOption::default();
+        self.current_block = PackedOption::default();
+        
+        state.free_blocks.extend_from_slice(self.used_blocks.as_slice(&state.block_slices));
+        state.free_insts.extend_from_slice(self.used_insts.as_slice(&state.inst_slices));
+        state.free_values.extend_from_slice(self.used_values.as_slice(&state.value_slices));
     }
+
+    /*pub fn new_block(&mut self) -> Block {
+        let block = self.blocks.push(BlockEnt::default());
+
+        if self.entry_block.is_none() {
+            self.entry_block = PackedOption::from(block);
+            self.last_block = PackedOption::from(block);
+        } else {
+            let last = self.last_block.unwrap();
+            self.blocks[last].next = PackedOption::from(block);
+            self.blocks[block].prev = PackedOption::from(last);
+            self.last_block = PackedOption::from(block);
+        }
+
+        block
+    }
+
+    pub fn select_block(&mut self, block: Block) {
+        self.current_block = PackedOption::from(block);
+    }
+
+    pub fn add_valueless_inst(&mut self, kind: IKind, token: Token) -> Inst {
+        self.add_inst_low(kind, Default::default(), token)
+    }
+
+    pub fn add_inst(&mut self, kind: IKind, value: Value, hint: Token) -> Inst {
+        self.add_inst_low(kind, PackedOption::from(value), hint)
+    }
+
+    pub fn add_inst_low(&mut self, kind: IKind, value: PackedOption<Value>, hint: Token) -> Inst {
+        let inst = self.insts.push(InstEnt {
+            kind,
+            value,
+            hint,
+            
+            ..Default::default()
+        });
+        
+        let last = self.current_block.unwrap();
+        let block = &mut self.blocks[last];
+        
+        if block.end.is_none() {
+            block.start = PackedOption::from(inst);
+            block.end = PackedOption::from(inst);
+        } else {
+            let last = block.end.unwrap();
+            self.insts[last].next = PackedOption::from(inst);
+            self.insts[inst].prev = PackedOption::from(last);
+            block.end = PackedOption::from(inst);
+        }
+
+        inst
+    }
+
+    pub fn add_temp_value(&mut self, ty: Ty) -> Value {
+        self.add_anon_value(ty, false)
+    }
+
+    pub fn add_anon_value(&mut self, ty: Ty, mutable: bool) -> Value {
+        self.add_value(ID(0), ty, mutable)
+    }
+
+    pub fn add_value(&mut self, id: ID, ty: Ty, mutable: bool) -> Value {
+        self.values.push(ValueEnt {
+            id,
+            ty,
+            mutable,
+
+            ..Default::default()
+        })
+    }
+
+    pub fn add_args(&mut self, slice: &[Value]) -> EntityList<Value> {
+        EntityList::from_slice(slice, &mut self.args)
+    }*/
 }
 
 #[derive(Debug, Clone, QuickEnumGets, QuickSer)]
@@ -2755,14 +2864,12 @@ impl Default for FKind {
 #[derive(Debug, Clone, Default, QuickSer)]
 pub struct NFun {
     pub sig: Signature,
-    pub ast: GAst,
 }
 
 #[derive(Debug, Clone, Default, QuickSer)]
 pub struct GFun {
     pub call_conv: CallConv,
     pub signature: GenericSignature,
-    pub ast: GAst,
 }
 
 #[derive(Debug, Clone, QuickSer)]
@@ -2770,32 +2877,6 @@ pub struct RFun {
     pub sig: Signature,
     pub body: FunBody,
     pub compiled: Option<CFun>,
-}
-
-impl RFun {
-    pub fn value(&self, value: Value) -> &ValueEnt {
-        &self.body.values[value]
-    }
-
-    pub fn value_mut(&mut self, value: Value) -> &mut ValueEnt {
-        &mut self.body.values[value]
-    }
-
-    pub fn inst(&self, inst: Inst) -> &InstEnt {
-        &self.body.insts[inst]
-    }
-
-    pub fn inst_mut(&mut self, inst: Inst) -> &mut InstEnt {
-        &mut self.body.insts[inst]
-    }
-
-    pub fn slice(&self, slice: ValueSlice) -> &[Value] {
-        &self.body.slices[slice]
-    }
-
-    pub fn slice_mut(&mut self, slice: ValueSlice) -> &mut [Value] {
-        &mut self.body.slices[slice]
-    }
 }
 
 #[derive(Debug, Clone, QuickDefault, QuickSer)]
@@ -2842,9 +2923,9 @@ pub enum GenericElement {
     ScopeStart,
     ScopeEnd,
     Pointer,
-    Array(Option<Type>),
+    Array(Option<Ty>),
     ArraySize(u32),
-    Element(Type, Option<Type>),
+    Element(Ty, Option<Ty>),
     Parameter(usize),
     NextArgument(usize, usize), // amount of arguments, amount of elements for representation
 }
@@ -2859,34 +2940,23 @@ impl GenericElement {
     }
 }
 
-crate::impl_entity!(Inst);
-
 #[derive(Debug, Default, Clone, Copy, RealQuickSer)]
 pub struct InstEnt {
     pub kind: IKind,
-    pub value: Option<Value>,
+    pub value: PackedOption<Value>,
     pub hint: Token,
-    pub unresolved: usize,
-}
-
-impl InstEnt {
-    pub fn new(kind: IKind, value: Option<Value>, hint: &Token) -> Self {
-        Self {
-            kind,
-            value,
-            hint: hint.clone(),
-            unresolved: 0,
-        }
-    }
+    prev: PackedOption<Inst>,
+    next: PackedOption<Inst>,
+    block: PackedOption<Block>,
 }
 
 #[derive(Debug, Clone, Copy, RealQuickSer)]
 pub enum IKind {
     NoOp,
     FunPointer(Fun),
-    FunPointerCall(Value, ValueSlice),
-    GlobalLoad(Global),
-    Call(Fun, ValueSlice),
+    FunPointerCall(Value, EntityList<Value>),
+    GlobalLoad(GlobalValue),
+    Call(Fun, EntityList<Value>),
     UnresolvedDot(Value, ID),
     VarDecl(Value),
     Zeroed,
@@ -2894,10 +2964,8 @@ pub enum IKind {
     Lit(LTKind),
     Return(Option<Value>),
     Assign(Value),
-    Block(Block),
-    BlockEnd(Inst),
-    Jump(Inst, ValueSlice),
-    JumpIfTrue(Value, Inst, ValueSlice),
+    Jump(Block, EntityList<Value>),
+    JumpIfTrue(Value, Block, EntityList<Value>),
     Offset(Value),
     Deref(Value, bool),
     Ref(Value),
@@ -2908,20 +2976,6 @@ impl IKind {
     pub fn is_closing(&self) -> bool {
         matches!(self, IKind::Jump(..) | IKind::Return(..))
     }
-
-    pub fn block(&self) -> &Block {
-        match self {
-            IKind::Block(block) => block,
-            _ => panic!("cannot access block on {:?}", self),
-        }
-    }
-
-    pub fn block_mut(&mut self) -> &mut Block {
-        match self {
-            IKind::Block(block) => block,
-            _ => panic!("cannot access block on {:?}", self),
-        }
-    }
 }
 
 impl Default for IKind {
@@ -2931,57 +2985,44 @@ impl Default for IKind {
 }
 
 #[derive(Debug, Clone, Copy, Default, RealQuickSer)]
-pub struct Block {
-    pub block: Option<CrBlockWr>,
-    pub args: ValueSlice,
-    pub end: Option<Inst>,
+pub struct BlockEnt {
+    pub block: PackedOption<Block>,
+    
+    pub prev: PackedOption<Block>,
+    pub next: PackedOption<Block>,
+    
+    pub args: EntityList<Value>,
+    
+    pub start: PackedOption<Inst>,
+    pub end: PackedOption<Inst>,
 }
-
-crate::impl_wrapper!(CrBlockWr, CrBlock);
 
 #[derive(Debug, Clone)]
 pub struct Loop {
     name: ID,
-    start_block: Inst,
-    end_block: Inst,
+    start_block: Block,
+    end_block: Block,
 }
 
-crate::impl_entity!(Value);
 
-#[derive(Debug, Clone, Default, QuickSer)]
+
+#[derive(Debug, Clone, QuickDefault, QuickSer)]
 pub struct ValueEnt {
     pub id: ID,
-    pub ty: Type,
-    pub inst: Option<Inst>,
-    pub value: FinalValue,
+    #[default(Ty::reserved_value())]
+    pub ty: Ty,
+    #[default(Inst::reserved_value())]
+    pub inst: Inst,
     pub offset: Size,
     pub mutable: bool,
     pub on_stack: bool,
 }
 
 impl ValueEnt {
-    pub fn new(name: ID, ty: Type, mutable: bool) -> Self {
+    pub fn temp(ty: Ty) -> Self {
         Self {
-            id: name,
             ty,
-            mutable,
-
-            inst: None,
-            value: FinalValue::None,
-            offset: Size::ZERO,
-            on_stack: false,
-        }
-    }
-
-    pub fn temp(ty: Type) -> Self {
-        Self {
-            id: ID(0),
-            ty,
-            inst: None,
-            value: FinalValue::None,
-            offset: Size::ZERO,
-            mutable: false,
-            on_stack: false,
+            ..Default::default()
         }
     }
 }
@@ -2990,8 +3031,8 @@ impl ValueEnt {
 pub enum FinalValue {
     None,
     Zero,
-    Value(CrValue),
-    Pointer(CrValue),
+    Value(Value),
+    Pointer(Value),
     Var(CrVar),
     StackSlot(StackSlot),
 }
@@ -3002,42 +3043,78 @@ impl Default for FinalValue {
     }
 }
 
-crate::impl_entity!(Global);
 
-#[derive(Debug, Clone, QuickDefault, QuickSer)]
+
+#[derive(Debug, Clone, Copy, RealQuickSer)]
 pub struct GlobalEnt {
     pub id: ID,
     pub vis: Vis,
     pub mutable: bool,
     pub module: Mod,
-    pub ast: Ast,
-    pub data_id: Option<DataIdWr>,   
-    pub ty: Type,
+    pub data_id: DataId,
+    pub ty: Ty,
     pub hint: Token,
-    pub attrs: Attrs,
-    pub scope: Option<Scope>,
-    #[default(LinkageWr(Linkage::Export))]
-    pub linkage: LinkageWr,
+    pub ast: Ast,
+    pub attrs: Ast,
+    pub scope: Ast,
     pub alias: Option<Span>,
-
+    pub linkage: Linkage,
 }
 
-crate::impl_wrapper!(DataIdWr, DataId);
+impl Default for GlobalEnt {
+    fn default() -> Self {
+        Self {
+            id: ID(0),
+            vis: Vis::Public,
+            mutable: false,
+            module: Mod::reserved_value(),
+            data_id: DataId::reserved_value(),
+            ty: Ty::reserved_value(),
+            hint: Token::default(),
+            ast: Ast::reserved_value(),
+            attrs: Ast::reserved_value(),
+            scope: Ast::reserved_value(),
+            alias: None,
+            linkage: Linkage::Export,
+        }
+    }
+}
 
-#[derive(Debug, Clone, Copy, Default, RealQuickSer)]
+#[derive(Debug, Clone, Copy, RealQuickSer)]
 pub struct MainFunData {
     id: Fun,
     arg1: Value,
     arg2: Value,
     return_value: Value,
-    current_block: Option<Inst>,
+}
+
+impl Default for MainFunData {
+    fn default() -> Self {
+        Self {
+            id: Fun::reserved_value(),
+            arg1: Value::reserved_value(),
+            arg2: Value::reserved_value(),
+            return_value: Value::reserved_value(),
+        }
+    }
 }
 
 #[derive(QuickSer)]
 pub struct FState {
     pub t_state: TState,
     pub funs: Table<Fun, FunEnt>,
-    pub globals: Table<Global, GlobalEnt>,
+    pub globals: Table<GlobalValue, GlobalEnt>,
+    
+    pub values: PrimaryMap<Value, ValueEnt>,
+    pub insts: PrimaryMap<Inst, InstEnt>,
+    pub blocks: PrimaryMap<Block, BlockEnt>,
+    pub free_values: Vec<Value>,
+    pub free_blocks: Vec<Block>,
+    pub free_insts: Vec<Inst>,
+    pub value_slices: ListPool<Value>,
+    pub block_slices: ListPool<Block>,
+    pub inst_slices: ListPool<Inst>,
+
     pub main_fun_data: MainFunData,
     pub index_span: Span,
     pub do_stacktrace: bool,
@@ -3045,7 +3122,7 @@ pub struct FState {
 
 crate::inherit!(FState, t_state, TState);
 
-impl Default for FState {
+/*impl Default for FState {
     fn default() -> Self {
         let mut state = Self {
             t_state: TState::default(),
@@ -3061,26 +3138,24 @@ impl Default for FState {
 
         let arg1 = body
             .values
-            .add(ValueEnt::temp(state.builtin_repo.int));
+            .push(ValueEnt::temp(state.builtin_repo.int));
         let arg2 = body
             .values
-            .add(ValueEnt::temp(state.builtin_repo.int));
+            .push(ValueEnt::temp(state.builtin_repo.int));
 
-        let args = body.slices.add(&[arg1, arg2]);
+        let args = body.add_args(&[arg1, arg2]);
 
-        let entry_point = body.insts.push(InstEnt::new(
-            IKind::Block(Block {
-                block: None,
-                args,
-                end: None,
-            }),
-            None,
-            &Token::default(),
-        ));
+        let entry_block = BlockEnt {
+            args,
+            
+            ..Default::default()
+        };
+
+        body.entry_block = body.blocks.push(entry_block);
 
         let zero_value = body
             .values
-            .add(ValueEnt::temp(state.builtin_repo.int));
+            .push(ValueEnt::temp(state.builtin_repo.int));
         body.insts.push(InstEnt::new(
             IKind::Zeroed,
             Some(zero_value),
@@ -3089,7 +3164,12 @@ impl Default for FState {
         let return_value =
             body
                 .values
-                .add(ValueEnt::new(ID(0), state.builtin_repo.int, true));
+                .push(ValueEnt {
+                    ty: state.builtin_repo.int,
+                    mutable: true,
+
+                    ..Default::default()
+                });
         body.insts.push(InstEnt::new(
             IKind::VarDecl(zero_value),
             Some(return_value),
@@ -3127,7 +3207,6 @@ impl Default for FState {
             arg1,
             arg2,
             return_value,
-            current_block: Some(entry_point),
         };
 
         let span = state.builtin_span("__index__");
@@ -3143,8 +3222,8 @@ impl Default for FState {
             module: ID,
             salt: ID,
             name: Span,
-            args: &[Type],
-            ret: Option<Type>,
+            args: &[Ty],
+            ret: Option<Ty>,
         ) {
             let id = salt.add(name.hash).add(state.types[args[0]].id).add(module);
             let sig = Signature {
@@ -3250,7 +3329,7 @@ impl Default for FState {
 
         state
     }
-}
+}*/
 
 #[derive(Default)]
 pub struct FContext {
@@ -3260,25 +3339,14 @@ pub struct FContext {
     pub frames: Vec<usize>,
     pub body: FunBody,
     pub block: Option<Inst>,
-    pub unresolved_globals: Vec<Global>,
-    pub resolved_globals: Vec<Global>,
+    pub unresolved_globals: Vec<GlobalValue>,
+    pub resolved_globals: Vec<GlobalValue>,
     pub unresolved: Vec<Fun>,
     pub entry_points: Vec<Fun>,
     pub represented: Vec<Fun>,
 }
 
 crate::inherit!(FContext, t_context, TContext);
-
-pub fn assert_attr_len(attr: &Ast, len: usize) -> Result {
-    if attr.len() - 1 < len {
-        Err(FError::new(
-            FEKind::TooShortAttribute(attr.len(), len),
-            attr.token,
-        ))
-    } else {
-        Ok(())
-    }
-}
 
 pub struct FunDisplay<'a> {
     pub state: &'a FState,
@@ -3291,7 +3359,7 @@ impl<'a> FunDisplay<'a> {
     }
 }
 
-impl std::fmt::Display for FunDisplay<'_> {
+/*impl std::fmt::Display for FunDisplay<'_> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         let fun = &self.state.funs[self.fun];
         let r_ent = fun.kind.represented();
@@ -3301,19 +3369,13 @@ impl std::fmt::Display for FunDisplay<'_> {
 
         for (i, inst) in r_ent.body.insts.iter() {
             match &inst.kind {
-                IKind::Block(block) => {
-                    writeln!(f, "  {}{:?}", i, block.args)?;
-                }
-                IKind::BlockEnd(_) => {
-                    writeln!(f)?;
-                }
                 _ => {
-                    if let Some(value) = inst.value {
-                        let ty = TypeDisplay::new(&self.state, r_ent.body.values[value].ty);
+                    if inst.value.is_some() {
+                        let ty = TypeDisplay::new(&self.state, r_ent.body.values[inst.value.unwrap()].ty);
                         writeln!(
                             f,
                             "    {:?}: {} = {:?} |{}",
-                            value,
+                            inst.value.unwrap(),
                             ty,
                             inst.kind,
                             self.state.display(&inst.hint.span)
@@ -3332,9 +3394,10 @@ impl std::fmt::Display for FunDisplay<'_> {
 
         Ok(())
     }
-}
+}*/
 
 pub fn test() {
+    /*
     let mut state = FState::default();
     let mut context = FContext::default();
 
@@ -3358,5 +3421,5 @@ pub fn test() {
             .parse(module)
             .map_err(|e| println!("{}", FErrorDisplay::new(&mut state, &e)))
             .unwrap();
-    }
+    }*/
 }

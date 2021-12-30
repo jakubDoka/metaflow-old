@@ -2,9 +2,6 @@ use std::cmp::Ordering;
 
 use quick_proc::RealQuickSer;
 
-
-
-
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Default, Hash, RealQuickSer)]
 pub struct ID(pub u64);
 

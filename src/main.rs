@@ -3,14 +3,14 @@
 //use gen::GErrorDisplay;
 
 pub mod ast;
-//pub mod collector;
 //pub mod functions;
 //pub mod gen;
-//pub mod incr;
+pub mod incr;
+pub mod entities;
 pub mod lexer;
-//pub mod module_tree;
+pub mod module_tree;
 pub mod testing;
-//pub mod types;
+pub mod types;
 pub mod util;
 
 pub const FILE_EXTENSION: &str = ".pmt";
@@ -46,8 +46,8 @@ fn test() {
     util::test();
     lexer::test();
     ast::test();
-    //module_tree::test();
-    //types::test();
+    module_tree::test();
+    types::test();
     //functions::test();
     //gen::test();
 }
