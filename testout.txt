@@ -1624,7 +1624,6 @@ Ok(Arguments { _filename: "file", hash: ID(0), flags: [], field_flags: [], args:
 | hello there
 |   "
 | ^^^^^^^^^^^
-0.109588
 ===global===
 None
 None
@@ -1649,7 +1648,6 @@ VarStatement(None, false) "let hello = \"hello\"":
   Group "=":
    Lit "\"hello\""
 ===type===
-None
 Group "":
  Comment "##[\r\n  multiline doc comment\r\n]#"
 StructDeclaration(None) "struct":
@@ -1657,14 +1655,12 @@ StructDeclaration(None) "struct":
  None
 ===type===
 None
-None
 StructDeclaration(None) "struct":
  Instantiation "Template[T]":
   Ident "Template"
   Ident "T"
  None
 ===type===
-None
 None
 StructDeclaration(None) "struct":
  Ident "Foo"
@@ -1675,7 +1671,6 @@ StructDeclaration(None) "struct":
    Ident "c"
    Ident "int"
 ===type===
-None
 None
 StructDeclaration(None) "struct":
  Ident "Goo"
