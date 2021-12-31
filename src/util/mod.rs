@@ -134,6 +134,12 @@ macro_rules! impl_entity {
         #[derive(Clone, Copy, Debug, PartialEq, Eq, RealQuickSer)]
         pub struct $name(u32);
 
+        impl Default for $name {
+            fn default() -> Self {
+                Self::reserved_value()
+            }
+        }
+
         cranelift::entity::entity_impl!($name);
     };
 }

@@ -626,6 +626,7 @@ impl PartialEq<TKind> for Token {
 
 #[derive(Debug, Clone, Copy, PartialEq, RealQuickSer)]
 pub enum TKind {
+    // keywords
     Pub,
     Priv,
     Use,
@@ -645,10 +646,12 @@ pub enum TKind {
     Embed,
     Impl,
 
+    //identifiers
     Label,
     Ident,
     Op,
 
+    // punctuation
     LPar,
     RPar,
     LCurly,
@@ -661,6 +664,7 @@ pub enum TKind {
     RArrow,
     Dot,
 
+    // literals
     Int(i64, u16),
     Uint(u64, u16),
     Float(f64, u16),
@@ -668,11 +672,12 @@ pub enum TKind {
     Char(char),
     String(Span),
 
+    // others
     Comment(bool),
     Indent(usize),
-
     Group,
 
+    // errors
     Eof,
     Error,
     None,

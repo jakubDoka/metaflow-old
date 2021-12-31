@@ -13,8 +13,9 @@ use cranelift::codegen::ir::Signature as CrSignature;
 use cranelift::codegen::ir::{types::*, AbiParam, ArgumentPurpose};
 use cranelift::codegen::isa::CallConv as CrCallConv;
 use cranelift::codegen::isa::TargetIsa;
+use cranelift::codegen::packed_option::PackedOption;
 use cranelift::entity::{packed_option::ReservedValue, EntityRef};
-use cranelift::entity::{EntityList, ListPool};
+use cranelift::entity::EntityList;
 use quick_proc::{QuickDefault, QuickEnumGets, QuickSer, RealQuickSer};
 
 type Result<T = ()> = std::result::Result<T, TError>;
@@ -60,13 +61,10 @@ impl<'a> TParser<'a> {
         if module.as_u32() == 0 {
             return
         }
-        let mut types = self.modules[module].types;
-        let types_len = self.slice_len(types);
-        for i in 0..types_len {
-            let ty = self.get(types, i);
+        let mut types = std::mem::take(&mut self.modules[module].types);
+        for ty in types.drain(..) {
             self.remove_type(ty);
         }
-        types.clear(&mut self.type_slices);
         self.modules[module].types = types;
     }
 
@@ -215,7 +213,7 @@ impl<'a> TParser<'a> {
 
         let module_id = module_ent.id;
         let params = self.state.types[id].params;
-        let params_len = params.len(&self.type_slices);
+        let params_len = module_ent.type_slice(params).len();
         let mut shadowed = self.context.pool.get();
 
         let header = module_ent.son(ast, 0);
@@ -234,9 +232,9 @@ impl<'a> TParser<'a> {
                     self.types[id].hint.clone(),
                 ));
             }
-            for (i, &param) in (1..header_len).zip(params.as_slice(&self.state.type_slices)[1..].iter())
-            {
+            for i in 1..header_len {
                 let module_ent = &self.modules[module];
+                let param = module_ent.type_slice(params)[i];
                 let hash = module_ent.son_ent(header, i).token.span.hash;
                 let id = TYPE_SALT.add(hash).add(module_id);
 
@@ -244,8 +242,6 @@ impl<'a> TParser<'a> {
                 shadowed.push((id, sha));
             }
         }
-
-        self.types[id].params = params;
 
         let module_ent = &self.modules[module];
         let body = module_ent.son(ast, 1);
@@ -337,16 +333,16 @@ impl<'a> TParser<'a> {
         for i in 1..len - 2 {
             let arg = self.modules[module].get(sons, i);
             let (_, ty) = self.ty(module, arg, depth)?;
-            args.push(ty, &mut self.type_slices);
+            self.modules[module].push_type(&mut args, ty);
         }
 
         let module_ent = &self.modules[module];
         let ret = module_ent.get(sons, len - 2);
         let ret = if ret != Ast::reserved_value() {
             let (_, ty) = self.ty(module, ret, depth)?;
-            Some(ty)
+            PackedOption::from(ty)
         } else {
-            None
+            PackedOption::default()
         };
 
         let module_ent = &self.modules[module];
@@ -434,24 +430,24 @@ impl<'a> TParser<'a> {
         };
 
         let mut params = EntityList::new();
-        let module_ent = &self.modules[source_module];
+        let module_ent = &mut self.modules[source_module];
         let module_id = module_ent.id;
         let sons = module_ent.sons(ast);
         let ast_len = module_ent.len(sons);
 
-        self.push(&mut params, ty);
+        self.modules[module].push_type(&mut params, ty);
 
         let mut id = TYPE_SALT.add(self.types[ty].id);
         for i in 1..ast_len {
             let ty = self.modules[source_module].get(sons, i);
             let ty = self.ty(source_module, ty, depth)?.1;
             id = id.add(self.types[ty].id);
-            self.push(&mut params, ty);
+            self.modules[module].push_type(&mut params, ty);
         }
         id = id.add(module_id);
 
         if let Some(id) = self.type_index(id) {
-            self.clear(&mut params);
+            self.modules[module].clear_type_slice(&mut params);
             return Ok((module, id));
         }
 
@@ -560,14 +556,10 @@ impl<'a> TParser<'a> {
                         ..Default::default()
                     };
 
-                    let (replaced, id) = self.types.insert(id, datatype);
+                    let (replaced, id) = self.add_type_low(datatype, true);
                     if let Some(other) = replaced {
                         return Err(TError::new(TEKind::Redefinition(other.hint), token));
                     }
-
-                    let mut types = self.modules[module].types;
-                    types.push(id, &mut self.type_slices);
-                    self.modules[module].types = types;
 
                     if let TKind::Unresolved(_) = &self.types[id].kind {
                         self.context.unresolved.push((id, 0));
@@ -606,10 +598,10 @@ impl<'a> TreeStorage<Ty> for TParser<'a> {
             TKind::Structure(stype) => stype.fields[idx].ty,
             TKind::Array(ty, _) => *ty,
             TKind::FunPointer(fun) => {
-                if idx == fun.args.len(&self.type_slices) {
+                if idx == self.modules[node.module].type_slice(fun.args).len() {
                     fun.ret.unwrap()
                 } else {
-                    fun.args.get(idx, &self.type_slices).unwrap()
+                    self.modules[node.module].type_slice(fun.args)[idx]
                 }
             }
             _ => unreachable!("{:?}", node.kind),
@@ -621,7 +613,7 @@ impl<'a> TreeStorage<Ty> for TParser<'a> {
 
         match &node.kind {
             TKind::Builtin(_) | TKind::Pointer(..) => 0,
-            TKind::FunPointer(fun) => fun.args.len(&self.type_slices) + fun.ret.is_some() as usize,
+            TKind::FunPointer(fun) => self.modules[node.module].type_slice(fun.args).len() + fun.ret.is_some() as usize,
             TKind::Array(..) => 1,
             TKind::Structure(stype) => stype.fields.len(),
             TKind::Generic(_) | TKind::Unresolved(_) | TKind::Constant(_) => 
@@ -724,22 +716,23 @@ impl Default for TKind {
     }
 }
 
-#[derive(Debug, Clone, Default, QuickSer)]
+#[derive(Debug, Clone, Copy, Default, RealQuickSer)]
 pub struct Signature {
     pub call_conv: CallConv,
     pub args: EntityList<Ty>,
-    pub ret: Option<Ty>,
+    pub ret: PackedOption<Ty>,
 }
 
 impl Signature {
-    pub fn to_cr_signature(&self, state: &TState, isa: &dyn TargetIsa, target: &mut CrSignature) {
+    pub fn to_cr_signature(&self, module: Mod, state: &TState, isa: &dyn TargetIsa, target: &mut CrSignature) {
         target.call_conv = self.call_conv.to_cr_call_conv(isa);
         target.params.extend(
-            self.args.as_slice(&state.type_slices)
+            state.modules[module].type_slice(self.args)
                 .iter()
                 .map(|&ty| AbiParam::new(state.types[ty].to_cr_type(isa))),
         );
-        if let Some(ret) = self.ret {
+        if self.ret.is_some() {
+            let ret = self.ret.unwrap();
             let ty = &state.types[ret];
             let param = if ty.on_stack(isa.pointer_type()) {
                 let param = AbiParam::special(ty.to_cr_type(isa), ArgumentPurpose::StructReturn);
@@ -821,28 +814,12 @@ crate::inherit!(TContext, mt_context, MTContext);
 pub struct TState {
     pub builtin_repo: BuiltinRepo,
     pub types: Table<Ty, TypeEnt>,
-    pub type_slices: ListPool<Ty>,
+    
     pub type_cycle_map: Vec<(bool, bool)>,
     pub mt_state: MTState,
 }
 
 impl TState {
-    pub fn push(&mut self, list: &mut EntityList<Ty>, value: Ty) {
-        list.push(value, &mut self.type_slices);
-    }
-
-    pub fn param(&self, ty: Ty, index: usize) -> Ty {
-        self.types[ty].params.get(index, &self.type_slices).unwrap()
-    }
-
-    pub fn params(&self, ty: Ty) -> &[Ty] {
-        self.types[ty].params.as_slice(&self.type_slices)
-    }
-
-    fn clear(&mut self, params: &mut EntityList<Ty>) {
-        params.clear(&mut self.type_slices);
-    }
-
     pub fn pointer_of(&mut self, ty: Ty) -> Ty {
         let module = self.types[ty].module;
         let name = "&";
@@ -926,12 +903,12 @@ impl TState {
             std::mem::transmute::<_, u8>(sig.call_conv)
         } as u64));
 
-        for arg in sig.args.as_slice(&self.type_slices).iter() {
+        for arg in self.modules[module].type_slice(sig.args).iter() {
             id = id.add(self.types[*arg].id);
         }
 
-        if let Some(ret) = sig.ret {
-            id = id.add(ID::new("->")).add(self.types[ret].id);
+        if sig.ret.is_some() {
+            id = id.add(ID::new("->")).add(self.types[sig.ret.unwrap()].id);
         }
 
         if let Some(&id) = self.types.index(id) {
@@ -954,39 +931,20 @@ impl TState {
     }
 
     pub fn add_type(&mut self, ent: TypeEnt) -> Ty {
+        self.add_type_low(ent, false).1
+    }
+
+    pub fn add_type_low(&mut self, ent: TypeEnt, allow_shadow: bool) -> (Option<TypeEnt>, Ty) {
         let module = ent.module;
         let (shadow, ty) = self.types.insert(ent.id, ent);
-        let mut types = self.modules[module].types;
-        types.push(ty, &mut self.type_slices);
-        self.modules[module].types = types;
-        debug_assert!(shadow.is_none());
-        ty
+        self.modules[module].add_type(ty);
+        debug_assert!(shadow.is_none() || allow_shadow);
+        (shadow, ty)
     }
 
     pub fn remove_type(&mut self, ty: Ty) {
         let type_id = self.types[ty].id;
-        let mut type_ent = self.types.remove(type_id).unwrap();
-        type_ent.params.clear(&mut self.type_slices);
-        match type_ent.kind {
-            TKind::Builtin(_) |
-            TKind::Pointer(_) |
-            TKind::Constant(_) |
-            TKind::Structure(_) |
-            TKind::Generic(_) |
-            TKind::Unresolved(_) |
-            TKind::Array(_, _) => (),
-            TKind::FunPointer(mut sig) => {
-                sig.args.clear(&mut self.type_slices);
-            },
-        }
-    }
-
-    fn slice_len(&self, list: EntityList<Ty>) -> usize {
-        list.len(&self.type_slices)
-    }
-
-    fn get(&self, list: EntityList<Ty>, i: usize) -> Ty {
-        list.get(i, &self.type_slices).unwrap()
+        self.types.remove(type_id).unwrap();
     }
 }
 
@@ -998,7 +956,6 @@ impl Default for TState {
             builtin_repo: Default::default(),
             types: Table::new(),
             mt_state: MTState::default(),
-            type_slices: ListPool::new(),
             type_cycle_map: Vec::new(),
         };
 
@@ -1151,7 +1108,7 @@ impl<'a> std::fmt::Display for TypeDisplay<'a> {
                 write!(f, "&{}", Self::new(self.state, *id))
             }
             TKind::Structure(_) if !ty.params.is_empty() => {
-                let params = self.state.params(self.type_id);
+                let params = self.state.modules[ty.module].type_slice(ty.params);
                 write!(f, "{}", Self::new(self.state, params[0]))?;
                 write!(f, "[")?;
                 write!(f, "{}", Self::new(self.state, params[1]))?;
@@ -1173,14 +1130,14 @@ impl<'a> std::fmt::Display for TypeDisplay<'a> {
                 write!(
                     f,
                     "fn({})",
-                    fun.args.as_slice(&self.state.type_slices)
+                    self.state.modules[ty.module].type_slice(fun.args)
                         .iter()
                         .map(|id| format!("{}", Self::new(self.state, *id)))
                         .collect::<Vec<_>>()
                         .join(", ")
                 )?;
-                if let Some(ret) = fun.ret {
-                    write!(f, " -> {}", Self::new(self.state, ret))?;
+                if fun.ret.is_some() {
+                    write!(f, " -> {}", Self::new(self.state, fun.ret.unwrap()))?;
                 }
                 Ok(())
             }
@@ -1335,6 +1292,8 @@ pub fn test() {
             continue;
         }
 
+        crate::test_println!("re-parsing types in {}", state.display(&state.modules[module].name));
+
         let mut a_state = std::mem::take(&mut state.modules[module].a_state);
 
         AParser::new(&mut state.a_main_state, &mut a_state, &mut context)
@@ -1348,6 +1307,10 @@ pub fn test() {
             .parse(module)
             .map_err(|e| panic!("\n{}", TErrorDisplay::new(&mut state, &e)))
             .unwrap();
+    }
+
+    for module in state.modules.iter_mut() {
+        module.clean = true;
     }
 
     incr::save_data(PATH, &state, ID(0), Some(hint)).unwrap();

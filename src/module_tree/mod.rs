@@ -3,13 +3,14 @@ use std::ops::{Deref, DerefMut};
 use std::path::{Path, PathBuf};
 use std::time::SystemTime;
 
-use cranelift::codegen::ir::GlobalValue;
+use cranelift::codegen::ir::{GlobalValue, Value, Block, Inst};
 use cranelift::codegen::packed_option::PackedOption;
+use cranelift::entity::{ListPool, PrimaryMap};
 use cranelift::entity::{EntityRef, EntityList, packed_option::ReservedValue};
 use quick_proc::{QuickDefault, QuickSer, RealQuickSer};
 
 use crate::ast::{AContext, AError, AErrorDisplay, AMainState, AParser, AState, Dep, Vis};
-use crate::entities::{Fun, Manifest, Mod, Source, Ty};
+use crate::entities::{Fun, Manifest, Mod, Source, Ty, ValueEnt, InstEnt, BlockEnt, FunBody, IKind};
 use crate::incr;
 use crate::lexer::Token;
 use crate::lexer::{SourceEnt, Span, TokenDisplay};
@@ -61,9 +62,9 @@ impl<'a> MTParser<'a> {
                 let dest: Mod = dest; // type inference failed
                 let nick = Option::unwrap_or(nickname, module.name).hash;
                 // we denote this to propagate changes later
-                module.dependant.push(dest); 
+                module.dependant.push(dest);
                 self.modules[dest].dependency.push(DepHeader {
-                    nick,
+                    nick: MOD_SALT.add(nick),
                     module: module_id,
                     in_code_path,
                     hint: token,
@@ -81,7 +82,9 @@ impl<'a> MTParser<'a> {
             let module = &self.modules[module_id];
             if module.clean {
                 // we still want to walk the tree to see some deeper changed files
-                for dep in &module.dependency {
+                let len = module.dependency.len();
+                for i in 0..len {
+                    let dep = &self.modules[module_id].dependency[i];
                     // builtin module, we can ignore it since version marker 
                     // changes and that invalidates the incremental data
                     if dep.in_code_path.hash == ID(0) {
@@ -89,6 +92,8 @@ impl<'a> MTParser<'a> {
                     }
                     let manifest_id = self.modules[dep.module].manifest;
                     frontier.push((dep.in_code_path, dep.hint, manifest_id, None));
+                    let module = dep.module;
+                    self.modules[module].dependant.push(module_id);
                 }
                 continue;
             }
@@ -170,9 +175,9 @@ impl<'a> MTParser<'a> {
             if module.clean {
                 continue;
             }
-            let len = module.dependency.len();
+            let len = module.dependant.len();
             for i in 0..len {
-                let dep = self.modules[module_id].dependency[i].module;
+                let dep = self.modules[module_id].dependant[i];
                 self.modules[dep].clean = false;
             }
         }
@@ -250,10 +255,10 @@ impl<'a> MTParser<'a> {
         let module_id = if let Some(m) = last_module {
             let mut module = std::mem::take(&mut self.modules[m]);
             self.sources[module.source] = source;
-            module.dependant.clear();
             module.dependency.clear();
             module.clean = false;
             module.seen = false;
+            module.clear();
             self.a_state_for(module.source, &mut module.a_state);
             self.modules[m] = module;
             m
@@ -268,7 +273,7 @@ impl<'a> MTParser<'a> {
             m
         };
 
-        println!("reloaded: {}", path_buffer.display());
+        crate::test_println!("reloaded: {}", path_buffer.display());
 
         path_buffer.clear();
 
@@ -667,16 +672,146 @@ pub struct ModEnt {
     #[default(Manifest::new(0))]
     pub manifest: Manifest,
     
-    pub functions: EntityList<Fun>,
-    pub types: EntityList<Ty>,
-    pub globals: EntityList<GlobalValue>,
+    pub functions: Vec<Fun>,
+    pub types: Vec<Ty>,
+    pub globals: Vec<GlobalValue>,
     pub entry_point: PackedOption<Fun>,
+    
+    // this way we can quickly discard all used used ir elements
+    // when we recompile module
+    #[default(ListPool::new())]
+    pub value_slices: ListPool<Value>,
+    #[default(ListPool::new())]
+    pub block_slices: ListPool<Block>,
+    #[default(ListPool::new())]
+    pub inst_slices: ListPool<Inst>,
+    #[default(ListPool::new())]
+    pub type_slices: ListPool<Ty>,
+    pub values: PrimaryMap<Value, ValueEnt>,
+    pub insts: PrimaryMap<Inst, InstEnt>,
+    pub blocks: PrimaryMap<Block, BlockEnt>,
 
     pub clean: bool,
     pub seen: bool,
 }
 
 crate::inherit!(ModEnt, a_state, AState);
+
+impl ModEnt {
+    pub fn new_block(&mut self, body: &mut FunBody) -> Block {
+        let block = self.blocks.push(BlockEnt::default());
+
+        if body.entry_block.is_none() {
+            body.entry_block = PackedOption::from(block);
+            body.last_block = PackedOption::from(block);
+        } else {
+            let last = body.last_block.unwrap();
+            self.blocks[last].next = PackedOption::from(block);
+            self.blocks[block].prev = PackedOption::from(last);
+            body.last_block = PackedOption::from(block);
+        }
+
+        block
+    }
+
+    pub fn select_block(&mut self, block: Block, body: &mut FunBody) {
+        body.current_block = PackedOption::from(block);
+    }
+
+    pub fn add_valueless_inst(&mut self, kind: IKind, token: Token, body: &FunBody) -> Inst {
+        self.add_inst_low(kind, Default::default(), token, body)
+    }
+
+    pub fn add_inst(&mut self, kind: IKind, value: Value, hint: Token, body: &FunBody) -> Inst {
+        self.add_inst_low(kind, PackedOption::from(value), hint, body)
+    }
+
+    pub fn add_inst_low(&mut self, kind: IKind, value: PackedOption<Value>, hint: Token, body: &FunBody) -> Inst {
+        let inst = self.insts.push(InstEnt {
+            kind,
+            value,
+            hint,
+            
+            ..Default::default()
+        });
+        
+        let last = body.current_block.unwrap();
+        let block = &mut self.blocks[last];
+        
+        if block.end.is_none() {
+            block.start = PackedOption::from(inst);
+            block.end = PackedOption::from(inst);
+        } else {
+            let last = block.end.unwrap();
+            self.insts[last].next = PackedOption::from(inst);
+            self.insts[inst].prev = PackedOption::from(last);
+            block.end = PackedOption::from(inst);
+        }
+
+        inst
+    }
+
+    pub fn add_temp_value(&mut self, ty: Ty) -> Value {
+        self.add_anon_value(ty, false)
+    }
+
+    pub fn add_anon_value(&mut self, ty: Ty, mutable: bool) -> Value {
+        self.add_value(ID(0), ty, mutable)
+    }
+
+    pub fn add_value(&mut self, id: ID, ty: Ty, mutable: bool) -> Value {
+        self.values.push(ValueEnt {
+            id,
+            ty,
+            mutable,
+
+            ..Default::default()
+        })
+    }
+
+    pub fn add_args(&mut self, slice: &[Value]) -> EntityList<Value> {
+        EntityList::from_slice(slice, &mut self.value_slices)
+    }
+
+    pub fn add_type(&mut self, ty: Ty) {
+        self.types.push(ty);
+    }
+
+    pub fn add_global(&mut self, global: GlobalValue) {
+        self.globals.push(global);
+    }
+
+    pub fn add_fun(&mut self, fun: Fun) {
+        self.functions.push(fun);
+    }
+
+    pub fn push_type(&mut self, list: &mut EntityList<Ty>, ty: Ty) {
+        list.push(ty, &mut self.type_slices);
+    }
+
+    pub fn new_type_slice(&mut self, slice: &[Ty]) -> EntityList<Ty> {
+        EntityList::from_slice(slice, &mut self.type_slices)
+    }
+
+    pub fn type_slice(&self, list: EntityList<Ty>) -> &[Ty] {
+        list.as_slice(&self.type_slices)
+    }
+
+    pub fn clear(&mut self) {
+        self.entry_point = PackedOption::default();
+        self.type_slices.clear();
+        self.value_slices.clear();
+        self.block_slices.clear();
+        self.inst_slices.clear();
+        self.values.clear();
+        self.insts.clear();
+        self.blocks.clear();
+    }
+
+    pub fn clear_type_slice(&mut self, params: &mut EntityList<Ty>) {
+       params.clear(&mut self.type_slices); 
+    }
+}
 
 #[derive(Debug, Clone, Copy, QuickDefault, RealQuickSer)]
 pub struct DepHeader {

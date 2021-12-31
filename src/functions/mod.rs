@@ -2,7 +2,7 @@ use core::panic;
 use std::ops::{Deref, DerefMut};
 
 use crate::ast::{AKind, AParser, AstDisplay, OpKind, Vis};
-use crate::entities::{Fun, Ast, Ty, Mod};
+use crate::entities::{Fun, Ast, Ty, Mod, IKind, ValueEnt, FunBody, BlockEnt};
 use crate::lexer::TKind as LTKind;
 use crate::lexer::{Span, Token, TokenDisplay};
 use crate::module_tree::*;
@@ -34,6 +34,8 @@ pub struct FParser<'a> {
     context: &'a mut FContext,
     ptr_ty: Type,
 }
+
+crate::inherit!(FParser<'_>, state, FState);
 
 impl<'a> FParser<'a> {
     pub fn new(
@@ -2606,12 +2608,7 @@ crate::def_displayer!(
             writeln!(f, "global variable visibility disallows access, {}", crate::types::VISIBILITY_MESSAGE)?;
         },
         FEKind::FunArgMismatch(fun, arguments) => {
-            let sig = match &self.state.funs[*fun].kind {
-                FKind::Normal(n) => &n.sig,
-                FKind::Represented(r) => &r.sig,
-                FKind::Builtin(s) => s,
-                _ => unreachable!(),
-            };
+            let sig = &self.state.funs[*fun].sig;
             writeln!(
                 f,
                 "function argument types are '({})' but you provided '({})'",
@@ -2711,14 +2708,17 @@ pub enum DotInstr {
     Ref,
 }
 
-#[derive(Debug, Clone, QuickSer)]
+#[derive(Debug, Clone, QuickDefault, Copy, RealQuickSer)]
 pub struct FunEnt {
     pub id: ID,
     pub module: Mod,
     pub hint: Token,
-    pub params: Vec<(ID, Ty)>,
+    pub params: EntityList<Ty>,
+    pub sig: Signature,
+    pub body: FunBody,
     pub kind: FKind,
     pub name: Span,
+    pub ast: Ast,
     pub attrs: Ast,
     pub scope: Ast,
     pub alias: Option<Span>,
@@ -2728,187 +2728,25 @@ pub struct FunEnt {
     pub inline: bool,
 }
 
-impl Default for FunEnt {
-    fn default() -> Self {
-        FunEnt {
-            id: ID::default(),
-            module: Mod::reserved_value(),
-            hint: Token::default(),
-            params: Vec::default(),
-            kind: Default::default(),
-            name: Span::default(),
-            attrs: Ast::reserved_value(),
-            scope: Ast::reserved_value(),
-            alias: None,
-            vis: Vis::default(),
-            linkage: Linkage::default(),
-            untraced: false,
-            inline: false,
-        }
-    }
-}
 
-#[derive(Debug, QuickDefault, Clone, Copy, RealQuickSer)]
-pub struct FunBody {
-    pub current_block: PackedOption<Block>,
-    pub entry_block: PackedOption<Block>,
-    pub last_block: PackedOption<Block>,
-    
-    pub used_blocks: EntityList<Block>,
-    pub used_insts: EntityList<Inst>,
-    pub used_values: EntityList<Value>,
-}
-
-impl FunBody {
-    pub fn clear(&mut self, state: &mut FState) {
-        self.entry_block = PackedOption::default();
-        self.last_block = PackedOption::default();
-        self.current_block = PackedOption::default();
-        
-        state.free_blocks.extend_from_slice(self.used_blocks.as_slice(&state.block_slices));
-        state.free_insts.extend_from_slice(self.used_insts.as_slice(&state.inst_slices));
-        state.free_values.extend_from_slice(self.used_values.as_slice(&state.value_slices));
-    }
-
-    /*pub fn new_block(&mut self) -> Block {
-        let block = self.blocks.push(BlockEnt::default());
-
-        if self.entry_block.is_none() {
-            self.entry_block = PackedOption::from(block);
-            self.last_block = PackedOption::from(block);
-        } else {
-            let last = self.last_block.unwrap();
-            self.blocks[last].next = PackedOption::from(block);
-            self.blocks[block].prev = PackedOption::from(last);
-            self.last_block = PackedOption::from(block);
-        }
-
-        block
-    }
-
-    pub fn select_block(&mut self, block: Block) {
-        self.current_block = PackedOption::from(block);
-    }
-
-    pub fn add_valueless_inst(&mut self, kind: IKind, token: Token) -> Inst {
-        self.add_inst_low(kind, Default::default(), token)
-    }
-
-    pub fn add_inst(&mut self, kind: IKind, value: Value, hint: Token) -> Inst {
-        self.add_inst_low(kind, PackedOption::from(value), hint)
-    }
-
-    pub fn add_inst_low(&mut self, kind: IKind, value: PackedOption<Value>, hint: Token) -> Inst {
-        let inst = self.insts.push(InstEnt {
-            kind,
-            value,
-            hint,
-            
-            ..Default::default()
-        });
-        
-        let last = self.current_block.unwrap();
-        let block = &mut self.blocks[last];
-        
-        if block.end.is_none() {
-            block.start = PackedOption::from(inst);
-            block.end = PackedOption::from(inst);
-        } else {
-            let last = block.end.unwrap();
-            self.insts[last].next = PackedOption::from(inst);
-            self.insts[inst].prev = PackedOption::from(last);
-            block.end = PackedOption::from(inst);
-        }
-
-        inst
-    }
-
-    pub fn add_temp_value(&mut self, ty: Ty) -> Value {
-        self.add_anon_value(ty, false)
-    }
-
-    pub fn add_anon_value(&mut self, ty: Ty, mutable: bool) -> Value {
-        self.add_value(ID(0), ty, mutable)
-    }
-
-    pub fn add_value(&mut self, id: ID, ty: Ty, mutable: bool) -> Value {
-        self.values.push(ValueEnt {
-            id,
-            ty,
-            mutable,
-
-            ..Default::default()
-        })
-    }
-
-    pub fn add_args(&mut self, slice: &[Value]) -> EntityList<Value> {
-        EntityList::from_slice(slice, &mut self.args)
-    }*/
-}
-
-#[derive(Debug, Clone, QuickEnumGets, QuickSer)]
+#[derive(Debug, Clone, Copy, RealQuickSer)]
 pub enum FKind {
-    Default,
-    Builtin(Signature),
-    Generic(GFun),
-    Normal(NFun),
-    Represented(RFun),
+    Builtin,
+    Generic,
+    Normal,
+    Represented,
 }
 
 impl Default for FKind {
     fn default() -> Self {
-        FKind::Default
+        FKind::Builtin
     }
-}
-
-#[derive(Debug, Clone, Default, QuickSer)]
-pub struct NFun {
-    pub sig: Signature,
 }
 
 #[derive(Debug, Clone, Default, QuickSer)]
 pub struct GFun {
     pub call_conv: CallConv,
     pub signature: GenericSignature,
-}
-
-#[derive(Debug, Clone, QuickSer)]
-pub struct RFun {
-    pub sig: Signature,
-    pub body: FunBody,
-    pub compiled: Option<CFun>,
-}
-
-#[derive(Debug, Clone, QuickDefault, QuickSer)]
-pub struct CFun {
-    pub bin: CompiledData,
-    pub jit: CompiledData,
-    #[default(FuncIdWr(FuncId::from_u32(0)))]
-    pub id: FuncIdWr,
-}
-
-crate::impl_wrapper!(FuncIdWr, FuncId);
-
-#[derive(Clone, Default, QuickSer)]
-pub struct CompiledData {
-    pub bytes: Vec<u8>,
-    pub relocs: Vec<RelocRecordWr>,
-}
-
-#[derive(Clone)]
-pub struct RelocRecordWr(RelocRecord);
-
-impl QuickSer for RelocRecordWr {
-    gen_quick_copy!();
-}
-
-impl std::fmt::Debug for CompiledData {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.debug_struct("CompiledData")
-            .field("bytes", &self.bytes)
-            .field("relocs", &"...")
-            .finish()
-    }
 }
 
 #[derive(Debug, Clone, Default, QuickSer)]
@@ -2940,91 +2778,11 @@ impl GenericElement {
     }
 }
 
-#[derive(Debug, Default, Clone, Copy, RealQuickSer)]
-pub struct InstEnt {
-    pub kind: IKind,
-    pub value: PackedOption<Value>,
-    pub hint: Token,
-    prev: PackedOption<Inst>,
-    next: PackedOption<Inst>,
-    block: PackedOption<Block>,
-}
-
-#[derive(Debug, Clone, Copy, RealQuickSer)]
-pub enum IKind {
-    NoOp,
-    FunPointer(Fun),
-    FunPointerCall(Value, EntityList<Value>),
-    GlobalLoad(GlobalValue),
-    Call(Fun, EntityList<Value>),
-    UnresolvedDot(Value, ID),
-    VarDecl(Value),
-    Zeroed,
-    Uninitialized,
-    Lit(LTKind),
-    Return(Option<Value>),
-    Assign(Value),
-    Jump(Block, EntityList<Value>),
-    JumpIfTrue(Value, Block, EntityList<Value>),
-    Offset(Value),
-    Deref(Value, bool),
-    Ref(Value),
-    Cast(Value),
-}
-
-impl IKind {
-    pub fn is_closing(&self) -> bool {
-        matches!(self, IKind::Jump(..) | IKind::Return(..))
-    }
-}
-
-impl Default for IKind {
-    fn default() -> Self {
-        IKind::NoOp
-    }
-}
-
-#[derive(Debug, Clone, Copy, Default, RealQuickSer)]
-pub struct BlockEnt {
-    pub block: PackedOption<Block>,
-    
-    pub prev: PackedOption<Block>,
-    pub next: PackedOption<Block>,
-    
-    pub args: EntityList<Value>,
-    
-    pub start: PackedOption<Inst>,
-    pub end: PackedOption<Inst>,
-}
-
 #[derive(Debug, Clone)]
 pub struct Loop {
     name: ID,
     start_block: Block,
     end_block: Block,
-}
-
-
-
-#[derive(Debug, Clone, QuickDefault, QuickSer)]
-pub struct ValueEnt {
-    pub id: ID,
-    #[default(Ty::reserved_value())]
-    pub ty: Ty,
-    #[default(Inst::reserved_value())]
-    pub inst: Inst,
-    pub offset: Size,
-    pub mutable: bool,
-    pub on_stack: bool,
-}
-
-impl ValueEnt {
-    pub fn temp(ty: Ty) -> Self {
-        Self {
-            ty,
-            ..Default::default()
-        }
-    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, RealQuickSer)]
@@ -3103,17 +2861,7 @@ impl Default for MainFunData {
 pub struct FState {
     pub t_state: TState,
     pub funs: Table<Fun, FunEnt>,
-    pub globals: Table<GlobalValue, GlobalEnt>,
-    
-    pub values: PrimaryMap<Value, ValueEnt>,
-    pub insts: PrimaryMap<Inst, InstEnt>,
-    pub blocks: PrimaryMap<Block, BlockEnt>,
-    pub free_values: Vec<Value>,
-    pub free_blocks: Vec<Block>,
-    pub free_insts: Vec<Inst>,
-    pub value_slices: ListPool<Value>,
-    pub block_slices: ListPool<Block>,
-    pub inst_slices: ListPool<Inst>,
+    pub globals: Table<GlobalValue, GlobalEnt>,    
 
     pub main_fun_data: MainFunData,
     pub index_span: Span,
@@ -3122,26 +2870,16 @@ pub struct FState {
 
 crate::inherit!(FState, t_state, TState);
 
-/*impl Default for FState {
-    fn default() -> Self {
-        let mut state = Self {
-            t_state: TState::default(),
-            funs: Table::new(),
-            index_span: Span::default(),
-            globals: Table::new(),
-            main_fun_data: MainFunData::default(),
-
-            do_stacktrace: false,
-        };
-
+impl FState {
+    pub fn generate_main_fun(&mut self) {
         let mut body = FunBody::default();
 
         let arg1 = body
             .values
-            .push(ValueEnt::temp(state.builtin_repo.int));
+            .push(ValueEnt::temp(self.builtin_repo.int));
         let arg2 = body
             .values
-            .push(ValueEnt::temp(state.builtin_repo.int));
+            .push(ValueEnt::temp(self.builtin_repo.int));
 
         let args = body.add_args(&[arg1, arg2]);
 
@@ -3155,7 +2893,7 @@ crate::inherit!(FState, t_state, TState);
 
         let zero_value = body
             .values
-            .push(ValueEnt::temp(state.builtin_repo.int));
+            .push(ValueEnt::temp(self.builtin_repo.int));
         body.insts.push(InstEnt::new(
             IKind::Zeroed,
             Some(zero_value),
@@ -3165,7 +2903,7 @@ crate::inherit!(FState, t_state, TState);
             body
                 .values
                 .push(ValueEnt {
-                    ty: state.builtin_repo.int,
+                    ty: self.builtin_repo.int,
                     mutable: true,
 
                     ..Default::default()
@@ -3180,16 +2918,16 @@ crate::inherit!(FState, t_state, TState);
             sig: Signature {
                 call_conv: CallConv::Platform,
                 args: vec![
-                    state.builtin_repo.int, //arg count
-                    state.builtin_repo.int, //args
+                    self.builtin_repo.int, //arg count
+                    self.builtin_repo.int, //args
                 ],
-                ret: Some(state.builtin_repo.int),
+                ret: Some(self.builtin_repo.int),
             },
             body,
             compiled: None,
         };
 
-        let name = state.builtin_span("main");
+        let name = self.builtin_span("main");
 
         let main_fun = FunEnt {
             vis: Vis::Public,
@@ -3200,13 +2938,27 @@ crate::inherit!(FState, t_state, TState);
             ..Default::default()
         };
 
-        let id = state.funs.add_hidden(main_fun);
+        let id = self.funs.add_hidden(main_fun);
 
-        state.main_fun_data = MainFunData {
+        self.main_fun_data = MainFunData {
             id,
             arg1,
             arg2,
             return_value,
+        };
+    }
+}
+
+impl Default for FState {
+    fn default() -> Self {
+        let mut state = Self {
+            t_state: TState::default(),
+            funs: Table::new(),
+            index_span: Span::default(),
+            globals: Table::new(),
+            main_fun_data: MainFunData::default(),
+
+            do_stacktrace: false,
         };
 
         let span = state.builtin_span("__index__");
@@ -3225,6 +2977,7 @@ crate::inherit!(FState, t_state, TState);
             args: &[Ty],
             ret: Option<Ty>,
         ) {
+            let args = EntityList::from_slice(args, &mut state.type_slices);
             let id = salt.add(name.hash).add(state.types[args[0]].id).add(module);
             let sig = Signature {
                 call_conv: CallConv::Fast,
@@ -3329,20 +3082,21 @@ crate::inherit!(FState, t_state, TState);
 
         state
     }
-}*/
+}
 
 #[derive(Default)]
 pub struct FContext {
     pub t_context: TContext,
+
     pub vars: Vec<Value>,
     pub loops: Vec<Loop>,
     pub frames: Vec<usize>,
+    
     pub body: FunBody,
-    pub block: Option<Inst>,
+
     pub unresolved_globals: Vec<GlobalValue>,
     pub resolved_globals: Vec<GlobalValue>,
     pub unresolved: Vec<Fun>,
-    pub entry_points: Vec<Fun>,
     pub represented: Vec<Fun>,
 }
 

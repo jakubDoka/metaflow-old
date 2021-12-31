@@ -1261,6 +1261,29 @@ pub struct GState {
 
 crate::inherit!(GState, f_state, FState);
 
+#[derive(Debug, Clone, QuickDefault, QuickSer)]
+pub struct CFun {
+    pub bin: CompiledData,
+    pub jit: CompiledData,
+    #[default(FuncId::from_u32(0))]
+    pub id: FuncId,
+}
+
+#[derive(Clone, Default, QuickSer)]
+pub struct CompiledData {
+    pub bytes: Vec<u8>,
+    pub relocs: Vec<RelocRecord>,
+}
+
+impl std::fmt::Debug for CompiledData {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("CompiledData")
+            .field("bytes", &self.bytes)
+            .field("relocs", &"...")
+            .finish()
+    }
+}
+
 #[derive(QuickDefault)]
 pub struct GContext {
     #[default(DataContext::new())]
