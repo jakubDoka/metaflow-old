@@ -5,8 +5,8 @@ use std::time::SystemTime;
 
 use cranelift::codegen::ir::GlobalValue;
 use cranelift::codegen::packed_option::PackedOption;
-use cranelift::entity::{EntityRef, EntityList};
-use quick_proc::{QuickDefault, QuickSer};
+use cranelift::entity::{EntityRef, EntityList, packed_option::ReservedValue};
+use quick_proc::{QuickDefault, QuickSer, RealQuickSer};
 
 use crate::ast::{AContext, AError, AErrorDisplay, AMainState, AParser, AState, Dep, Vis};
 use crate::entities::{Fun, Manifest, Mod, Source, Ty};
@@ -29,38 +29,79 @@ pub struct MTParser<'a> {
     pub context: &'a mut MTContext,
 }
 
+crate::inherit!(MTParser<'_>, state, MTState);
+
 impl<'a> MTParser<'a> {
     pub fn new(state: &'a mut MTState, context: &'a mut MTContext) -> Self {
         Self { state, context }
     }
 
     pub fn parse(&mut self, root: &str) -> Result {
+        self.clean_incremental_data();
+
         let mut path_buffer = PathBuf::new();
 
         self.load_manifests(root, &mut path_buffer)?;
 
         let root_manifest_id = Manifest::new(0);
 
-        let root_manifest_name = self.state.manifests[root_manifest_id].name.clone();
+        let in_code_path = self.manifests[root_manifest_id].name;
+        let mut frontier = vec![(in_code_path, Token::default(), root_manifest_id, None)];
 
-        let module = self.load_module(
-            root_manifest_name,
-            Token::default(),
-            root_manifest_id,
-            &mut path_buffer,
-        )?;
-        let mut frontier = vec![module];
+        let module = Mod::new(1); // cause builtin module is 0
 
         let mut imports = self.context.pool.get();
 
-        while let Some(module_id) = frontier.pop() {
-            let mut module = std::mem::take(&mut self.state.modules[module_id]);
+        while let Some((in_code_path, token, manifest_id, destination)) = frontier.pop() {
+            let module_id = self.load_module(in_code_path, token, manifest_id, &mut path_buffer)?;
+
+            let module = &mut self.modules[module_id];
+
+            if let Some((dest, nickname)) = destination {
+                let dest: Mod = dest; // type inference failed
+                let nick = Option::unwrap_or(nickname, module.name).hash;
+                // we denote this to propagate changes later
+                module.dependant.push(dest); 
+                self.modules[dest].dependency.push(DepHeader {
+                    nick,
+                    module: module_id,
+                    in_code_path,
+                    hint: token,
+                });
+            }
+
+            let module = &mut self.modules[module_id];
+
+            if module.seen {
+                continue;
+            }
+            
+            module.seen = true;            
+            
+            let module = &self.modules[module_id];
+            if module.clean {
+                // we still want to walk the tree to see some deeper changed files
+                for dep in &module.dependency {
+                    // builtin module, we can ignore it since version marker 
+                    // changes and that invalidates the incremental data
+                    if dep.in_code_path.hash == ID(0) {
+                        continue;
+                    }
+                    let manifest_id = self.modules[dep.module].manifest;
+                    frontier.push((dep.in_code_path, dep.hint, manifest_id, None));
+                }
+                continue;
+            }
+            
+            // at this point ti is safe to assume that modules ast state is restarted
+            let mut module = std::mem::take(&mut self.modules[module_id]);
+            
             AParser::new(self.state, &mut module.a_state, self.context)
                 .take_imports(&mut imports)
                 .map_err(Into::into)?;
 
             for import in imports.drain(..) {
-                let path = self.state.display(&import.path);
+                let path = self.display(&import.path);
                 let head = Path::new(path)
                     .components()
                     .next()
@@ -69,7 +110,8 @@ impl<'a> MTParser<'a> {
                     .to_str()
                     .unwrap();
                 let id = ID::new(head);
-                let manifest = &self.state.manifests[module.manifest];
+                let manifest = &self.manifests[module.manifest];
+                // here we see that first segment of path sets manifest
                 let manifest = if id == manifest.name.hash {
                     module.manifest
                 } else {
@@ -82,34 +124,28 @@ impl<'a> MTParser<'a> {
                         .clone()
                 };
 
-                let dependency =
-                    self.load_module(import.path, import.token, manifest, &mut path_buffer)?;
-                let dep_ent = &self.state.modules[dependency];
-                frontier.push(dependency);
-                let nickname = MOD_SALT.add(
-                    import
-                        .nickname
-                        .map(|n| n.hash)
-                        .unwrap_or_else(|| dep_ent.name.hash),
-                );
-
-                module.dependency.push((nickname, dependency));
-
-                self.state.modules[dependency].dependant.push(module_id);
+                frontier.push((import.path, import.token, manifest, Some((module_id, import.nickname))));
             }
+
             module
                 .dependency
-                .push((MOD_SALT.add(ID::new("builtin")), self.state.builtin_module));
+                .push(DepHeader {
+                    nick: MOD_SALT.add(ID::new("builtin")), 
+                    module: self.builtin_module, 
+                    
+                    ..Default::default()
+                });
 
-            self.state.modules[module_id] = module;
+            module.seen = true;
+            self.modules[module_id] = module;
         }
 
-        let mut order = Vec::with_capacity(self.state.modules.len());
+        let mut order = Vec::with_capacity(self.modules.len());
         let mut stack = vec![];
-        let mut map = vec![(false, false); self.state.modules.len()];
+        let mut map = vec![(false, false); self.modules.len()];
 
         if let Some(cycle) =
-            self.state
+            self
                 .modules
                 .detect_cycles(module, &mut stack, &mut map, Some(&mut order))
         {
@@ -119,36 +155,57 @@ impl<'a> MTParser<'a> {
             ));
         }
 
-        self.state.module_order = order;
+        self.propagate_changes(&order);
+
+        self.module_order = order;
 
         Ok(())
     }
 
+    fn propagate_changes(&mut self, order: &[Mod]) {
+        // for now we just recompile all dependant modules no matter what
+        // TODO: figure out if change is really needed if possible 
+        for &module_id in order {
+            let module = &self.modules[module_id];
+            if module.clean {
+                continue;
+            }
+            let len = module.dependency.len();
+            for i in 0..len {
+                let dep = self.modules[module_id].dependency[i].module;
+                self.modules[dep].clean = false;
+            }
+        }
+    }
+
     fn load_module(
         &mut self,
-        root_span: Span,
+        in_code_path: Span,
         token: Token,
         manifest_id: Manifest,
         path_buffer: &mut PathBuf,
     ) -> Result<Mod> {
-        let manifest = &self.state.manifests[manifest_id];
+        let manifest = &self.manifests[manifest_id];
+        // in case this is dependency or command line argument is not '.'
         path_buffer.push(Path::new(manifest.base_path.as_str()));
-        path_buffer.push(Path::new(self.state.display(&manifest.root_path)));
-        let manifest_name = self.state.display(&manifest.name);
+        path_buffer.push(Path::new(self.display(&manifest.root_path)));
+        let manifest_name = self.display(&manifest.name);
         path_buffer.push(Path::new(manifest_name));
 
-        let root = self.state.display(&root_span);
+        let root = self.display(&in_code_path);
 
         let module_path = Path::new(root);
 
+        // finding module name span
         let name_len = module_path.file_stem().unwrap().len();
         let whole_len = module_path.file_name().unwrap().len();
 
-        let len = root_span.len();
+        let len = in_code_path.len();
         let name = self
             .state
-            .slice_span(&root_span, len - whole_len, len - name_len + whole_len);
+            .slice_span(&in_code_path, len - whole_len, len - name_len + whole_len);
 
+        // now we have to strip first path segment from root span and replace it with real name
         let module_path = module_path
             .strip_prefix(
                 module_path
@@ -161,6 +218,7 @@ impl<'a> MTParser<'a> {
 
         path_buffer.push(module_path);
         path_buffer.set_extension(SOURCE_EXT);
+        // done, path is constructed
 
         let id = MOD_SALT.add(ID::new(path_buffer.to_str().unwrap()));
 
@@ -168,10 +226,10 @@ impl<'a> MTParser<'a> {
             .map_err(|err| MTError::new(MTEKind::FileReadError(path_buffer.clone(), err), token))?
             .modified()
             .ok();
-
-        let last_module = if let Some(&module) = self.state.modules.index(id) {
-            let source = self.state.modules[module].a_state.l_state.source;
-            if modified == Some(self.state.sources[source].modified) {
+        
+        let last_module = if let Some(&module) = self.modules.index(id) {
+            let source = self.modules[module].a_state.l_state.source;
+            if modified == Some(self.sources[source].modified) {
                 path_buffer.clear();
                 return Ok(module);
             }
@@ -190,21 +248,22 @@ impl<'a> MTParser<'a> {
         };
 
         let module_id = if let Some(m) = last_module {
-            let mut module = std::mem::take(&mut self.state.modules[m]);
-            self.state.sources[module.source] = source;
+            let mut module = std::mem::take(&mut self.modules[m]);
+            self.sources[module.source] = source;
             module.dependant.clear();
             module.dependency.clear();
             module.clean = false;
             module.seen = false;
-            self.state.a_state_for(module.source, &mut module.a_state);
-            self.state.modules[m] = module;
+            self.a_state_for(module.source, &mut module.a_state);
+            self.modules[m] = module;
             m
         } else {
             let mut module = ModEnt::default();
+            module.manifest = manifest_id;
             module.name = name;
-            module.source = self.state.sources.push(source);
-            self.state.a_state_for(module.source, &mut module.a_state);
-            let (shadowed, m) = self.state.modules.insert(id, module);
+            module.source = self.sources.push(source);
+            self.a_state_for(module.source, &mut module.a_state);
+            let (shadowed, m) = self.modules.insert(id, module);
             debug_assert!(shadowed.is_none());
             m
         };
@@ -222,7 +281,7 @@ impl<'a> MTParser<'a> {
 
         let id = ID::new(base_path);
 
-        let manifest_id = self.state.manifests.index_or_insert(
+        let manifest_id = self.manifests.index_or_insert(
             id,
             ManifestEnt {
                 id,
@@ -234,12 +293,12 @@ impl<'a> MTParser<'a> {
         let mut frontier = vec![(manifest_id, Token::default(), Option::<Dep>::None)];
 
         while let Some((manifest_id, token, import)) = frontier.pop() {
-            if self.state.manifests[manifest_id].seen {
+            if self.manifests[manifest_id].seen {
                 continue;
             }
             path_buffer.clear();
             path_buffer.push(Path::new(
-                self.state.manifests[manifest_id].base_path.as_str(),
+                self.manifests[manifest_id].base_path.as_str(),
             ));
 
             if let Some(import) = import {
@@ -267,11 +326,11 @@ impl<'a> MTParser<'a> {
 
             let id = ID::new(path_buffer.to_str().unwrap());
 
-            let last_source = if let Some(&manifest) = self.state.manifests.index(id) {
-                let source = self.state.manifests[manifest].source;
-                if modified == Some(self.state.sources[source].modified) {
+            let last_source = if let Some(&manifest) = self.manifests.index(id) {
+                let source = self.manifests[manifest].source;
+                if modified == Some(self.sources[source].modified) {
                     frontier.extend(
-                        self.state.manifests[manifest]
+                        self.manifests[manifest]
                             .deps
                             .iter()
                             .map(|(dep, manifest)| (*manifest, dep.token, Some(dep.clone()))),
@@ -294,24 +353,24 @@ impl<'a> MTParser<'a> {
             };
 
             let source = if let Some(last_source) = last_source {
-                self.state.sources[last_source] = source;
+                self.sources[last_source] = source;
                 last_source
             } else {
-                self.state.sources.push(source)
+                self.sources.push(source)
             };
-            self.state.manifests[manifest_id].source = source;
+            self.manifests[manifest_id].source = source;
 
             let mut state = AState::default();
-            self.state.a_state_for(source, &mut state);
-            let manifest = AParser::new(&mut self.state, &mut state, self.context)
+            self.a_state_for(source, &mut state);
+            let manifest = AParser::new(self.state, &mut state, self.context)
                 .parse_manifest()
                 .map_err(Into::into)?;
 
             let root_file_span = self
                 .state
                 .attr_of(&manifest, "root")
-                .unwrap_or_else(|| self.state.builtin_span("main.mf"));
-            let root_file = self.state.display(&root_file_span);
+                .unwrap_or_else(|| self.builtin_span("main.mf"));
+            let root_file = self.display(&root_file_span);
 
             let parent_len = Path::new(root_file).parent().unwrap().as_os_str().len();
 
@@ -323,21 +382,21 @@ impl<'a> MTParser<'a> {
 
             let len = root_file_span.len();
             let name =
-                self.state
+                self
                     .slice_span(&root_file_span, len - whole_len, len - whole_len + name_len);
-            let root_path = self.state.slice_span(&root_file_span, 0, parent_len);
+            let root_path = self.slice_span(&root_file_span, 0, parent_len);
 
-            let manifest_ent = &mut self.state.manifests[manifest_id];
+            let manifest_ent = &mut self.manifests[manifest_id];
             manifest_ent.name = name;
             manifest_ent.root_path = root_path;
 
             for dependency in &manifest.deps {
                 path_buffer.clear();
-                let dependency_path = self.state.display(&dependency.path);
+                let dependency_path = self.display(&dependency.path);
                 if dependency.external {
                     path_buffer.push(Path::new(&cache_root));
                     path_buffer.push(Path::new(dependency_path));
-                    path_buffer.push(Path::new(self.state.display(&dependency.version)));
+                    path_buffer.push(Path::new(self.display(&dependency.version)));
                 } else {
                     path_buffer.push(Path::new(base_path));
                     path_buffer.push(Path::new(dependency_path));
@@ -345,7 +404,7 @@ impl<'a> MTParser<'a> {
 
                 let id = ID::new(path_buffer.to_str().unwrap());
 
-                let manifest = self.state.manifests.index_or_insert(
+                let manifest = self.manifests.index_or_insert(
                     id,
                     ManifestEnt {
                         id,
@@ -354,21 +413,21 @@ impl<'a> MTParser<'a> {
                     },
                 );
 
-                self.state.manifests[manifest_id]
+                self.manifests[manifest_id]
                     .deps
                     .push((dependency.clone(), manifest));
 
                 frontier.push((manifest, dependency.token, Some(dependency.clone())));
             }
 
-            self.state.manifests[manifest_id].seen = true;
+            self.manifests[manifest_id].seen = true;
         }
 
         let mut stack = vec![];
-        let mut map = vec![(false, false); self.state.manifests.len()];
+        let mut map = vec![(false, false); self.manifests.len()];
 
         if let Some(cycle) =
-            self.state
+            self
                 .manifests
                 .detect_cycles(Manifest::new(0), &mut stack, &mut map, None)
         {
@@ -384,11 +443,11 @@ impl<'a> MTParser<'a> {
     }
 
     pub fn download(&mut self, dep: Dep, manifest: Manifest) -> Result {
-        let base_path = &self.state.manifests[manifest].base_path;
+        let base_path = &self.manifests[manifest].base_path;
 
         std::fs::create_dir_all(base_path).unwrap();
 
-        let link = format!("https://{}", self.state.display(&dep.path));
+        let link = format!("https://{}", self.display(&dep.path));
 
         let code = std::process::Command::new("git")
             .args(&[
@@ -396,7 +455,7 @@ impl<'a> MTParser<'a> {
                 "--depth",
                 "1",
                 "--branch",
-                self.state.display(&dep.version),
+                self.display(&dep.version),
                 &link,
                 base_path,
             ])
@@ -409,11 +468,22 @@ impl<'a> MTParser<'a> {
 
         Ok(())
     }
+
+    fn clean_incremental_data(&mut self) {
+        for module in self.modules.iter_mut() {
+            module.seen = false;
+            module.dependant.clear()
+        }
+
+        for manifest in self.manifests.iter_mut() {
+            manifest.seen = false;
+        }
+    }
 }
 
 impl TreeStorage<Mod> for Table<Mod, ModEnt> {
     fn node_dep(&self, id: Mod, idx: usize) -> Mod {
-        self[id].dependency[idx].1
+        self[id].dependency[idx].module
     }
 
     fn node_len(&self, id: Mod) -> usize {
@@ -552,17 +622,17 @@ impl MTState {
             module_ent
                 .dependency
                 .iter()
-                .map(|dep| (dep.1, self.modules[dep.1].id)),
+                .map(|dep| (dep.module, self.modules[dep.module].id)),
         );
     }
 
     pub fn find_dep(&self, inside: Mod, name: &Token) -> Option<Mod> {
-        let id = MOD_SALT.add(name.span.hash);
+        let nick = MOD_SALT.add(name.span.hash);
         self.modules[inside]
             .dependency
             .iter()
-            .find(|dep| dep.0 == id)
-            .map(|dep| dep.1)
+            .find(|dep| dep.nick == nick)
+            .map(|dep| dep.module)
     }
 
     pub fn can_access(&self, from: Mod, to: Mod, vis: Vis) -> bool {
@@ -589,9 +659,11 @@ crate::inherit!(MTContext, a_context, AContext);
 pub struct ModEnt {
     pub id: ID,
     pub name: Span,
-    pub dependency: Vec<(ID, Mod)>,
+    pub dependency: Vec<DepHeader>,
     pub dependant: Vec<Mod>,
+    
     pub a_state: AState,
+    
     #[default(Manifest::new(0))]
     pub manifest: Manifest,
     
@@ -605,6 +677,15 @@ pub struct ModEnt {
 }
 
 crate::inherit!(ModEnt, a_state, AState);
+
+#[derive(Debug, Clone, Copy, QuickDefault, RealQuickSer)]
+pub struct DepHeader {
+    pub nick: ID,
+    pub in_code_path: Span,
+    pub hint: Token,
+    #[default(Mod::reserved_value())]
+    pub module: Mod,
+}
 
 crate::def_displayer!(
     MTErrorDisplay,
@@ -715,6 +796,10 @@ pub fn test() {
         .parse(PATH)
         .map_err(|e| panic!("{}", MTErrorDisplay::new(&state, &e)))
         .unwrap();
+
+    for module in state.modules.iter_mut() {
+        module.clean = true;
+    }
 
     incr::save_data(PATH, &state, ID(0), Some(hint)).unwrap();
 }

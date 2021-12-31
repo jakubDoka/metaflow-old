@@ -304,6 +304,7 @@ impl<V> Default for Map<V> {
 pub struct Table<I: EntityRef, T> {
     map: Map<I>,
     data: PrimaryMap<I, Value<T>>,
+    free: Vec<I>,
 }
 
 impl<I: EntityRef, T> Table<I, T> {
@@ -311,12 +312,18 @@ impl<I: EntityRef, T> Table<I, T> {
         Self {
             map: Map::new(),
             data: PrimaryMap::new(),
+            free: Vec::new(),
         }
+    }
+
+    pub fn next_key(&self) -> I {
+        self.data.next_key()
     }
 
     pub fn clear(&mut self) {
         self.map.clear();
         self.data.clear();
+        self.free.clear();
     }
 
     pub fn add_hidden(&mut self, value: T) -> I {
@@ -329,7 +336,12 @@ impl<I: EntityRef, T> Table<I, T> {
                 return (Some(std::mem::replace(&mut self.data[i].1, data)), i);
             }
         }
-        let i = self.data.push(Value(id, data));
+        let i = if let Some(free) = self.free.pop() { 
+            self.data[free] = Value(id, data);
+            free
+        } else {
+            self.data.push(Value(id, data))
+        };
         self.map.insert(id, i);
         (None, i)
     }
@@ -340,7 +352,12 @@ impl<I: EntityRef, T> Table<I, T> {
                 return i;
             }
         }
-        let i = self.data.push(Value(id, data));
+        let i = if let Some(free) = self.free.pop() { 
+            self.data[free] = Value(id, data);
+            free
+        } else {
+            self.data.push(Value(id, data))
+        };
         self.map.insert(id, i);
         i
     }
@@ -388,6 +405,19 @@ impl<I: EntityRef, T> Table<I, T> {
 
     pub fn len(&self) -> usize {
         self.data.len()
+    }
+}
+
+impl<I: EntityRef, T: Default> Table<I, T> {
+    pub fn remove(&mut self, id: ID) -> Option<T> {
+        if let Some(&i) = self.map.get(id) {
+            let value = std::mem::take(&mut self.data[i].1);
+            self.map.remove(id);
+            self.free.push(i);
+            Some(value)
+        } else {
+            None
+        }
     }
 }
 

@@ -132,6 +132,7 @@ impl<'a> AParser<'a> {
     }
 
     pub fn take_imports(&mut self, imports: &mut Vec<Import>) -> Result {
+        debug_assert!(imports.is_empty());
         while let TKind::Indent(_) = self.token.kind {
             self.next()?;
         }

@@ -2,6 +2,7 @@ use std::ops::{Deref, DerefMut};
 
 use crate::ast::{AError, AErrorDisplay, AKind, AParser, AstEnt, Vis};
 use crate::entities::{Ast, Mod, Ty};
+use crate::incr;
 use crate::lexer::{Span, TKind as LTKind, Token, TokenDisplay};
 use crate::module_tree::{MTContext, MTParser, MTState, TreeStorage};
 use crate::util::sdbm::ID;
@@ -33,6 +34,8 @@ pub struct TParser<'a> {
     context: &'a mut TContext,
 }
 
+crate::inherit!(TParser<'_>, state, TState);
+
 impl<'a> TParser<'a> {
     pub const MAX_TYPE_INSTANTIATION_DEPTH: usize = 1000;
 
@@ -46,15 +49,30 @@ impl<'a> TParser<'a> {
 
     pub fn parse(&mut self, module: Mod) -> Result {
         self.module = module;
+        self.clean_incremental_data(module);
         self.collect(module)?;
         self.connect()?;
         self.calc_sizes()?;
         Ok(())
     }
 
+    pub fn clean_incremental_data(&mut self, module: Mod) {
+        if module.as_u32() == 0 {
+            return
+        }
+        let mut types = self.modules[module].types;
+        let types_len = self.slice_len(types);
+        for i in 0..types_len {
+            let ty = self.get(types, i);
+            self.remove_type(ty);
+        }
+        types.clear(&mut self.type_slices);
+        self.modules[module].types = types;
+    }
+
     pub fn parse_type(&mut self, module: Mod, ast: Ast) -> Result<(Mod, Ty)> {
         self.module = module;
-        let result = self.resolve_type(module, ast, 0)?;
+        let result = self.ty(module, ast, 0)?;
 
         self.connect()?;
         self.calc_sizes()?;
@@ -62,11 +80,11 @@ impl<'a> TParser<'a> {
     }
 
     fn calc_sizes(&mut self) -> Result {
-        let mut lookup = std::mem::take(&mut self.state.type_cycle_map);
+        let mut lookup = std::mem::take(&mut self.type_cycle_map);
         let mut resolved = std::mem::take(&mut self.context.resolved);
         let mut ordering = self.context.pool.get();
         let mut cycle_stack = self.context.pool.get();
-        lookup.resize(self.state.types.len(), (false, false));
+        lookup.resize(self.types.len(), (false, false));
 
         for ty in resolved.drain(..) {
             if lookup[ty.index()].0 {
@@ -85,13 +103,13 @@ impl<'a> TParser<'a> {
         }
 
         self.context.resolved = resolved;
-        self.state.type_cycle_map = lookup;
+        self.type_cycle_map = lookup;
 
         Ok(())
     }
 
     fn calc_size(&mut self, ty: Ty) -> Result {
-        let ty_ent = &mut self.state.types[ty];
+        let ty_ent = &mut self.types[ty];
         match &mut ty_ent.kind {
             TKind::Structure(stype) => {
                 let mut size = Size::ZERO;
@@ -99,7 +117,7 @@ impl<'a> TParser<'a> {
                 let kind = stype.kind;
                 let align = fields
                     .iter()
-                    .map(|field| self.state.types[field.ty].align)
+                    .map(|field| self.types[field.ty].align)
                     .max()
                     .unwrap_or(Size::ZERO);
 
@@ -118,7 +136,7 @@ impl<'a> TParser<'a> {
                             for field in &mut fields {
                                 size = size.add(calc(size));
                                 field.offset = size;
-                                size = size.add(self.state.types[field.ty].size);
+                                size = size.add(self.types[field.ty].size);
                             }
 
                             size = size.add(calc(size));
@@ -126,22 +144,22 @@ impl<'a> TParser<'a> {
                         SKind::Union => {
                             size = fields
                                 .iter()
-                                .map(|field| self.state.types[field.ty].size)
+                                .map(|field| self.types[field.ty].size)
                                 .max()
                                 .unwrap();
                         }
                     }
                 }
 
-                self.state.types[ty].kind.structure_mut().fields = fields;
+                self.types[ty].kind.structure_mut().fields = fields;
 
-                let ty_ent = &mut self.state.types[ty];
+                let ty_ent = &mut self.types[ty];
                 ty_ent.align = align;
                 ty_ent.size = size;
             }
             &mut TKind::Array(element, size) => {
-                let element_size = self.state.types[element].size;
-                self.state.types[ty].size = Size::new(size, size).mul(element_size);
+                let element_size = self.types[element].size;
+                self.types[ty].size = Size::new(size, size).mul(element_size);
             }
             TKind::Pointer(..) | TKind::Builtin(..) | TKind::FunPointer(..) => (),
             _ => unreachable!("{:?}", ty_ent.kind),
@@ -155,16 +173,16 @@ impl<'a> TParser<'a> {
             if depth > Self::MAX_TYPE_INSTANTIATION_DEPTH {
                 return Err(TError::new(
                     TEKind::InstantiationDepthExceeded,
-                    self.state.types[id].hint.clone(),
+                    self.types[id].hint.clone(),
                 ));
             }
 
-            let ty = &self.state.types[id];
+            let ty = &self.types[id];
             let ty_module = ty.module;
 
             match &ty.kind {
                 &TKind::Unresolved(ast) => self.connect_type(ty_module, id, ast, depth)?,
-                _ => unreachable!("{:?}", &self.state.types[id].kind),
+                _ => unreachable!("{:?}", &self.types[id].kind),
             }
 
             self.context.resolved.push(id);
@@ -173,7 +191,7 @@ impl<'a> TParser<'a> {
     }
 
     fn connect_type(&mut self, module: Mod, id: Ty, ast: Ast, depth: usize) -> Result {
-        match self.state.modules[module].kind(ast) {
+        match self.modules[module].kind(ast) {
             AKind::StructDeclaration(_) => {
                 self.connect_structure(module, id, ast, SKind::Struct, depth)?;
             }
@@ -197,7 +215,7 @@ impl<'a> TParser<'a> {
 
         let module_id = module_ent.id;
         let params = self.state.types[id].params;
-        let params_len = params.len(&self.state.type_slices);
+        let params_len = params.len(&self.type_slices);
         let mut shadowed = self.context.pool.get();
 
         let header = module_ent.son(ast, 0);
@@ -213,12 +231,12 @@ impl<'a> TParser<'a> {
                         params_len - 1,
                         header_len - 1,
                     ),
-                    self.state.types[id].hint.clone(),
+                    self.types[id].hint.clone(),
                 ));
             }
             for (i, &param) in (1..header_len).zip(params.as_slice(&self.state.type_slices)[1..].iter())
             {
-                let module_ent = &self.state.modules[module];
+                let module_ent = &self.modules[module];
                 let hash = module_ent.son_ent(header, i).token.span.hash;
                 let id = TYPE_SALT.add(hash).add(module_id);
 
@@ -227,15 +245,15 @@ impl<'a> TParser<'a> {
             }
         }
 
-        self.state.types[id].params = params;
+        self.types[id].params = params;
 
-        let module_ent = &self.state.modules[module];
+        let module_ent = &self.modules[module];
         let body = module_ent.son(ast, 1);
         if body != Ast::reserved_value() {
             let body = *module_ent.load(body);
             let len = module_ent.len(body.sons);
             for i in 0..len {
-                let module_ent = &self.state.modules[module];
+                let module_ent = &self.modules[module];
                 let &AstEnt { sons, kind, token } = module_ent.get_ent(body.sons, i);
                 let field_line_len = module_ent.len(sons);
                 let type_ast = module_ent.get(sons, field_line_len - 1);
@@ -243,10 +261,10 @@ impl<'a> TParser<'a> {
                     &AKind::StructField(vis, embedded) => (vis, embedded),
                     _ => unreachable!("{:?}", kind),
                 };
-                let (_, ty) = self.resolve_type(module, type_ast, depth)?;
+                let (_, ty) = self.ty(module, type_ast, depth)?;
                 let hint = token;
-                let module_ent = &self.state.modules[module];
-                let field_ids = self.state.modules[module].slice(sons);
+                let module_ent = &self.modules[module];
+                let field_ids = self.modules[module].slice(sons);
                 for &field in field_ids[..field_line_len - 1].iter() {
                     let id = module_ent.token(field).span.hash;
                     let field = SField {
@@ -264,7 +282,7 @@ impl<'a> TParser<'a> {
         }
         
         for (id, ty) in shadowed.drain(..) {
-            self.state.types.remove_link(id, ty);
+            self.types.remove_link(id, ty);
         }
 
         let s_ent = SType {
@@ -272,32 +290,32 @@ impl<'a> TParser<'a> {
             fields: fields.clone(),
         };
 
-        self.state.types[id].kind = TKind::Structure(s_ent);
+        self.types[id].kind = TKind::Structure(s_ent);
 
         Ok(())
     }
 
-    fn resolve_type(&mut self, module: Mod, ast: Ast, depth: usize) -> Result<(Mod, Ty)> {
-        let module_ent = &self.state.modules[module];
+    fn ty(&mut self, module: Mod, ast: Ast, depth: usize) -> Result<(Mod, Ty)> {
+        let module_ent = &self.modules[module];
         let &AstEnt { kind, token, sons } = module_ent.a_state.load(ast);
         let (ty_module, ty) = match kind {
-            AKind::Ident => self.resolve_simple_type(module, None, ast, &token),
+            AKind::Ident => self.simple_type(module, None, ast, &token),
             AKind::Path => {
                 let module_name = module_ent.get(sons, 0);
                 let name = module_ent.get(sons, 1);
-                self.resolve_simple_type(module, Some(module_name), name, &token)
+                self.simple_type(module, Some(module_name), name, &token)
             }
-            AKind::Instantiation => self.resolve_instance(module, ast, depth),
-            AKind::Ref => self.resolve_pointer(module, ast, depth),
-            AKind::Array => self.resolve_array(module, ast, depth),
-            AKind::Lit => self.resolve_constant(module, &token),
-            AKind::FunHeader(..) => self.resolve_function_pointer(module, ast, depth),
+            AKind::Instantiation => self.instance(module, ast, depth),
+            AKind::Ref => self.pointer(module, ast, depth),
+            AKind::Array => self.array(module, ast, depth),
+            AKind::Lit => self.constant(module, &token),
+            AKind::FunHeader(..) => self.function_pointer(module, ast, depth),
             _ => unreachable!("{:?}", kind),
         }?;
 
         if !self
             .state
-            .can_access(module, ty_module, self.state.types[ty].vis)
+            .can_access(module, ty_module, self.types[ty].vis)
         {
             return Err(TError::new(TEKind::VisibilityViolation, token));
         }
@@ -305,37 +323,37 @@ impl<'a> TParser<'a> {
         Ok((module, ty))
     }
 
-    fn resolve_function_pointer(
+    fn function_pointer(
         &mut self,
         module: Mod,
         ast: Ast,
         depth: usize,
     ) -> Result<(Mod, Ty)> {
-        let module_ent = &self.state.modules[module];
+        let module_ent = &self.modules[module];
         let sons = module_ent.sons(ast);
         let len = module_ent.len(sons);
 
         let mut args = EntityList::new();
         for i in 1..len - 2 {
-            let arg = self.state.modules[module].get(sons, i);
-            let (_, ty) = self.resolve_type(module, arg, depth)?;
-            args.push(ty, &mut self.state.type_slices);
+            let arg = self.modules[module].get(sons, i);
+            let (_, ty) = self.ty(module, arg, depth)?;
+            args.push(ty, &mut self.type_slices);
         }
 
-        let module_ent = &self.state.modules[module];
+        let module_ent = &self.modules[module];
         let ret = module_ent.get(sons, len - 2);
         let ret = if ret != Ast::reserved_value() {
-            let (_, ty) = self.resolve_type(module, ret, depth)?;
+            let (_, ty) = self.ty(module, ret, depth)?;
             Some(ty)
         } else {
             None
         };
 
-        let module_ent = &self.state.modules[module];
+        let module_ent = &self.modules[module];
         let call_conv = module_ent.get(sons, len - 1);
         let call_conv = if call_conv != Ast::reserved_value() {
             let token = module_ent.token(call_conv);
-            let str = self.state.display(&token.span);
+            let str = self.display(&token.span);
             CallConv::from_str(str).ok_or_else(|| TError::new(TEKind::InvalidCallConv, *token))?
         } else {
             CallConv::Fast
@@ -347,32 +365,32 @@ impl<'a> TParser<'a> {
             call_conv,
         };
 
-        let id = self.state.function_type_of(module, sig);
+        let id = self.function_type_of(module, sig);
 
         Ok((module, id))
     }
 
-    fn resolve_array(&mut self, module: Mod, ast: Ast, depth: usize) -> Result<(Mod, Ty)> {
-        let module_ent = &self.state.modules[module];
+    fn array(&mut self, module: Mod, ast: Ast, depth: usize) -> Result<(Mod, Ty)> {
+        let module_ent = &self.modules[module];
         let element = module_ent.son(ast, 0);
         let length_ast = module_ent.son(ast, 1);
 
-        let (_, element) = self.resolve_type(module, element, depth)?;
-        let (_, length) = self.resolve_type(module, length_ast, depth)?;
-        let length = match self.state.types[length].kind {
+        let (_, element) = self.ty(module, element, depth)?;
+        let (_, length) = self.ty(module, length_ast, depth)?;
+        let length = match self.types[length].kind {
             TKind::Constant(TypeConst::Int(i)) => i,
             _ => {
                 return Err(TError::new(
                     TEKind::ExpectedIntConstant,
-                    *self.state.modules[module].token(length_ast),
+                    *self.modules[module].token(length_ast),
                 ))
             }
         };
 
-        Ok((module, self.state.array_of(element, length as usize)))
+        Ok((module, self.array_of(element, length as usize)))
     }
 
-    fn resolve_constant(&mut self, module: Mod, token: &Token) -> Result<(Mod, Ty)> {
+    fn constant(&mut self, module: Mod, token: &Token) -> Result<(Mod, Ty)> {
         let constant = match token.kind.clone() {
             LTKind::Int(val, _) => TypeConst::Int(val),
             LTKind::Uint(val, _) => TypeConst::Int(val as i64),
@@ -383,61 +401,61 @@ impl<'a> TParser<'a> {
             _ => unreachable!("{:?}", token.kind),
         };
 
-        let ty = self.state.constant_of(constant);
+        let ty = self.constant_of(constant);
 
         Ok((module, ty))
     }
 
-    fn resolve_pointer(&mut self, module: Mod, ast: Ast, depth: usize) -> Result<(Mod, Ty)> {
+    fn pointer(&mut self, module: Mod, ast: Ast, depth: usize) -> Result<(Mod, Ty)> {
         let (module, datatype) =
-            self.resolve_type(module, self.state.modules[module].son(ast, 0), depth)?;
-        let datatype = self.state.pointer_of(datatype);
+            self.ty(module, self.modules[module].son(ast, 0), depth)?;
+        let datatype = self.pointer_of(datatype);
 
         Ok((module, datatype))
     }
 
-    fn resolve_instance(
+    fn instance(
         &mut self,
         source_module: Mod,
         ast: Ast,
         depth: usize,
     ) -> Result<(Mod, Ty)> {
-        let module_ent = &self.state.modules[source_module];
+        let module_ent = &self.modules[source_module];
         let ident = module_ent.son(ast, 0);
         let &AstEnt { token, sons, kind } = module_ent.load(ident);
         let (module, ty) = match kind {
-            AKind::Ident => self.resolve_simple_type(source_module, None, ident, &token)?,
+            AKind::Ident => self.simple_type(source_module, None, ident, &token)?,
             AKind::Path => {
                 let module_name = module_ent.get(sons, 0);
                 let name = module_ent.get(sons, 1);
-                self.resolve_simple_type(source_module, Some(module_name), name, &token)?
+                self.simple_type(source_module, Some(module_name), name, &token)?
             }
             _ => unreachable!("{:?}", kind),
         };
 
         let mut params = EntityList::new();
-        let module_ent = &self.state.modules[source_module];
+        let module_ent = &self.modules[source_module];
         let module_id = module_ent.id;
         let sons = module_ent.sons(ast);
         let ast_len = module_ent.len(sons);
 
-        self.state.push(&mut params, ty);
+        self.push(&mut params, ty);
 
-        let mut id = TYPE_SALT.add(self.state.types[ty].id);
+        let mut id = TYPE_SALT.add(self.types[ty].id);
         for i in 1..ast_len {
-            let ty = self.state.modules[source_module].get(sons, i);
-            let ty = self.resolve_type(source_module, ty, depth)?.1;
-            id = id.add(self.state.types[ty].id);
-            self.state.push(&mut params, ty);
+            let ty = self.modules[source_module].get(sons, i);
+            let ty = self.ty(source_module, ty, depth)?.1;
+            id = id.add(self.types[ty].id);
+            self.push(&mut params, ty);
         }
         id = id.add(module_id);
 
         if let Some(id) = self.type_index(id) {
-            self.state.clear(&mut params);
+            self.clear(&mut params);
             return Ok((module, id));
         }
 
-        let ty_ent = &self.state.types[ty];
+        let ty_ent = &self.types[ty];
 
         let ast = match ty_ent.kind {
             TKind::Generic(ast) => ast,
@@ -466,27 +484,27 @@ impl<'a> TParser<'a> {
             align: Size::ZERO,
         };
 
-        let ty = self.state.add_type(type_ent);
+        let ty = self.add_type(type_ent);
 
         self.context.unresolved.push((ty, depth));
 
         Ok((module, ty))
     }
 
-    fn resolve_simple_type(
+    fn simple_type(
         &mut self,
         module: Mod,
         target: Option<Ast>,
         name: Ast,
         token: &Token,
     ) -> Result<(Mod, Ty)> {
-        let module_ent = &self.state.modules[module];
+        let module_ent = &self.modules[module];
         let id = TYPE_SALT.add(module_ent.token(name).span.hash);
 
         let target = if let Some(target) = target {
             let token = module_ent.token(target);
             Some(
-                self.state
+                self
                     .find_dep(module, token)
                     .ok_or(TError::new(TEKind::UnknownModule, *token))?,
             )
@@ -501,12 +519,12 @@ impl<'a> TParser<'a> {
     }
 
     fn collect(&mut self, module: Mod) -> Result<()> {
-        let module_ent = &self.state.modules[module];
+        let module_ent = &self.modules[module];
         let module_name = module_ent.id;
         let types = module_ent.types();
 
         for i in (0..types.len()).step_by(2) {
-            let module_ent = &self.state.modules[module];
+            let module_ent = &self.modules[module];
             let types = module_ent.types();
             let type_ast = types[i];
             let attrs = types[i + 1];
@@ -542,16 +560,16 @@ impl<'a> TParser<'a> {
                         ..Default::default()
                     };
 
-                    let (replaced, id) = self.state.types.insert(id, datatype);
+                    let (replaced, id) = self.types.insert(id, datatype);
                     if let Some(other) = replaced {
                         return Err(TError::new(TEKind::Redefinition(other.hint), token));
                     }
 
-                    let mut types = self.state.modules[module].types;
-                    types.push(id, &mut self.state.type_slices);
-                    self.state.modules[module].types = types;
+                    let mut types = self.modules[module].types;
+                    types.push(id, &mut self.type_slices);
+                    self.modules[module].types = types;
 
-                    if let TKind::Unresolved(_) = &self.state.types[id].kind {
+                    if let TKind::Unresolved(_) = &self.types[id].kind {
                         self.context.unresolved.push((id, 0));
                     }
                 }
@@ -563,35 +581,35 @@ impl<'a> TParser<'a> {
     }
 
     fn type_index(&self, id: ID) -> Option<Ty> {
-        self.state.types.index(id).cloned()
+        self.types.index(id).cloned()
     }
 }
 
 impl<'a> ItemSearch<Ty> for TParser<'a> {
     fn find(&self, id: ID) -> Option<Ty> {
-        self.state.types.index(id).cloned()
+        self.types.index(id).cloned()
     }
 
     fn scopes(&self, module: Mod, buffer: &mut Vec<(Mod, ID)>) {
-        self.state.collect_scopes(module, buffer)
+        self.collect_scopes(module, buffer)
     }
 
     fn module_id(&self, module: Mod) -> ID {
-        self.state.modules[module].id
+        self.modules[module].id
     }
 }
 
 impl<'a> TreeStorage<Ty> for TParser<'a> {
     fn node_dep(&self, id: Ty, idx: usize) -> Ty {
-        let node = &self.state.types[id];
+        let node = &self.types[id];
         match &node.kind {
             TKind::Structure(stype) => stype.fields[idx].ty,
             TKind::Array(ty, _) => *ty,
             TKind::FunPointer(fun) => {
-                if idx == fun.args.len(&self.state.type_slices) {
+                if idx == fun.args.len(&self.type_slices) {
                     fun.ret.unwrap()
                 } else {
-                    fun.args.get(idx, &self.state.type_slices).unwrap()
+                    fun.args.get(idx, &self.type_slices).unwrap()
                 }
             }
             _ => unreachable!("{:?}", node.kind),
@@ -599,11 +617,11 @@ impl<'a> TreeStorage<Ty> for TParser<'a> {
     }
 
     fn node_len(&self, id: Ty) -> usize {
-        let node = &self.state.types[id];
+        let node = &self.types[id];
 
         match &node.kind {
             TKind::Builtin(_) | TKind::Pointer(..) => 0,
-            TKind::FunPointer(fun) => fun.args.len(&self.state.type_slices) + fun.ret.is_some() as usize,
+            TKind::FunPointer(fun) => fun.args.len(&self.type_slices) + fun.ret.is_some() as usize,
             TKind::Array(..) => 1,
             TKind::Structure(stype) => stype.fields.len(),
             TKind::Generic(_) | TKind::Unresolved(_) | TKind::Constant(_) => 
@@ -612,7 +630,7 @@ impl<'a> TreeStorage<Ty> for TParser<'a> {
     }
 
     fn len(&self) -> usize {
-        self.state.types.len()
+        self.types.len()
     }
 }
 
@@ -946,7 +964,8 @@ impl TState {
     }
 
     pub fn remove_type(&mut self, ty: Ty) {
-        let mut type_ent = std::mem::take(&mut self.types[ty]);
+        let type_id = self.types[ty].id;
+        let mut type_ent = self.types.remove(type_id).unwrap();
         type_ent.params.clear(&mut self.type_slices);
         match type_ent.kind {
             TKind::Builtin(_) |
@@ -960,6 +979,14 @@ impl TState {
                 sig.args.clear(&mut self.type_slices);
             },
         }
+    }
+
+    fn slice_len(&self, list: EntityList<Ty>) -> usize {
+        list.len(&self.type_slices)
+    }
+
+    fn get(&self, list: EntityList<Ty>, i: usize) -> Ty {
+        list.get(i, &self.type_slices).unwrap()
     }
 }
 
@@ -1294,14 +1321,20 @@ pub fn call_conv_error(f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
 }
 
 pub fn test() {
-    let mut state = TState::default();
+    const PATH: &str = "src/types/test_project";
+    
+    let (mut state, hint) = incr::load_data::<TState>(PATH, ID(0)).unwrap_or_default();
     let mut context = TContext::default();
 
     MTParser::new(&mut state, &mut context)
-        .parse("src/types/test_project")
+        .parse(PATH)
         .unwrap();
 
     for module in std::mem::take(&mut state.module_order).drain(..) {
+        if state.modules[module].clean {
+            continue;
+        }
+
         let mut a_state = std::mem::take(&mut state.modules[module].a_state);
 
         AParser::new(&mut state.a_main_state, &mut a_state, &mut context)
@@ -1316,4 +1349,6 @@ pub fn test() {
             .map_err(|e| panic!("\n{}", TErrorDisplay::new(&mut state, &e)))
             .unwrap();
     }
+
+    incr::save_data(PATH, &state, ID(0), Some(hint)).unwrap();
 }

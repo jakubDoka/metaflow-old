@@ -2187,3 +2187,5 @@ Fun(None) "fun some_string -> &u8:\r\n  \"\r\nhello there\r\n  \"":
   None
  Group ":":
   Lit "\"\r\nhello there\r\n  \""
+reloaded: src/types/test_project\main.mf
+reloaded: src/types/test_project\main\module.mf

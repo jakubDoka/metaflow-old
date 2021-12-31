@@ -1,6 +1,7 @@
 use 
   "dummy"
   "main/sub"
+  "smh"
 
 fun main -> int:
   return the_answer()
