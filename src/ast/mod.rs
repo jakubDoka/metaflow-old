@@ -29,6 +29,7 @@ impl<'a> AParser<'a> {
         state: &'a mut AState,
         context: &'a mut AContext,
     ) -> Self {
+        context.clear();
         Self {
             main_state,
             state,
@@ -360,13 +361,14 @@ impl<'a> AParser<'a> {
             Self::attr_element,
         )?;
 
+
         for &ast in self.state.slice(ast_ent.sons) {
             let hash = self.token(ast).span.hash;
             if hash == ID::new("push") {
                 self.context
                     .attrib_frames
                     .push(self.context.attrib_stack.len());
-                for &ast in self.state.slice(self.sons(ast)) {
+                for &ast in &self.state.slice(self.sons(ast))[1..] {
                     self.context.attrib_stack.push(ast);
                 }
             } else if hash == ID::new("pop") {
@@ -1376,11 +1378,14 @@ impl AState {
     }
 
     pub fn attr(&self, attrs: Ast, id: ID) -> Option<Ast> {
+        if attrs.is_reserved_value() {
+            return None;
+        }
         let sons = self.sons(attrs);
         self
             .slice(sons)
             .iter()
-            .find(|&&a| self.son_ent(a, 0).token.span.hash == id)
+            .find(|&&a| self.kind(a) != AKind::Comment && self.son_ent(a, 0).token.span.hash == id)
             .cloned()
     }
 }
@@ -1466,6 +1471,15 @@ pub struct AContext {
     attrib_frames: Vec<usize>,
     current_attributes: Vec<Ast>,
 }
+
+impl AContext {
+    fn clear(&mut self) {
+        self.attrib_stack.clear();
+        self.attrib_frames.clear();
+        self.current_attributes.clear();
+    }
+}
+    
 
 pub struct AstDisplay<'a> {
     main_state: &'a AMainState,

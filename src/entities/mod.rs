@@ -59,7 +59,6 @@ pub enum IKind {
     Call(Fun, EntityList<Value>),
     UnresolvedDot(Value, ID),
     VarDecl(Value),
-    VarAccess, // merely to hold source information
     Zeroed,
     Uninitialized,
     Lit(TKind),

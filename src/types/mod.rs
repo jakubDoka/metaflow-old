@@ -956,6 +956,9 @@ impl TState {
     }
 
     pub fn base_of(&self, ty: Ty) -> Ty {
+        if let TKind::Array(..) = self.types[ty].kind {
+            return self.builtin_repo.array;
+        }
         let TypeEnt { module, params, .. } = self.types[ty];
         self.modules[module]
             .type_slice(params)

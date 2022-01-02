@@ -268,9 +268,13 @@ impl<'a> MTParser<'a> {
             self.modules[m] = module;
             m
         } else {
-            let mut module = ModEnt::default();
-            module.manifest = manifest_id;
-            module.name = name;
+            let mut module = ModEnt {
+                id,
+                name,
+                manifest: manifest_id,
+                
+                ..Default::default()
+            };
             module.source = self.sources.push(source);
             self.a_state_for(module.source, &mut module.a_state);
             let (shadowed, m) = self.modules.insert(id, module);
@@ -853,14 +857,6 @@ impl ModEnt {
         self.values[value].ty
     }
 
-    pub fn hint_of_value(&self, value: Value) -> Option<Token> {
-        if self.values[value].inst.is_some() {
-            Some(self.insts[self.values[value].inst.unwrap()].hint)
-        } else {
-            None
-        }
-    }
-
     pub fn last_arg_of_block(&self, entry_block: Block) -> Option<Value> {
         self.blocks[entry_block]
             .args
@@ -872,12 +868,12 @@ impl ModEnt {
     pub fn offset_value(
         &mut self,
         target: Value,
+        ty: Ty,
         offset: Size,
         token: Token,
         body: &mut FunBody,
     ) -> Value {
         let mutable = self.is_mutable(target);
-        let ty = self.type_of_value(target);
         let result = self.values.push(ValueEnt {
             ty,
             mutable,
@@ -896,7 +892,7 @@ impl ModEnt {
     }
 
     pub fn assign(&mut self, target: Value, value: Value, token: Token, body: &mut FunBody) {
-        self.add_inst(IKind::Assign(value), target, token, body);
+        self.add_inst(IKind::Assign(target), value, token, body);
     }
 
     pub fn reference(&mut self, ty: Ty, value: Value, token: Token, body: &mut FunBody) -> Value {
@@ -917,13 +913,13 @@ impl ModEnt {
         self.values.push(value_ent)
     }
 
-    pub fn verify_args(&self, args: &[Value], sig_args: EntityList<Ty>) -> bool {
+    pub fn verify_args(&self, args: &[Ty], sig_args: EntityList<Ty>) -> bool {
         let slice = self.type_slice(sig_args);
         slice.len() != args.len()
             || slice
                 .iter()
                 .zip(args.iter())
-                .any(|(ty, arg)| self.type_of_value(*arg) != *ty)
+                .any(|(ty, arg)| arg != ty)
     }
 
     pub fn clear_types(&mut self, target: &mut EntityList<Ty>) {
@@ -936,6 +932,17 @@ impl ModEnt {
         self.add_inst(IKind::GlobalLoad(global), loaded, Token::default(), body);
         self.assign(loaded, value, Token::default(), body);
         ty
+    }
+
+    pub fn copy_value(&mut self, value: Value) -> Value {
+        let value = self.values[value];
+        self.values.push(value)
+    }
+
+    pub fn block_args(&self, block: Block) -> &[Value] {
+        self.blocks[block]
+            .args
+            .as_slice(&self.value_slices)
     }
 }
 

@@ -48,6 +48,6 @@ fn test() {
     ast::test();
     module_tree::test();
     types::test();
-    //functions::test();
+    functions::test();
     //gen::test();
 }
