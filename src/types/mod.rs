@@ -1,7 +1,7 @@
 use std::ops::{Deref, DerefMut};
 
 use crate::ast::{AError, AErrorDisplay, AKind, AParser, AstEnt, Vis};
-use crate::entities::{Ast, Mod, Ty};
+use crate::entities::{Ast, Mod, Ty, BUILTIN_MODULE};
 use crate::incr;
 use crate::lexer::{Span, TKind as LTKind, Token, TokenDisplay};
 use crate::module_tree::{MTContext, MTParser, MTState, TreeStorage};
@@ -946,6 +946,23 @@ impl TState {
         let type_id = self.types[ty].id;
         self.types.remove(type_id).unwrap();
     }
+
+    pub fn pointer_base(&self, ty: Ty) -> Option<Ty> {
+        if let TKind::Pointer(base) = self.types[ty].kind {
+            Some(base)
+        } else {
+            None
+        }
+    }
+
+    pub fn base_of(&self, ty: Ty) -> Ty {
+        let TypeEnt { module, params, .. } = self.types[ty];
+        self.modules[module]
+            .type_slice(params)
+            .first()
+            .cloned()
+            .unwrap_or(ty)
+    }
 }
 
 crate::inherit!(TState, mt_state, MTState);
@@ -986,7 +1003,7 @@ macro_rules! define_repo {
 
         impl BuiltinRepo {
             pub fn new(state: &mut TState) -> Self {
-                let module = state.builtin_module;
+                let module = BUILTIN_MODULE;
                 let builtin_id = state.modules[module].id;
 
                 $(

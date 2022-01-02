@@ -1298,7 +1298,11 @@ impl AState {
     }
 
     pub fn son(&self, ast: Ast, index: usize) -> Ast {
-        self.sons(ast).get(index, &self.cons).unwrap()
+        self.son_optional(ast, index).unwrap()
+    }
+    
+    pub fn son_optional(&self, ast: Ast, index: usize) -> Option<Ast> {
+        self.sons(ast).get(index, &self.cons)
     }
 
     pub fn sons(&self, ast: Ast) -> EntityList<Ast> {
@@ -1355,6 +1359,29 @@ impl AState {
 
     pub fn get_ent(&self, sons: EntityList<Ast>, index: usize) -> &AstEnt {
         &self.asts[self.get(sons, index)]
+    }
+
+    pub fn chain_son_ent(&self, ast: Ast, indexes: &[usize]) -> &AstEnt {
+        &self.asts[self.chain_son(ast, indexes)]
+    }
+
+    pub fn chain_son(&self, mut ast: Ast, indexes: &[usize]) -> Ast {
+        let mut current = 0;
+        while current < indexes.len() {
+            let index = indexes[current];
+            ast = self.son(ast, index);
+            current += 1;
+        }
+        ast
+    }
+
+    pub fn attr(&self, attrs: Ast, id: ID) -> Option<Ast> {
+        let sons = self.sons(attrs);
+        self
+            .slice(sons)
+            .iter()
+            .find(|&&a| self.son_ent(a, 0).token.span.hash == id)
+            .cloned()
     }
 }
 

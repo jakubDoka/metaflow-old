@@ -3,20 +3,23 @@ use std::ops::{Deref, DerefMut};
 use std::path::{Path, PathBuf};
 use std::time::SystemTime;
 
-use cranelift::codegen::ir::{GlobalValue, Value, Block, Inst};
+use cranelift::codegen::ir::{Block, GlobalValue, Inst, Value};
 use cranelift::codegen::packed_option::PackedOption;
+use cranelift::entity::{packed_option::ReservedValue, EntityList, EntityRef};
 use cranelift::entity::{ListPool, PrimaryMap};
-use cranelift::entity::{EntityRef, EntityList, packed_option::ReservedValue};
 use quick_proc::{QuickDefault, QuickSer, RealQuickSer};
 
 use crate::ast::{AContext, AError, AErrorDisplay, AMainState, AParser, AState, Dep, Vis};
-use crate::entities::{Fun, Manifest, Mod, Source, Ty, ValueEnt, InstEnt, BlockEnt, FunBody, IKind};
+use crate::entities::{
+    BlockEnt, Fun, FunBody, IKind, InstEnt, Manifest, Mod, Source, Ty, ValueEnt, BUILTIN_MODULE,
+};
 use crate::incr;
 use crate::lexer::Token;
 use crate::lexer::{SourceEnt, Span, TokenDisplay};
 use crate::util::pool::Pool;
 use crate::util::sdbm::ID;
 use crate::util::storage::Table;
+use crate::util::Size;
 
 type Result<T = ()> = std::result::Result<T, MTError>;
 
@@ -76,16 +79,16 @@ impl<'a> MTParser<'a> {
             if module.seen {
                 continue;
             }
-            
-            module.seen = true;            
-            
+
+            module.seen = true;
+
             let module = &self.modules[module_id];
             if module.clean {
                 // we still want to walk the tree to see some deeper changed files
                 let len = module.dependency.len();
                 for i in 0..len {
                     let dep = &self.modules[module_id].dependency[i];
-                    // builtin module, we can ignore it since version marker 
+                    // builtin module, we can ignore it since version marker
                     // changes and that invalidates the incremental data
                     if dep.in_code_path.hash == ID(0) {
                         continue;
@@ -97,10 +100,10 @@ impl<'a> MTParser<'a> {
                 }
                 continue;
             }
-            
+
             // at this point ti is safe to assume that modules ast state is restarted
             let mut module = std::mem::take(&mut self.modules[module_id]);
-            
+
             AParser::new(self.state, &mut module.a_state, self.context)
                 .take_imports(&mut imports)
                 .map_err(Into::into)?;
@@ -129,17 +132,20 @@ impl<'a> MTParser<'a> {
                         .clone()
                 };
 
-                frontier.push((import.path, import.token, manifest, Some((module_id, import.nickname))));
+                frontier.push((
+                    import.path,
+                    import.token,
+                    manifest,
+                    Some((module_id, import.nickname)),
+                ));
             }
 
-            module
-                .dependency
-                .push(DepHeader {
-                    nick: MOD_SALT.add(ID::new("builtin")), 
-                    module: self.builtin_module, 
-                    
-                    ..Default::default()
-                });
+            module.dependency.push(DepHeader {
+                nick: MOD_SALT.add(ID::new("builtin")),
+                module: BUILTIN_MODULE,
+
+                ..Default::default()
+            });
 
             module.seen = true;
             self.modules[module_id] = module;
@@ -150,8 +156,7 @@ impl<'a> MTParser<'a> {
         let mut map = vec![(false, false); self.modules.len()];
 
         if let Some(cycle) =
-            self
-                .modules
+            self.modules
                 .detect_cycles(module, &mut stack, &mut map, Some(&mut order))
         {
             return Err(MTError::new(
@@ -169,7 +174,7 @@ impl<'a> MTParser<'a> {
 
     fn propagate_changes(&mut self, order: &[Mod]) {
         // for now we just recompile all dependant modules no matter what
-        // TODO: figure out if change is really needed if possible 
+        // TODO: figure out if change is really needed if possible
         for &module_id in order {
             let module = &self.modules[module_id];
             if module.clean {
@@ -206,9 +211,9 @@ impl<'a> MTParser<'a> {
         let whole_len = module_path.file_name().unwrap().len();
 
         let len = in_code_path.len();
-        let name = self
-            .state
-            .slice_span(&in_code_path, len - whole_len, len - name_len + whole_len);
+        let name =
+            self.state
+                .slice_span(&in_code_path, len - whole_len, len - name_len + whole_len);
 
         // now we have to strip first path segment from root span and replace it with real name
         let module_path = module_path
@@ -231,7 +236,7 @@ impl<'a> MTParser<'a> {
             .map_err(|err| MTError::new(MTEKind::FileReadError(path_buffer.clone(), err), token))?
             .modified()
             .ok();
-        
+
         let last_module = if let Some(&module) = self.modules.index(id) {
             let source = self.modules[module].a_state.l_state.source;
             if modified == Some(self.sources[source].modified) {
@@ -302,9 +307,7 @@ impl<'a> MTParser<'a> {
                 continue;
             }
             path_buffer.clear();
-            path_buffer.push(Path::new(
-                self.manifests[manifest_id].base_path.as_str(),
-            ));
+            path_buffer.push(Path::new(self.manifests[manifest_id].base_path.as_str()));
 
             if let Some(import) = import {
                 if !path_buffer.exists() {
@@ -387,8 +390,7 @@ impl<'a> MTParser<'a> {
 
             let len = root_file_span.len();
             let name =
-                self
-                    .slice_span(&root_file_span, len - whole_len, len - whole_len + name_len);
+                self.slice_span(&root_file_span, len - whole_len, len - whole_len + name_len);
             let root_path = self.slice_span(&root_file_span, 0, parent_len);
 
             let manifest_ent = &mut self.manifests[manifest_id];
@@ -432,8 +434,7 @@ impl<'a> MTParser<'a> {
         let mut map = vec![(false, false); self.manifests.len()];
 
         if let Some(cycle) =
-            self
-                .manifests
+            self.manifests
                 .detect_cycles(Manifest::new(0), &mut stack, &mut map, None)
         {
             return Err(MTError::new(
@@ -582,7 +583,6 @@ pub struct ManifestEnt {
 #[derive(Debug, Clone, QuickSer)]
 pub struct MTState {
     pub a_main_state: AMainState,
-    pub builtin_module: Mod,
     pub manifests: Table<Manifest, ManifestEnt>,
     pub modules: Table<Mod, ModEnt>,
     pub module_order: Vec<Mod>,
@@ -594,7 +594,6 @@ impl Default for MTState {
     fn default() -> Self {
         let mut s = Self {
             a_main_state: AMainState::default(),
-            builtin_module: Mod::new(0),
             manifests: Table::new(),
             modules: Table::new(),
             module_order: Vec::new(),
@@ -613,7 +612,7 @@ impl Default for MTState {
         };
         s.a_state_for(source, &mut builtin_module.a_state);
 
-        s.builtin_module = s.modules.insert(builtin_module.id, builtin_module).1;
+        s.modules.insert(builtin_module.id, builtin_module);
 
         s
     }
@@ -666,17 +665,18 @@ pub struct ModEnt {
     pub name: Span,
     pub dependency: Vec<DepHeader>,
     pub dependant: Vec<Mod>,
-    
+
     pub a_state: AState,
-    
+
     #[default(Manifest::new(0))]
     pub manifest: Manifest,
-    
+
     pub functions: Vec<Fun>,
     pub types: Vec<Ty>,
     pub globals: Vec<GlobalValue>,
-    pub entry_point: PackedOption<Fun>,
     
+    pub entry_point: PackedOption<Fun>,
+
     // this way we can quickly discard all used used ir elements
     // when we recompile module
     #[default(ListPool::new())]
@@ -687,6 +687,7 @@ pub struct ModEnt {
     pub inst_slices: ListPool<Inst>,
     #[default(ListPool::new())]
     pub type_slices: ListPool<Ty>,
+
     pub values: PrimaryMap<Value, ValueEnt>,
     pub insts: PrimaryMap<Inst, InstEnt>,
     pub blocks: PrimaryMap<Block, BlockEnt>,
@@ -699,7 +700,7 @@ crate::inherit!(ModEnt, a_state, AState);
 
 impl ModEnt {
     pub fn new_block(&mut self, body: &mut FunBody) -> Block {
-        let block = self.blocks.push(BlockEnt::default());
+        let block = self.blocks.push(Default::default());
 
         if body.entry_block.is_none() {
             body.entry_block = PackedOption::from(block);
@@ -715,29 +716,38 @@ impl ModEnt {
     }
 
     pub fn select_block(&mut self, block: Block, body: &mut FunBody) {
+        debug_assert!(body.current_block.is_none());
         body.current_block = PackedOption::from(block);
     }
 
-    pub fn add_valueless_inst(&mut self, kind: IKind, token: Token, body: &FunBody) -> Inst {
+    pub fn add_valueless_inst(&mut self, kind: IKind, token: Token, body: &mut FunBody) -> Inst {
         self.add_inst_low(kind, Default::default(), token, body)
     }
 
-    pub fn add_inst(&mut self, kind: IKind, value: Value, hint: Token, body: &FunBody) -> Inst {
-        self.add_inst_low(kind, PackedOption::from(value), hint, body)
+    pub fn add_inst(&mut self, kind: IKind, value: Value, hint: Token, body: &mut FunBody) -> Inst {
+        let inst = self.add_inst_low(kind, PackedOption::from(value), hint, body);
+        self.values[value].inst = PackedOption::from(inst);
+        inst
     }
 
-    pub fn add_inst_low(&mut self, kind: IKind, value: PackedOption<Value>, hint: Token, body: &FunBody) -> Inst {
+    fn add_inst_low(
+        &mut self,
+        kind: IKind,
+        value: PackedOption<Value>,
+        hint: Token,
+        body: &mut FunBody,
+    ) -> Inst {
         let inst = self.insts.push(InstEnt {
             kind,
             value,
             hint,
-            
+
             ..Default::default()
         });
-        
+
         let last = body.current_block.unwrap();
         let block = &mut self.blocks[last];
-        
+
         if block.end.is_none() {
             block.start = PackedOption::from(inst);
             block.end = PackedOption::from(inst);
@@ -748,20 +758,19 @@ impl ModEnt {
             block.end = PackedOption::from(inst);
         }
 
+        if kind.is_closing() {
+            body.current_block = PackedOption::default();
+        }
+
         inst
     }
 
     pub fn add_temp_value(&mut self, ty: Ty) -> Value {
-        self.add_anon_value(ty, false)
+        self.add_value(ty, false)
     }
 
-    pub fn add_anon_value(&mut self, ty: Ty, mutable: bool) -> Value {
-        self.add_value(ID(0), ty, mutable)
-    }
-
-    pub fn add_value(&mut self, id: ID, ty: Ty, mutable: bool) -> Value {
+    pub fn add_value(&mut self, ty: Ty, mutable: bool) -> Value {
         self.values.push(ValueEnt {
-            id,
             ty,
             mutable,
 
@@ -789,7 +798,7 @@ impl ModEnt {
         list.push(ty, &mut self.type_slices);
     }
 
-    pub fn new_type_slice(&mut self, slice: &[Ty]) -> EntityList<Ty> {
+    pub fn add_type_slice(&mut self, slice: &[Ty]) -> EntityList<Ty> {
         EntityList::from_slice(slice, &mut self.type_slices)
     }
 
@@ -809,7 +818,124 @@ impl ModEnt {
     }
 
     pub fn clear_type_slice(&mut self, params: &mut EntityList<Ty>) {
-       params.clear(&mut self.type_slices); 
+        params.clear(&mut self.type_slices);
+    }
+
+    pub fn push_block_arg(&mut self, block: Block, arg: Value) {
+        let block = &mut self.blocks[block];
+        block.args.push(arg, &mut self.value_slices);
+    }
+
+    pub fn set_block_args(&mut self, entry_block: Block, args: EntityList<Value>) {
+        self.blocks[entry_block].args = args;
+    }
+
+    pub fn add_zero_value(&mut self, ty: Ty, body: &mut FunBody) -> Value {
+        let value = self.add_temp_value(ty);
+        self.add_inst(IKind::Zeroed, value, Token::default(), body);
+        value
+    }
+
+    pub fn add_var_decl(&mut self, init: Value, carrier: Value, hint: Token, body: &mut FunBody) {
+        self.add_inst(IKind::VarDecl(init), carrier, hint, body);
+    }
+
+    pub fn add_return_stmt(&mut self, value: Option<Value>, hint: Token, body: &mut FunBody) {
+        self.add_inst_low(
+            IKind::Return(value.map(PackedOption::from).unwrap_or_default()),
+            Default::default(),
+            hint,
+            body,
+        );
+    }
+
+    pub fn type_of_value(&self, value: Value) -> Ty {
+        self.values[value].ty
+    }
+
+    pub fn hint_of_value(&self, value: Value) -> Option<Token> {
+        if self.values[value].inst.is_some() {
+            Some(self.insts[self.values[value].inst.unwrap()].hint)
+        } else {
+            None
+        }
+    }
+
+    pub fn last_arg_of_block(&self, entry_block: Block) -> Option<Value> {
+        self.blocks[entry_block]
+            .args
+            .as_slice(&self.value_slices)
+            .last()
+            .cloned()
+    }
+
+    pub fn offset_value(
+        &mut self,
+        target: Value,
+        offset: Size,
+        token: Token,
+        body: &mut FunBody,
+    ) -> Value {
+        let mutable = self.is_mutable(target);
+        let ty = self.type_of_value(target);
+        let result = self.values.push(ValueEnt {
+            ty,
+            mutable,
+            offset,
+
+            ..Default::default()
+        });
+
+        self.add_inst(IKind::Offset(target), result, token, body);
+
+        result
+    }
+
+    pub fn is_mutable(&self, target: Value) -> bool {
+        self.values[target].mutable
+    }
+
+    pub fn assign(&mut self, target: Value, value: Value, token: Token, body: &mut FunBody) {
+        self.add_inst(IKind::Assign(value), target, token, body);
+    }
+
+    pub fn reference(&mut self, ty: Ty, value: Value, token: Token, body: &mut FunBody) -> Value {
+        let result = self.add_value(ty, true);
+        self.add_inst(IKind::Ref(value), result, token, body);
+        result
+    }
+
+    pub fn load_value_mut(&mut self, current: Value) -> &mut ValueEnt {
+        &mut self.values[current]
+    }
+
+    pub fn inst_kind(&self, inst: Inst) -> IKind {
+        self.insts[inst].kind
+    }
+
+    pub fn add_value_ent(&mut self, value_ent: ValueEnt) -> Value {
+        self.values.push(value_ent)
+    }
+
+    pub fn verify_args(&self, args: &[Value], sig_args: EntityList<Ty>) -> bool {
+        let slice = self.type_slice(sig_args);
+        slice.len() != args.len()
+            || slice
+                .iter()
+                .zip(args.iter())
+                .any(|(ty, arg)| self.type_of_value(*arg) != *ty)
+    }
+
+    pub fn clear_types(&mut self, target: &mut EntityList<Ty>) {
+        target.clear(&mut self.type_slices); 
+    }
+
+    pub fn assign_global(&mut self, global: GlobalValue, value: Value, body: &mut FunBody) -> Ty {
+        let ty = self.type_of_value(value);
+        let loaded = self.add_value(ty, true);
+        self.add_inst(IKind::GlobalLoad(global), loaded, Token::default(), body);
+        self.assign(loaded, value, Token::default(), body);
+        ty
     }
 }
 

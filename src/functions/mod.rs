@@ -1,24 +1,23 @@
 use core::panic;
 use std::ops::{Deref, DerefMut};
 
-use crate::ast::{AKind, AParser, AstDisplay, OpKind, Vis};
-use crate::entities::{Fun, Ast, Ty, Mod, IKind, ValueEnt, FunBody, BlockEnt};
+use crate::ast::{AKind, AParser, AstDisplay, AstEnt, OpKind, Vis};
+use crate::entities::{Ast, BlockEnt, Fun, FunBody, IKind, Mod, Ty, ValueEnt, BUILTIN_MODULE};
 use crate::lexer::TKind as LTKind;
 use crate::lexer::{Span, Token, TokenDisplay};
 use crate::module_tree::*;
 use crate::types::*;
+use crate::util::sdbm::ID;
 use crate::util::storage::{LinkedList, Table};
 use crate::util::Size;
-use crate::util::sdbm::ID;
 
 use cranelift::codegen::ir::types::I64;
-use cranelift::codegen::ir::{Type, Block, Value, StackSlot, Inst, GlobalValue, Function};
+use cranelift::codegen::ir::{Block, Function, GlobalValue, Inst, StackSlot, Type, Value};
 use cranelift::codegen::packed_option::{PackedOption, ReservedValue};
-use cranelift::entity::{EntityList, PrimaryMap, ListPool};
+use cranelift::entity::{EntityList, EntityRef, ListPool, PrimaryMap, SparseMap, SparseMapValue};
 use cranelift::frontend::Variable as CrVar;
-use cranelift::module::{Linkage, FuncId, RelocRecord, DataId};
-use quick_proc::{QuickDefault, QuickSer, QuickEnumGets, gen_quick_copy, RealQuickSer};
-
+use cranelift::module::{DataId, FuncId, Linkage, RelocRecord};
+use quick_proc::{gen_quick_copy, QuickDefault, QuickEnumGets, QuickSer, RealQuickSer};
 
 type Result<T = ()> = std::result::Result<T, FError>;
 type ExprResult = Result<Option<Value>>;
@@ -38,11 +37,7 @@ pub struct FParser<'a> {
 crate::inherit!(FParser<'_>, state, FState);
 
 impl<'a> FParser<'a> {
-    pub fn new(
-        state: &'a mut FState,
-        context: &'a mut FContext,
-        ptr_ty: Type,
-    ) -> Self {
+    pub fn new(state: &'a mut FState, context: &'a mut FContext, ptr_ty: Type) -> Self {
         Self {
             state,
             context,
@@ -50,32 +45,82 @@ impl<'a> FParser<'a> {
         }
     }
 
-    /*
     pub fn parse(&mut self, module: Mod) -> Result {
-        TParser::new(self.state, self.context, self.collector)
+        TParser::new(self.state, self.context)
             .parse(module)
             .map_err(|err| FError::new(FEKind::TypeError(err), Token::default()))?;
-
+        
+        self.init_module(module);
         self.collect(module)?;
-
         self.translate()?;
+        self.finalize_module(module);
 
         Ok(())
     }
 
+    pub fn finalize_module(&mut self, module: Mod) {
+        let MainFunData { id, return_value, .. } = self.context.entry_point_data;
+        let mut body = self.funs[id].body;
+        self.modules[module].add_return_stmt(Some(return_value), Token::default(), &mut body);
+        self.funs[id].body = body;
+    }
+
+    pub fn init_module(&mut self, module: Mod) {
+        let int = self.builtin_repo.int;
+        let module_ent = &mut self.modules[module];
+        let args = module_ent.add_type_slice(&[int, int]);
+        let ret = PackedOption::from(int);
+        let sig = Signature {
+            call_conv: CallConv::Fast,
+            args,
+            ret,
+        };
+        let id = FUN_SALT
+            .add(ID::new("--entry--"))
+            .add(module_ent.id);
+        let fnu_ent = FunEnt {
+            id,
+            sig,
+            module,
+            kind: FKind::Represented,
+            untraced: true,
+            inline: true,
+
+            ..Default::default()
+        };
+        let (_, id) = self.add_fun(fnu_ent);
+        let module_ent = &mut self.modules[module];
+        module_ent.entry_point = PackedOption::from(id);
+        let mut body = FunBody::default();
+        let arg1 = module_ent.add_temp_value(int);
+        let arg2 = module_ent.add_temp_value(int);
+        let init = module_ent.add_zero_value(int, &mut body);
+        let return_value = module_ent.add_value(int, true);
+        module_ent.add_var_decl(init, return_value, Token::default(), &mut body);
+        let data = MainFunData {
+            id,
+            arg1,
+            arg2,
+            return_value,
+        };
+        self.context.entry_point_data = data;
+        self.funs[id].body = body;
+    }
+
     pub fn finalize(&mut self) -> Result {
-        self.with_main_function(|s| {
-            let value = s.state.main_fun_data.return_value;
-            s.add_inst(InstEnt::new(
-                IKind::Return(Some(value)),
-                None,
-                &Token::default(),
-            ));
+        let MainFunData {
+            id, return_value, ..
+        } = self.main_fun_data;
 
-            Ok(())
-        })?;
+        let mut body = self.funs[id].body;
+        self.state.modules[Mod::new(1)].add_valueless_inst(
+            IKind::Return(PackedOption::from(return_value)),
+            Token::default(),
+            &mut body,
+        );
+        self.funs[id].body = body;
 
-        self.context.represented.push(self.state.main_fun_data.id);
+        self.context.represented.push(id);
 
         Ok(())
     }
@@ -89,28 +134,38 @@ impl<'a> FParser<'a> {
     }
 
     fn translate_fun(&mut self, fun: Fun) -> Result {
-        let fun_ent = &self.fun(fun);
-        let param_len = fun_ent.params.len();
-        let scope = fun_ent.scope;
-        let module = fun_ent.module;
+        let FunEnt {
+            module,
+            scope,
+            ast,
+            params,
+            sig,
+            mut body,
+            ..
+        } = self.funs[fun];
+        let module_ent = &self.modules[module];
+        let header = module_ent.son(ast, 0);
+        let ast_body = module_ent.son(ast, 1);
+        let header_len = module_ent.ast_len(header);
+        let param_names = module_ent.chain_son_ent(header, &[0, 1]).sons;
+        let param_len = module_ent.type_slice(params).len();
 
-        let n_ent_ast = fun_ent.kind.normal().ast;
-        let ast = std::mem::take(&mut self.state.asts[n_ent_ast]);
-
-        if ast[1].is_empty() {
-            self.state.asts[n_ent_ast] = ast;
-            self.finalize_fun(fun);
+        if module_ent.son(ast, 1).is_reserved_value() {
+            self.finalize_fun(fun, body);
             return Ok(());
         }
 
         let mut shadowed = self.context.pool.get();
         for i in 0..param_len {
-            let (id, ty) = self.fun(fun).params[i];
+            let module_ent = &self.modules[module];
+            let ty = module_ent.type_slice(params)[i];
+            let id = module_ent.get_ent(param_names, i).token.span.hash;
+            let id = TYPE_SALT.add(id).add(module_ent.id);
             shadowed.push((id, self.state.types.link(id, ty)))
         }
 
-        if let Some(scope) = scope {
-            let ty = unsafe { std::mem::transmute::<Ast, Ast>(&self.collector.scopes[scope].ty) };
+        if !scope.is_reserved_value() {
+            let ty = self.modules[module].son(scope, 1);
             let ty = self.parse_type(module, ty)?;
             let id = TYPE_SALT
                 .add(ID::new("Self"))
@@ -119,281 +174,289 @@ impl<'a> FParser<'a> {
             shadowed.push((id, self.state.types.link(id, ty)));
         }
 
-        let entry_point = self.new_block();
-        self.make_block_current(entry_point);
+        let module_ent = &mut self.modules[module];
+        let entry_point = module_ent.new_block(&mut body);
+        module_ent.select_block(entry_point, &mut body);
 
-        let sig = &mut self.fun_mut(fun).kind.normal_mut().sig;
-        let args = std::mem::take(&mut sig.args);
-        let ret = sig.ret;
-        let mut arg_buffer = self.context.pool.get();
-        self.clear_vars();
+        self.context.vars.clear();
 
-        let header = &ast[0];
+        // create arguments for signature
+
         let mut i = 0;
-        for arg_group in header[1..header.len() - 2].iter() {
-            for arg in arg_group[..arg_group.len() - 1].iter() {
-                let var = self.new_value(arg.token.span.hash, args[i], false);
-                self.context.vars.push(var);
-                arg_buffer.push(var);
+        for arg_group in 1..header_len - 2 {
+            let module_ent = &mut self.modules[module];
+            let arg_sons = module_ent.son_ent(header, arg_group).sons;
+            let arg_sons_len = module_ent.len(arg_sons);
+            for arg in 0..arg_sons_len {
+                let module_ent = &mut self.modules[module];
+                let id = module_ent.get_ent(arg_sons, arg).token.span.hash;
+                let ty = module_ent.type_slice(sig.args)[i];
+                let var = module_ent.add_temp_value(ty);
+                module_ent.push_block_arg(entry_point, var);
+                self.context.vars.push((id, var));
                 i += 1;
             }
         }
-        if let Some(ret) = ret {
-            if self.ty(ret).on_stack(self.ptr_ty) {
-                let ty = self.pointer_of(ret);
-                let value = self.new_anonymous_value(ty, false);
-                arg_buffer.push(value);
+
+        // check if return value is too big and allocate additional argument for struct pointer
+        // if thats the case
+        let has_ret = sig.ret.is_some();
+        if has_ret {
+            let ty = sig.ret.unwrap();
+            let ty_ent = &self.types[ty];
+            if ty_ent.on_stack(self.ptr_ty) {
+                let ty = self.pointer_of(ty);
+                let module_ent = &mut self.modules[module];
+                let value = module_ent.add_temp_value(ty);
+                module_ent.push_block_arg(entry_point, value);
             }
         }
-        self.fun_mut(fun).kind.normal_mut().sig.args = args;
-        let args = self.make_value_slice(&arg_buffer);
-        self.inst_mut(entry_point).kind.block_mut().args = args;
 
-        let value = self.block(fun, &ast[1])?;
+        let value = self.block(fun, ast_body, &mut body)?;
 
-        if let (Some(value), Some(_), Some(ret)) = (value, self.context.block, ret) {
-            let value_ty = self.value(value).ty;
-            let token = &ast[1].last().unwrap().token;
-            self.assert_type(value_ty, ret, token)?;
-            let value = self.return_value(fun, value, token);
-            self.add_inst(InstEnt::new(IKind::Return(Some(value)), None, token));
-        } else if let (Some(ret), Some(_)) = (ret, self.context.block) {
-            let value = self.new_temp_value(ret);
-            let token = &ast[1].last().unwrap().token;
-            self.add_inst(InstEnt::new(IKind::Zeroed, Some(value), token));
-            let value = self.return_value(fun, value, token);
-            self.add_inst(InstEnt::new(IKind::Return(Some(value)), None, token));
-        } else if self.context.block.is_some() {
-            self.add_inst(InstEnt::new(
-                IKind::Return(None),
-                None,
-                &ast[1].last().unwrap_or(Ast::none()).token,
-            ));
-        }
+        let closed = body.current_block.is_some();
 
-        self.state.asts[n_ent_ast] = ast;
-
-        for value_id in self.context.body.values.ids() {
-            let ty = self.value(value_id).ty;
-            let on_stack = self.ty(ty).on_stack(self.ptr_ty);
-            self.value_mut(value_id).on_stack = self.value(value_id).on_stack || on_stack;
+        let module_ent = &mut self.modules[module];
+        match (value, closed, has_ret) {
+            (Some(value), true, true) => {
+                let ret_ty = sig.ret.unwrap();
+                let value_ty = module_ent.type_of_value(value);
+                let hint = module_ent.hint_of_value(value).unwrap();
+                assert_type(value_ty, ret_ty, &hint)?;
+                self.gen_return(fun, Some(value), hint, &mut body);
+            }
+            (_, true, true) => {
+                let zero_value = module_ent.add_zero_value(sig.ret.unwrap(), &mut body);
+                self.gen_return(fun, Some(zero_value), Token::default(), &mut body);
+            }
+            (_, true, _) => self.gen_return(fun, None, Token::default(), &mut body),
+            _ => (),
         }
 
         for (id, shadow) in shadowed.drain(..) {
             self.state.types.remove_link(id, shadow);
         }
 
-        self.finalize_fun(fun);
+        self.finalize_fun(fun, body);
 
         Ok(())
     }
 
-    fn finalize_fun(&mut self, fun: Fun) {
-        let normal = std::mem::take(&mut self.fun_mut(fun).kind).into_normal();
-
-        let represented = RFun {
-            sig: normal.sig,
-            body: std::mem::take(&mut self.context.body),
-            compiled: None,
-        };
-
-        self.fun_mut(fun).kind = FKind::Represented(represented);
-
+    fn finalize_fun(&mut self, fun: Fun, body: FunBody) {
+        self.state.funs[fun].body = body;
         self.context.represented.push(fun);
     }
 
-    fn return_value(&mut self, fun: Fun, value: Value, token: &Token) -> Value {
-        let ty = self.signature_of(fun).ret.unwrap();
-        if self.ty(ty).on_stack(self.ptr_ty) {
-            let entry = self.context.body.insts.first().unwrap();
-            let args = self.value_slice(self.inst(entry).kind.block().args);
-            let return_value = args[args.len() - 1];
+    fn gen_return(&mut self, fun: Fun, value: Option<Value>, token: Token, body: &mut FunBody) {
+        let module = self.funs[fun].module;
 
-            let deref = self.new_temp_value(ty);
-            self.add_inst(InstEnt::new(
-                IKind::Deref(return_value, false),
-                Some(deref),
-                &token,
-            ));
-            self.add_inst(InstEnt::new(IKind::Assign(deref), Some(value), &token));
-            return_value
-        } else {
-            value
-        }
-    }
-
-    fn block(&mut self, fun: Fun, ast: Ast) -> ExprResult {
-        if ast.is_empty() {
-            return Ok(None);
-        }
-
-        self.push_scope();
-
-        for statement in ast[..ast.len() - 1].iter() {
-            if self.context.block.is_none() {
-                break;
+        let value = if let Some(value) = value {
+            // if type is no stack we have to load current value into provided stack pointer from caller
+            let ty = self.modules[module].type_of_value(value);
+            if self.types[ty].on_stack(self.ptr_ty) {
+                let module_ent = &mut self.modules[module];
+                let entry_block = body.entry_block.unwrap();
+                let struct_ptr = module_ent.last_arg_of_block(entry_block).unwrap();
+                let deref = module_ent.add_value(ty, true);
+                module_ent.add_inst(IKind::Deref(struct_ptr, false), deref, token, body);
+                module_ent.add_inst(IKind::Assign(deref), value, token, body);
+                Some(struct_ptr)
+            } else {
+                Some(value)
             }
-            self.statement(fun, statement)?;
-        }
-
-        let value = if self.context.block.is_some() {
-            self.statement(fun, ast.last().unwrap())?
         } else {
             None
         };
 
-        self.pop_scope();
-
-        Ok(value)
+        self.modules[module].add_return_stmt(value, token, body);
     }
 
-    fn statement(&mut self, fun: Fun, statement: Ast) -> ExprResult {
-        match statement.kind {
-            AKind::VarStatement(..) => self.var_statement(fun, statement)?,
-            AKind::ReturnStatement => self.return_statement(fun, statement)?,
-            AKind::Break => self.break_statement(fun, statement)?,
-            AKind::Continue => self.continue_statement(statement)?,
-            _ => return self.expr_low(fun, statement),
+    fn block(&mut self, fun: Fun, ast: Ast, body: &mut FunBody) -> ExprResult {
+        if ast.is_reserved_value() {
+            return Ok(None);
         }
 
-        Ok(None)
+        self.context.push_scope();
+
+        let module = self.funs[fun].module;
+        let module_ent = &self.modules[module];
+        let sons = module_ent.sons(ast);
+        let sons_len = module_ent.len(sons);
+
+        // block can be treated as expression so we take result from the loop, if any
+        let mut result = None;
+        for i in 0..sons_len {
+            if body.current_block.is_none() {
+                self.context.pop_scope();
+                return Ok(None);
+            }
+            let module_ent = &self.modules[module];
+            let stmt = module_ent.get(sons, i);
+            match module_ent.kind(stmt) {
+                AKind::VarStatement(..) => self.var_statement(fun, ast, body)?,
+                AKind::ReturnStatement => self.return_statement(fun, ast, body)?,
+                AKind::Break => self.break_statement(fun, ast, body)?,
+                AKind::Continue => self.continue_statement(fun, ast, body)?,
+                _ => result = self.expr_low(fun, ast, body)?,
+            };
+        }
+
+        self.context.pop_scope();
+
+        Ok(result)
     }
 
-    fn continue_statement(&mut self, ast: Ast) -> Result {
-        let loop_header = self.find_loop(&ast[0].token).map_err(|outside| {
+    fn continue_statement(&mut self, fun: Fun, ast: Ast, body: &mut FunBody) -> Result {
+        let module = self.funs[fun].module;
+        let module_ent = &mut self.state.modules[module];
+        let label = module_ent.son_ent(ast, 0).token;
+        let token = *module_ent.token(ast);
+        let loop_header = self.context.find_loop(&label).map_err(|outside| {
             if outside {
-                FError::new(FEKind::ContinueOutsideLoop, ast.token)
+                FError::new(FEKind::ContinueOutsideLoop, token)
             } else {
-                FError::new(FEKind::WrongLabel, ast.token)
+                FError::new(FEKind::WrongLabel, token)
             }
         })?;
 
-        self.add_inst(InstEnt::new(
-            IKind::Jump(loop_header.start_block, EntityList<Value>::empty()),
-            None,
-            &ast.token,
-        ));
+        module_ent.add_valueless_inst(
+            IKind::Jump(loop_header.start_block, EntityList::new()),
+            token,
+            body,
+        );
 
         Ok(())
     }
 
-    fn break_statement(&mut self, fun: Fun, ast: Ast) -> Result {
-        let loop_header = self.find_loop(&ast[0].token).map_err(|outside| {
+    fn break_statement(&mut self, fun: Fun, ast: Ast, body: &mut FunBody) -> Result {
+        let module = self.funs[fun].module;
+        let module_ent = &mut self.state.modules[module];
+        let label = module_ent.son_ent(ast, 0).token;
+        let token = *module_ent.token(ast);
+
+        let loop_header = self.context.find_loop(&label).map_err(|outside| {
             if outside {
-                FError::new(FEKind::BreakOutsideLoop, ast.token)
+                FError::new(FEKind::BreakOutsideLoop, token)
             } else {
-                FError::new(FEKind::WrongLabel, ast.token)
+                FError::new(FEKind::WrongLabel, token)
             }
         })?;
 
-        if ast[1].kind != AKind::None {
-            let return_value = self.expr(fun, &ast[1])?;
-            let args = self
-                .inst(loop_header.end_block)
-                .kind
-                .block()
-                .args;
-            let current_value = self.value_slice(args).first();
-            if current_value.is_none() {
-                let ty = self.value(return_value).ty;
-                let value = self.new_temp_value(ty);
-                let args = self.make_value_slice(&[value]);
-                self.inst_mut(loop_header.end_block)
-                    .kind
-                    .block_mut()
-                    .args = args;
+        let return_value_ast = module_ent.son(ast, 1);
+
+        if return_value_ast != Ast::reserved_value() {
+            let return_value = self.expr(fun, return_value_ast, body)?;
+            let module_ent = &mut self.state.modules[module];
+            let current_return_value = module_ent.last_arg_of_block(loop_header.end_block);
+            if let Some(current_return_value) = current_return_value {
+                let token = module_ent.token(return_value_ast);
+                let return_ty = module_ent.type_of_value(return_value);
+                let current_return_ty = module_ent.type_of_value(current_return_value);
+                assert_type(current_return_ty, return_ty, token)?;
+            } else {
+                let ty = module_ent.type_of_value(return_value);
+                let value = module_ent.add_temp_value(ty);
+                module_ent.push_block_arg(loop_header.end_block, value);
             }
 
-            let args = self.make_value_slice(&[return_value]);
-            self.add_inst(InstEnt::new(
-                IKind::Jump(loop_header.end_block, args),
-                None,
-                &ast.token,
-            ));
+            let args = module_ent.add_args(&[return_value]);
+            module_ent.add_valueless_inst(IKind::Jump(loop_header.end_block, args), token, body);
         } else {
-            self.add_inst(InstEnt::new(
-                IKind::Jump(loop_header.end_block, EntityList<Value>::empty()),
-                None,
-                &ast.token,
-            ));
+            self.state.modules[module].add_valueless_inst(
+                IKind::Jump(loop_header.end_block, EntityList::new()),
+                token,
+                body,
+            );
         }
 
         Ok(())
     }
 
-    fn return_statement(&mut self, fun: Fun, ast: Ast) -> Result {
-        let ty = self.signature_of(fun).ret;
+    fn return_statement(&mut self, fun: Fun, ast: Ast, body: &mut FunBody) -> Result {
+        let fun_ent = &self.funs[fun];
+        let module = fun_ent.module;
+        let ty = fun_ent.sig.ret;
+        let module_ent = &mut self.state.modules[module];
+        let token = *module_ent.token(ast);
+        let return_value_ast = module_ent.son(ast, 0);
 
-        let value = if ast[0].kind == AKind::None {
-            if let Some(ty) = ty {
-                let temp_value = self.new_temp_value(ty);
-                self.add_inst(InstEnt::new(IKind::Zeroed, Some(temp_value), &ast.token));
-                Some(self.return_value(fun, temp_value, &ast.token))
+        if return_value_ast.is_reserved_value() {
+            let value = if ty.is_some() {
+                Some(module_ent.add_zero_value(ty.unwrap(), body))
             } else {
                 None
-            }
+            };
+            self.gen_return(fun, value, token, body);
         } else {
-            let ty = ty.ok_or_else(|| FError::new(FEKind::UnexpectedReturnValue, ast[0].token))?;
-            let value = self.expr(fun, &ast[0])?;
-            let actual_type = self.value(value).ty;
-            self.assert_type(actual_type, ty, &ast[0].token)?;
-            Some(self.return_value(fun, value, &ast.token))
+            let token = *module_ent.token(return_value_ast);
+            if ty.is_none() {
+                return Err(FError::new(FEKind::UnexpectedReturnValue, token));
+            }
+            let value = self.expr(fun, return_value_ast, body)?;
+            let module_ent = &mut self.state.modules[module];
+            let actual_type = module_ent.type_of_value(value);
+            assert_type(actual_type, ty.unwrap(), &token)?;
+            self.gen_return(fun, Some(value), token, body)
         };
 
-        self.add_inst(InstEnt::new(IKind::Return(value), None, &ast.token));
-
         Ok(())
     }
 
-    fn var_statement(&mut self, fun: Fun, statement: Ast) -> Result {
-        let mutable = statement.kind == AKind::VarStatement(Vis::None, true);
-        let module = self.fun(fun).module;
+    fn var_statement(&mut self, fun: Fun, ast: Ast, body: &mut FunBody) -> Result {
+        let module = self.funs[fun].module;
+        let module_ent = &self.state.modules[module];
+        let &AstEnt { kind, sons, .. } = module_ent.load(ast);
+        let mutable = kind == AKind::VarStatement(Vis::None, true);
+        let sons_len = module_ent.len(sons);
 
-        for var_line in statement.iter() {
-            let ty = if var_line[1].kind == AKind::None {
+        for i in 0..sons_len {
+            let module_ent = &self.state.modules[module];
+            let var_line = module_ent.get(sons, i);
+            let name_group = module_ent.son(var_line, 0);
+            let ty = module_ent.son(var_line, 1);
+            let value_group = module_ent.son(var_line, 2);
+            let ty = if ty.is_reserved_value() {
                 None
             } else {
-                Some(self.parse_type(module, &var_line[1])?)
+                Some(self.parse_type(module, ty)?)
             };
 
-            if var_line[2].kind == AKind::None {
-                for name in var_line[0].iter() {
+            let module_ent = &mut self.state.modules[module];
+            let sons = module_ent.sons(name_group);
+            let sons_len = module_ent.len(sons);
+            if value_group.is_reserved_value() {
+                // in this case we just assign zero values to all variables
+                for i in 0..sons_len {
                     let ty = ty.unwrap();
-                    let name = name.token.span.hash;
+                    let token = *module_ent.token(module_ent.get(sons, i));
+                    let zero_value = module_ent.add_zero_value(ty, body);
 
-                    let temp_value = self.context.body.values.add(ValueEnt::temp(ty));
-
-                    self.add_inst(InstEnt::new(
-                        IKind::Zeroed,
-                        Some(temp_value),
-                        &var_line.token,
-                    ));
-
-                    let var = self.add_variable(name, ty, mutable);
-
-                    self.add_inst(InstEnt::new(
-                        IKind::VarDecl(temp_value),
-                        Some(var),
-                        &var_line.token,
-                    ));
+                    let var = module_ent.add_value(ty, mutable);
+                    self.context.vars.push((token.span.hash, var));
+                    module_ent.add_var_decl(zero_value, var, token, body)
                 }
             } else {
-                for (name, raw_value) in var_line[0].iter().zip(var_line[2].iter()) {
-                    let name = name.token.span.hash;
-                    let value = self.expr(fun, raw_value)?;
-                    let actual_datatype = self.value(value).ty;
+                let values = module_ent.sons(value_group);
+                // ast parser takes care of the one value multiple variables case
+                // all missing values are pushed as pointer to the first one
+                for i in 0..sons_len {
+                    let module_ent = &self.state.modules[module];
+                    let name_token = *module_ent.token(module_ent.get(sons, i));
+                    let raw_value = module_ent.get(values, i);
+                    let value_token = *module_ent.token(raw_value);
+                    let value = self.expr(fun, raw_value, body)?;
 
+                    let module_ent = &mut self.state.modules[module];
+                    let actual_datatype = module_ent.type_of_value(value);
+
+                    // consistency check
                     if let Some(ty) = ty {
-                        self.assert_type(actual_datatype, ty, &raw_value.token)?;
+                        assert_type(actual_datatype, ty, &value_token)?;
                     }
 
-                    let var = self.add_variable(name, actual_datatype, mutable);
-
-                    self.add_inst(InstEnt::new(
-                        IKind::VarDecl(value),
-                        Some(var),
-                        &var_line.token,
-                    ));
+                    let var = module_ent.add_value(actual_datatype, mutable);
+                    self.context.vars.push((name_token.span.hash, var));
+                    module_ent.add_var_decl(value, var, name_token, body);
                 }
             }
         }
@@ -401,113 +464,138 @@ impl<'a> FParser<'a> {
         Ok(())
     }
 
-    fn expr(&mut self, fun: Fun, ast: Ast) -> Result<Value> {
-        self.expr_low(fun, ast)?
-            .ok_or_else(|| FError::new(FEKind::ExpectedValue, ast.token))
+    fn expr(&mut self, fun: Fun, ast: Ast, body: &mut FunBody) -> Result<Value> {
+        // common case is that we expect a value out of the expression though
+        // mode specific errors may be useful (TODO)
+        self.expr_low(fun, ast, body)?.ok_or_else(|| {
+            let module = self.funs[fun].module;
+            let module_ent = &self.state.modules[module];
+            let token = *module_ent.token(ast);
+            FError::new(FEKind::ExpectedValue, token)
+        })
     }
 
-    fn expr_low(&mut self, fun: Fun, ast: Ast) -> ExprResult {
-        match ast.kind {
-            AKind::BinaryOp => self.binary_op(fun, ast),
-            AKind::Lit => self.lit(ast),
-            AKind::Ident => self.ident(fun, ast),
-            AKind::Call(_) => self.call(fun, ast),
-            AKind::IfExpr => self.if_expr(fun, ast),
-            AKind::Loop => self.loop_expr(fun, ast),
-            AKind::DotExpr => self.dot_expr(fun, ast),
-            AKind::Deref => self.deref_expr(fun, ast),
-            AKind::Ref => self.ref_expr(fun, ast),
-            AKind::UnaryOp => self.unary_op(fun, ast),
+    fn expr_low(&mut self, fun: Fun, ast: Ast, body: &mut FunBody) -> ExprResult {
+        let module = self.funs[fun].module;
+        let module_ent = &self.state.modules[module];
+        let kind = module_ent.kind(ast);
+        match kind {
+            AKind::BinaryOp => self.binary_op(fun, ast, body),
+            AKind::Lit => self.lit(fun, ast, body),
+            AKind::Ident => self.ident(fun, ast, body),
+            AKind::Call(_) => self.call(fun, ast, body),
+            AKind::IfExpr => self.if_expr(fun, ast, body),
+            AKind::Loop => self.loop_expr(fun, ast, body),
+            AKind::DotExpr => self.dot_expr(fun, ast, body),
+            AKind::Deref => self.deref_expr(fun, ast, body),
+            AKind::Ref => self.ref_expr(fun, ast, body),
+            AKind::UnaryOp => self.unary_op(fun, ast, body),
             AKind::Pass => Ok(None),
-            AKind::Array => self.array(fun, ast),
-            AKind::Index => self.index(fun, ast),
-            _ => todo!("unmatched expr ast {}", AstDisplay::new(self.state, &ast)),
+            AKind::Array => self.array(fun, ast, body),
+            AKind::Index => self.index(fun, ast, body),
+            _ => todo!(
+                "unmatched expr ast {}",
+                AstDisplay::new(self.state, &module_ent.a_state, ast)
+            ),
         }
     }
 
-    fn index(&mut self, fun: Fun, ast: Ast) -> ExprResult {
-        let target = self.expr(fun, &ast[0])?;
-        let index = self.expr(fun, &ast[1])?;
+    fn index(&mut self, fun: Fun, ast: Ast, body: &mut FunBody) -> ExprResult {
+        let module = self.funs[fun].module;
+        let module_ent = &self.state.modules[module];
+        let &AstEnt { token, sons, .. } = module_ent.load(ast);
+        let target = module_ent.get(sons, 0);
+        let index = module_ent.get(sons, 1);
+        let target = self.expr(fun, target, body)?;
+        let index = self.expr(fun, index, body)?;
         let args = &[target, index];
         let span = self.state.index_span;
         let result = self
-            .call_low(fun, None, None, FUN_SALT, &span, &[], args, &ast.token)?
-            .ok_or_else(|| FError::new(FEKind::ExpectedValue, ast.token))?;
+            .call_low(fun, None, None, FUN_SALT, span, &[], args, token, body)?
+            .ok_or_else(|| FError::new(FEKind::ExpectedValue, token))?;
 
-        let result = self.deref_expr_low(result, &ast.token)?;
-
-        Ok(Some(result))
+        Ok(Some(self.deref_expr_low(fun, result, token, body)?))
     }
 
-    fn array(&mut self, fun: Fun, ast: Ast) -> ExprResult {
+    fn array(&mut self, fun: Fun, ast: Ast, body: &mut FunBody) -> ExprResult {
         let mut values = self.context.pool.get();
-
         let mut element_ty = None;
-        let length = ast.len();
+        let module = self.funs[fun].module;
+        let module_ent = &self.state.modules[module];
+        let &AstEnt { sons, token, .. } = module_ent.load(ast);
+        let length = module_ent.len(sons);
 
-        for raw_value in ast.iter() {
-            let value = self.expr(fun, raw_value)?;
-            if let Some(ty) = element_ty {
-                self.assert_type(self.value(value).ty, ty, &raw_value.token)?;
+        for i in 0..length {
+            let module_ent = &self.state.modules[module];
+            let raw_value = module_ent.get(sons, i);
+            let token = *module_ent.token(raw_value);
+            let value = self.expr(fun, raw_value, body)?;
+            let module_ent = &self.state.modules[module];
+            let ty = module_ent.type_of_value(value);
+            if let Some(real_ty) = element_ty {
+                assert_type(ty, real_ty, &token)?;
             } else {
-                element_ty = Some(self.value(value).ty);
+                element_ty = Some(ty);
             }
-            values.push(value);
+            values.push((value, token));
         }
 
         if element_ty.is_none() {
-            return Err(FError::new(FEKind::EmptyArray, ast.token));
+            return Err(FError::new(FEKind::EmptyArray, token));
         }
 
         let element_ty = element_ty.unwrap();
-        let element_size = self.ty(element_ty).size;
+        let element_size = self.types[element_ty].size;
 
         let ty = self.array_of(element_ty, length);
+        let module_ent = &mut self.state.modules[module];
 
-        let result = self.new_anonymous_value(ty, true);
-        self.add_inst(InstEnt::new(IKind::Uninitialized, Some(result), &ast.token));
+        let result = module_ent.add_value(ty, true);
+        module_ent.add_inst(IKind::Uninitialized, result, token, body);
 
-        for (i, &value) in values.iter().enumerate() {
-            let offset = self.new_anonymous_value(element_ty, false);
-            self.value_mut(offset).offset = element_size.mul(Size::new(i as u32, i as u32));
-            self.add_inst(InstEnt::new(
-                IKind::Offset(result),
-                Some(offset),
-                &ast.token,
-            ));
-            self.add_inst(InstEnt::new(IKind::Assign(offset), Some(value), &ast.token));
+        for (i, &(value, token)) in values.iter().enumerate() {
+            let offset = element_size.mul(Size::new(i as u32, i as u32));
+            let offset = module_ent.offset_value(result, offset, token, body);
+            module_ent.assign(offset, value, token, body);
         }
 
         Ok(Some(result))
     }
 
-    fn ref_expr(&mut self, fun: Fun, ast: Ast) -> ExprResult {
-        let value = self.expr(fun, &ast[0])?;
+    fn ref_expr(&mut self, fun: Fun, ast: Ast, body: &mut FunBody) -> ExprResult {
+        let module = self.funs[fun].module;
+        let module_ent = &self.state.modules[module];
+        let &AstEnt { sons, token, .. } = module_ent.load(ast);
+        let value = module_ent.get(sons, 0);
+        let value = self.expr(fun, value, body)?;
 
-        let reference = self.ref_expr_low(value, &ast.token);
+        let reference = self.ref_expr_low(fun, value, token, body);
 
         Ok(Some(reference))
     }
 
-    fn ref_expr_low(&mut self, value: Value, token: &Token) -> Value {
-        let ty = self.value(value).ty;
+    fn ref_expr_low(&mut self, fun: Fun, value: Value, token: Token, body: &mut FunBody) -> Value {
+        let module = self.funs[fun].module;
+        let module_ent = &self.state.modules[module];
+        let ty = module_ent.type_of_value(value);
         let ty = self.pointer_of(ty);
-        let reference = self.new_temp_value(ty);
-        self.add_inst(InstEnt::new(IKind::Ref(value), Some(reference), token));
+        let module_ent = &mut self.state.modules[module];
+        let reference = module_ent.reference(ty, value, token, body);
 
         // we need to allocate it since register cannot be referenced
         let mut current = reference;
         loop {
-            let value = self.value_mut(current);
+            let value = module_ent.load_value_mut(current);
             if value.on_stack {
                 break;
             }
             value.on_stack = true;
 
-            if let Some(inst) = value.inst {
-                match &self.inst(inst).kind {
+            if value.inst.is_some() {
+                let inst = value.inst.unwrap();
+                match module_ent.inst_kind(inst) {
                     IKind::Ref(value) | IKind::Offset(value) | IKind::Cast(value) => {
-                        current = *value;
+                        current = value;
                         continue;
                     }
                     _ => (),
@@ -520,54 +608,67 @@ impl<'a> FParser<'a> {
         reference
     }
 
-    fn deref_expr(&mut self, fun: Fun, ast: Ast) -> ExprResult {
-        let expr = self.expr(fun, &ast[0])?;
+    fn deref_expr(&mut self, fun: Fun, ast: Ast, body: &mut FunBody) -> ExprResult {
+        let module = self.funs[fun].module;
+        let module_ent = &self.state.modules[module];
+        let &AstEnt { token, sons, .. } = module_ent.load(ast);
+        let value = module_ent.get(sons, 0);
+        let expr = self.expr(fun, value, body)?;
 
-        let value = self.deref_expr_low(expr, &ast.token)?;
+        let value = self.deref_expr_low(fun, expr, token, body)?;
 
         Ok(Some(value))
     }
 
-    fn deref_expr_low(&mut self, value: Value, token: &Token) -> Result<Value> {
-        let ty = self.value(value).ty;
-        let pointed = self.base_of_err(ty, token)?;
+    fn deref_expr_low(
+        &mut self,
+        fun: Fun,
+        value: Value,
+        token: Token,
+        body: &mut FunBody,
+    ) -> Result<Value> {
+        let in_assign = self.in_assign;
+        let module = self.funs[fun].module;
+        let module_ent = &self.state.modules[module];
+        let ty = module_ent.type_of_value(value);
+        let pointed = self.base_of(ty, token)?;
 
-        let val = self.new_anonymous_value(pointed, true);
-        self.add_inst(InstEnt::new(IKind::Deref(value, false), Some(val), token));
+        let module_ent = &mut self.state.modules[module];
+        let value = module_ent.add_value(pointed, true);
+        module_ent.add_inst(IKind::Deref(value, in_assign), value, token, body);
 
-        Ok(val)
+        Ok(value)
     }
 
-    fn unary_op(&mut self, fun: Fun, ast: Ast) -> ExprResult {
-        let value = self.expr(fun, &ast[1])?;
+    fn unary_op(&mut self, fun: Fun, ast: Ast, body: &mut FunBody) -> ExprResult {
+        let module = self.funs[fun].module;
+        let module_ent = &self.state.modules[module];
+        let &AstEnt { sons, token, .. } = module_ent.load(ast);
+        let expr = module_ent.get(sons, 1);
+        let op = module_ent.get(sons, 0);
+        let op = module_ent.token(op).span;
+        let value = self.expr(fun, expr, body)?;
 
-        let mut values = self.context.pool.get();
-        values.push(value);
-        self.call_low(
+        self.call_low(fun, None, None, UNARY_SALT, op, &[], &[value], token, body)
+    }
+
+    fn dot_expr(&mut self, fun: Fun, ast: Ast, body: &mut FunBody) -> ExprResult {
+        let module = self.funs[fun].module;
+        let module_ent = &self.state.modules[module];
+        let &AstEnt { sons, token, .. } = module_ent.load(ast);
+        let header = module_ent.get(sons, 0);
+        let field = module_ent.get(sons, 1);
+        let header = self.expr(fun, header, body)?;
+        let module_ent = &mut self.state.modules[module];
+        let field = *module_ent.token(field);
+
+        Ok(Some(self.field_access(
             fun,
-            None,
-            None,
-            UNARY_SALT,
-            &ast[0].token.span,
-            &[],
-            &values,
-            &ast.token,
-        )
-    }
-
-    fn dot_expr(&mut self, fun: Fun, ast: Ast) -> ExprResult {
-        let module = self.fun(fun).module;
-        let header = self.expr(fun, &ast[0])?;
-        let mutable = self.value(header).mutable;
-        let field = ast[1].token.span.hash;
-
-        let inst = self.add_inst(InstEnt::new(IKind::NoOp, None, &Token::default()));
-        let value = self.new_anonymous_value(self.state.builtin_repo.bool, mutable);
-        self.value_mut(value).inst = Some(inst);
-        let ty = self.field_access(header, field, value, &ast.token, module)?;
-        self.context.body.insts.remove(inst);
-        self.value_mut(value).ty = ty;
-        Ok(Some(value))
+            header,
+            field.span.hash,
+            token,
+            body,
+        )?))
     }
 
     fn find_field(&mut self, ty: Ty, field_id: ID, path: &mut Vec<usize>) -> bool {
@@ -576,9 +677,9 @@ impl<'a> FParser<'a> {
 
         let mut i = 0;
         while i < frontier.len() {
-            let stype = match &self.ty(frontier[i].2).kind {
+            let stype = match &self.types[frontier[i].2].kind {
                 TKind::Structure(stype) => stype,
-                &TKind::Pointer(pointed) => match &self.ty(pointed).kind {
+                &TKind::Pointer(pointed) => match &self.types[pointed].kind {
                     TKind::Structure(stype) => stype,
                     _ => continue,
                 },
@@ -608,11 +709,15 @@ impl<'a> FParser<'a> {
         false
     }
 
-    fn loop_expr(&mut self, fun: Fun, ast: Ast) -> ExprResult {
-        let name = ast[0].token.span.hash;
+    fn loop_expr(&mut self, fun: Fun, ast: Ast, body: &mut FunBody) -> ExprResult {
+        let module = self.funs[fun].module;
+        let module_ent = &mut self.state.modules[module];
+        let &AstEnt { sons, token, .. } = module_ent.load(ast);
+        let label = module_ent.get(sons, 0);
+        let name = module_ent.token(label).span.hash;
 
-        let start_block = self.new_block();
-        let end_block = self.new_block();
+        let start_block = module_ent.new_block(body);
+        let end_block = module_ent.new_block(body);
 
         let header = Loop {
             name,
@@ -620,242 +725,240 @@ impl<'a> FParser<'a> {
             end_block,
         };
 
-        self.add_inst(InstEnt::new(
-            IKind::Jump(start_block, EntityList<Value>::empty()),
-            None,
-            &ast.token,
-        ));
+        module_ent.add_valueless_inst(IKind::Jump(start_block, EntityList::new()), token, body);
 
         self.context.loops.push(header);
-        self.make_block_current(start_block);
-        self.block(fun, &ast[1])?;
+        module_ent.select_block(start_block, body);
+        let block_ast = module_ent.get(sons, 1);
+        self.block(fun, block_ast, body)?;
         self.context
             .loops
             .pop()
             .expect("expected previously pushed header");
 
-        if self.context.block.is_some() {
-            self.add_inst(InstEnt::new(
-                IKind::Jump(start_block, EntityList<Value>::empty()),
-                None,
-                &ast.token,
-            ));
+        let module_ent = &mut self.state.modules[module];
+        if body.current_block.is_some() {
+            module_ent.add_valueless_inst(IKind::Jump(start_block, EntityList::new()), token, body);
         }
-        self.make_block_current(end_block);
+        module_ent.select_block(end_block, body);
 
-        let value = if self.inst(end_block).kind.block().args.len() == 0 {
-            None
-        } else {
-            let args = self.inst(end_block).kind.block().args;
-            Some(self.value_slice(args)[0])
-        };
-
-        Ok(value)
+        Ok(module_ent.last_arg_of_block(end_block))
     }
 
-    fn if_expr(&mut self, fun: Fun, ast: Ast) -> ExprResult {
-        let cond_expr = &ast[0];
-        let cond_val = self.expr(fun, cond_expr)?;
-        let cond_type = self.value(cond_val).ty;
+    fn if_expr(&mut self, fun: Fun, ast: Ast, body: &mut FunBody) -> ExprResult {
+        let module = self.funs[fun].module;
+        let bool_type = self.state.builtin_repo.bool;
+        let module_ent = &mut self.state.modules[module];
+        let &AstEnt { sons, token, .. } = module_ent.load(ast);
+        let cond_ast = module_ent.get(sons, 0);
+        let cond_ast_token = *module_ent.token(cond_ast);
+        let cond_val = self.expr(fun, cond_ast, body)?;
+        let module_ent = &mut self.state.modules[module];
+        let cond_type = module_ent.type_of_value(cond_val);
 
-        let then_block = self.new_block();
-        self.add_inst(InstEnt::new(
-            IKind::JumpIfTrue(cond_val, then_block, EntityList<Value>::empty()),
-            None,
-            &cond_expr.token,
-        ));
+        assert_type(cond_type, bool_type, &cond_ast_token)?;
 
-        self.assert_type(cond_type, self.state.builtin_repo.bool, &cond_expr.token)?;
+        let then_block = module_ent.new_block(body);
+        module_ent.add_valueless_inst(
+            IKind::JumpIfTrue(cond_val, then_block, EntityList::new()),
+            cond_ast_token,
+            body,
+        );
 
-        let merge_block = self.new_block();
+        let merge_block = module_ent.new_block(body);
 
-        let else_branch = &ast[2];
-        let else_block = if else_branch.kind == AKind::None {
-            self.add_inst(InstEnt::new(
-                IKind::Jump(merge_block, EntityList<Value>::empty()),
-                None,
-                &else_branch.token,
-            ));
-            None
+        let else_branch_ast = module_ent.get(sons, 2);
+        let else_branch_token = *module_ent.token(else_branch_ast);
+        let (else_block, jump_to) = if else_branch_ast.is_reserved_value() {
+            (None, merge_block)
         } else {
-            let some_block = self.new_block();
-            self.add_inst(InstEnt::new(
-                IKind::Jump(some_block, EntityList<Value>::empty()),
-                None,
-                &else_branch.token,
-            ));
-            Some(some_block)
+            let some_block = module_ent.new_block(body);
+            (Some(some_block), some_block)
         };
 
-        self.make_block_current(then_block);
+        module_ent.add_valueless_inst(
+            IKind::Jump(jump_to, EntityList::new()),
+            else_branch_token,
+            body,
+        );
 
-        let then_branch = &ast[1];
+        module_ent.select_block(then_block, body);
 
-        let then_result = self.block(fun, then_branch)?;
+        let then_branch = module_ent.get(sons, 1);
 
+        let then_result = self.block(fun, then_branch, body)?;
+
+        let module_ent = &mut self.state.modules[module];
         let mut result = None;
         let mut then_filled = false;
         if let Some(val) = then_result {
             if else_block.is_none() {
-                return Err(FError::new(FEKind::MissingElseBranch, ast.token));
+                return Err(FError::new(FEKind::MissingElseBranch, token));
             }
 
-            let args = self.make_value_slice(&[val]);
-            self.add_inst(InstEnt::new(
-                IKind::Jump(merge_block, args),
-                None,
-                &ast.token,
-            ));
+            let args = module_ent.add_args(&[val]);
+            module_ent.add_valueless_inst(IKind::Jump(merge_block, args), token, body);
 
-            let ty = self.value(val).ty;
-            let value = self.new_temp_value(ty);
-            let args = self.make_value_slice(&[value]);
-            self.inst_mut(merge_block).kind.block_mut().args = args;
+            let ty = module_ent.type_of_value(val);
+            let value = module_ent.add_temp_value(ty);
+            let args = module_ent.add_args(&[value]);
+            module_ent.set_block_args(merge_block, args);
             result = Some(value);
-        } else if self.context.block.is_some() {
-            self.add_inst(InstEnt::new(
-                IKind::Jump(merge_block, EntityList<Value>::empty()),
-                None,
-                &ast.token,
-            ));
+        } else if body.current_block.is_some() {
+            module_ent.add_valueless_inst(IKind::Jump(merge_block, EntityList::new()), token, body);
         } else {
             then_filled = true;
         }
 
-        if else_branch.kind == AKind::Group {
+        if !else_branch_ast.is_reserved_value() {
             let else_block = else_block.unwrap();
-            self.make_block_current(else_block);
-            let else_result = self.block(fun, else_branch)?;
-
-            if let Some(val) = else_result {
-                let value_token = &else_branch.last().unwrap().token;
-                let args = self.make_value_slice(&[val]);
-                self.add_inst(InstEnt::new(
-                    IKind::Jump(merge_block, args),
-                    None,
-                    value_token,
-                ));
+            module_ent.select_block(else_block, body);
+            let else_result = self.block(fun, else_branch_ast, body)?;
+            let module_ent = &mut self.state.modules[module];
+            if let Some(value) = else_result {
+                let value_token = module_ent.hint_of_value(value).unwrap();
+                let args = module_ent.add_args(&[value]);
+                module_ent.add_valueless_inst(IKind::Jump(merge_block, args), value_token, body);
                 if result.is_some() {
-                    
+                    // do nothing
                 } else if then_filled {
-                    let ty = self.value(val).ty;
-                    let value = self.new_temp_value(ty);
-                    let args = self.make_value_slice(&[value]);
-                    self.inst_mut(merge_block).kind.block_mut().args = args;
+                    let ty = module_ent.type_of_value(value);
+                    let value = module_ent.add_temp_value(ty);
+                    module_ent.push_block_arg(merge_block, value);
                     result = Some(value);
                 } else {
-                    return Err(FError::new(FEKind::UnexpectedValue, ast.token));
+                    return Err(FError::new(FEKind::UnexpectedValue, token));
                 }
             } else {
-                if self.context.block.is_some() {
+                if body.current_block.is_some() {
                     if result.is_some() {
-                        return Err(FError::new(FEKind::ExpectedValue, ast.token));
+                        return Err(FError::new(FEKind::ExpectedValue, token));
                     }
-                    self.add_inst(InstEnt::new(
-                        IKind::Jump(merge_block, EntityList<Value>::empty()),
-                        None,
-                        &ast.token,
-                    ));
+                    module_ent.add_valueless_inst(
+                        IKind::Jump(merge_block, EntityList::new()),
+                        token,
+                        body,
+                    );
                 }
             }
         }
 
-        self.make_block_current(merge_block);
+        self.modules[module].select_block(merge_block, body);
 
         Ok(result)
     }
 
-    fn call(&mut self, fun: Fun, ast: Ast) -> ExprResult {
+    fn call(&mut self, fun: Fun, ast: Ast, body: &mut FunBody) -> ExprResult {
         let mut values = self.context.pool.get();
-        for value in ast[1..].iter() {
-            let value = self.expr(fun, value)?;
+        let do_stacktrace = self.state.do_stacktrace;
+        let module = self.funs[fun].module;
+        let module_ent = &self.modules[module];
+        let &AstEnt { sons, token, kind } = module_ent.load(ast);
+        let dot_call = kind == AKind::Call(true);
+        let sons_len = module_ent.len(sons);
+        let caller = module_ent.get(sons, 0);
+        let caller_kind = module_ent.kind(caller);
+        for i in 1..sons_len {
+            let value = self.modules[module].get(sons, i);
+            let value = self.expr(fun, value, body)?;
             values.push(value);
         }
 
-        let module = self.fun(fun).module;
         let mut generic_params = self.context.pool.get();
-        let name = match ast[0].kind {
-            AKind::Ident | AKind::Path => &ast[0],
+        let module_ent = &mut self.modules[module];
+        let name = match caller_kind {
+            AKind::Ident | AKind::Path => caller,
             AKind::Deref => {
-                let pointer = self.expr(fun, &ast[0][0])?;
-                let ty = self.value(pointer).ty;
+                let pointer_ast = module_ent.son(caller, 0);
+                let pointer_ast_token = *module_ent.token(pointer_ast);
+                let pointer = self.expr(fun, pointer_ast, body)?;
+                let module_ent = &self.state.modules[module];
+                let ty = module_ent.type_of_value(pointer);
 
-                let fp = match &self.ty(ty).kind {
-                    TKind::FunPointer(fp) => fp,
-                    _ => {
-                        return Err(FError::new(FEKind::ExpectedFunctionPointer, ast.token));
-                    }
+                let (mismatched, ret) = {
+                    let fp_module = self.types[ty].module;
+                    let fp = match self.types[ty].kind {
+                        TKind::FunPointer(fp) => fp,
+                        _ => {
+                            return Err(FError::new(
+                                FEKind::ExpectedFunctionPointer,
+                                pointer_ast_token,
+                            ));
+                        }
+                    };
+
+                    (
+                        self.modules[fp_module].verify_args(&values, fp.args),
+                        fp.ret,
+                    )
                 };
-
-                let ret = fp.ret;
-
-                let mismatched = fp.args.len() != values.len()
-                    || fp
-                        .args
-                        .iter()
-                        .zip(values.iter())
-                        .any(|(&param, &value)| self.value(value).ty != param);
 
                 if mismatched {
                     return Err(FError::new(
                         FEKind::FunPointerArgMismatch(
                             ty,
-                            values.iter().map(|&v| self.value(v).ty).collect(),
+                            values
+                                .iter()
+                                .map(|&v| module_ent.type_of_value(v))
+                                .collect(),
                         ),
-                        ast.token,
+                        token,
                     ));
                 }
 
-                let do_stacktrace = self.state.do_stacktrace;
-
                 if do_stacktrace {
-                    self.gen_frame_push(&ast.token);
+                    self.gen_frame_push(fun, token, body);
                 }
 
-                let value = ret.map(|ty| self.new_temp_value(ty));
-                let args = self.make_value_slice(&values);
-                self.add_inst(InstEnt::new(
-                    IKind::FunPointerCall(pointer, args),
-                    value,
-                    &ast.token,
-                ));
+                let module_ent = &mut self.state.modules[module];
+
+                let args = module_ent.add_args(&values);
+                let value = if ret.is_none() {
+                    module_ent.add_valueless_inst(
+                        IKind::FunPointerCall(pointer, args),
+                        token,
+                        body,
+                    );
+                    None
+                } else {
+                    let value = module_ent.add_temp_value(ret.unwrap());
+                    module_ent.add_inst(IKind::FunPointerCall(pointer, args), value, token, body);
+                    Some(value)
+                };
 
                 if do_stacktrace {
-                    self.gen_frame_pop(&ast.token);
+                    self.gen_frame_pop(fun, token, body);
                 }
 
                 return Ok(value);
             }
             AKind::Instantiation => {
-                for arg in ast[0][1..].iter() {
-                    let id = self.parse_type(module, arg)?;
-                    generic_params.push(id);
+                let len = module_ent.ast_len(caller);
+                for i in 1..len {
+                    let param = self.modules[module].son(caller, i);
+                    let ty = self.parse_type(module, param)?;
+                    generic_params.push(ty);
                 }
-                &ast[0][0]
+                self.modules[module].son(caller, 1)
             }
             _ => unreachable!(),
         };
 
         let (module, caller, name) = self.parse_ident(module, name)?;
 
-        let caller = if ast.kind == AKind::Call(true) {
-            None
-        } else {
-            Some(caller)
-        };
+        let caller = if dot_call { None } else { Some(caller) };
 
-        let result = self.call_low(
+        self.call_low(
             fun,
             module,
             caller,
             FUN_SALT,
-            &name.span,
+            name.span,
             &generic_params,
             &values,
-            &ast.token,
-        );
-
-        result
+            token,
+            body,
+        )
     }
 
     fn call_low(
@@ -864,23 +967,25 @@ impl<'a> FParser<'a> {
         target: Option<Mod>,
         caller: Option<Option<Ty>>,
         salt: ID,
-        name: &Span,
+        name: Span,
         params: &[Ty],
         original_values: &[Value],
-        token: &Token,
+        token: Token,
+        body: &mut FunBody,
     ) -> ExprResult {
+        let mut module_buffer = self.context.pool.get();
         let mut values = self.context.pool.get();
-        values.extend_from_slice(original_values);
         let mut types = self.context.pool.get();
-        types.extend(values.iter().map(|&v| self.value(v).ty));
-        let module = self.fun(fun).module;
+        let module = self.funs[fun].module;
+        let module_ent = &self.modules[module];
+        values.extend_from_slice(original_values);
+        types.extend(values.iter().map(|&v| module_ent.type_of_value(v)));
 
         let id = salt.add(name.hash);
 
-        let mut module_buffer = self.context.pool.get();
 
         let (result, field, final_type) = if let Some(caller) = caller {
-            let caller = caller.map(|caller| self.ty(caller).id).unwrap_or(ID(0));
+            let caller = caller.map(|caller| self.types[caller].id).unwrap_or(ID(0));
             let id = id.add(caller);
             (
                 self.find_item(module, id, target, &mut module_buffer),
@@ -888,8 +993,8 @@ impl<'a> FParser<'a> {
                 None,
             )
         } else {
-            let v = *original_values.first().unwrap();
-            let ty = self.value(v).ty;
+            let v = original_values[0];
+            let ty = module_ent.type_of_value(v);
 
             let mut result = (Ok(None), None, None);
             let mut fields = self.context.pool.get();
@@ -897,8 +1002,10 @@ impl<'a> FParser<'a> {
             fields.push((None, ty));
             while i < fields.len() {
                 let (field, ty) = fields[i];
-                let ty = self.base_of(ty).unwrap_or(ty);
-                let ty_id = self.ty(self.ty(ty).base().unwrap_or(ty)).id;
+                let ty = self.t_state.pointer_base(ty).unwrap_or(ty);
+                let params = self.types[ty].params;
+                let first = self.modules[module].type_slice(params).first().cloned();
+                let ty_id = self.types[first.unwrap_or(ty)].id;
                 module_buffer.clear();
                 let pre_result = self.find_item(module, id.add(ty_id), target, &mut module_buffer);
                 match pre_result {
@@ -912,7 +1019,7 @@ impl<'a> FParser<'a> {
                     }
                     _ => (),
                 }
-                match &self.ty(ty).kind {
+                match &self.types[ty].kind {
                     TKind::Structure(stype) => {
                         fields.extend(
                             stype
@@ -934,15 +1041,15 @@ impl<'a> FParser<'a> {
         }
 
         let (_, other_fun) = result
-            .map_err(|(a, b)| FError::new(FEKind::AmbiguousFunction(a, b), *token))?
+            .map_err(|(a, b)| FError::new(FEKind::AmbiguousFunction(a, b), token))?
             .ok_or_else(|| {
                 FError::new(
                     FEKind::FunctionNotFound(name.clone(), types.to_vec()),
-                    *token,
+                    token,
                 )
             })?;
 
-        let other_fun = if let FKind::Generic(_) = self.fun(other_fun).kind {
+        let other_fun = if let FKind::Generic = self.funs[other_fun].kind {
             if caller.is_none() {
                 let result = self.create(other_fun, params, &types)?;
                 types[0] = self.pointer_of(types[0]);
@@ -955,196 +1062,208 @@ impl<'a> FParser<'a> {
                 self.create(other_fun, params, &types)?
             }
             .ok_or_else(|| {
-                FError::new(
-                    FEKind::GenericMismatch(name.clone(), types.to_vec()),
-                    *token,
-                )
+                FError::new(FEKind::GenericMismatch(name.clone(), types.to_vec()), token)
             })?
         } else {
             other_fun
         };
 
-        let return_type = self.signature_of(other_fun).ret;
+        let FunEnt {
+            kind: other_kind,
+            module: other_module,
+            untraced,
+            sig:
+                Signature {
+                    args: sig_args,
+                    ret,
+                    ..
+                },
+            vis,
+            ..
+        } = self.funs[other_fun];
 
-        let value = return_type.map(|t| {
-            let on_stack = self.ty(t).on_stack(self.ptr_ty);
-            let value = self.new_anonymous_value(t, on_stack);
+        let value = if ret.is_some() {
+            let ret = ret.unwrap();
+            let on_stack = self.types[ret].on_stack(self.ptr_ty);
+            let value = self.modules[module].add_value(ret, on_stack);
             if on_stack {
                 values.push(value);
             }
-            value
-        });
+            Some(value)
+        } else {
+            None
+        };
 
         if caller.is_none() {
             if let Some(field) = field {
-                let temp = self.new_temp_value(self.state.builtin_repo.bool);
-                self.field_access(values[0], field, temp, token, module)?;
-                values[0] = temp;
+                values[0] = self.field_access(fun, values[0], field, token, body)?;
             }
 
-            let first_arg_ty = self.signature_of(other_fun).args[0];
-
-            let first_real_arg_ty = self.value(values[0]).ty;
+            let module_ent = &self.modules[module];
+            let first_arg_ty = module_ent.type_slice(sig_args)[0];
+            let first_real_arg_ty = module_ent.type_of_value(values[0]);
 
             if first_real_arg_ty != first_arg_ty {
-                if self.base_of(first_real_arg_ty) == Some(first_arg_ty) {
-                    values[0] = self.deref_expr_low(values[0], token)?;
+                if self.t_state.pointer_base(first_real_arg_ty) == Some(first_arg_ty) {
+                    values[0] = self.deref_expr_low(fun, values[0], token, body)?;
                 } else {
-                    values[0] = self.ref_expr_low(values[0], token);
+                    values[0] = self.ref_expr_low(fun, values[0], token, body);
                 }
-                debug_assert!(self.value(values[0]).ty == first_arg_ty);
+                debug_assert!(self.modules[module].type_of_value(values[0]) == first_arg_ty);
             }
         }
 
-        let sig = self.signature_of(other_fun);
-        let mismatched = sig.args.len() != types.len()
-            || sig
-                .args
-                .iter()
-                .zip(values.iter())
-                .any(|(&a, &b)| a != self.value(b).ty);
+        let mismatched = self.modules[other_module].verify_args(&values, sig_args);
 
         if mismatched {
-            types[0] = self.value(values[0]).ty;
+            types[0] = self.modules[module].type_of_value(values[0]);
             return Err(FError::new(
                 FEKind::FunArgMismatch(other_fun, types.to_vec()),
-                *token,
+                token,
             ));
         }
 
         let do_stacktrace = self.state.do_stacktrace
-            && !self.fun(fun).untraced
-            && !matches!(self.fun(other_fun).kind, FKind::Builtin(..));
-        if do_stacktrace {
-            self.gen_frame_push(&token);
+            && !untraced
+            && !matches!(other_kind, FKind::Builtin);
+        
+            if do_stacktrace {
+            self.gen_frame_push(fun, token, body);
         }
 
-        if !self.state.can_access(
-            self.fun(fun).module,
-            self.fun(other_fun).module,
-            self.fun(other_fun).vis,
-        ) {
-            return Err(FError::new(FEKind::VisibilityViolation, *token));
+        if !self.state.can_access(module, other_module, vis) {
+            return Err(FError::new(FEKind::VisibilityViolation, token));
         }
 
-        let args = self.make_value_slice(&values);
+        let module_ent = &mut self.modules[module];
+        let args = module_ent.add_args(&values);
 
-        self.add_inst(InstEnt::new(
-            IKind::Call(other_fun, args),
-            value,
-            token,
-        ));
+        if let Some(value) = value {
+            module_ent.add_inst(IKind::Call(other_fun, args), value, token, body);
+        } else {
+            module_ent.add_valueless_inst(IKind::Call(other_fun, args), token, body);
+        }
 
         if do_stacktrace {
-            self.gen_frame_pop(&token);
+            self.gen_frame_pop(fun, token, body);
         }
 
         Ok(value)
     }
 
-    fn gen_frame_pop(&mut self, token: &Token) {
-        let pop = FUN_SALT
-            .add(ID::new("pop_frame"))
-            .add(ID(0))
-            .add(self.state.modules[self.state.builtin_module].id);
-        let pop = self.state.funs.index(pop).unwrap().clone();
-        self.add_inst(InstEnt::new(IKind::Call(pop, EntityList<Value>::empty()), None, &token));
+    fn gen_frame_pop(&mut self, fun: Fun, token: Token, body: &mut FunBody) {
+        let module = self.funs[fun].module;
+        let pop = self.state.funs.index(self.pop_fun_hahs).unwrap().clone();
+        self.modules[module].add_valueless_inst(IKind::Call(pop, EntityList::new()), token, body);
     }
 
-    fn gen_frame_push(&mut self, token: &Token) {
-        let push = FUN_SALT
-            .add(ID::new("push_frame"))
-            .add(ID(0))
-            .add(self.state.modules[self.state.builtin_module].id);
-        let push = self.state.funs.index(push).unwrap().clone();
-        let line = self.new_temp_value(self.state.builtin_repo.int);
-        self.add_inst(InstEnt::new(
+    fn gen_frame_push(&mut self, fun: Fun, token: Token, body: &mut FunBody) {
+        let push = self.state.funs.index(self.push_fun_hash).unwrap().clone();
+        let int = self.state.builtin_repo.int;
+        let u8 = self.state.builtin_repo.u8;
+        let module = self.funs[fun].module;
+        let module_ent = &mut self.modules[module];
+        
+        // line argument
+        let line = module_ent.add_temp_value(int);
+        module_ent.add_inst(
             IKind::Lit(LTKind::Int(token.span.line as i64, 0)),
-            Some(line),
+            line,
             token,
-        ));
-        let column = self.new_temp_value(self.state.builtin_repo.int);
-        self.add_inst(InstEnt::new(
+            body,
+        );
+        
+        // column argument
+        let column = module_ent.add_temp_value(int);
+        module_ent.add_inst(
             IKind::Lit(LTKind::Int(token.span.column as i64, 0)),
-            Some(column),
+            column,
             token,
-        ));
+            body,
+        );
+
+        // file name argument
         let file_name = &self.state.sources[token.span.source].name;
         let mut final_file_name = String::with_capacity(file_name.len() + 1);
         final_file_name.push_str(file_name);
         final_file_name.push('\x00');
         let span = self.state.builtin_span(&final_file_name);
-        let ptr = self.pointer_of(self.state.builtin_repo.u8);
-        let file_name = self.new_temp_value(ptr);
-        self.add_inst(InstEnt::new(
+        let ptr = self.pointer_of(u8);
+        let module_ent = &mut self.modules[module];
+        let file_name = module_ent.add_temp_value(ptr);
+        module_ent.add_inst(
             IKind::Lit(LTKind::String(span)),
-            Some(file_name),
+            file_name,
             token,
-        ));
+            body,
+        );
 
-        let args = self.make_value_slice(&[line, column, file_name]);
-        self.add_inst(InstEnt::new(
+        let args = module_ent.add_args(&[line, column, file_name]);
+        module_ent.add_valueless_inst(
             IKind::Call(push, args),
-            None,
             token,
-        ));
+            body,
+        );
     }
 
-    fn ident(&mut self, fun: Fun, ast: Ast) -> ExprResult {
-        let module = self.fun(fun).module;
+    fn ident(&mut self, fun: Fun, ast: Ast, body: &mut FunBody) -> ExprResult {
+        let module = self.funs[fun].module;
         let (target, caller, name) = self.parse_ident(module, ast)?;
         let can_be_local = target.is_none() && caller.is_none();
-        let caller = caller.map(|c| self.ty(c).id).unwrap_or(ID(0));
+        let caller = caller.map(|c| self.types[c].id).unwrap_or(ID(0));
+        let token = *self.modules[module].token(ast);
 
         let result = (|| {
             if can_be_local {
-                if let Some(var) = self.find_variable(name.span.hash) {
+                if let Some(var) = self.context.find_variable(name.span.hash) {
                     return Ok(Some(var));
                 }
-                if let Some(var) = self.find_constant_parameter(fun, &name) {
+                if let Some(var) = self.find_constant_parameter(fun, name, body) {
                     return Ok(Some(var));
                 }
             }
 
-            if let Some(global) = self.find_global(fun, target, caller, &name)? {
+            if let Some(global) = self.find_global(fun, target, caller, name, body)? {
                 return Ok(Some(global));
             }
 
-            if let Some(local) = self.find_function_pointer(fun, target, caller, &name)? {
+            if let Some(local) = self.find_function_pointer(fun, target, caller, name, body)? {
                 return Ok(Some(local));
             }
 
             Ok(None)
         })()?
-        .ok_or_else(|| FError::new(FEKind::UndefinedVariable, ast.token))?;
+        .ok_or_else(|| FError::new(FEKind::UndefinedVariable, token))?;
 
         Ok(Some(result))
     }
 
-    fn parse_ident(
-        &mut self,
-        module: Mod,
-        name: Ast,
-    ) -> Result<(Option<Mod>, Option<Ty>, Token)> {
-        if name.kind == AKind::Ident {
-            Ok((None, None, name.token))
+    fn parse_ident(&mut self, module: Mod, ast: Ast) -> Result<(Option<Mod>, Option<Ty>, Token)> {
+        let module_ent = &self.modules[module];
+        let &AstEnt { kind, sons, token } = module_ent.load(ast);
+        if kind == AKind::Ident {
+            Ok((None, None, token))
         } else {
-            match &name[..] {
-                [module_name, caller_name, name] => {
+            match module_ent.slice(sons) {
+                &[module_name, caller_name, name] => {
+                    let module_name_token = *module_ent.token(module_name);
+                    let name_token = *module_ent.token(name);
                     let dep = self
-                        .state
-                        .find_dep(module, &module_name.token)
-                        .ok_or_else(|| FError::new(FEKind::UnknownModule, module_name.token))?;
+                        .find_dep(module, &module_name_token)
+                        .ok_or_else(|| FError::new(FEKind::UnknownModule, module_name_token))?;
                     let caller = self.parse_type(dep, caller_name)?;
-
-                    Ok((Some(dep), Some(caller), name.token))
+                    let caller = self.t_state.base_of(caller);
+                    Ok((Some(dep), Some(caller), name_token))
                 }
-                [something, name] => {
-                    if let Some(dep) = self.state.find_dep(module, &something.token) {
-                        Ok((Some(dep), None, name.token))
+                &[package_or_caller, name] => {
+                    let package_or_caller_token = *module_ent.token(package_or_caller);
+                    let name_token = *module_ent.token(name);
+                    if let Some(dep) = self.find_dep(module, &package_or_caller_token) {
+                        Ok((Some(dep), None, name_token))
                     } else {
-                        let caller = self.parse_type(module, something)?;
-                        Ok((None, Some(caller), name.token))
+                        let caller = self.parse_type(module, package_or_caller)?;
+                        let caller = self.t_state.base_of(caller);
+                        Ok((None, Some(caller), name_token))
                     }
                 }
                 _ => unreachable!(),
@@ -1157,26 +1276,33 @@ impl<'a> FParser<'a> {
         fun: Fun,
         target: Option<Mod>,
         caller: ID,
-        ident: &Token,
+        ident: Token,
+        body: &mut FunBody,
     ) -> ExprResult {
         let mut module_buffer = self.context.pool.get();
-        let module = self.fun(fun).module;
+        let module = self.funs[fun].module;
         let id = FUN_SALT.add(ident.span.hash).add(caller);
         Ok(
             match self
                 .find_item(module, id, target, &mut module_buffer)
-                .map_err(|(a, b)| FError::new(FEKind::AmbiguousFunction(a, b), ident.clone()))?
+                .map_err(|(a, b)| FError::new(FEKind::AmbiguousFunction(a, b), ident))?
             {
                 Some((other_module, f)) => {
+                    let FunEnt { vis, sig, .. } = self.funs[f];
                     if !self
                         .state
-                        .can_access(module, other_module, self.state.funs[f].vis)
+                        .can_access(module, other_module, vis)
                     {
-                        return Err(FError::new(FEKind::VisibilityViolation, ident.clone()));
+                        return Err(FError::new(FEKind::VisibilityViolation, ident));
                     }
-                    let ty = self.function_type_of(module, f);
-                    let value = self.new_temp_value(ty);
-                    self.add_inst(InstEnt::new(IKind::FunPointer(f), Some(value), ident));
+                    // we store the pointers in the module function comes from,
+                    // this makes it more likely we will reuse already instantiated 
+                    // pointers, it also means we don't have to reallocate signature 
+                    // to modules pool
+                    let ty = self.function_type_of(other_module, sig);
+                    let module_ent = &mut self.modules[module];
+                    let value = module_ent.add_temp_value(ty);
+                    module_ent.add_inst(IKind::FunPointer(f), value, ident, body);
                     Some(value)
                 }
                 None => None,
@@ -1189,23 +1315,24 @@ impl<'a> FParser<'a> {
         fun: Fun,
         target: Option<Mod>,
         caller: ID,
-        name: &Token,
+        name: Token,
+        body: &mut FunBody,
     ) -> ExprResult {
-        let module = self.fun(fun).module;
+        let module = self.funs[fun].module;
 
         let id = GLOBAL_SALT.add(name.span.hash).add(caller);
 
         let mut module_buffer = self.context.pool.get();
         let global = self
             .find_item(module, id, target, &mut module_buffer)
-            .map_err(|(a, b)| FError::new(FEKind::AmbiguousGlobal(a, b), name.clone()))?;
+            .map_err(|(a, b)| FError::new(FEKind::AmbiguousGlobal(a, b), name))?;
 
         let found = if let Some((other_module, found)) = global {
             if !self
                 .state
                 .can_access(module, other_module, self.state.globals[found].vis)
             {
-                return Err(FError::new(FEKind::GlobalVisibilityViolation, name.clone()));
+                return Err(FError::new(FEKind::GlobalVisibilityViolation, name));
             }
             found
         } else {
@@ -1214,35 +1341,55 @@ impl<'a> FParser<'a> {
 
         let ty = self.state.globals[found].ty;
 
-        let value = self.new_anonymous_value(ty, self.state.globals[found].mutable);
-        self.add_inst(InstEnt::new(IKind::GlobalLoad(found), Some(value), name));
+        let mutable = self.state.globals[found].mutable;
+        let module_ent = &mut self.modules[module];
+        let value = module_ent.add_value(ty, mutable);
+        module_ent.add_inst(IKind::GlobalLoad(found), value, name, body);
 
         Ok(Some(value))
     }
 
-    fn find_constant_parameter(&mut self, fun: Fun, token: &Token) -> Option<Value> {
+    fn find_constant_parameter(&mut self, fun: Fun, token: Token, body: &mut FunBody) -> Option<Value> {
+        let FunEnt {
+            module,
+            params,
+            ast,
+            ..
+        } = self.funs[fun];
+        let module_ent = &self.modules[module];
         let name = TYPE_SALT
             .add(token.span.hash)
-            .add(self.state.modules[self.fun(fun).module].id);
-        if let Some(&(_, ty)) = self.fun(fun).params.iter().find(|&(p, _)| *p == name) {
-            let ty = &self.ty(ty).kind;
-            match ty {
-                TKind::Constant(t) => {
-                    let (kind, ty) = match t.clone() {
-                        TypeConst::Bool(val) => (LTKind::Bool(val), self.state.builtin_repo.bool),
-                        TypeConst::Int(val) => (LTKind::Int(val, 0), self.state.builtin_repo.int),
+            .add(module_ent.id);
+        let params_ast = module_ent.chain_son_ent(ast, &[0, 0, 1]).sons; // [header, identifier, params]
+        let ty = module_ent.slice(params_ast).iter().position(|&e| {
+            let token = module_ent.token(e);
+            let hash = TYPE_SALT
+                .add(token.span.hash)
+                .add(module_ent.id);
+            hash == name    
+        }).map(|i| module_ent.type_slice(params)[i]);
+        if let Some(ty) = ty {
+            match &self.types[ty].kind {
+                &TKind::Constant(t) => {
+                    let repo = self.state.builtin_repo;
+                    let (kind, ty) = match t {
+                        TypeConst::Bool(val) => (LTKind::Bool(val), repo.bool),
+                        TypeConst::Int(val) => (LTKind::Int(val, 0), repo.int),
                         TypeConst::Float(val) => {
-                            (LTKind::Float(val, 64), self.state.builtin_repo.f64)
+                            (LTKind::Float(val, 64), repo.f64)
                         }
-                        TypeConst::Char(val) => (LTKind::Char(val), self.state.builtin_repo.u32),
-                        TypeConst::String(val) => (
-                            LTKind::String(val),
-                            self.pointer_of(self.state.builtin_repo.u8),
-                        ),
+                        TypeConst::Char(val) => (LTKind::Char(val), repo.u32),
+                        TypeConst::String(val) => {
+                            (
+                                LTKind::String(val),
+                                self.pointer_of(repo.u8),
+                            )
+                        },
                     };
 
-                    let value = self.new_temp_value(ty);
-                    self.add_inst(InstEnt::new(IKind::Lit(kind), Some(value), token));
+                    let module_ent = &mut self.modules[module];
+                    let value = module_ent.add_temp_value(ty);
+                    module_ent.add_inst(IKind::Lit(kind), value, token, body);
                     Some(value)
                 }
                 _ => None,
@@ -1252,268 +1399,211 @@ impl<'a> FParser<'a> {
         }
     }
 
-    fn lit(&mut self, ast: Ast) -> ExprResult {
-        let ty = match ast.token.kind {
+    fn lit(&mut self, fun: Fun, ast: Ast, body: &mut FunBody) -> ExprResult {
+        let module = self.funs[fun].module;
+        let module_ent = &self.modules[module];
+        let token = *module_ent.token(ast);
+        let repo = self.state.builtin_repo;
+        let ty = match token.kind {
             LTKind::Int(_, base) => match base {
-                8 => self.state.builtin_repo.i8,
-                16 => self.state.builtin_repo.i16,
-                32 => self.state.builtin_repo.i32,
-                64 => self.state.builtin_repo.i64,
-                _ => self.state.builtin_repo.int,
+                8 => repo.i8,
+                16 => repo.i16,
+                32 => repo.i32,
+                64 => repo.i64,
+                _ => repo.int,
             },
             LTKind::Uint(_, base) => match base {
-                8 => self.state.builtin_repo.u8,
-                16 => self.state.builtin_repo.u16,
-                32 => self.state.builtin_repo.u32,
-                64 => self.state.builtin_repo.u64,
-                _ => self.state.builtin_repo.uint,
+                8 => repo.u8,
+                16 => repo.u16,
+                32 => repo.u32,
+                64 => repo.u64,
+                _ => repo.uint,
             },
             LTKind::Float(_, base) => match base {
-                32 => self.state.builtin_repo.f32,
-                _ => self.state.builtin_repo.f64,
+                32 => repo.f32,
+                _ => repo.f64,
             },
-            LTKind::Bool(_) => self.state.builtin_repo.bool,
-            LTKind::Char(_) => self.state.builtin_repo.u32,
-            LTKind::String(_) => self.pointer_of(self.state.builtin_repo.u8),
-            _ => unreachable!("{}", AstDisplay::new(self.state, ast)),
+            LTKind::Bool(_) => repo.bool,
+            LTKind::Char(_) => repo.u32,
+            LTKind::String(_) => self.pointer_of(repo.u8),
+            _ => unreachable!("{}", AstDisplay::new(self.state, &self.modules[module].a_state, ast)),
         };
 
-        let value = self.new_temp_value(ty);
+        let module_ent = &mut self.modules[module];
+        let value = module_ent.add_temp_value(ty);
 
-        self.add_inst(InstEnt::new(
-            IKind::Lit(ast.token.kind.clone()),
-            Some(value),
-            &ast.token,
-        ));
+        module_ent.add_inst(
+            IKind::Lit(token.kind.clone()),
+            value,
+            token,
+            body,
+        );
 
         Ok(Some(value))
     }
 
-    fn binary_op(&mut self, fun: Fun, ast: Ast) -> ExprResult {
-        match self.state.display(&ast[0].token.span) {
-            "=" => return self.assignment(fun, ast),
-            "as" => return self.bit_cast(fun, ast),
-            _ => (),
+    fn binary_op(&mut self, fun: Fun, ast: Ast, body: &mut FunBody) -> ExprResult {
+        let module = self.funs[fun].module;
+        let module_ent = &mut self.modules[module];
+        let &AstEnt { sons, token, .. } = module_ent.load(ast);
+        let op = module_ent.get_ent(sons, 0).token;
+        
+        if op.span.hash == ID::new("=") {
+            return self.assignment(fun, ast, body);
+        } else if op.span.hash == ID::new("as") {
+            return self.bit_cast(fun, ast, body);
         }
 
-        let left = self.expr(fun, &ast[1])?;
-        let right = self.expr(fun, &ast[2])?;
+        let left = module_ent.get(sons, 1);
+        let right = module_ent.get(sons, 2);
 
-        let mut buffer = self.context.pool.get();
-        buffer.extend(&[left, right]);
+        let left = self.expr(fun, left, body)?;
+        let right = self.expr(fun, right, body)?;
 
         self.call_low(
             fun,
             None,
             None,
             BINARY_SALT,
-            &ast[0].token.span,
+            op.span,
             &[],
-            &buffer,
-            &ast.token,
+            &[left, right],
+            token,
+            body,
         )
     }
 
-    fn bit_cast(&mut self, fun: Fun, ast: Ast) -> ExprResult {
-        let module = self.fun(fun).module;
-        let target = self.expr(fun, &ast[1])?;
-        let ty = self.parse_type(module, &ast[2])?;
+    fn bit_cast(&mut self, fun: Fun, ast: Ast, body: &mut FunBody) -> ExprResult {
+        let module = self.funs[fun].module;
+        let module_ent = &mut self.modules[module];
+        let &AstEnt { sons, token, .. } = module_ent.load(ast);
+        let target = module_ent.get(sons, 1);
+        let ty = module_ent.get(sons, 2);
+        let target = self.expr(fun, target, body)?;
+        let ty = self.parse_type(module, ty)?;
 
-        let original_datatype = self.value(target).ty;
-        let original_size = self.ty(original_datatype).size;
-        let datatype_size = self.ty(ty).size;
+        let original_datatype = self.modules[module].type_of_value(target);
+        let original_size = self.types[original_datatype].size;
+        let datatype_size = self.types[ty].size;
 
         if original_size != datatype_size {
             return Err(FError::new(
                 FEKind::InvalidBitCast(original_size, datatype_size),
-                ast.token,
+                token,
             ));
         }
 
-        let value = self.new_anonymous_value(ty, self.value(target).mutable);
-        self.add_inst(InstEnt::new(IKind::Cast(target), Some(value), &ast.token));
+        let module_ent = &mut self.modules[module];
+        let mutable = module_ent.is_mutable(target);
+        let value = module_ent.add_value(ty, mutable);
+        module_ent.add_inst(IKind::Cast(target), value, token, body);
 
         Ok(Some(value))
     }
 
     fn field_access(
         &mut self,
+        fun: Fun,
         mut header: Value,
         field: ID,
-        value: Value,
-        token: &Token,
-        module: Mod,
-    ) -> Result<Ty> {
-        let mutable = self.value(header).mutable || self.base_of(self.value(header).ty).is_some();
-        let header_datatype = self.value(header).ty;
-        let mut path = vec![];
-        if !self.find_field(header_datatype, field, &mut path) {
-            return Err(FError::new(FEKind::UnknownField(header_datatype), *token));
-        }
+        token: Token,
+        body: &mut FunBody,
+    ) -> Result<Value> {
+        let in_assign = self.in_assign;
+        let module = self.funs[fun].module;
+        let module_ent = &self.state.modules[module];
+        let ty = module_ent.type_of_value(header);
+        let mutable = module_ent.is_mutable(header) || self.t_state.pointer_base(ty).is_some();
+        let mut path = self.context.pool.get();
+        let success = self.find_field(ty, field, &mut path);
+        if !success {
+            return Err(FError::new(FEKind::UnknownField(ty), token));
+        };
 
         let mut offset = Size::ZERO;
-        let mut current_type = header_datatype;
+        let mut current_type = ty;
         for &i in path.iter().rev() {
-            let ty = self.ty(current_type);
+            let ty = &self.types[ty];
             match &ty.kind {
                 TKind::Structure(stype) => {
-                    let field = &stype.fields[i];
-                    if !self.state.can_access(module, ty.module, field.vis) {
-                        return Err(FError::new(FEKind::FieldVisibilityViolation, *token));
+                    let s_field = &stype.fields[i];
+                    if !self.state.can_access(module, ty.module, s_field.vis) {
+                        return Err(FError::new(FEKind::FieldVisibilityViolation, token));
                     }
-                    offset = offset.add(field.offset);
-                    current_type = field.ty;
+                    offset = offset.add(s_field.offset);
+                    current_type = s_field.ty;
                 }
                 &TKind::Pointer(pointed) => {
-                    let value = self.new_anonymous_value(current_type, mutable);
-                    self.value_mut(value).offset = offset;
-                    self.add_inst(InstEnt::new(IKind::Offset(header), Some(value), token));
-                    let ty = self.ty(pointed);
+                    let value = self.modules[module].offset_value(header, offset, token, body);
+                    let ty = &self.types[pointed];
                     match &ty.kind {
                         TKind::Structure(stype) => {
-                            let field = &stype.fields[i];
-                            if !self.state.can_access(module, ty.module, field.vis) {
-                                return Err(FError::new(FEKind::FieldVisibilityViolation, *token));
+                            let s_field = &stype.fields[i];
+                            if !self.state.can_access(module, ty.module, s_field.vis) {
+                                return Err(FError::new(FEKind::FieldVisibilityViolation, token));
                             }
-                            offset = field.offset;
-                            current_type = field.ty;
-                            let loaded = self.new_anonymous_value(pointed, mutable);
-                            self.add_inst(InstEnt::new(
-                                IKind::Deref(value, false),
-                                Some(loaded),
-                                token,
-                            ));
+                            offset = s_field.offset;
+                            current_type = s_field.ty;
+                            let module_ent = &mut self.modules[module];
+                            let loaded = module_ent.add_value_ent(ValueEnt {
+                                ty: current_type,
+                                mutable,
+                                offset,
+
+                                ..Default::default()
+                            });
+                            module_ent.add_inst(IKind::Deref(value, in_assign), loaded, token, body);
                             header = loaded;
-                            self.value_mut(loaded).offset = offset;
                         }
                         _ => unreachable!(),
                     }
                 }
-                _ => todo!("{:?}", self.ty(current_type)),
+                _ => todo!("{}", TypeDisplay::new(self.state, current_type)),
             }
         }
 
-        let inst = self.add_inst(InstEnt::new(IKind::Offset(header), Some(value), token));
-
-        let val = self.value_mut(value);
-        val.inst = Some(inst);
-        val.mutable = mutable;
-        val.offset = offset;
-        val.ty = current_type;
-
-        Ok(current_type)
+        Ok(self.modules[module].offset_value(header, offset, token, body))
     }
 
-    pub fn add_variable(&mut self, name: ID, ty: Ty, mutable: bool) -> Value {
-        let val = self.new_value(name, ty, mutable);
-        self.context.vars.push(val);
-        val
-    }
-
-    fn assignment(&mut self, fun: Fun, ast: Ast) -> ExprResult {
-        let target = self.expr(fun, &ast[1])?;
-        let value = self.expr(fun, &ast[2])?;
-        let target_datatype = self.value(target).ty;
-        let value_datatype = self.value(value).ty;
-
-        if !self.value(target).mutable {
-            return Err(FError::new(FEKind::AssignToImmutable, ast.token));
+    fn assignment(&mut self, fun: Fun, ast: Ast, body: &mut FunBody) -> ExprResult {
+        let module = self.funs[fun].module;
+        let module_ent = &mut self.modules[module];
+        let &AstEnt { sons, token, .. } = module_ent.load(ast);
+        let target = module_ent.get(sons, 1);
+        let value = module_ent.get(sons, 2);
+        
+        let prev_in_assign = self.in_assign;
+        self.in_assign = true;
+        let target = self.expr(fun, target, body)?;
+        self.in_assign = prev_in_assign;
+        
+        let value = self.expr(fun, value, body)?;
+        
+        let module_ent = &mut self.modules[module];
+        let target_datatype = module_ent.type_of_value(target);
+        let value_datatype = module_ent.type_of_value(value);
+        let mutable = module_ent.is_mutable(target);
+        if !mutable {
+            return Err(FError::new(FEKind::AssignToImmutable, token));
         }
 
-        match &mut self.inst_mut(self.value(target).inst.unwrap()).kind {
-            IKind::Deref(_, assign) => *assign = true,
-            _ => (),
-        }
-
-        self.assert_type(value_datatype, target_datatype, &ast.token)?;
-
-        self.add_inst(InstEnt::new(IKind::Assign(target), Some(value), &ast.token));
-
+        assert_type(value_datatype, target_datatype, &token)?;
+        module_ent.add_inst(IKind::Assign(target), value, token, body);
         Ok(Some(value))
     }
 
-    #[inline]
-    fn new_temp_value(&mut self, ty: Ty) -> Value {
-        self.new_anonymous_value(ty, false)
-    }
-
-    #[inline]
-    fn new_anonymous_value(&mut self, ty: Ty, mutable: bool) -> Value {
-        self.new_value(ID(0), ty, mutable)
-    }
-
-    #[inline]
-    fn new_value(&mut self, name: ID, ty: Ty, mutable: bool) -> Value {
-        let value = ValueEnt::new(name, ty, mutable);
-        self.context.body.values.add(value)
-    }
-
-    pub fn add_inst(&mut self, inst: InstEnt) -> Inst {
-        debug_assert!(self.context.block.is_some(), "no block to add inst to");
-        let closing = inst.kind.is_closing();
-        let value = inst.value;
-        let inst = self.context.body.insts.push(inst);
-        if let Some(value) = value {
-            self.value_mut(value).inst = Some(inst);
-        }
-        if closing {
-            self.close_block();
-        }
-        inst
-    }
-
-    pub fn add_inst_above(&mut self, inst: InstEnt, at: Inst) -> Inst {
-        debug_assert!(!inst.kind.is_closing(), "cannot insert closing instruction");
-        let value = inst.value;
-        let inst = self.context.body.insts.insert_before(at, inst);
-        if let Some(value) = value {
-            self.value_mut(value).inst = Some(inst);
-        }
-        inst
-    }
-
-    pub fn new_block(&mut self) -> Inst {
-        self.context.body.insts.add_hidden(InstEnt::new(
-            IKind::Block(Default::default()),
-            None,
-            &Token::default(),
-        ))
-    }
-
-    pub fn make_block_current(&mut self, block: Inst) {
-        debug_assert!(
-            self.context.block.is_none(),
-            "current block is not closed"
-        );
-        self.context.body.insts.show_as_last(block);
-        self.context.block = Some(block);
-    }
-
-    pub fn close_block(&mut self) {
-        debug_assert!(self.context.block.is_some(), "no block to close");
-        let block = self.context.block.unwrap();
-        let inst = self.context.body.insts.push(InstEnt::new(
-            IKind::BlockEnd(block),
-            None,
-            &Token::default(),
-        ));
-        self.inst_mut(block).kind.block_mut().end = Some(inst);
-        self.context.block = None;
-    }
-
-    fn create(
-        &mut self,
-        fun: Fun,
-        explicit_params: &[Ty],
-        values: &[Ty],
-    ) -> Result<Option<Fun>> {
-        let g_ent = self.state.funs[fun].kind.generic_mut();
-        let g_ent_len = g_ent.signature.elements.len();
-        let elements = std::mem::take(&mut g_ent.signature.elements);
-
+    fn create(&mut self, fun: Fun, explicit_params: &[Ty], values: &[Ty]) -> Result<Option<Fun>> {
         let mut arg_buffer = self.context.pool.get();
         let mut stack = self.context.pool.get();
         let mut params = self.context.pool.get();
+        let mut g_params = self.context.pool.get();
+
+        let g_ent = self.generic_funs.get_mut(fun).unwrap();
+        g_params.extend_from_slice(&g_ent.signature.params);
+        let g_ent_len = g_ent.signature.elements.len();
+        let call_conv = g_ent.call_conv;
+        let elements = std::mem::take(&mut g_ent.signature.elements);
+        
         params.resize(g_ent.signature.params.len(), None);
         for (exp, param) in explicit_params.iter().zip(params.iter_mut()) {
             *param = Some(exp.clone());
@@ -1582,14 +1672,13 @@ impl<'a> FParser<'a> {
             i += length + 1;
         };
 
-        let fun_ent = self.fun_mut(fun);
-
+        self.generic_funs.get_mut(fun).unwrap().signature.elements = elements;
+        
         if !ok {
-            fun_ent.kind.generic_mut().signature.elements = elements;
             return Ok(None);
         }
 
-        let &mut FunEnt {
+        let FunEnt {
             module,
             untraced,
             vis,
@@ -1599,75 +1688,63 @@ impl<'a> FParser<'a> {
             hint,
             name,
             linkage,
+            ast,
             ..
-        } = fun_ent;
-        let g_ent = fun_ent.kind.generic_mut();
-        g_ent.signature.elements = elements;
-        let call_conv = g_ent.call_conv;
-        let g_params = std::mem::take(&mut g_ent.signature.params);
-        let mut id = FUN_SALT.add(fun_ent.name.hash);
-        let ast_id = g_ent.ast;
+        } = self.funs[fun];
+        let mut id = FUN_SALT.add(name.hash);
         let fun_module_id = self.state.modules[module].id;
 
         let mut shadowed = self.context.pool.get();
-        let mut final_params = self.context.pool.get();
+        let mut final_params = EntityList::new();
         for i in 0..params.len() {
             if let Some(ty) = params[i] {
+                id = id.add(self.types[ty].id);
                 let id = TYPE_SALT.add(g_params[i]).add(fun_module_id);
                 shadowed.push((id, self.state.types.link(id, ty)));
-                final_params.push((id, ty));
+                self.modules[module].push_type(&mut final_params, ty);
             } else {
                 return Ok(None);
             }
         }
+        id = id.add(self.state.modules[module].id);
+        if let Some(&fun) = self.state.funs.index(id) {
+            self.modules[module].clear_types(&mut final_params);
+            return Ok(Some(fun));
+        }
 
-        self.fun_mut(fun).kind.generic_mut().signature.params = g_params;
-
-        if let Some(scope) = scope {
-            let ty = unsafe { std::mem::transmute::<Ast, Ast>(&self.collector.scopes[scope].ty) };
+        if !scope.is_reserved_value() {
+            let ty = self.modules[module].son(scope, 1);
             let ty = self.parse_type(module, ty)?;
             let id = TYPE_SALT.add(ID::new("Self")).add(fun_module_id);
             shadowed.push((id, self.state.types.link(id, ty)));
         }
 
-        let ast = std::mem::take(&mut self.state.asts[ast_id]);
-        let mut signature = self.parse_signature(module, &ast[0])?;
-        for final_param in final_params.iter() {
-            id = id.add(self.ty(final_param.1).id);
-        }
-        id = id.add(self.state.modules[module].id);
-        self.state.asts[ast_id] = ast;
-        signature.call_conv = call_conv;
+        let header = self.modules[module].son(ast, 0);
+        let mut sig = self.parse_signature(module, header)?;
+        sig.call_conv = call_conv;
 
         for (id, ty) in shadowed.drain(..) {
             self.state.types.remove_link(id, ty);
         }
-
-        if let Some(&fun) = self.state.funs.index(id) {
-            return Ok(Some(fun));
-        }
-
-        let n_ent = NFun {
-            sig: signature,
-            ast: ast_id,
-        };
-
-        let kind = FKind::Normal(n_ent);
 
         let new_fun_ent = FunEnt {
             vis,
             id,
             module,
             hint,
-            params: final_params.clone(),
             name,
             attrs,
-            kind,
             scope,
             untraced,
             inline,
             linkage,
+            sig,
+            ast,
+
+            params: final_params,
+            kind: FKind::Normal,
             alias: None,
+            body: FunBody::default(),
         };
 
         let (shadowed, id) = self.state.funs.insert(id, new_fun_ent);
@@ -1679,118 +1756,136 @@ impl<'a> FParser<'a> {
         Ok(Some(id))
     }
 
-    fn assert_type(&self, actual: Ty, expected: Ty, token: &Token) -> Result {
-        if actual == expected {
-            Ok(())
-        } else {
-            Err(FError::new(FEKind::TypeMismatch(actual, expected), *token))
+    fn collect(&mut self, module: Mod) -> Result {
+        let module_ent = &self.modules[module];
+        let funs_len = module_ent.funs().len();
+        let globals_len = module_ent.globals().len();
+        let mut scope_state = (Ast::reserved_value(), Ast::reserved_value(), ID(0), None);
+
+        for i in (0..funs_len).step_by(3) {
+            let funs = self.modules[module].funs();
+            let (ast, attrs, scope) = (funs[i], funs[i + 1], funs[i + 2]);
+            self.parse_scope(module, scope, &mut scope_state)?;
+            self.collect_fun(module, ast, attrs, scope, scope_state.2, scope_state.1)?
         }
+
+        let main_fun_id = self.context.entry_point_data.id;
+
+        let mut body = self.funs[main_fun_id].body;
+
+        for i in (0..globals_len).step_by(3) {
+            let globals = self.modules[module].globals();
+            let (ast, attrs, scope) = (globals[i], globals[i + 1], globals[i + 2]);
+            self.parse_scope(module, scope, &mut scope_state)?;
+            self.collect_global_var(module, ast, attrs, scope_state.2, &mut body)?
+        }
+
+        self.funs[main_fun_id].body = body;
+
+        if let Some((id, ty)) = scope_state.3 {
+            self.state.types.remove_link(id, ty);
+        }   
+
+        Ok(())
     }
 
-    fn collect(&mut self, module: Mod) -> Result {
-        let module_id = self.state.modules[module].id;
-
-        let mut functions = std::mem::take(&mut self.collector.functions);
-        for Item { attrs, ast, scope } in functions.drain(..) {
-            self.collect_fun(ast, module, module_id, attrs, scope)?
+    fn parse_scope(
+        &mut self, 
+        module: Mod,
+        ast: Ast, 
+        (previous, generics, id, shadow): 
+            &mut (Ast, Ast, ID, Option<(ID, Option<Ty>)>), 
+    ) -> Result {
+        if ast == *previous {
+            return Ok(());
         }
-        self.collector.functions = functions;
+        *previous = ast;
+        *generics = Ast::reserved_value();
+        *id = ID(0);
+        if let Some((id, ty)) = *shadow {
+            self.state.types.remove_link(id, ty);
+            *shadow = None;    
+        }       
+        if ast.is_reserved_value() {
+            return Ok(());
+        }  
 
-        self.with_main_function(|s| {
-            let mut globals = std::mem::take(&mut s.collector.globals);
-            for Item { attrs, ast, scope } in globals.drain(..) {
-                s.collect_global_var(ast, module, module_id, attrs, scope)?
+        let module_ent = &self.modules[module];
+        let sons = module_ent.sons(ast);
+        let generic_ast = module_ent.get(sons, 0);
+        let ty = module_ent.get(sons, 1);
+        let kind = module_ent.kind(ty);
+        let module_id = module_ent.id;
+
+        *generics = generic_ast;
+
+        let ty = match kind {
+            AKind::Ident => self.parse_type(module, ty)?,
+            AKind::Instantiation => {
+                let base = module_ent.son(ty, 0);
+                self.parse_type(module, base)?
             }
-            s.collector.globals = globals;
+            AKind::Array => self.builtin_repo.array,
+            kind => unreachable!("{:?}", kind),
+        };
 
-            for i in 0..s.context.entry_points.len() {
-                let entry_point = s.context.entry_points[i];
-                s.add_entry(entry_point)?;                
-            }
-
-            s.context.entry_points.clear();
-
-            Ok(())
-        })?;
-
+        *id = self.types[ty].id;
+        let id = TYPE_SALT.add(ID::new("Self")).add(module_id);
+        *shadow = Some((id, self.types.link(id, ty)));
+        
         Ok(())
     }
 
     fn collect_global_var(
         &mut self,
-        mut ast: Ast,
         module: Mod,
-        module_id: ID,
-        attrs: Attrs,
-        scope: Option<Scope>,
+        ast: Ast,
+        attrs: Ast,
+        scope: ID,
+        body: &mut FunBody,
     ) -> Result {
-        let scope_id = if let Some(scope_id) = scope {
-            let scope_ent = std::mem::take(&mut self.collector.scopes[scope_id]);
-            if scope_ent.params.len() > 0 {
-                return Err(FError::new(
-                    FEKind::VarInsideGenericScope(scope_ent.ty.token),
-                    ast.token,
-                ));
-            }
-            let ty = match scope_ent.ty.kind {
-                AKind::Ident => self.parse_type(module, &scope_ent.ty)?,
-                AKind::Instantiation => self.parse_type(module, &scope_ent.ty[0])?,
-                AKind::Array => self.state.builtin_repo.array,
-                _ => unreachable!(),
-            };
-            self.collector.scopes[scope_id] = scope_ent;
-            self.ty(ty).id
-        } else {
-            ID(0)
-        };
-
-        let (vis, mutable) = match ast.kind {
+        let fun = self.context.entry_point_data.id;
+        let module_ent = &self.modules[module];
+        let module_id = module_ent.id;
+        let &AstEnt { kind, sons, .. } = module_ent.load(ast);
+        let ast_len = module_ent.len(sons);
+        let (vis, mutable) = match kind {
             AKind::VarStatement(vis, mutable) => (vis, mutable),
             _ => unreachable!(),
         };
 
-        let (linkage, alias) = self.resolve_linkage(attrs)?;
-        let fun = self.state.main_fun_data.id;
-        self.fun_mut(fun).module = module;
+        let (linkage, alias) = self.resolve_linkage(module, attrs)?;
 
-        for var_line in ast.iter_mut() {
-            let ty = if var_line[1].kind != AKind::None {
-                Some(self.parse_type(module, &var_line[1])?)
-            } else {
+        for i in 0..ast_len {
+            let module_ent = &self.modules[module];
+            let var_line = module_ent.get(sons, i);
+            let ident_group = module_ent.son(var_line, 0);
+            let ident_group_len = module_ent.ast_len(ident_group);
+            let ty = module_ent.son(var_line, 1);
+            let value_group = module_ent.son(var_line, 2);
+            let ty = if ty.is_reserved_value() {
                 None
+            } else {
+                Some(self.parse_type(module, ty)?)
             };
 
-            let mut values = std::mem::take(&mut var_line[2]);
+            for i in 0..ident_group_len {
+                let hint = self.modules[module].son_ent(ident_group, i).token;
+                let id = GLOBAL_SALT.add(hint.span.hash).add(scope).add(module_id);
 
-            for (name, ast) in var_line[0]
-                .iter()
-                .zip(values.drain(..).chain(std::iter::repeat(Ast::none())))
-            {
-                let hint = name.token;
-                let id = GLOBAL_SALT.add(hint.span.hash).add(scope_id).add(module_id);
-    
                 let (shadowed, global) = self.state.globals.insert(id, GlobalEnt::default());
                 if let Some(shadowed) = shadowed {
                     return Err(FError::new(
                         FEKind::RedefinedGlobal(shadowed.hint.clone()),
-                        name.token,
+                        hint,
                     ));
                 }
-                self.state.modules[module].globals.push(global);
+                self.modules[module].globals.push(global);
 
-                let ty = if ast.kind != AKind::None {
-                    let value = self.expr(fun, &ast)?;
-                    let ty = self.value(value).ty;
-                    let target = self.new_anonymous_value(ty, true);
-                    self.add_inst(InstEnt::new(
-                        IKind::GlobalLoad(global),
-                        Some(target),
-                        &ast.token,
-                    ));
-    
-                    self.add_inst(InstEnt::new(IKind::Assign(target), Some(value), &ast.token));
-    
-                    ty
+                let ty = if !value_group.is_reserved_value() {
+                    let value = self.modules[module].son(value_group, i);
+                    let value = self.expr(fun, value, body)?;
+                    self.modules[module].assign_global(global, value, body)
                 } else {
                     ty.unwrap()
                 };
@@ -1802,11 +1897,9 @@ impl<'a> FParser<'a> {
                     module,
                     ty,
                     ast,
-                    data_id: None,
                     hint,
                     attrs,
-                    scope,
-                    linkage: LinkageWr(linkage),
+                    linkage,
                     alias,
                 };
 
@@ -1821,42 +1914,25 @@ impl<'a> FParser<'a> {
 
     fn collect_fun(
         &mut self,
-        ast: Ast,
         module: Mod,
-        module_id: ID,
-        attrs: Attrs,
-        scope: Option<Scope>,
+        ast: Ast,
+        attrs: Ast,
+        scope: Ast,
+        scope_id: ID,
+        generics: Ast,
     ) -> Result {
-        let mut shadowed = None;
-
-        let (caller, generic) = if let Some(scope_id) = scope {
-            let raw_ty = std::mem::take(&mut self.collector.scopes[scope_id].ty);
-            let generic = self.collector.scopes[scope_id].params.len() > 0;
-            let ty = match raw_ty.kind {
-                AKind::Ident => self.parse_type(module, &raw_ty)?,
-                AKind::Instantiation => self.parse_type(module, &raw_ty[0])?,
-                AKind::Array => self.state.builtin_repo.array,
-                _ => unreachable!(),
-            };
-
-            if !generic {
-                let ty = self.parse_type(module, &raw_ty)?;
-                let id = TYPE_SALT.add(ID::new("Self")).add(module_id);
-                shadowed = Some((id, self.state.types.link(id, ty)));
-            };
-
-            self.collector.scopes[scope_id].ty = raw_ty;
-            (self.ty(ty).id, generic)
-        } else {
-            (ID(0), false)
-        };
-
-        let vis = match ast.kind {
+        let module_ent = &self.modules[module];
+        let module_id = module_ent.id;
+        let &AstEnt { kind, sons, .. } = module_ent.load(ast);
+        let vis = match kind {
             AKind::Fun(vis) => vis,
             _ => unreachable!(),
         };
+        let header = module_ent.get(sons, 0);
+        let header_ent = *module_ent.load(header);
+        let header_len = module_ent.len(header_ent.sons);
 
-        let salt = match ast[0].kind {
+        let salt = match header_ent.kind {
             AKind::FunHeader(op_kind) => match op_kind {
                 OpKind::Normal => FUN_SALT,
                 OpKind::Binary => BINARY_SALT,
@@ -1865,137 +1941,131 @@ impl<'a> FParser<'a> {
             _ => unreachable!(),
         };
 
-        let header = &ast[0];
-
-        let call_conv = if let Some(attr) = self
-            .collector
-            .attr(&attrs, ID::new("call_conv"))
-            .or_else(|| {
-                if header[header.len() - 1].kind == AKind::Ident {
-                    Some(&header[header.len() - 1])
-                } else {
-                    None
-                }
+        let maybe_call_conv = module_ent.get(header_ent.sons, header_len - 1);
+        let call_conv = if let Some(attr) = module_ent
+            .attr(attrs, ID::new("call_conv"))
+            .or_else(|| if maybe_call_conv.is_reserved_value() {
+                None
+            } else {
+                Some(maybe_call_conv)
             }) {
-            let str = self
-                .state
-                .display(&attr.get(1).unwrap_or(&attr[0]).token.span);
+            let final_attr = module_ent.a_state.son_optional(attr, 1).unwrap_or(module_ent.son(attr, 0));
+            let token = *module_ent.token(final_attr);
+            let str = self.state.display(&token.span);
             CallConv::from_str(str)
-                .ok_or_else(|| FError::new(FEKind::InvalidCallConv, attr.token))?
+                .ok_or_else(|| FError::new(FEKind::InvalidCallConv, token))?
         } else {
             CallConv::Fast
         };
 
-        let entry = self.collector.attr(&attrs, ID::new("entry")).is_some();
+        let entry = module_ent.attr(attrs, ID::new("entry")).is_some();
 
-        let (linkage, mut alias) = self.resolve_linkage(attrs)?;
+        let (linkage, mut alias) = self.resolve_linkage(module, attrs)?;
 
-        let hint = header.token;
-        let name = &header[0];
-        let (name, mut id, kind, unresolved) = if name.kind == AKind::Ident && !generic {
-            let mut signature = self.parse_signature(module, header)?;
-            signature.call_conv = call_conv;
+        let hint = header_ent.token;
+        let name_ent = *self.modules[module].get_ent(header_ent.sons, 0);
+        let (name, mut id, sig, kind, unresolved) = if name_ent.kind == AKind::Ident && generics.is_reserved_value() {
+            let mut sig = self.parse_signature(module, header)?;
+            sig.call_conv = call_conv;
 
-            let fun_id = salt.add(name.token.span.hash).add(caller);
+            let name = name_ent.token.span;
+            let fun_id = salt.add(name.hash).add(scope_id);
 
-            let name = name.token.span;
 
             if linkage == Linkage::Import && alias.is_none() {
                 alias = Some(name);
             }
 
-            let ast = self.state.asts.add(ast);
-            let n_ent = NFun {
-                sig: signature,
-                ast,
-            };
-
-            (name, fun_id, FKind::Normal(n_ent), true)
-        } else if name.kind == AKind::Instantiation || generic {
-            let nm = if name.kind == AKind::Instantiation {
-                &name[0]
-            } else {
-                name
-            };
-
-            if nm.kind != AKind::Ident {
-                return Err(FError::new(FEKind::InvalidFunctionHeader, nm.token));
-            }
-
+            (name, fun_id, Ok(sig), FKind::Normal, true)
+        } else if name_ent.kind == AKind::Instantiation || !generics.is_reserved_value() {
+            let mut args = self.context.pool.get();
             let mut params = self.context.pool.get();
-            if name.kind == AKind::Instantiation {
-                for param in name[1..].iter() {
-                    params.push(param.token.span.hash);
-                }
+            let module_ent = &self.modules[module];
+            let name = if name_ent.kind == AKind::Instantiation {
+                *module_ent.get_ent(name_ent.sons, 0)
+            } else {
+                name_ent
+            };
+
+            if name.kind != AKind::Ident {
+                return Err(FError::new(FEKind::InvalidFunctionHeader, name.token));
             }
 
-            if let Some(scope_id) = scope {
-                params.extend(self.collector.scopes[scope_id].params.iter());
+            
+            if name_ent.kind == AKind::Instantiation {
+                params.extend(module_ent
+                    .slice(name_ent.sons)[1..]
+                    .iter()
+                    .map(|&ast| module_ent.token(ast).span.hash)
+                );
+            }
+
+            if !generics.is_reserved_value() {
+                let sons = module_ent.sons(generics);
+                params.extend(module_ent
+                    .slice(sons)[1..]
+                    .iter()
+                    .map(|&ast| module_ent.token(ast).span.hash));
             }
 
             let mut arg_count = 0;
-            let mut args = self.context.pool.get();
-            for arg_section in &header[1..header.len() - 2] {
-                let amount = arg_section.len() - 1;
+            for i in 1..header_len - 2 {
+                let module_ent = &self.modules[module];
+                let arg_section = module_ent.get(header_ent.sons, i);
+                let amount = module_ent.ast_len(arg_section) - 1;
+                let ty = module_ent.son(arg_section, amount);
                 let idx = args.len();
                 args.push(GenericElement::NextArgument(amount, 0));
-                self.load_arg(module, scope, &arg_section[amount], &params, &mut args)?;
+                self.load_arg(module, scope, ty, &params, &mut args)?;
                 let additional = args.len() - idx - 1;
                 args[idx] = GenericElement::NextArgument(amount, additional);
                 arg_count += amount;
             }
 
-            let id = salt.add(nm.token.span.hash).add(caller);
+            let id = salt.add(name.token.span.hash).add(scope_id);
 
-            let signature = GenericSignature {
+            let sig = GenericSignature {
                 params: params.clone(),
                 elements: args.clone(),
                 arg_count,
             };
 
-            let nm = nm.token.span;
+            let nm = name.token.span;
 
-            let g_ent = GFun {
-                call_conv,
-                signature,
-                ast: self.state.asts.add(ast),
-            };
-
-            (nm, id, FKind::Generic(g_ent), false)
+            (nm, id, Err(sig), FKind::Generic, false)
         } else {
-            return Err(FError::new(FEKind::InvalidFunctionHeader, name.token));
+            return Err(FError::new(FEKind::InvalidFunctionHeader, name_ent.token));
         };
-
-        if let Some((id, shadowed)) = shadowed {
-            self.state.types.remove_link(id, shadowed);
-        }
 
         id = id.add(module_id);
 
+        let module_ent = &self.modules[module];
         let fun_ent = FunEnt {
             vis,
             id,
             module,
-            hint: hint.clone(),
-            params: vec![],
+            hint,
             kind,
             name,
-            untraced: self.collector.attr(&attrs, ID::new("untraced")).is_some(),
-            inline: self.collector.attr(&attrs, ID::new("inline")).is_some(),
+            untraced: module_ent.attr(attrs, ID::new("untraced")).is_some(),
+            inline: module_ent.attr(attrs, ID::new("inline")).is_some(),
             attrs,
             scope,
-            linkage: LinkageWr(linkage),
+            linkage,
             alias,
+            sig: sig.unwrap_or_default(),
+            ast,
+            
+            ..Default::default()
         };
 
-        let (shadowed, id) = self.state.funs.insert(id, fun_ent);
+        let (shadowed, id) = self.add_fun(fun_ent);
         if let Some(shadowed) = shadowed {
             return Err(FError::new(
                 FEKind::Redefinition(shadowed.hint.clone()),
                 hint,
             ));
         }
-        self.state.modules[module].functions.push(id);
 
         if unresolved {
             if entry {
@@ -2007,83 +2077,99 @@ impl<'a> FParser<'a> {
         Ok(())
     }
 
-    fn add_entry(&mut self, id: Fun) -> Result {
-        let signature = self.signature_of(id);
+    fn add_entry(&mut self, id: Fun, body: &mut FunBody) -> Result {
+        let MainFunData {
+            arg1, 
+            arg2, 
+            return_value,
+            ..
+        } = self.context.entry_point_data;
+        let FunEnt {
+            module, 
+            sig,
+            hint,
+            ..
+        } = self.funs[id];
+        let module_ent = &mut self.modules[module];
 
-        let ret = match signature.args.as_slice() {
-            &[] => {
-                let value = signature.ret.map(|ty| self.new_temp_value(ty));
-                self.add_inst(InstEnt::new(
-                    IKind::Call(id, EntityList<Value>::empty()),
-                    value,
-                    &self.fun(id).hint,
-                ));
-                value
-            }
+        let value = if sig.ret.is_none() {
+            None
+        } else {
+            Some(module_ent.add_temp_value(sig.ret.unwrap()))
+        };
+
+        let args = match module_ent.type_slice(sig.args) {
+            &[] => EntityList::new(),
             &[count, args] => {
-                let value = signature.ret.map(|ty| self.new_temp_value(ty));
-                let temp_ptr = self.pointer_of(self.state.builtin_repo.int);
-                if count != self.state.builtin_repo.int || args != self.pointer_of(temp_ptr) {
+                let int = self.state.builtin_repo.int;
+                let temp_ptr = self.pointer_of(int);
+                if count != int || args != self.pointer_of(temp_ptr) {
                     return Err(FError::new(
                         FEKind::InvalidEntrySignature,
-                        self.fun(id).hint,
+                        hint,
                     ));
                 }
-                let args = self.make_value_slice(&[
-                    self.state.main_fun_data.arg1, 
-                    self.state.main_fun_data.arg2
-                ]);
-                self.add_inst(InstEnt::new(
-                    IKind::Call(id, args),
-                    value,
-                    &self.fun(id).hint,
-                ));
-                value
+                self.modules[module].add_args(&[arg1, arg2])
             }
             _ => {
                 return Err(FError::new(
                     FEKind::InvalidEntrySignature,
-                    self.fun(id).hint,
+                    hint,
                 ));
             }
         };
 
-        if let Some(ret) = ret {
-            let value = self.state.main_fun_data.return_value;
-            self.add_inst(InstEnt::new(
-                IKind::Assign(value),
-                Some(ret),
-                &self.fun(id).hint,
-            ));
+        let module_ent = &mut self.modules[module];
+        if let Some(value) = value {
+            module_ent.add_inst(
+                IKind::Assign(return_value),
+                value,
+                hint,
+                body,
+            );
+            module_ent.add_inst(
+                IKind::Call(id, args),
+                value,
+                hint,
+                body,
+            );
+        } else {
+            module_ent.add_valueless_inst(
+                IKind::Call(id, args),
+                hint,
+                body,
+            );
         }
 
         Ok(())
     }
 
-    fn make_value_slice(&mut self, values: &[Value]) -> EntityList<Value> {
-        self.context.body.slices.add(values)
-    }
-
     fn parse_signature(&mut self, module: Mod, header: Ast) -> Result<Signature> {
-        let mut args = self.context.pool.get();
+        let mut args = EntityList::new();
+        let module_ent = &self.modules[module];
+        let header_len = module_ent.ast_len(header);
 
-        for arg_section in &header[1..header.len() - 2] {
-            let ty = self.parse_type(module, &arg_section[arg_section.len() - 1])?;
-            for _ in 0..arg_section.len() - 1 {
-                args.push(ty);
+        for i in 1..header_len - 2 {
+            let module_ent = &self.modules[module];
+            let arg_section = module_ent.son_ent(header, i).sons;
+            let len = module_ent.len(arg_section);
+            let last = module_ent.get(arg_section, len - 1);
+            let ty = self.parse_type(module, last)?;
+            for _ in 0..len - 1 {
+                self.modules[module].push_type(&mut args, ty)
             }
         }
 
-        let raw_ret_ty = &header[header.len() - 2];
-        let ret = if raw_ret_ty.kind != AKind::None {
-            Some(self.parse_type(module, raw_ret_ty)?)
+        let raw_ret_ty = self.modules[module].son(header, header_len - 2);
+        let ret = if raw_ret_ty.is_reserved_value() {
+            PackedOption::default()
         } else {
-            None
+            PackedOption::from(self.parse_type(module, raw_ret_ty)?)
         };
 
         Ok(Signature {
             call_conv: CallConv::Fast,
-            args: args.clone(),
+            args,
             ret,
         })
     }
@@ -2091,7 +2177,7 @@ impl<'a> FParser<'a> {
     fn load_arg(
         &mut self,
         module: Mod,
-        scope: Option<Scope>,
+        scope: Ast,
         ast: Ast,
         params: &[ID],
         buffer: &mut Vec<GenericElement>,
@@ -2099,27 +2185,25 @@ impl<'a> FParser<'a> {
         let mut stack = self.context.pool.get();
         stack.push((ast, false));
 
-        while let Some((ast, done)) = stack.last_mut() {
-            if *done {
-                if ast.kind == AKind::Instantiation {
+        while let Some(&(ast, done)) = stack.last() {
+            let module_ent = &self.modules[module];
+            let &AstEnt { kind, sons, token} = module_ent.load(ast);
+            if done {
+                if kind == AKind::Instantiation {
                     buffer.push(GenericElement::ScopeEnd);
                 }
                 stack.pop();
                 continue;
             }
-            *done = true;
-            let ast = *ast;
-            match &ast.kind {
+            stack.last_mut().unwrap().1 = true;
+            match kind {
                 AKind::Ident => {
-                    if ast.token.span.hash == ID::new("Self") && scope.is_some() {
-                        let ast = unsafe {
-                            std::mem::transmute::<Ast, Ast>(
-                                &self.collector.scopes[scope.unwrap()].ty,
-                            )
-                        };
-                        stack.push((ast, false));
+                    if token.span.hash == ID::new("Self") && !scope.is_reserved_value() {
+
+                        let ty = module_ent.son(scope, 1);
+                        stack.push((ty, false));
                     } else {
-                        let id = ast.token.span.hash;
+                        let id = token.span.hash;
                         if let Some(index) = params.iter().position(|&p| p == id) {
                             buffer.push(GenericElement::Parameter(index));
                         } else {
@@ -2129,25 +2213,30 @@ impl<'a> FParser<'a> {
                     }
                 }
                 AKind::Instantiation => {
-                    let ty = self.parse_type(module, &ast[0])?;
+                    let sons = module_ent.sons(ast);
+                    let header = module_ent.get(sons, 0);
+                    let ty = self.parse_type(module, header)?;
                     buffer.push(GenericElement::Element(ty, None));
                     buffer.push(GenericElement::ScopeStart);
-                    stack.extend(ast[1..].iter().map(|a| (a, false)));
+                    stack.extend(self.modules[module].slice(sons)[1..].iter().map(|&a| (a, false)));
                 }
-                &AKind::Ref => {
+                AKind::Ref => {
+                    let pointed = module_ent.get(sons, 0);
                     buffer.push(GenericElement::Pointer);
-                    stack.push((&ast[0], false));
+                    stack.push((pointed, false));
                 }
                 AKind::Array => {
+                    let element = module_ent.get(sons, 0);
+                    let len = module_ent.get(sons, 1);
                     buffer.push(GenericElement::Array(None));
-                    stack.push((&ast[0], false));
-                    stack.push((&ast[1], false));
+                    stack.push((element, false));
+                    stack.push((len, false));
                 }
                 AKind::Lit => {
                     let ty = self.parse_type(module, ast)?;
                     buffer.push(GenericElement::Element(ty, None));
                 }
-                _ => todo!("{}", AstDisplay::new(self.state, ast)),
+                _ => todo!("{}", AstDisplay::new(self.state, &self.modules[module].a_state, ast)),
             }
         }
 
@@ -2160,14 +2249,15 @@ impl<'a> FParser<'a> {
         arg_buffer: &mut Vec<GenericElement>,
         stack: &mut Vec<(Ty, bool)>,
     ) {
+        debug_assert!(stack.is_empty());
         stack.push((ty, false));
 
         while let Some((ty, done)) = stack.last_mut() {
             let ty = *ty;
-            let ty_ent = &self.ty(ty);
+            let TypeEnt { params, kind, module, .. } = &self.types[ty];
 
             if *done {
-                if !ty_ent.params.is_empty() {
+                if !params.is_empty() {
                     arg_buffer.push(GenericElement::ScopeEnd);
                 }
                 stack.pop();
@@ -2176,149 +2266,56 @@ impl<'a> FParser<'a> {
 
             *done = true;
 
-            if ty_ent.params.is_empty() {
-                if let TKind::Pointer(pointed) = ty_ent.kind {
-                    arg_buffer.push(GenericElement::Pointer);
-                    stack.push((pointed, false));
-                } else if let TKind::Array(element, size) = ty_ent.kind {
-                    arg_buffer.push(GenericElement::Array(Some(ty)));
-                    stack.push((element, false));
-                    let size = self.constant_of(TypeConst::Int(size as i64));
-                    stack.push((size, false));
-                } else {
-                    arg_buffer.push(GenericElement::Element(ty, Some(ty)));
-                }
+            if params.is_empty() {
+                match kind {
+                    &TKind::Pointer(pointed) => {
+                        arg_buffer.push(GenericElement::Pointer);
+                        stack.push((pointed, false));    
+                    }
+                    &TKind::Array(element, size) => {
+                        arg_buffer.push(GenericElement::Array(Some(ty)));
+                        stack.push((element, false));
+                        let size = self.constant_of(TypeConst::Int(size as i64));
+                        stack.push((size, false));
+                    }
+                    _ => {
+                        arg_buffer.push(GenericElement::Element(ty, Some(ty)));
+                    }
+                } 
                 continue;
             }
 
-            arg_buffer.push(GenericElement::Element(ty_ent.params[0], Some(ty)));
+            let module_ent = &self.modules[*module];
+            let slice = module_ent.type_slice(*params);
+            arg_buffer.push(GenericElement::Element(slice[0], Some(ty)));
 
             arg_buffer.push(GenericElement::ScopeStart);
-            stack.extend(ty_ent.params[1..].iter().map(|p| (*p, false)));
+            stack.extend(slice[1..].iter().map(|&p| (p, false)));
         }
     }
 
-    fn find_loop(&self, token: &Token) -> std::result::Result<Loop, bool> {
-        if token.span.len() == 0 {
-            return self.context.loops.last().cloned().ok_or(true);
-        }
-
-        let name = token.span.hash;
-
-        self.context
-            .loops
-            .iter()
-            .rev()
-            .find(|l| l.name == name)
-            .cloned()
-            .ok_or_else(|| self.context.loops.is_empty())
-    }
-
-    fn base_of_err(&mut self, ty: Ty, token: &Token) -> Result<Ty> {
-        self.base_of(ty)
-            .ok_or_else(|| FError::new(FEKind::NonPointerDereference, *token))
-    }
-
-    fn base_of(&self, ty: Ty) -> Option<Ty> {
-        match self.ty(ty).kind {
-            TKind::Pointer(pointed) => Some(pointed),
-            _ => None,
-        }
+    fn base_of(&mut self, ty: Ty, token: Token) -> Result<Ty> {
+        self.t_state
+            .pointer_base(ty)
+            .ok_or_else(|| FError::new(FEKind::NonPointerDereference, token))
     }
 
     fn parse_type(&mut self, module: Mod, ast: Ast) -> Result<Ty> {
-        TParser::new(self.state, self.context, self.collector)
+        TParser::new(self.state, self.context)
             .parse_type(module, ast)
             .map(|t| t.1)
             .map_err(|err| FError::new(FEKind::TypeError(err), Token::default()))
     }
 
-    fn pointer_of(&mut self, ty: Ty) -> Ty {
-        self.state.pointer_of(ty)
-    }
-
-    fn constant_of(&mut self, constant: TypeConst) -> Ty {
-        self.state.constant_of(constant)
-    }
-
-    #[inline]
-    pub fn is_pointer(&self, ty: Ty) -> bool {
-        matches!(self.ty(ty).kind, TKind::Pointer(..))
-    }
-
-    fn push_scope(&mut self) {
-        self.context.frames.push(self.context.vars.len());
-    }
-
-    fn pop_scope(&mut self) {
-        let idx = self.context.frames.pop().unwrap();
-        self.context.vars.truncate(idx)
-    }
-
-    fn find_variable(&self, id: ID) -> Option<Value> {
-        self
-            .context
-            .vars
-            .iter()
-            .rev()
-            .find(|&&v| self.value(v).id == id)
-            .cloned()
-    }
-
-    fn ty(&self, ty: Ty) -> &TypeEnt {
-        &self.state.types[ty]
-    }
-
-    fn inst(&self, inst: Inst) -> &InstEnt {
-        &self.context.body.insts[inst]
-    }
-
-    fn inst_mut(&mut self, inst: Inst) -> &mut InstEnt {
-        &mut self.context.body.insts[inst]
-    }
-
-    fn value(&self, value: Value) -> &ValueEnt {
-        &self.context.body.values[value]
-    }
-
-    fn value_mut(&mut self, value: Value) -> &mut ValueEnt {
-        &mut self.context.body.values[value]
-    }
-
-    fn array_of(&mut self, ty: Ty, length: usize) -> Ty {
-        self.state.array_of(ty, length)
-    }
-
-    fn function_type_of(&mut self, module: Mod, fun: Fun) -> Ty {
-        let sig = self.signature_of(fun).clone();
-        self.state.function_type_of(module, sig)
-    }
-
-    fn clear_vars(&mut self) {
-        self.context.vars.clear();
-    }
-
-    fn fun(&self, fun: Fun) -> &FunEnt {
-        &self.state.funs[fun]
-    }
-
-    fn fun_mut(&mut self, fun: Fun) -> &mut FunEnt {
-        &mut self.state.funs[fun]
-    }
-
-    fn signature_of(&self, fun: Fun) -> &Signature {
-        match &self.fun(fun).kind {
-            FKind::Normal(n) => &n.sig,
-            FKind::Represented(r) => &r.sig,
-            FKind::Builtin(s) => s,
-            _ => todo!(),
-        }
-    }
-
-    fn resolve_linkage(&self, attrs: Attrs) -> Result<(Linkage, Option<Span>)> {
-        if let Some(attr) = self.collector.attr(&attrs, ID::new("linkage")) {
-            assert_attr_len(attr, 1)?;
-            let linkage = match self.state.display(&attr[1].token.span) {
+    fn resolve_linkage(&self, module: Mod, attrs: Ast) -> Result<(Linkage, Option<Span>)> {
+        let module_ent = &self.modules[module];
+        if let Some(attr) = module_ent.attr(attrs, ID::new("linkage")) {
+            let len = module_ent.ast_len(attr);
+            if len < 1 {
+                return Err(FError::new(FEKind::TooShortAttribute(len - 1, 1), *module_ent.token(attr)));
+            }
+            let linkage = module_ent.son_ent(attr, 0).token.span;
+            let linkage = match self.state.display(&linkage) {
                 "import" => Linkage::Import,
                 "export" => Linkage::Export,
                 "hidden" => Linkage::Hidden,
@@ -2327,45 +2324,27 @@ impl<'a> FParser<'a> {
                 _ => unreachable!(),
             };
 
-            Ok((linkage, attr.get(2).map(|a| a.token.span)))
+            Ok((linkage, module_ent.son_optional(attr, 2).map(|s| module_ent.token(s).span)))
         } else {
             Ok((Linkage::Export, None))
         }
     }
 
-    fn with_main_function<F: FnMut(&mut Self) -> Result>(&mut self, mut fun: F) -> Result {
-        let prev_vars = std::mem::take(&mut self.context.vars);
-        let prev_frames = std::mem::take(&mut self.context.frames);
-        let prev_loops = std::mem::take(&mut self.context.loops);
-        std::mem::swap(
-            &mut self.context.body, 
-            &mut self.state.funs[self.state.main_fun_data.id].kind.represented_mut().body,
-        );
-        std::mem::swap(
-            &mut self.context.block, 
-            &mut self.state.main_fun_data.current_block
-        );
-
-        fun(self)?;
-
-        self.context.vars = prev_vars;
-        self.context.frames = prev_frames;
-        self.context.loops = prev_loops;
-        std::mem::swap(
-            &mut self.context.body, 
-            &mut self.state.funs[self.state.main_fun_data.id].kind.represented_mut().body,
-        );
-        std::mem::swap(
-            &mut self.context.block, 
-            &mut self.state.main_fun_data.current_block
-        );
-
-        Ok(())
+    fn add_fun(&mut self, fun_ent: FunEnt) -> (Option<FunEnt>, Fun) {
+        let module = fun_ent.module;
+        let id = fun_ent.id;
+        let (shadow, fun) = self.funs.insert(id, fun_ent);
+        self.modules[module].add_fun(fun);
+        (shadow, fun)
     }
+}
 
-    fn value_slice(&self, args: EntityList<Value>) -> &[Value] {
-        &self.context.body.slices[args]
-    }*/
+fn assert_type(actual: Ty, expected: Ty, token: &Token) -> Result {
+    if actual == expected {
+        Ok(())
+    } else {
+        Err(FError::new(FEKind::TypeMismatch(actual, expected), *token))
+    }
 }
 
 impl<'a> ItemSearch<Fun> for FParser<'a> {
@@ -2609,11 +2588,12 @@ crate::def_displayer!(
         },
         FEKind::FunArgMismatch(fun, arguments) => {
             let sig = &self.state.funs[*fun].sig;
+            let module = self.state.funs[*fun].module;
             writeln!(
                 f,
                 "function argument types are '({})' but you provided '({})'",
                 sig.args
-                    .as_slice(&self.state.type_slices)
+                    .as_slice(&self.state.modules[module].type_slices)
                     .iter()
                     .map(|&a| format!("{}", TypeDisplay::new(&self.state, a)))
                     .collect::<Vec<_>>().join(", "),
@@ -2624,12 +2604,13 @@ crate::def_displayer!(
             )?;
         },
         FEKind::FunPointerArgMismatch(ty, arguments) => {
+            let module = self.state.types[*ty].module;
             writeln!(
                 f,
                 "function pointer argument types are '({})' but you provided '({})'",
                 self.state.types[*ty].kind
                     .fun_pointer()
-                    .args.as_slice(&self.state.type_slices)
+                    .args.as_slice(&self.state.modules[module].type_slices)
                     .iter()
                     .map(|&a| format!("{}", TypeDisplay::new(&self.state, a)))
                     .collect::<Vec<_>>().join(", "),
@@ -2728,7 +2709,6 @@ pub struct FunEnt {
     pub inline: bool,
 }
 
-
 #[derive(Debug, Clone, Copy, RealQuickSer)]
 pub enum FKind {
     Builtin,
@@ -2745,8 +2725,15 @@ impl Default for FKind {
 
 #[derive(Debug, Clone, Default, QuickSer)]
 pub struct GFun {
+    pub this: Fun,
     pub call_conv: CallConv,
     pub signature: GenericSignature,
+}
+
+impl SparseMapValue<Fun> for GFun {
+    fn key(&self) -> Fun {
+        self.this
+    }
 }
 
 #[derive(Debug, Clone, Default, QuickSer)]
@@ -2801,20 +2788,16 @@ impl Default for FinalValue {
     }
 }
 
-
-
 #[derive(Debug, Clone, Copy, RealQuickSer)]
 pub struct GlobalEnt {
     pub id: ID,
     pub vis: Vis,
     pub mutable: bool,
     pub module: Mod,
-    pub data_id: DataId,
     pub ty: Ty,
     pub hint: Token,
     pub ast: Ast,
     pub attrs: Ast,
-    pub scope: Ast,
     pub alias: Option<Span>,
     pub linkage: Linkage,
 }
@@ -2826,12 +2809,10 @@ impl Default for GlobalEnt {
             vis: Vis::Public,
             mutable: false,
             module: Mod::reserved_value(),
-            data_id: DataId::reserved_value(),
             ty: Ty::reserved_value(),
             hint: Token::default(),
             ast: Ast::reserved_value(),
             attrs: Ast::reserved_value(),
-            scope: Ast::reserved_value(),
             alias: None,
             linkage: Linkage::Export,
         }
@@ -2861,77 +2842,50 @@ impl Default for MainFunData {
 pub struct FState {
     pub t_state: TState,
     pub funs: Table<Fun, FunEnt>,
-    pub globals: Table<GlobalValue, GlobalEnt>,    
+    pub generic_funs: SparseMap<Fun, GFun>,
+    pub globals: Table<GlobalValue, GlobalEnt>,
 
     pub main_fun_data: MainFunData,
     pub index_span: Span,
     pub do_stacktrace: bool,
+    pub in_assign: bool,
+
+    pub pop_fun_hahs: ID,
+    pub push_fun_hash: ID,
 }
 
 crate::inherit!(FState, t_state, TState);
 
 impl FState {
     pub fn generate_main_fun(&mut self) {
+        let repo = self.builtin_repo;
+        let module = &mut self.t_state.modules[Mod::new(1)];
         let mut body = FunBody::default();
 
-        let arg1 = body
-            .values
-            .push(ValueEnt::temp(self.builtin_repo.int));
-        let arg2 = body
-            .values
-            .push(ValueEnt::temp(self.builtin_repo.int));
+        let arg1 = module.add_temp_value(repo.int);
+        let arg2 = module.add_temp_value(repo.int);
+        let args = module.add_args(&[arg1, arg2]);
 
-        let args = body.add_args(&[arg1, arg2]);
+        let entry_block = module.new_block(&mut body);
+        module.set_block_args(entry_block, args);
 
-        let entry_block = BlockEnt {
-            args,
-            
-            ..Default::default()
-        };
+        let zero_value = module.add_zero_value(repo.int, &mut body);
+        let return_value = module.add_value(repo.int, true);
+        module.add_var_decl(zero_value, return_value, Token::default(), &mut body);
 
-        body.entry_block = body.blocks.push(entry_block);
-
-        let zero_value = body
-            .values
-            .push(ValueEnt::temp(self.builtin_repo.int));
-        body.insts.push(InstEnt::new(
-            IKind::Zeroed,
-            Some(zero_value),
-            &Token::default(),
-        ));
-        let return_value =
-            body
-                .values
-                .push(ValueEnt {
-                    ty: self.builtin_repo.int,
-                    mutable: true,
-
-                    ..Default::default()
-                });
-        body.insts.push(InstEnt::new(
-            IKind::VarDecl(zero_value),
-            Some(return_value),
-            &Token::default(),
-        ));
-
-        let r_fun = RFun {
-            sig: Signature {
-                call_conv: CallConv::Platform,
-                args: vec![
-                    self.builtin_repo.int, //arg count
-                    self.builtin_repo.int, //args
-                ],
-                ret: Some(self.builtin_repo.int),
-            },
-            body,
-            compiled: None,
+        let sig = Signature {
+            call_conv: CallConv::Platform,
+            args: module.add_type_slice(&[repo.int, repo.int]),
+            ret: PackedOption::from(repo.int),
         };
 
         let name = self.builtin_span("main");
 
         let main_fun = FunEnt {
             vis: Vis::Public,
-            kind: FKind::Represented(r_fun),
+            kind: FKind::Represented,
+            sig,
+            body,
             name,
             alias: Some(name),
 
@@ -2954,34 +2908,51 @@ impl Default for FState {
         let mut state = Self {
             t_state: TState::default(),
             funs: Table::new(),
+            generic_funs: SparseMap::new(),
             index_span: Span::default(),
             globals: Table::new(),
             main_fun_data: MainFunData::default(),
 
             do_stacktrace: false,
+            in_assign: false,
+
+            pop_fun_hahs: ID(0),
+            push_fun_hash: ID(0),
         };
+
+        state.pop_fun_hahs = FUN_SALT
+            .add(ID::new("pop_frame"))
+            .add(ID(0))
+            .add(state.modules[BUILTIN_MODULE].id);
+
+        state.push_fun_hash = FUN_SALT
+            .add(ID::new("push_frame"))
+            .add(ID(0))
+            .add(state.modules[BUILTIN_MODULE].id);
 
         let span = state.builtin_span("__index__");
 
         state.index_span = span;
 
-        let module_id = state.modules[state.builtin_module].id;
+        let module_id = BUILTIN_MODULE;
 
         let types = state.builtin_repo.type_list();
 
         fn create_builtin_fun(
             state: &mut FState,
-            module: ID,
+            module: Mod,
             salt: ID,
             name: Span,
             args: &[Ty],
-            ret: Option<Ty>,
+            ret: PackedOption<Ty>,
         ) {
-            let args = EntityList::from_slice(args, &mut state.type_slices);
-            let id = salt.add(name.hash).add(state.types[args[0]].id).add(module);
+            let id = salt.add(name.hash).add(state.types[args[0]].id);
+            let module_ent = &mut state.modules[module];
+            let id = id.add(module_ent.id);
+            let args = module_ent.add_type_slice(args);
             let sig = Signature {
                 call_conv: CallConv::Fast,
-                args: args.to_vec(),
+                args,
                 ret,
             };
 
@@ -2989,8 +2960,9 @@ impl Default for FState {
                 id,
                 name,
                 vis: Vis::Public,
-                module: state.builtin_module,
-                kind: FKind::Builtin(sig),
+                module: BUILTIN_MODULE,
+                kind: FKind::Builtin,
+                sig,
 
                 ..Default::default()
             };
@@ -3000,7 +2972,14 @@ impl Default for FState {
         for i in types {
             for j in types {
                 let name = state.types[i].name.clone();
-                create_builtin_fun(&mut state, module_id, FUN_SALT, name, &[j], Some(i));
+                create_builtin_fun(
+                    &mut state,
+                    module_id,
+                    FUN_SALT,
+                    name,
+                    &[j],
+                    PackedOption::from(i),
+                );
             }
         }
 
@@ -3044,7 +3023,7 @@ impl Default for FState {
                         UNARY_SALT,
                         op.clone(),
                         &[datatype],
-                        Some(datatype),
+                        PackedOption::from(datatype),
                     );
                 }
             }
@@ -3074,7 +3053,7 @@ impl Default for FState {
                         BINARY_SALT,
                         op_span,
                         &[ty, ty],
-                        Some(return_type),
+                        PackedOption::from(return_type),
                     );
                 }
             }
@@ -3088,19 +3067,50 @@ impl Default for FState {
 pub struct FContext {
     pub t_context: TContext,
 
-    pub vars: Vec<Value>,
+    pub vars: Vec<(ID, Value)>,
     pub loops: Vec<Loop>,
     pub frames: Vec<usize>,
-    
-    pub body: FunBody,
 
     pub unresolved_globals: Vec<GlobalValue>,
     pub resolved_globals: Vec<GlobalValue>,
     pub unresolved: Vec<Fun>,
     pub represented: Vec<Fun>,
+    pub entry_points: Vec<Fun>,
+
+    pub entry_point_data: MainFunData,
 }
 
 crate::inherit!(FContext, t_context, TContext);
+
+impl FContext {
+    fn push_scope(&mut self) {
+        self.frames.push(self.vars.len());
+    }
+
+    fn pop_scope(&mut self) {
+        let idx = self.frames.pop().unwrap();
+        self.vars.truncate(idx)
+    }
+
+    fn find_variable(&self, id: ID) -> Option<Value> {
+        self.vars.iter().rev().find(|v| v.0 == id).map(|v| v.1)
+    }
+
+    fn find_loop(&self, token: &Token) -> std::result::Result<Loop, bool> {
+        if token.span.len() == 0 {
+            return self.loops.last().cloned().ok_or(true);
+        }
+
+        let name = token.span.hash;
+
+        self.loops
+            .iter()
+            .rev()
+            .find(|l| l.name == name)
+            .cloned()
+            .ok_or_else(|| self.loops.is_empty())
+    }
+}
 
 pub struct FunDisplay<'a> {
     pub state: &'a FState,
@@ -3176,4 +3186,5 @@ pub fn test() {
             .map_err(|e| println!("{}", FErrorDisplay::new(&mut state, &e)))
             .unwrap();
     }*/
+    todo!();
 }

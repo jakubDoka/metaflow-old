@@ -336,7 +336,7 @@ impl<I: EntityRef, T> Table<I, T> {
                 return (Some(std::mem::replace(&mut self.data[i].1, data)), i);
             }
         }
-        let i = if let Some(free) = self.free.pop() { 
+        let i = if let Some(free) = self.free.pop() {
             self.data[free] = Value(id, data);
             free
         } else {
@@ -352,7 +352,7 @@ impl<I: EntityRef, T> Table<I, T> {
                 return i;
             }
         }
-        let i = if let Some(free) = self.free.pop() { 
+        let i = if let Some(free) = self.free.pop() {
             self.data[free] = Value(id, data);
             free
         } else {

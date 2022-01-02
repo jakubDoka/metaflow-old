@@ -3,10 +3,10 @@
 //use gen::GErrorDisplay;
 
 pub mod ast;
-//pub mod functions;
+pub mod functions;
 //pub mod gen;
-pub mod incr;
 pub mod entities;
+pub mod incr;
 pub mod lexer;
 pub mod module_tree;
 pub mod testing;

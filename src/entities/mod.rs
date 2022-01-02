@@ -1,7 +1,18 @@
-use cranelift::{codegen::{ir::{Inst, Value, Block, GlobalValue}, packed_option::PackedOption}, entity::EntityList};
-use quick_proc::{RealQuickSer, QuickDefault};
+use crate::{
+    lexer::{TKind, Token},
+    util::{sdbm::ID, Size},
+};
 use cranelift::entity::packed_option::ReservedValue;
-use crate::{util::{sdbm::ID, Size}, lexer::{Token, TKind}};
+use cranelift::{
+    codegen::{
+        ir::{Block, GlobalValue, Inst, Value},
+        packed_option::PackedOption,
+    },
+    entity::EntityList,
+};
+use quick_proc::{QuickDefault, RealQuickSer};
+
+pub const BUILTIN_MODULE: Mod = Mod(0);
 
 crate::impl_entity!(Ast);
 crate::impl_entity!(Fun);
@@ -12,11 +23,9 @@ crate::impl_entity!(Ty);
 
 #[derive(Debug, Clone, QuickDefault, Copy, RealQuickSer)]
 pub struct ValueEnt {
-    pub id: ID,
     #[default(Ty::reserved_value())]
     pub ty: Ty,
-    #[default(Inst::reserved_value())]
-    pub inst: Inst,
+    pub inst: PackedOption<Inst>,
     pub offset: Size,
     pub mutable: bool,
     pub on_stack: bool,
@@ -50,10 +59,11 @@ pub enum IKind {
     Call(Fun, EntityList<Value>),
     UnresolvedDot(Value, ID),
     VarDecl(Value),
+    VarAccess, // merely to hold source information
     Zeroed,
     Uninitialized,
     Lit(TKind),
-    Return(Option<Value>),
+    Return(PackedOption<Value>),
     Assign(Value),
     Jump(Block, EntityList<Value>),
     JumpIfTrue(Value, Block, EntityList<Value>),
@@ -78,12 +88,12 @@ impl Default for IKind {
 #[derive(Debug, Clone, Copy, Default, RealQuickSer)]
 pub struct BlockEnt {
     pub block: PackedOption<Block>,
-    
+
     pub prev: PackedOption<Block>,
     pub next: PackedOption<Block>,
-    
+
     pub args: EntityList<Value>,
-    
+
     pub start: PackedOption<Inst>,
     pub end: PackedOption<Inst>,
 }
