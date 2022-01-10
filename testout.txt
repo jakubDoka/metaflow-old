@@ -2187,7 +2187,85 @@ Fun(None) "fun some_string -> &u8:\r\n  \"\r\nhello there\r\n  \"":
   None
  Group ":":
   Lit "\"\r\nhello there\r\n  \""
-reloaded: src/functions/test_project\root.mf
-re-parsing 
-re-parsing root
-compile 454 lines of code in 0.0092287s
+compiled code in 0.004328s
+reloaded: src/gen/test_project\root.mf
+fun print(s: &Self, value: &u8)
+
+  block1 [v4, v5]:
+    v6 = Lit(Int(0, 0))
+    v7 = VarDecl(v6)
+    Jump(block2, EntityList { index: 0, unused: PhantomData })
+  block2 []:
+    v8 = Cast(v5)
+    v9 = Call(Fun(259), EntityList { index: 9, unused: PhantomData })
+    v10 = Cast(v9)
+    v11 = Deref(v11, false)
+    v12 = VarDecl(v11)
+    v13 = Lit(Uint(0, 8))
+    v14 = Call(Fun(305), EntityList { index: 13, unused: PhantomData })
+    JumpIfTrue(v14, block4, EntityList { index: 0, unused: PhantomData })
+    Jump(block5, EntityList { index: 0, unused: PhantomData })
+  block3 []:
+    Call(Fun(480), EntityList { index: 21, unused: PhantomData })
+    v17 = Offset(v4)
+    v18 = Deref(v17, false)
+    v19 = Offset(v18)
+    v20 = Call(Fun(481), EntityList { index: 25, unused: PhantomData })
+    Call(Fun(443), EntityList { index: 29, unused: PhantomData })
+    v21 = Offset(v4)
+    v22 = Deref(v21, true)
+    v23 = Offset(v22)
+    v24 = Offset(v4)
+    v25 = Deref(v24, false)
+    v26 = Offset(v25)
+    v27 = Call(Fun(259), EntityList { index: 33, unused: PhantomData })
+    v27 = Assign(v23)
+    Return(None)
+  block4 []:
+    Jump(block3, EntityList { index: 0, unused: PhantomData })
+  block5 []:
+    v15 = Lit(Int(1, 0))
+    v16 = Call(Fun(259), EntityList { index: 17, unused: PhantomData })
+    v16 = Assign(v7)
+    Jump(block2, EntityList { index: 0, unused: PhantomData })
+
+function u0:0(i64, i64) fast {
+block0(v0: i64, v1: i64):
+    v2 = iconst.i64 0
+}
+
+function u0:0(i64, i64) fast {
+block0(v0: i64, v1: i64, v3: i64):
+    v2 = iconst.i64 0
+}
+
+function u0:0(i64, i64) fast {
+block0(v0: i64, v1: i64, v3: i64):
+    v2 = iconst.i64 0
+    jump block1
+}
+
+function u0:0(i64, i64) fast {
+block0(v0: i64, v1: i64, v3: i64):
+    v2 = iconst.i64 0
+    jump block1
+}
+
+function u0:0(i64, i64) fast {
+block0(v0: i64, v1: i64, v3: i64):
+    v2 = iconst.i64 0
+    jump block1
+
+block1(v4: i64):
+    v5 = iadd.i64 v1, v4
+}
+
+function u0:0(i64, i64) fast {
+block0(v0: i64, v1: i64, v3: i64):
+    v2 = iconst.i64 0
+    jump block1
+
+block1(v4: i64):
+    v5 = iadd.i64 v1, v4
+}
+
