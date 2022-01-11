@@ -11,8 +11,7 @@ use cranelift::object::{ObjectBuilder, ObjectModule};
 use std::process::Command;
 
 use crate::{
-    ast::{AError, AErrorDisplay, AParser, Vis},
-    collector::Collector,
+    ast::{AError, AErrorDisplay},
     functions::{FError, FErrorDisplay},
     lexer::{Token, TokenDisplay},
     module_tree::{MTError, MTErrorDisplay, MTParser},
@@ -116,7 +115,8 @@ pub fn generate_obj_file(args: &Arguments) -> Result<Vec<u8>> {
 
     let mut module = ObjectModule::new(builder);
 
-    let (mut state, size_hint): (GState, _) = incr::load_incremental_data(&args[0], args.hash()).unwrap_or_default();
+    let (mut state, size_hint) =
+        incr::load_data::<GState>(&args[0], args.hash()).unwrap_or_default();
     state.do_stacktrace = stacktrace;
     let mut context = GContext::default();
 
@@ -124,41 +124,15 @@ pub fn generate_obj_file(args: &Arguments) -> Result<Vec<u8>> {
         return Err((Some(state), GEKind::MTError(e).into()));
     }
 
-    let mut collector = Collector::default();
-    
-    for module_id in std::mem::take(&mut state.module_order).drain(..).rev() {
-        let module_ent = &mut state.modules[module_id];
-        if module_ent.clean {
-            continue;
-        }
-        module_ent.clean = true;
-        let mut a_state = std::mem::take(&mut module_ent.a_state);
+    let order = std::mem::take(&mut state.module_order);
 
-
-        let result = AParser::new(&mut state, &mut a_state).parse();
-        let mut ast = match result {
-            Ok(ast) => ast,
-            Err(e) => return Err((Some(state), GEKind::AError(e).into())),
-        };
-
-        collector.clear();
-        collector.parse(&mut state, &mut ast, Vis::None);
-
-        if let Err(e) = Generator::new(&mut module, &mut state, &mut context, &mut collector, false)
-            .generate(module_id)
-        {
-            return Err((Some(state), e));
-        }
-
-        state.modules[module_id].a_state = a_state;
-    }
-    
-    if let Err(err) = Generator::new(&mut module, &mut state, &mut context, &mut collector, false).finalize() {
-        return Err((Some(state), err));
+    if let Err(e) = Generator::new(&mut module, &mut state, &mut context, false)
+        .generate(&order) 
+    {
+        return Err((Some(state), e));
     }
 
-    incr::save_incremental_data(&args[0], &state, args.hash(), Some(size_hint))
-        .unwrap();
+    incr::save_data(&args[0], &state, args.hash(), Some(size_hint)).unwrap();
 
     Ok(module.finish().emit().unwrap())
 }

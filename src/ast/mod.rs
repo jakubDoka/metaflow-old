@@ -361,7 +361,6 @@ impl<'a> AParser<'a> {
             Self::attr_element,
         )?;
 
-
         for &ast in self.state.slice(ast_ent.sons) {
             let hash = self.token(ast).span.hash;
             if hash == ID::new("push") {
@@ -1302,7 +1301,7 @@ impl AState {
     pub fn son(&self, ast: Ast, index: usize) -> Ast {
         self.son_optional(ast, index).unwrap()
     }
-    
+
     pub fn son_optional(&self, ast: Ast, index: usize) -> Option<Ast> {
         self.sons(ast).get(index, &self.cons)
     }
@@ -1382,8 +1381,7 @@ impl AState {
             return None;
         }
         let sons = self.sons(attrs);
-        self
-            .slice(sons)
+        self.slice(sons)
             .iter()
             .find(|&&a| self.kind(a) != AKind::Comment && self.son_ent(a, 0).token.span.hash == id)
             .cloned()
@@ -1479,7 +1477,6 @@ impl AContext {
         self.current_attributes.clear();
     }
 }
-    
 
 pub struct AstDisplay<'a> {
     main_state: &'a AMainState,

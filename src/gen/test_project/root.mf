@@ -1,10 +1,10 @@
 attr entry
-fun fine -> int:
+fun fine -> int:  
   assert(1 - 1 == 0)
   assert(1 + 1 == 2)
   assert((if 1 == 1: 1 else: 0) == 1)
   assert(fib(10) == fib_loop(10))
-
+  
   test_case_1()
   test_case_2()
   test_case_3()
@@ -20,6 +20,8 @@ fun fine -> int:
   test_case_13()
 
   return 0
+
+fun foo(): pass
 
 fun fib(v: int) -> int:
   return if v < 2:

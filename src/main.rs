@@ -3,9 +3,9 @@
 //use gen::GErrorDisplay;
 
 pub mod ast;
-pub mod functions;
-//pub mod gen;
 pub mod entities;
+pub mod functions;
+pub mod gen;
 pub mod incr;
 pub mod lexer;
 pub mod module_tree;
@@ -49,5 +49,5 @@ fn test() {
     module_tree::test();
     types::test();
     functions::test();
-    //gen::test();
+    gen::test();
 }

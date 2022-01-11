@@ -43,6 +43,16 @@ impl<'a> MTParser<'a> {
     pub fn parse(&mut self, root: &str) -> Result {
         self.clean_incremental_data();
 
+        if !self.modules[BUILTIN_MODULE].clean {
+            AParser::new(
+                &mut self.state.a_main_state,
+                &mut self.state.modules[BUILTIN_MODULE].a_state,
+                self.context,
+            )
+            .parse()
+            .map_err(|e| e.into())?;
+        }
+
         let mut path_buffer = PathBuf::new();
 
         self.load_manifests(root, &mut path_buffer)?;
@@ -104,9 +114,9 @@ impl<'a> MTParser<'a> {
             // at this point ti is safe to assume that modules ast state is restarted
             let mut module = std::mem::take(&mut self.modules[module_id]);
 
-            AParser::new(self.state, &mut module.a_state, self.context)
-                .take_imports(&mut imports)
-                .map_err(Into::into)?;
+            let mut parser = AParser::new(self.state, &mut module.a_state, self.context);
+            parser.take_imports(&mut imports).map_err(Into::into)?;
+            parser.parse().map_err(Into::into)?;
 
             for import in imports.drain(..) {
                 let path = self.display(&import.path);
@@ -272,7 +282,7 @@ impl<'a> MTParser<'a> {
                 id,
                 name,
                 manifest: manifest_id,
-                
+
                 ..Default::default()
             };
             module.source = self.sources.push(source);
@@ -678,7 +688,7 @@ pub struct ModEnt {
     pub functions: Vec<Fun>,
     pub types: Vec<Ty>,
     pub globals: Vec<GlobalValue>,
-    
+
     pub entry_point: PackedOption<Fun>,
 
     // this way we can quickly discard all used used ir elements
@@ -782,8 +792,12 @@ impl ModEnt {
         })
     }
 
-    pub fn add_args(&mut self, slice: &[Value]) -> EntityList<Value> {
+    pub fn add_values(&mut self, slice: &[Value]) -> EntityList<Value> {
         EntityList::from_slice(slice, &mut self.value_slices)
+    }
+
+    pub fn values(&self, list: EntityList<Value>) -> &[Value] {
+        list.as_slice(&self.value_slices)
     }
 
     pub fn add_type(&mut self, ty: Ty) {
@@ -915,15 +929,11 @@ impl ModEnt {
 
     pub fn verify_args(&self, args: &[Ty], sig_args: EntityList<Ty>) -> bool {
         let slice = self.type_slice(sig_args);
-        slice.len() != args.len()
-            || slice
-                .iter()
-                .zip(args.iter())
-                .any(|(ty, arg)| arg != ty)
+        slice.len() != args.len() || slice.iter().zip(args.iter()).any(|(ty, arg)| arg != ty)
     }
 
     pub fn clear_types(&mut self, target: &mut EntityList<Ty>) {
-        target.clear(&mut self.type_slices); 
+        target.clear(&mut self.type_slices);
     }
 
     pub fn assign_global(&mut self, global: GlobalValue, value: Value, body: &mut FunBody) -> Ty {
@@ -940,9 +950,39 @@ impl ModEnt {
     }
 
     pub fn block_args(&self, block: Block) -> &[Value] {
-        self.blocks[block]
-            .args
-            .as_slice(&self.value_slices)
+        self.blocks[block].args.as_slice(&self.value_slices)
+    }
+
+    pub fn cast(&mut self, target: Value, ty: Ty, token: Token, body: &mut FunBody) -> Value {
+        let mutable = self.is_mutable(target);
+        let value = self.add_value(ty, mutable);
+        self.add_inst(IKind::Cast(target), value, token, body);
+        value
+    }
+
+    pub fn add_valueless_call(
+        &mut self,
+        fun: Fun,
+        args: &[Value],
+        token: Token,
+        body: &mut FunBody,
+    ) {
+        let args = self.add_values(args);
+        self.add_valueless_inst(IKind::Call(fun, args), token, body);
+    }
+
+    pub fn add_call(
+        &mut self,
+        fun: Fun,
+        args: &[Value],
+        return_ty: Ty,
+        token: Token,
+        body: &mut FunBody,
+    ) -> Value {
+        let args = self.add_values(args);
+        let value = self.add_temp_value(return_ty);
+        self.add_inst(IKind::Call(fun, args), value, token, body);
+        value
     }
 }
 

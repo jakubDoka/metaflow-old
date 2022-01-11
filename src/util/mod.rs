@@ -147,4 +147,5 @@ macro_rules! impl_entity {
 pub fn test() {
     pool::test();
     cli::test();
+    storage::test();
 }

@@ -1,10 +1,10 @@
 use std::ops::{Deref, DerefMut};
 
-use crate::ast::{AError, AErrorDisplay, AKind, AParser, AstEnt, Vis};
+use crate::ast::{AError, AErrorDisplay, AKind, AstEnt, Vis};
 use crate::entities::{Ast, Mod, Ty, BUILTIN_MODULE};
 use crate::incr;
 use crate::lexer::{Span, TKind as LTKind, Token, TokenDisplay};
-use crate::module_tree::{MTContext, MTParser, MTState, TreeStorage};
+use crate::module_tree::{MTContext, MTErrorDisplay, MTParser, MTState, TreeStorage};
 use crate::util::sdbm::ID;
 use crate::util::storage::Table;
 use crate::util::Size;
@@ -14,8 +14,8 @@ use cranelift::codegen::ir::{types::*, AbiParam, ArgumentPurpose};
 use cranelift::codegen::isa::CallConv as CrCallConv;
 use cranelift::codegen::isa::TargetIsa;
 use cranelift::codegen::packed_option::PackedOption;
-use cranelift::entity::{packed_option::ReservedValue, EntityRef};
 use cranelift::entity::EntityList;
+use cranelift::entity::{packed_option::ReservedValue, EntityRef};
 use quick_proc::{QuickDefault, QuickEnumGets, QuickSer, RealQuickSer};
 
 type Result<T = ()> = std::result::Result<T, TError>;
@@ -59,7 +59,7 @@ impl<'a> TParser<'a> {
 
     pub fn clean_incremental_data(&mut self, module: Mod) {
         if module.as_u32() == 0 {
-            return
+            return;
         }
         let mut types = std::mem::take(&mut self.modules[module].types);
         for ty in types.drain(..) {
@@ -225,10 +225,7 @@ impl<'a> TParser<'a> {
         if is_instance {
             if params_len != header_len {
                 return Err(TError::new(
-                    TEKind::WrongInstantiationArgAmount(
-                        params_len - 1,
-                        header_len - 1,
-                    ),
+                    TEKind::WrongInstantiationArgAmount(params_len - 1, header_len - 1),
                     self.types[id].hint.clone(),
                 ));
             }
@@ -271,12 +268,12 @@ impl<'a> TParser<'a> {
                         ty,
                         hint: hint.clone(),
                     };
-    
+
                     fields.push(field);
                 }
-            }    
+            }
         }
-        
+
         for (id, ty) in shadowed.drain(..) {
             self.types.remove_link(id, ty);
         }
@@ -309,22 +306,14 @@ impl<'a> TParser<'a> {
             _ => unreachable!("{:?}", kind),
         }?;
 
-        if !self
-            .state
-            .can_access(module, ty_module, self.types[ty].vis)
-        {
+        if !self.state.can_access(module, ty_module, self.types[ty].vis) {
             return Err(TError::new(TEKind::VisibilityViolation, token));
         }
 
         Ok((module, ty))
     }
 
-    fn function_pointer(
-        &mut self,
-        module: Mod,
-        ast: Ast,
-        depth: usize,
-    ) -> Result<(Mod, Ty)> {
+    fn function_pointer(&mut self, module: Mod, ast: Ast, depth: usize) -> Result<(Mod, Ty)> {
         let module_ent = &self.modules[module];
         let sons = module_ent.sons(ast);
         let len = module_ent.len(sons);
@@ -403,19 +392,13 @@ impl<'a> TParser<'a> {
     }
 
     fn pointer(&mut self, module: Mod, ast: Ast, depth: usize) -> Result<(Mod, Ty)> {
-        let (module, datatype) =
-            self.ty(module, self.modules[module].son(ast, 0), depth)?;
+        let (module, datatype) = self.ty(module, self.modules[module].son(ast, 0), depth)?;
         let datatype = self.pointer_of(datatype);
 
         Ok((module, datatype))
     }
 
-    fn instance(
-        &mut self,
-        source_module: Mod,
-        ast: Ast,
-        depth: usize,
-    ) -> Result<(Mod, Ty)> {
+    fn instance(&mut self, source_module: Mod, ast: Ast, depth: usize) -> Result<(Mod, Ty)> {
         let module_ent = &self.modules[source_module];
         let ident = module_ent.son(ast, 0);
         let &AstEnt { token, sons, kind } = module_ent.load(ident);
@@ -500,8 +483,7 @@ impl<'a> TParser<'a> {
         let target = if let Some(target) = target {
             let token = module_ent.token(target);
             Some(
-                self
-                    .find_dep(module, token)
+                self.find_dep(module, token)
                     .ok_or(TError::new(TEKind::UnknownModule, *token))?,
             )
         } else {
@@ -613,11 +595,14 @@ impl<'a> TreeStorage<Ty> for TParser<'a> {
 
         match &node.kind {
             TKind::Builtin(_) | TKind::Pointer(..) => 0,
-            TKind::FunPointer(fun) => self.modules[node.module].type_slice(fun.args).len() + fun.ret.is_some() as usize,
+            TKind::FunPointer(fun) => {
+                self.modules[node.module].type_slice(fun.args).len() + fun.ret.is_some() as usize
+            }
             TKind::Array(..) => 1,
             TKind::Structure(stype) => stype.fields.len(),
-            TKind::Generic(_) | TKind::Unresolved(_) | TKind::Constant(_) => 
-                unreachable!("{:?}", node),
+            TKind::Generic(_) | TKind::Unresolved(_) | TKind::Constant(_) => {
+                unreachable!("{:?}", node)
+            }
         }
     }
 
@@ -724,10 +709,17 @@ pub struct Signature {
 }
 
 impl Signature {
-    pub fn to_cr_signature(&self, module: Mod, state: &TState, isa: &dyn TargetIsa, target: &mut CrSignature) {
+    pub fn to_cr_signature(
+        &self,
+        module: Mod,
+        state: &TState,
+        isa: &dyn TargetIsa,
+        target: &mut CrSignature,
+    ) {
         target.call_conv = self.call_conv.to_cr_call_conv(isa);
         target.params.extend(
-            state.modules[module].type_slice(self.args)
+            state.modules[module]
+                .type_slice(self.args)
                 .iter()
                 .map(|&ty| AbiParam::new(state.types[ty].to_cr_type(isa))),
         );
@@ -814,7 +806,7 @@ crate::inherit!(TContext, mt_context, MTContext);
 pub struct TState {
     pub builtin_repo: BuiltinRepo,
     pub types: Table<Ty, TypeEnt>,
-    
+
     pub type_cycle_map: Vec<(bool, bool)>,
     pub mt_state: MTState,
 }
@@ -1150,7 +1142,8 @@ impl<'a> std::fmt::Display for TypeDisplay<'a> {
                 write!(
                     f,
                     "fn({})",
-                    self.state.modules[ty.module].type_slice(fun.args)
+                    self.state.modules[ty.module]
+                        .type_slice(fun.args)
                         .iter()
                         .map(|id| format!("{}", Self::new(self.state, *id)))
                         .collect::<Vec<_>>()
@@ -1299,12 +1292,13 @@ pub fn call_conv_error(f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
 
 pub fn test() {
     const PATH: &str = "src/types/test_project";
-    
+
     let (mut state, hint) = incr::load_data::<TState>(PATH, ID(0)).unwrap_or_default();
     let mut context = TContext::default();
 
     MTParser::new(&mut state, &mut context)
         .parse(PATH)
+        .map_err(|e| panic!("{}", MTErrorDisplay::new(&state, &e)))
         .unwrap();
 
     for module in std::mem::take(&mut state.module_order).drain(..) {
@@ -1312,16 +1306,10 @@ pub fn test() {
             continue;
         }
 
-        crate::test_println!("re-parsing types in {}", state.display(&state.modules[module].name));
-
-        let mut a_state = std::mem::take(&mut state.modules[module].a_state);
-
-        AParser::new(&mut state.a_main_state, &mut a_state, &mut context)
-            .parse()
-            .map_err(|err| panic!("\n{}", AErrorDisplay::new(&state, &err)))
-            .unwrap();
-
-        state.modules[module].a_state = a_state;
+        crate::test_println!(
+            "re-parsing types in {}",
+            state.display(&state.modules[module].name)
+        );
 
         TParser::new(&mut state, &mut context)
             .parse(module)

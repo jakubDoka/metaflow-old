@@ -1,4 +1,4 @@
-if %1 == release (
+if "%1" == "release" (
     set FLAGS="--release"
 ) else (
     set FLAGS=""
