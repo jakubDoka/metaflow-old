@@ -1,5 +1,9 @@
 #![feature(vec_into_raw_parts)]
 
+use std::time::Instant;
+
+use gen::GErrorDisplay;
+
 //use gen::GErrorDisplay;
 
 pub mod ast;
@@ -24,7 +28,7 @@ fn main() {
 }
 
 fn run() {
-    /*let args = match util::cli::Arguments::new(std::env::args()) {
+    let args = match util::cli::Arguments::new(std::env::args()) {
         Ok(args) => args,
         Err(e) => {
             println!("{:?}", e);
@@ -32,13 +36,21 @@ fn run() {
         }
     };
 
+    let now = Instant::now();
+
     match gen::compile(args) {
-        Ok(_) => println!("Successfully compiled"),
+        Ok(line_count) => {
+            println!(
+                "Successfully compiled! ({} lines of code in {}s)", 
+                line_count, 
+                now.elapsed().as_secs_f32()
+            );
+        },
         Err((state, err)) => println!(
             "Failed to compile:\n {}",
             GErrorDisplay::new(state.as_ref(), &err)
         ),
-    };*/
+    };
 }
 
 #[cfg(feature = "testing")]

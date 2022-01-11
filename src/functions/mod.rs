@@ -49,31 +49,12 @@ impl<'a> FParser<'a> {
             .parse(module)
             .map_err(|err| FError::new(FEKind::TypeError(err), Token::default()))?;
 
-        self.clear_incremental_data(module);
         self.init_module(module);
         self.collect(module)?;
         self.translate()?;
         self.finalize_module(module);
 
         Ok(())
-    }
-
-    pub fn clear_incremental_data(&mut self, module: Mod) {
-        let mut funs = std::mem::take(&mut self.modules[module].functions);
-        for &fun in &funs {
-            let id = self.funs[fun].id;
-            self.funs.remove(id);
-        }
-        funs.clear();
-        self.modules[module].functions = funs;
-
-        let mut globals = std::mem::take(&mut self.modules[module].globals);
-        for &global in &globals {
-            let id = self.globals[global].id;
-            self.globals.remove(id);
-        }
-        globals.clear();
-        self.modules[module].globals = globals;
     }
 
     pub fn finalize_module(&mut self, module: Mod) {
@@ -250,6 +231,7 @@ impl<'a> FParser<'a> {
 
     fn finalize_fun(&mut self, fun: Fun, body: FunBody) {
         self.state.funs[fun].body = body;
+        self.state.funs[fun].kind = FKind::Represented;
         self.context.represented.push(fun);
     }
 
@@ -1133,7 +1115,14 @@ impl<'a> FParser<'a> {
                 } else {
                     values[0] = self.ref_expr_low(fun, values[0], token, body);
                 }
-                debug_assert!(self.modules[module].type_of_value(values[0]) == first_arg_ty);
+                debug_assert!(
+                    self.modules[module].type_of_value(values[0]) == first_arg_ty,
+                    "{}({:?}) != {}({:?})",
+                    TypeDisplay::new(self.state, self.modules[module].type_of_value(values[0])),
+                    self.modules[module].type_of_value(values[0]),
+                    TypeDisplay::new(self.state, first_arg_ty),
+                    first_arg_ty,
+                );
             }
         }
 
@@ -2733,7 +2722,7 @@ pub struct FunEnt {
     pub inline: bool,
 }
 
-#[derive(Debug, Clone, Copy, RealQuickSer)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, RealQuickSer)]
 pub enum FKind {
     Builtin,
     Generic,
@@ -3144,10 +3133,6 @@ pub fn test() {
     for module in state.modules.iter_mut() {
         module.clean = true;
     }
-
-    /*for &fun in &context.represented {
-        println!("{}", FunDisplay::new(&state, fun));
-    }*/
 
     incr::save_data(PATH, &state, ID(0), Some(hint)).unwrap();
 

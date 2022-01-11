@@ -50,22 +50,10 @@ impl<'a> TParser<'a> {
 
     pub fn parse(&mut self, module: Mod) -> Result {
         self.module = module;
-        self.clean_incremental_data(module);
         self.collect(module)?;
         self.connect()?;
         self.calc_sizes()?;
         Ok(())
-    }
-
-    pub fn clean_incremental_data(&mut self, module: Mod) {
-        if module.as_u32() == 0 {
-            return;
-        }
-        let mut types = std::mem::take(&mut self.modules[module].types);
-        for ty in types.drain(..) {
-            self.remove_type(ty);
-        }
-        self.modules[module].types = types;
     }
 
     pub fn parse_type(&mut self, module: Mod, ast: Ast) -> Result<(Mod, Ty)> {
@@ -414,7 +402,6 @@ impl<'a> TParser<'a> {
 
         let mut params = EntityList::new();
         let module_ent = &mut self.modules[source_module];
-        let module_id = module_ent.id;
         let sons = module_ent.sons(ast);
         let ast_len = module_ent.len(sons);
 
@@ -427,7 +414,7 @@ impl<'a> TParser<'a> {
             id = id.add(self.types[ty].id);
             self.modules[module].push_type(&mut params, ty);
         }
-        id = id.add(module_id);
+        id = id.add(self.modules[module].id);
 
         if let Some(id) = self.type_index(id) {
             self.modules[module].clear_type_slice(&mut params);
@@ -932,11 +919,6 @@ impl TState {
         self.modules[module].add_type(ty);
         debug_assert!(shadow.is_none() || allow_shadow);
         (shadow, ty)
-    }
-
-    pub fn remove_type(&mut self, ty: Ty) {
-        let type_id = self.types[ty].id;
-        self.types.remove(type_id).unwrap();
     }
 
     pub fn pointer_base(&self, ty: Ty) -> Option<Ty> {

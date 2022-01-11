@@ -1,7 +1,8 @@
 use cranelift::codegen::binemit::NullTrapSink;
 use cranelift::codegen::ir::AbiParam;
 use cranelift::frontend::{FunctionBuilder, FunctionBuilderContext, Variable};
-use cranelift::module::{DataContext, DataId, FuncOrDataId, Linkage, Module, RelocRecord};
+use cranelift::module::{DataContext, DataId, FuncOrDataId, Linkage, Module, RelocRecord, ModuleDeclarations};
+use cranelift::object::ObjectModule;
 use cranelift::{
     codegen::{
         binemit::RelocSink,
@@ -25,7 +26,7 @@ use quick_proc::{QuickDefault, QuickSer, RealQuickSer};
 
 use std::ops::{Deref, DerefMut};
 
-use crate::entities::BlockEnt;
+use crate::entities::{BlockEnt, BUILTIN_MODULE};
 use crate::{
     entities::{Fun, IKind, InstEnt, Mod, Ty, ValueEnt},
     functions::{FContext, FKind, FParser, FState, FunEnt, GlobalEnt},
@@ -45,7 +46,7 @@ type Result<T = ()> = std::result::Result<T, GError>;
 pub const STRING_SALT: u64 = 0xDEADBEEF; // just a random number
 
 pub struct Generator<'a> {
-    module: &'a mut dyn Module,
+    module: &'a mut ObjectModule,
     state: &'a mut GState,
     context: &'a mut GContext,
     s32: bool,
@@ -57,7 +58,7 @@ crate::inherit!(Generator<'_>, state, GState);
 
 impl<'a> Generator<'a> {
     pub fn new(
-        module: &'a mut dyn Module,
+        module: &'a mut ObjectModule,
         state: &'a mut GState,
         context: &'a mut GContext,
         jit: bool,
@@ -80,39 +81,116 @@ impl<'a> Generator<'a> {
     }
 
     pub fn generate(&mut self, order: &[Mod]) -> Result {
+        let mut declarations = std::mem::take(&mut self.state.bin_declarations);
+        for &module in order {
+            if self.modules[module].clean {
+                continue;
+            }
+            
+            // remove types
+            if module != BUILTIN_MODULE {
+                let mut types = std::mem::take(&mut self.modules[module].types);
+                for ty in types.drain(..) {
+                    let id = self.types[ty].id;
+                    self.types.remove(id);
+                }
+                self.modules[module].types = types;
+            }
+            
+            // remove functions
+            let mut funs = std::mem::take(&mut self.modules[module].functions);
+            for fun in funs.drain(..) {
+                let id = self.funs[fun].id;
+                self.funs.remove(id);
+                declarations.remove_function(self.compiled_funs[fun].id);
+            }
+            self.modules[module].functions = funs;
+    
+            // remove globals
+            let mut globals = std::mem::take(&mut self.modules[module].globals);
+            for global in globals.drain(..) {
+                let id = self.globals[global].id;
+                self.globals.remove(id);
+                declarations.remove_data(self.compiled_globals[global].id);
+            }
+            self.modules[module].globals = globals;
+
+            // remove strings
+            let mut strings = std::mem::take(&mut self.modules[module].strings);
+            for (id, _) in strings.drain(..) {
+                declarations.remove_data(id);
+            }
+            self.modules[module].strings = strings;
+        }
+
+        self.module.load_declarations(declarations);
+
         for &module in order.iter() {
             let module_ent = &mut self.modules[module];
             if module_ent.clean {
                 let functions = std::mem::take(&mut module_ent.functions);
                 let globals = std::mem::take(&mut module_ent.globals);
-                
-                self.declare_funs(&functions);
-                self.declare_and_define_globals(&globals);
+                let strings = std::mem::take(&mut module_ent.strings);
+
                 self.load_funs(&functions);
+                self.load_globals(&globals);
+                self.load_strings(&strings);
 
                 let module_ent = &mut self.modules[module];
                 module_ent.functions = functions;
                 module_ent.globals = globals;
+                module_ent.strings = strings;
                 continue;
+            } else {
+                module_ent.clean = true;
             }
-            self.modules[module].clean = true;
 
             FParser::new(self.state, self.context, self.ptr_ty)
                 .parse(module)
                 .map_err(|err| GError::new(GEKind::FError(err), Token::default()))?;
+            
+            let mut represented = std::mem::take(&mut self.context.represented);
+            self.declare_funs(&represented);
+            
+            let mut resolved_globals = std::mem::take(&mut self.context.resolved_globals);
+            self.declare_and_define_globals(&resolved_globals);
+            resolved_globals.clear();
+            self.context.resolved_globals = resolved_globals;
+            
+            self.define_funs(&represented);
+            represented.clear();
+            self.context.represented = represented;
         }
-        
-        let represented = std::mem::take(&mut self.context.represented);
-        self.declare_funs(&represented);
-        
-        let resolved_globals = std::mem::take(&mut self.context.resolved_globals);
-        self.declare_and_define_globals(&resolved_globals);
-        
-        self.define_funs(&represented);
 
         self.finalize(order);
 
+        self.state.bin_declarations = self.module.take_declarations();
+
         Ok(())
+    }
+
+    pub fn load_strings(&mut self, strings: &[(DataId, Span)]) {
+        for &(id, span) in strings {
+            let data = self.state.display(&span);
+            self.context.data_context.define(data.deref().as_bytes().to_owned().into_boxed_slice());
+            self.module.define_data(id, &self.context.data_context).unwrap();
+            self.context.data_context.clear();
+        }
+    }
+
+    pub fn load_globals(&mut self, globals: &[GlobalValue]) {
+        for &global in globals {
+            let GlobalEnt { ty, linkage, .. } = self.globals[global];
+            if linkage == Linkage::Import {
+                continue;
+            }
+            let id = self.compiled_globals[global].id;
+            self.context
+                .data_context
+                .define_zeroinit(self.types[ty].size.pick(self.s32) as usize);
+            self.module.define_data(id, &self.context.data_context).unwrap();
+            self.context.data_context.clear();
+        }
     }
 
     pub fn load_funs(&mut self, functions: &[Fun]) {
@@ -120,10 +198,11 @@ impl<'a> Generator<'a> {
             let FunEnt {
                 linkage,
                 body,
+                kind,
                 ..
             } = self.funs[fun_id];
             
-            if linkage == Linkage::Import || body.entry_block.is_none() {
+            if linkage == Linkage::Import || kind != FKind::Represented || body.entry_block.is_none() {
                 continue;
             }
 
@@ -205,8 +284,13 @@ impl<'a> Generator<'a> {
                 module,
                 alias,
                 linkage,
+                kind,
                 ..
             } = self.state.funs[fun_id];
+
+            if kind != FKind::Represented {
+                continue;
+            }
 
             signature.clear(CrCallConv::Fast);
             sig.to_cr_signature(module, self.state, self.module.isa(), &mut signature);
@@ -262,20 +346,18 @@ impl<'a> Generator<'a> {
                 .module
                 .declare_data(final_name, linkage, mutable, tls)
                 .unwrap();
-                
+            
             self.compiled_globals[global].id = id;
             
             if linkage == Linkage::Import {
                 continue;
             }
 
+
             self.context
                 .data_context
                 .define_zeroinit(self.types[ty].size.pick(self.s32) as usize);
-            let ctx = unsafe {
-                std::mem::transmute::<&DataContext, &DataContext>(&self.context.data_context)
-            };
-            self.module.define_data(id, ctx).unwrap();
+            self.module.define_data(id, &self.context.data_context).unwrap();
             self.context.data_context.clear();
         }
     }
@@ -292,9 +374,9 @@ impl<'a> Generator<'a> {
             self.context.imported_globals.clear();
             self.context.imported_signatures.clear();
 
-            let FunEnt { sig, module, linkage, body, .. } = self.state.funs[fun_id];
+            let FunEnt { sig, module, linkage, body, kind, .. } = self.state.funs[fun_id];
 
-            if linkage == Linkage::Import || body.entry_block.is_none() {
+            if linkage == Linkage::Import || kind != FKind::Represented || body.entry_block.is_none() {
                 continue;
             }
 
@@ -629,13 +711,16 @@ impl<'a> Generator<'a> {
                         }
                         LTKind::Bool(val) => builder.ins().bconst(B1, val),
                         LTKind::Char(val) => builder.ins().iconst(I32, val as i64),
-                        LTKind::String(data) => {
+                        LTKind::String(string) => {
                             let data = unsafe {
                                 std::mem::transmute::<&[u8], &[u8]>(
-                                    self.state.display(&data).as_bytes(),
+                                    self.state.display(&string).as_bytes(),
                                 )
                             };
-                            let data = self.make_static_data(data, false, false);
+                            let (data, new) = self.make_static_data(data, false, false);
+                            if new { // we don't want duplicates
+                                self.modules[module].strings.push((data, string));
+                            }
                             let map_id = ID(data.as_u32() as u64);
                             let value = if let Some(&value) =
                                 self.context.imported_globals.get(map_id)
@@ -1345,26 +1430,21 @@ impl<'a> Generator<'a> {
         self.types[ty].to_cr_type(self.module.isa())
     }
 
-    pub fn make_static_data(&mut self, data: &[u8], mutable: bool, tls: bool) -> DataId {
+    pub fn make_static_data(&mut self, data: &[u8], mutable: bool, tls: bool) -> (DataId, bool) {
         let id = data.sdbm_hash().wrapping_add(STRING_SALT);
         let mut name = String::new();
         write_radix(id, 36, &mut name);
         if let Some(FuncOrDataId::Data(data_id)) = self.module.get_name(&name) {
-            data_id
+            (data_id, false)
         } else {
             let data_id = self
                 .module
                 .declare_data(&name, Linkage::Export, mutable, tls)
                 .unwrap();
-            let context = unsafe {
-                std::mem::transmute::<&mut DataContext, &mut DataContext>(
-                    &mut self.context.data_context,
-                )
-            };
-            context.define(data.deref().to_owned().into_boxed_slice());
-            self.module.define_data(data_id, context).unwrap();
-            context.clear();
-            data_id
+            self.context.data_context.define(data.deref().to_owned().into_boxed_slice());
+            self.module.define_data(data_id, &self.context.data_context).unwrap();
+            self.context.data_context.clear();
+            (data_id, true)
         }
     }
 }
@@ -1375,15 +1455,14 @@ impl SdbmHash for &[u8] {
     }
 }
 
-#[derive(QuickDefault, QuickSer)]
+#[derive(Default, QuickSer)]
 pub struct GState {
     pub f_state: FState,
-    #[default(SecondaryMap::new())]
     pub compiled_funs: SecondaryMap<Fun, CFun>,
-    #[default(SecondaryMap::new())]
     pub compiled_globals: SecondaryMap<GlobalValue, CompiledGlobal>,
-    #[default(SparseMap::new())]
     pub jit_funs: SparseMap<Fun, JFun>,
+    pub bin_declarations: ModuleDeclarations,
+    pub jit_declarations: ModuleDeclarations,
 }
 
 crate::inherit!(GState, f_state, FState);

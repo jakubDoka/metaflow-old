@@ -891,7 +891,7 @@ impl<'a> AParser<'a> {
         let label = self.optional_label()?;
         self.push(&mut ast_ent.sons, label);
 
-        let ret = if let TKind::Indent(_) = self.token.kind {
+        let ret = if let TKind::Indent(_) | TKind::Eof = self.token.kind {
             Ast::reserved_value()
         } else {
             self.expr()?

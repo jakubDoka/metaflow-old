@@ -127,7 +127,7 @@ impl pub Seq[u8]:
   fun print_int(s: &Self, value: int):
     let 
       prev_len = s.len
-      width = log10(value.f64()).int() + 1
+      width = (if value != 0: log10(value.f64()).int() else: 0) + 1
 
     s.reserve(prev_len + width)
     s.len = prev_len + width

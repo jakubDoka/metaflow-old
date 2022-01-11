@@ -7,6 +7,7 @@ use cranelift::codegen::ir::{Block, GlobalValue, Inst, Value};
 use cranelift::codegen::packed_option::PackedOption;
 use cranelift::entity::{packed_option::ReservedValue, EntityList, EntityRef};
 use cranelift::entity::{ListPool, PrimaryMap};
+use cranelift::module::DataId;
 use quick_proc::{QuickDefault, QuickSer, RealQuickSer};
 
 use crate::ast::{AContext, AError, AErrorDisplay, AMainState, AParser, AState, Dep, Vis};
@@ -117,6 +118,7 @@ impl<'a> MTParser<'a> {
             let mut parser = AParser::new(self.state, &mut module.a_state, self.context);
             parser.take_imports(&mut imports).map_err(Into::into)?;
             parser.parse().map_err(Into::into)?;
+            self.context.lines_of_code += module.line; 
 
             for import in imports.drain(..) {
                 let path = self.display(&import.path);
@@ -669,6 +671,7 @@ impl MTState {
 pub struct MTContext {
     pub a_context: AContext,
     pub pool: Pool,
+    pub lines_of_code: usize,
 }
 
 crate::inherit!(MTContext, a_context, AContext);
@@ -688,18 +691,15 @@ pub struct ModEnt {
     pub functions: Vec<Fun>,
     pub types: Vec<Ty>,
     pub globals: Vec<GlobalValue>,
+    pub strings: Vec<(DataId, Span)>,
 
     pub entry_point: PackedOption<Fun>,
 
     // this way we can quickly discard all used used ir elements
     // when we recompile module
-    #[default(ListPool::new())]
     pub value_slices: ListPool<Value>,
-    #[default(ListPool::new())]
     pub block_slices: ListPool<Block>,
-    #[default(ListPool::new())]
     pub inst_slices: ListPool<Inst>,
-    #[default(ListPool::new())]
     pub type_slices: ListPool<Ty>,
 
     pub values: PrimaryMap<Value, ValueEnt>,

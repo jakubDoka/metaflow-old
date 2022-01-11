@@ -22,12 +22,12 @@ use super::*;
 
 type Result<T> = std::result::Result<T, (Option<GState>, GError)>;
 
-pub fn compile(args: Arguments) -> Result<()> {
+pub fn compile(args: Arguments) -> Result<usize> {
     if args.len() < 1 {
         return Err((None, GEKind::NoFiles.into()));
     }
 
-    let obj_file = generate_obj_file(&args)?;
+    let (obj_file, lines_of_code) = generate_obj_file(&args)?;
 
     let name = args[0]
         .split("/")
@@ -47,7 +47,7 @@ pub fn compile(args: Arguments) -> Result<()> {
     std::fs::write(&obj_name, obj_file).map_err(|e| (None, GEKind::IoError(e).into()))?;
 
     if args.enabled("obj") {
-        return Ok(());
+        return Ok(lines_of_code);
     }
 
     let link_with = args
@@ -74,10 +74,10 @@ pub fn compile(args: Arguments) -> Result<()> {
 
     std::fs::remove_file(&obj_name).map_err(|e| (None, GEKind::IoError(e).into()))?;
 
-    Ok(())
+    Ok(lines_of_code)
 }
 
-pub fn generate_obj_file(args: &Arguments) -> Result<Vec<u8>> {
+pub fn generate_obj_file(args: &Arguments) -> Result<(Vec<u8>, usize)> {
     let mut settings = settings::builder();
     if let Some(s) = args.get_flag("co").or(args.get_flag("compiler-options")) {
         for value in s.split(" ") {
@@ -117,6 +117,7 @@ pub fn generate_obj_file(args: &Arguments) -> Result<Vec<u8>> {
 
     let (mut state, size_hint) =
         incr::load_data::<GState>(&args[0], args.hash()).unwrap_or_default();
+
     state.do_stacktrace = stacktrace;
     let mut context = GContext::default();
 
@@ -127,14 +128,13 @@ pub fn generate_obj_file(args: &Arguments) -> Result<Vec<u8>> {
     let order = std::mem::take(&mut state.module_order);
 
     if let Err(e) = Generator::new(&mut module, &mut state, &mut context, false)
-        .generate(&order) 
-    {
+        .generate(&order) {
         return Err((Some(state), e));
     }
 
     incr::save_data(&args[0], &state, args.hash(), Some(size_hint)).unwrap();
-
-    Ok(module.finish().emit().unwrap())
+    
+    Ok((module.finish().emit().unwrap(), context.lines_of_code))
 }
 
 pub struct GErrorDisplay<'a> {
