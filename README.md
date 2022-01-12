@@ -159,20 +159,20 @@ travel = { annoying_child swearing }
 Now the real syntax:
 
 ```py
-file = [ use '\n' ] { item '\n' }
+module = [ use '\n' ] { item '\n' }
 use = 'use' :( [ ident ] string )
 item = 
   impl |
   attr |
   doc_comment |
   function |
-  global |
+  global_var |
   struct
 
 impl =
   'impl'
-  [ vis ] [ generics ] type
-  ':' :( function | operator_override | global )
+  [ vis ] [ generics ] datatype
+  ':' :( function | operator_override | global_var )
 attr = 
   'attr' attr_element { ',' attr_element }
 attr_element = 
@@ -182,16 +182,16 @@ function =
   'fun' 
   [ vis ] ident [ generics ] 
   [ '(' [ fun_arg { ',' fun_arg } ] ')' ]
-  [ '->' type ] 
+  [ '->' datatype ] 
   call_convention
   [ ':' : statement ]
 operator_override = 
   'fun' 
   [ vis ] op [ generics ] 
   '(' fun_arg [ ',' fun_arg ] ')'
-  '->' type 
+  '->' datatype 
   ':' : statement
-global =
+global_var =
   ( 'var' | 'let' ) 
   [ vis ]
   :( 
@@ -212,21 +212,15 @@ field =
   ':' type
 
 statement =
-  if | 
-  for | 
-  break | 
-  continue | 
+  break_stmt | 
+  continue_stmt | 
   return_stmt | 
-  variable | 
+  variable |
   expr
-if = 
-  'if' expr ':' : statement 
-  { elif ':' : statement } 
-  [ 'else' ':' : statement ]
-for = 'for' [ label ] ':' : statement
-break = 'break' [ label ] [ expr ]
-continue = 'continue' [ label ]
-return = 'return' [ expr ]
+
+break_stmt = 'break' [ label ] [ expr ]
+continue_stmt = 'continue' [ label ]
+return_stmt = 'return' [ expr ]
 variable = 
   ( 'var' | 'let' ) 
   :( 
@@ -238,6 +232,8 @@ variable =
   )
 
 expr = 
+  if_expr | 
+  for_expr |
   literal | 
   call | 
   access | 
@@ -248,32 +244,37 @@ expr =
   reference | 
   dereference
 
+if_expr = 
+  'if' expr ':' : statement 
+  { 'elif' expr ':' : statement } 
+  [ 'else' ':' : statement ]
+for_expr = 'for' [ label ] [ expr [ 'in' expr ] ] ':' : statement
 literal =
   number |
   string |
-  bool |
+  boolean |
   '\'' char '\''
 
 # underscores in numbers are allowed
 number = "[\d_]+\.?[\d_]*([iuf]\d{0, 2})?"
 string = '"' { char } '"'
-bool = 'true' | 'false'
+boolean = 'true' | 'false'
 
 call = [expr '.'] ident '(' [ expr { ',' expr } ] ')'
 access = [expr '.'] ident
 assign = expr '=' expr
 binary = expr op expr
 unary = op expr
-cast = expr 'as' type
+cast = expr 'as' datatype
 ref = '&' expr
 deref = '*' expr
 
-type = 
-  ident [ '[' type { ',' type } ']' ] |
-  'fun' [ '(' type { ',' type } ')' ] [ '->' type ] call_convention |
-  '&' type
+datatype = 
+  ident [ '[' datatype { ',' datatype } ']' ] |
+  'fun' [ '(' datatype { ',' datatype } ')' ] [ '->' datatype ] call_convention |
+  '&' datatype
 generics = '[' ident { ',' ident } ']'
-args = '(' { [ 'var' ] ident { ',' ident } ':' type } ')'
+args = '(' { [ 'var' ] ident { ',' ident } ':' datatype } ')'
 vis = 'pub' | 'priv'
 char = '([^\\\']|\\(\\|\'|a|b|e|f|v|n|r|t|0|[0-7]{3}|x[0-9a-fA-F]{2}|u[0-9a-fA-F]{4}|U[0-9a-fA-F]{8}))'
 label = '\'[a-zA-Z0-9_]+\b'
@@ -325,7 +326,30 @@ else:
   assert(other_condition == false)
 ```
 
-- `for` - Allows repeating instructions variable amount of times. Keyword is related with `break`, which terminates the loop, and `continue`, which jumps back to first instruction of the loop.
+- `for` - Allows repeating instructions variable amount of times. Keyword is related with `break`, which terminates the loop, and `continue`, which jumps back to first instruction of the loop. loop can be used in three ways:
+```py
+# infinite
+for: pass
+
+# TODO
+# while condition holds
+for condition: pass
+# can be written as
+for: if condition:
+  pass
+else: break
+
+# TODO
+# until iterator yields None
+for item in iterator: pass
+# can be written as
+for:
+  let item = iterator.next()
+  if item.is_none(): break
+  else:
+    let item = item.unwrap()
+    pass
+```
 
 
 ### To be continued

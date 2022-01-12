@@ -2859,7 +2859,7 @@ impl Default for FState {
             index_span: Span::default(),
             globals: Table::new(),
             do_stacktrace: false,
-
+            
             pop_fun_hahs: ID(0),
             push_fun_hash: ID(0),
         };

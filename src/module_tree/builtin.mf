@@ -1,93 +1,7 @@
 
-attr push(untraced)
-
-attr push(linkage(import), call_conv(platform))
-
-attr linkage(import, malloc)
-fun pub alloc(size: int) -> &u8
-
-fun pub realloc(ptr: &u8, size: int) -> &u8
-
-fun pub free(ptr: &u8)
-
-fun pub putchar(c: u32)
-
-fun pub memset(ptr: &u8, value: u8, size: int)
-
-fun pub memmove(dest: &u8, src: &u8, size: int)
-
-fun pub memcpy(dest: &u8, src: &u8, size: int)
-
-fun pub log10(x: f64) -> f64
-
-fun pub ceil(x: f64) -> f64
-
-attr linkage(import, printf)
-fun pub print(str: &u8)
-
-fun pub exit(code: int)
-
-attr pop()
-
 var pub stacktrace: Seq[StackFrame]
 
-struct pub StackFrame:
-  pub line, column: int
-  pub file: &u8
-
-attr inline
-fun pub assert(cond: bool):
-  if !cond: panic("assertion failed")
-
-##[
-  interrupts the program with 1 exit code and prints 
-  collected stacktrace if any, along with the message 
-]#
-attr terminating
-fun pub panic(msg: &u8):
-  print("panic: ")
-  print(msg)
-  print("\n")
-
-  if stacktrace.len == 0:
-    print("no stacktrace available, use '-trace' when building to generate stacktrace\n")
-    exit(1)
-    return
-
-  var 
-    buffer: Seq[u8]
-    i: int
-  
-  for:
-    if i >= stacktrace.len:
-      break
-    
-    var frame = stacktrace[i]
-    
-    buffer.print_int(frame.line)
-    buffer.push(':'.u8())
-    buffer.print_int(frame.column)
-    buffer.push(' '.u8())
-    buffer.print(frame.file)
-    buffer.push('\n'.u8())
-
-    i += 1
-
-  buffer.push('\0'.u8())
-
-  print(buffer.data)
-
-  exit(1)
-
-fun pub push_frame(line, column: int, file: &u8):
-  var frame: StackFrame
-  frame.line = line
-  frame.column = column
-  frame.file = file
-  stacktrace.push(frame)
-
-fun pub pop_frame:
-  stacktrace.pop()
+attr push(untraced)
 
 ## allocates the given type on heap and returns a pointer
 ## to the allocated memory, memory is zero initialized
@@ -237,12 +151,18 @@ impl pub [T] Seq[T]:
   fun get_unchecked(s: &Self, index: int) -> &T:
     (s.data as int + index * sizeof::[T]()) as &T
   
-   fun assert_in_bounds(s: &Self, index: int):
+  fun assert_in_bounds(s: &Self, index: int):
     if !s.in_bounds(index):
       panic("index out of bounds")
   
   fun in_bounds(s: &Self, index: int) -> bool:
     index >= 0 & index < s.len
+  
+  fun drop(s: &Self):
+    s.len = 0
+    s.cap = 0
+    free(s.data)
+    s.data = 0 as &T
 
 struct pub Option[T]:
   priv value: T
@@ -279,3 +199,89 @@ impl pub [T] Option[T]:
   
   fun unwrap_unchecked(option: Self) -> T:
     option.value
+  
+struct pub StackFrame:
+  pub line, column: int
+  pub file: &u8
+
+attr inline
+fun pub assert(cond: bool):
+  if !cond: panic("assertion failed")
+
+##[
+  interrupts the program with 1 exit code and prints 
+  collected stacktrace if any, along with the message 
+]#
+attr terminating
+fun pub panic(msg: &u8):
+  print("panic: ")
+  print(msg)
+  print("\n")
+
+  if stacktrace.len == 0:
+    print("no stacktrace available, use '-trace' when building to generate stacktrace\n")
+    exit(1)
+    return
+
+  var 
+    buffer: Seq[u8]
+    i: int
+  
+  for:
+    if i >= stacktrace.len:
+      break
+    
+    var frame = stacktrace[i]
+    
+    buffer.print_int(frame.line)
+    buffer.push(':'.u8())
+    buffer.print_int(frame.column)
+    buffer.push(' '.u8())
+    buffer.print(frame.file)
+    buffer.push('\n'.u8())
+
+    i += 1
+
+  buffer.push('\0'.u8())
+
+  print(buffer.data)
+
+  exit(1)
+
+fun pub push_frame(line, column: int, file: &u8):
+  var frame: StackFrame
+  frame.line = line
+  frame.column = column
+  frame.file = file
+  stacktrace.push(frame)
+
+fun pub pop_frame:
+  stacktrace.pop()
+
+attr push(linkage(import), call_conv(platform))
+
+attr linkage(import, malloc)
+fun pub alloc(size: int) -> &u8
+
+fun pub realloc(ptr: &u8, size: int) -> &u8
+
+fun pub free(ptr: &u8)
+
+fun pub putchar(c: u32)
+
+fun pub memset(ptr: &u8, value: u8, size: int)
+
+fun pub memmove(dest: &u8, src: &u8, size: int)
+
+fun pub memcpy(dest: &u8, src: &u8, size: int)
+
+fun pub log10(x: f64) -> f64
+
+fun pub ceil(x: f64) -> f64
+
+attr linkage(import, printf)
+fun pub print(str: &u8)
+
+fun pub exit(code: int)
+
+attr pop()
