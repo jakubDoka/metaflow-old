@@ -33,7 +33,7 @@ fun fib_loop(v: int) -> int:
   var
     a, b, c = 1
     v = v
-  loop'a:
+  for'a:
     c = a + b
     a = b
     b = c
@@ -90,7 +90,7 @@ fun test_case_3:
 
 fun test_case_4:
   var a = 1.0
-  loop:
+  for:
     a = a + 1.0
     if a > 100.0:
       break
@@ -104,7 +104,7 @@ fun test_case_5:
   var
     a = "Hello, World!"
     b = a as uint
-  loop:
+  for:
     let char = *(b as &u8)
     if char == 0u8:
       break
@@ -160,7 +160,7 @@ fun test_case_9:
     i = 0
     sum = 0
   
-  loop:
+  for:
     if i >= array.len():
       break
     sum += array[i]
@@ -178,7 +178,7 @@ fun test_case_10:
     i = 0
     sum = 0
   
-  loop:
+  for:
     if i >= array.len():
       break
     sum += array[i]

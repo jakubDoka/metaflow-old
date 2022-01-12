@@ -17,7 +17,7 @@ pub fn load_data<T: QuickSer>(root_path: &str, arg_hash: ID) -> Option<(T, usize
 
     let mut progress = 0;
     let version = String::de_ser(&mut progress, &mut file);
-    if version != crate::VERSION {
+    if version != crate::COMMIT_HASH {
         return None;
     }
 
@@ -34,7 +34,7 @@ pub fn save_data<T: QuickSer>(
 ) -> std::io::Result<()> {
     let mut buffer = Vec::with_capacity(size_hint.unwrap_or(1024 * 1024));
 
-    crate::VERSION.to_string().ser(&mut buffer);
+    crate::COMMIT_HASH.to_string().ser(&mut buffer);
 
     data.ser(&mut buffer);
 

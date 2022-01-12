@@ -92,6 +92,7 @@
         "urem",
         "ushr",
         "vals",
+        "Vecs",
         "wasmtime",
         "xffff",
         "zeroinit"

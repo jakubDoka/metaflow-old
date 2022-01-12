@@ -733,7 +733,7 @@ impl<'a> Generator<'a> {
                             };
                             builder.ins().global_value(repr, value)
                         }
-                        lit => todo!("{}", lit),
+                        lit => todo!("{:?}", lit),
                     };
                     self.context.set_value(value, FinalValue::Value(lit));
                 }

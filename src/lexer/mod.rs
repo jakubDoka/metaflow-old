@@ -52,7 +52,7 @@ impl<'a> Lexer<'a> {
             "else" => TKind::Else,
             "let" => TKind::Let,
             "var" => TKind::Var,
-            "loop" => TKind::Loop,
+            "for" => TKind::For,
             "break" => TKind::Break,
             "continue" => TKind::Continue,
             "struct" => TKind::Struct,
@@ -211,7 +211,7 @@ impl<'a> Lexer<'a> {
             }
             let end = self.state.progress;
             let value = self.span(start, end);
-            Ok(Token::new(TKind::Label, value))
+            Ok(Token::new(TKind::Tag, value))
         }
     }
 
@@ -639,7 +639,7 @@ pub enum TKind {
     Else,
     Var,
     Let,
-    Loop,
+    For,
     Break,
     Continue,
     Struct,
@@ -647,7 +647,7 @@ pub enum TKind {
     Impl,
 
     //identifiers
-    Label,
+    Tag,
     Ident,
     Op,
 
@@ -698,12 +698,12 @@ impl std::fmt::Display for TKind {
             TKind::Else => "'else'",
             TKind::Var => "'var'",
             TKind::Let => "'let'",
-            TKind::Loop => "'loop'",
+            TKind::For => "'for'",
             TKind::Break => "'break'",
             TKind::Continue => "'continue'",
             TKind::Struct => "'struct'",
             TKind::Embed => "'embed'",
-            TKind::Label => "'label'",
+            TKind::Tag => "'label'",
             TKind::Impl => "'impl'",
             TKind::Ident => "ident",
             TKind::Op => "operator",

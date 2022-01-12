@@ -58,7 +58,7 @@ fun pub panic(msg: &u8):
     buffer: Seq[u8]
     i: int
   
-  loop:
+  for:
     if i >= stacktrace.len:
       break
     
@@ -134,7 +134,7 @@ impl pub Seq[u8]:
     var 
       i = width
       value = value
-    loop:
+    for:
       if i == 0:
         break
       var digit = value % 10
@@ -144,7 +144,7 @@ impl pub Seq[u8]:
   
   fun print(s: &Self, value: &u8):
     var i = 0
-    loop:
+    for:
       let value = *((value as int + i) as &u8)
       if value == 0u8:
         break

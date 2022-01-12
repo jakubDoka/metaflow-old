@@ -1288,11 +1288,6 @@ pub fn test() {
             continue;
         }
 
-        crate::test_println!(
-            "re-parsing types in {}",
-            state.display(&state.modules[module].name)
-        );
-
         TParser::new(&mut state, &mut context)
             .parse(module)
             .map_err(|e| panic!("\n{}", TErrorDisplay::new(&mut state, &e)))

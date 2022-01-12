@@ -76,7 +76,7 @@ fun fib(v: i64) -> i64:
 
 fun fib_loop(v: i64) -> i64:
   var a, b, c = 1
-  loop'a:
+  for'a:
     c = a + b
     a = b
     b = c

@@ -141,8 +141,8 @@ Now the explained example:
 opinion = 'this is ' [ 'not ' ] 'good'
 # matches 'this is good' and 'this is not good'
 annoying_child = 'Dad! ' :( 'When will we arrive?' )
-# matches 'Dad! When will we arrive?' but also
-# 'Dad! 
+# matches 'Dad! When will we arrive?' but also '
+#Dad!
 #  When will we arrive?
 #  When will we arrive?
 #  When will we arrive?
@@ -158,19 +158,26 @@ travel = { annoying_child swearing }
 
 Now the real syntax:
 
-```txt
+```py
 file = [ use '\n' ] { item '\n' }
 use = 'use' :( [ ident ] string )
 item = 
   impl |
+  attr |
+  doc_comment |
   function |
-  global | 
+  global |
   struct
 
 impl =
   'impl'
   [ vis ] [ generics ] type
   ':' :( function | operator_override | global )
+attr = 
+  'attr' attr_element { ',' attr_element }
+attr_element = 
+  ident '=' expr | 
+  ident [ '(' attr_element { ',' attr_element } ')' ] )
 function = 
   'fun' 
   [ vis ] ident [ generics ] 
@@ -206,7 +213,7 @@ field =
 
 statement =
   if | 
-  loop | 
+  for | 
   break | 
   continue | 
   return_stmt | 
@@ -216,7 +223,7 @@ if =
   'if' expr ':' : statement 
   { elif ':' : statement } 
   [ 'else' ':' : statement ]
-loop = 'loop' [ label ] ':' : statement
+for = 'for' [ label ] ':' : statement
 break = 'break' [ label ] [ expr ]
 continue = 'continue' [ label ]
 return = 'return' [ expr ]
@@ -247,7 +254,8 @@ literal =
   bool |
   '\'' char '\''
 
-number = "\d+\.?\d*([iuf]\d{0, 2})?"
+# underscores in numbers are allowed
+number = "[\d_]+\.?[\d_]*([iuf]\d{0, 2})?"
 string = '"' { char } '"'
 bool = 'true' | 'false'
 
@@ -262,18 +270,63 @@ deref = '*' expr
 
 type = 
   ident [ '[' type { ',' type } ']' ] |
-  'fun' [ '(' type { ',' type} ')' ] [ '->' type ] call_convention |
+  'fun' [ '(' type { ',' type } ')' ] [ '->' type ] call_convention |
   '&' type
 generics = '[' ident { ',' ident } ']'
 args = '(' { [ 'var' ] ident { ',' ident } ':' type } ')'
 vis = 'pub' | 'priv'
-char = '([^\\']|\\(\\|\'|a|b|e|f|v|n|r|t|0|[0-7]{3}|x[0-9a-fA-F]{2}|u[0-9a-fA-F]{4}|U[0-9a-fA-F]{8}))'
+char = '([^\\\']|\\(\\|\'|a|b|e|f|v|n|r|t|0|[0-7]{3}|x[0-9a-fA-F]{2}|u[0-9a-fA-F]{4}|U[0-9a-fA-F]{8}))'
 label = '\'[a-zA-Z0-9_]+\b'
 op = '([\+\-\*/%\^=<>!&\|\?:~]+|\b(min|max|abs)\b)'
 call_convention = ident
 ident = '\b[a-zA-Z_][a-zA-Z0-9_]*\b'
-
+# skipped when lexing
+comment = '#.*' | '#\[[\s\S\]*]#'
+# not skipped
+doc_comment = '##.*' | '##\[[\s\S\]*]#'
 ```
+
+### File items
+
+File can contain several items:
+- `use` - Only one per file and it is always the first item. It is used for importing other modules. Reason why you are limited when declaring dependencies is a fact that compiler can build the module tree without parsing and analyzing the ast.
+- `function` - Function is where you place your logic. Example:
+
+```nim
+## calculates n-th element of fibonacci sequence
+fun fib(n: int) -> int:
+  if n < 2:
+    1
+  else:
+    fib(n - 1) + fin(n - 2)
+```
+- `attr` - Attributes are here to reduce amount of keywords and boilerplate in code. For example if you want to make function inline you write `attr inline` above the function. If you want to make all functions in the file inline you can place `attr push(inline)` on the top of the file. When you add `attr pop`, last pushed attribute will no longer be applied.
+- `doc_comment` - Preserved in ast for documentation generation. (TODO)
+- `global` - Global variables can contain expression that will be evaluated at the beginning of program.
+- `struct` - Struct defines relation of data with finite size.
+- `impl` - Impl block defines relation between data and logic. Functions and globals defined inside a block, will be related with for example `struct` which allows dot notation when calling the function but you can still refer to items in block by prefixing them with the name of `struct` (`Datatype::item`). Operator functions can only be defined in impl block.
+
+All file items also have its visibility. By default, items are visible to modules from the same package. If you want to make items private the file you can use `priv`, if you want to make items visible to potential users of the package, you use `pub`. Tree levels of privacy are inspired by usual complaints of programmers regarding other programming languages. Option to make things public across project is very common task so Metaflow chooses this as its default option.
+
+### Control flow
+
+- `if` - Essential conditional that decides what to execute base of boolean condition. It also acts as expression and can evaluate into a value. Example:
+
+```nim
+let number = if condition: 1 else: 2
+
+if condition:
+  assert(condition == true)
+elif other_condition: 
+  assert(condition == false)
+  assert(other_condition == true)
+else:
+  assert(condition == false)
+  assert(other_condition == false)
+```
+
+- `for` - Allows repeating instructions variable amount of times. Keyword is related with `break`, which terminates the loop, and `continue`, which jumps back to first instruction of the loop.
+
 
 ### To be continued
 
@@ -283,13 +336,11 @@ This section merely describes how compiler works as a reference. Things you see 
 
 ### Memory management and access
 
-Almost all the data compiler uses during compilation is stored in constructs contained in `crate::util::storage`. Each ordered container has an accessor type that implements `crate::util::storage::EntityRef`. Every entity has its Index type that has a descriptive name and data itself is in `<name>Ent` struct. This is safe and convenient way of creating complex structures like graphs without ref count and over all makes borrow checker happy.
+Design of the compiler is inspired by cranelift and it uses `cranelift_entity` almost everywhere. Good example is the Ast that uses the `ListPool` to build the tree and then quickly clear it later on. Serializing this kind of structure is also easy.
 
-Exception to this rule is `crate::ast::Ast` which does not use this kind of storage for sanity reasons, it also does not need to as its only used as immutable structure.
+What you will see a lot is `self.context.pool.get()` whenever temporary Vec is needed. Pool saves used Vec-s and only allocate if there is not vec to reuse. What pool returns is PoolRef that will send it self to pool upon drop. The lifetime of the pool is ont related to Vecs when they are borrowed, instead pool panics if it is dropped before all Vecs are returned to it. This ensures we don't have to deal with lifetimes but also assert some safety on debug builds.
 
-What you will see a lot is `self.context.pool.get()` whenever temporary Vec is needed. Pool saves used Vec-s and only allocate if there is not vec to reuse. What pool returns is PoolRef that will send it self to pool upon drop. The lifetime of the pool is ont related to Vecs when they are borrowed, instead pool panics if it is dropped before all Vecs are returned to it. This ensures we dont have to deal with livetimes but also assert some safety on debug builds.
-
-All items that has particular name from source code are hashed with sdbm hash and combined with custom hashing mentod. Related to this, custom hashmap is used that focuses on integer ids. Idea is to improve performance as we do not need default safe hashes. Other reason for using custom hashes is speed up of static dispatch of nongeneric functions.
+All items that has particular name from source code are hashed with sdbm hash and combined with custom hashing method. Related to this, custom hashmap is used that focuses on integer ids. Idea is to improve performance as we do not need default safe hashes.
 
 ### Compilation steps
 
@@ -299,5 +350,7 @@ Compiler divides compilation into several steps to make code more organized and 
 - ast building
 - ast sorting
 - type parsing
-- function parsing
+- function parsing / building ir
 - generating cranelift ir
+
+Reason to have two levels of ir is that compiler needs to analyze the source code and ast is not enough, in contrary, cranelift ir does not allow for storing some data and mutating the structures. Metaflow ir is similar to cranelift ir but lot higher level. This also takes some load from function parsing, which is already most complex stage.

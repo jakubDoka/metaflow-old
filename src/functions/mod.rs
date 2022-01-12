@@ -1,5 +1,4 @@
 use std::ops::{Deref, DerefMut};
-use std::time::Instant;
 
 use crate::ast::{AKind, AstDisplay, AstEnt, OpKind, Vis};
 use crate::entities::{Ast, Fun, FunBody, IKind, Mod, Ty, ValueEnt, BUILTIN_MODULE};
@@ -9,12 +8,12 @@ use crate::module_tree::{MTErrorDisplay, MTParser};
 use crate::util::sdbm::ID;
 use crate::util::storage::Table;
 use crate::util::Size;
-use crate::{incr, types::*};
+use crate::types::*;
 
 use cranelift::codegen::ir::types::I64;
-use cranelift::codegen::ir::{Block, GlobalValue, Type, Value};
+use cranelift::codegen::ir::{Block, GlobalValue, Type, Value, Inst};
 use cranelift::codegen::packed_option::{PackedOption, ReservedValue};
-use cranelift::entity::{EntityList, SparseMap, SparseMapValue};
+use cranelift::entity::{EntityList, SparseMap, SparseMapValue, ListPool};
 use cranelift::module::Linkage;
 use quick_proc::{QuickDefault, QuickSer, RealQuickSer};
 
@@ -3015,6 +3014,8 @@ pub struct FContext {
     pub vars: Vec<(ID, Value)>,
     pub loops: Vec<Loop>,
     pub frames: Vec<usize>,
+    pub labels: Vec<(ID, EntityList<Inst>, Option<Block>)>,
+    pub label_insts: ListPool<Inst>,
 
     pub in_assign: bool,
 
@@ -3107,9 +3108,7 @@ impl std::fmt::Display for FunDisplay<'_> {
 pub fn test() {
     const PATH: &str = "src/functions/test_project";
 
-    let now = Instant::now();
-
-    let (mut state, hint) = incr::load_data::<FState>(PATH, ID(0)).unwrap_or_default();
+    let mut state = FState::default();
     let mut context = FContext::default();
 
     MTParser::new(&mut state, &mut context)
@@ -3122,8 +3121,6 @@ pub fn test() {
             continue;
         }
 
-        crate::test_println!("re-parsing {}", state.display(&state.modules[module].name));
-
         FParser::new(&mut state, &mut context, I64)
             .parse(module)
             .map_err(|e| panic!("\n{}", FErrorDisplay::new(&mut state, &e)))
@@ -3133,8 +3130,4 @@ pub fn test() {
     for module in state.modules.iter_mut() {
         module.clean = true;
     }
-
-    incr::save_data(PATH, &state, ID(0), Some(hint)).unwrap();
-
-    println!("compiled code in {}s", now.elapsed().as_secs_f64());
 }

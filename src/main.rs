@@ -18,7 +18,7 @@ pub mod types;
 pub mod util;
 
 pub const FILE_EXTENSION: &str = ".pmt";
-pub const VERSION: &str = env!("CARGO_PKG_VERSION");
+pub const COMMIT_HASH: &str = env!("GIT_HASH");
 
 fn main() {
     #[cfg(feature = "testing")]
@@ -27,6 +27,7 @@ fn main() {
     run();
 }
 
+#[cfg(not(feature = "testing"))]
 fn run() {
     let args = match util::cli::Arguments::new(std::env::args()) {
         Ok(args) => args,

@@ -94,20 +94,20 @@ fun main -> int:
     foo = 30 | 6
   
   var i = 0
-  loop:
+  for:
     if i >= 10:
       break
     i += 1
   
   var i = 0
-  loop:
+  for:
     i += 1
     if i < 10:
       continue
     break
 
-  loop: 
-    loop: 
+  for: 
+    for: 
       break
     break
 
@@ -161,7 +161,7 @@ fun arrays -> int:
     b = [1, 2, 3]
   
   var i = 0
-  loop:
+  for:
     if i >= a.len():
       break
     (&a)[i] = b[i]

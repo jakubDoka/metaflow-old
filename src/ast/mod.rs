@@ -753,7 +753,7 @@ impl<'a> AParser<'a> {
                 expr
             }
             TKind::If => return self.if_expr(),
-            TKind::Loop => return self.loop_expr(),
+            TKind::For => return self.loop_expr(),
             TKind::Op => {
                 let mut ast_ent = self.ast_ent(AKind::UnaryOp);
                 match self.main_state.display(&self.token.span) {
@@ -876,7 +876,7 @@ impl<'a> AParser<'a> {
         let mut ast_ent = self.ast_ent(AKind::Continue);
         self.next()?;
 
-        let label = self.optional_label()?;
+        let label = self.optional_tag()?;
         self.push(&mut ast_ent.sons, label);
 
         self.join_token(&mut ast_ent.token);
@@ -888,7 +888,7 @@ impl<'a> AParser<'a> {
         let mut ast_ent = self.ast_ent(AKind::Break);
         self.next()?;
 
-        let label = self.optional_label()?;
+        let label = self.optional_tag()?;
         self.push(&mut ast_ent.sons, label);
 
         let ret = if let TKind::Indent(_) | TKind::Eof = self.token.kind {
@@ -907,7 +907,7 @@ impl<'a> AParser<'a> {
         let mut ast_ent = self.ast_ent(AKind::Loop);
         self.next()?;
 
-        let label = self.optional_label()?;
+        let label = self.optional_tag()?;
         self.push(&mut ast_ent.sons, label);
 
         let body = self.stmt_block()?;
@@ -918,8 +918,8 @@ impl<'a> AParser<'a> {
         Ok(self.add(ast_ent))
     }
 
-    fn optional_label(&mut self) -> Result<Ast> {
-        Ok(if self.token == TKind::Label {
+    fn optional_tag(&mut self) -> Result<Ast> {
+        Ok(if self.token == TKind::Tag {
             let ast = self.ast(AKind::Ident);
             self.next()?;
             ast
