@@ -50,7 +50,7 @@
 			"patterns": [
 				{
 					"name": "keyword.control.metaflow",
-					"match": "\\b(return|if|elif|else|loop|break|continue)\\b"
+					"match": "\\b(return|if|elif|else|for|break|continue)\\b"
 				},
 				{
 					"name": "keyword.other",
