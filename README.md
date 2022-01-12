@@ -351,7 +351,6 @@ for:
     pass
 ```
 
-
 ### To be continued
 
 ## Compiler design
@@ -360,7 +359,7 @@ This section merely describes how compiler works as a reference. Things you see 
 
 ### Memory management and access
 
-Design of the compiler is inspired by cranelift and it uses `cranelift_entity` almost everywhere. Good example is the Ast that uses the `ListPool` to build the tree and then quickly clear it later on. Serializing this kind of structure is also easy.
+Design of the compiler is inspired by cranelift and it uses `cranelift_entity` almost everywhere. Good example is the Ast that uses the `ListPool` to build the tree and then quickly clear it later on. Serializing this kind of structure is also easier for processor.
 
 What you will see a lot is `self.context.pool.get()` whenever temporary Vec is needed. Pool saves used Vec-s and only allocate if there is not vec to reuse. What pool returns is PoolRef that will send it self to pool upon drop. The lifetime of the pool is ont related to Vecs when they are borrowed, instead pool panics if it is dropped before all Vecs are returned to it. This ensures we don't have to deal with lifetimes but also assert some safety on debug builds.
 
