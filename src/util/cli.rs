@@ -24,7 +24,6 @@ impl Arguments {
             args: vec![],
             hash: args
                 .iter()
-                .skip(1)
                 .fold(ID(0), |acc, i| acc.add(ID::new(i.as_str()))),
         };
 

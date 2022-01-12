@@ -293,9 +293,7 @@ impl<'a> MTParser<'a> {
             debug_assert!(shadowed.is_none());
             m
         };
-
-        crate::test_println!("reloaded: {}", path_buffer.display());
-
+        
         path_buffer.clear();
 
         Ok(module_id)
