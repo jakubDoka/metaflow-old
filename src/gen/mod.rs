@@ -44,7 +44,9 @@ pub fn compile(args: Arguments) -> Result<usize> {
 
     let obj_name = format!("{}.o", output_name);
 
-    std::fs::write(&obj_name, obj_file).map_err(|e| (None, GEKind::IoError(e).into()))?;
+    std::fs::write(&obj_name, obj_file).map_err(|e| (None, GEKind::IoError(
+        "failed to write temporary object file", e
+    ).into()))?;
 
     if args.enabled("obj") {
         return Ok(lines_of_code);
@@ -57,8 +59,12 @@ pub fn compile(args: Arguments) -> Result<usize> {
         .split(";")
         .filter(|s| !s.is_empty());
 
+    let linker = args
+        .get_flag("linker")
+        .unwrap_or("cc");
+
     assert_eq!(
-        Command::new("cc")
+        Command::new(linker)
             .args(
                 ["-o", &format!("{}.exe", output_name), &obj_name]
                     .iter()
@@ -66,13 +72,17 @@ pub fn compile(args: Arguments) -> Result<usize> {
                     .chain(link_with),
             )
             .status()
-            .map_err(|e| (None, GEKind::IoError(e).into()))?
+            .map_err(|e| (None, GEKind::IoError(
+                "problem with linker", e
+            ).into()))?
             .code()
             .unwrap(),
         0,
     );
 
-    std::fs::remove_file(&obj_name).map_err(|e| (None, GEKind::IoError(e).into()))?;
+    std::fs::remove_file(&obj_name).map_err(|e| (None, GEKind::IoError(
+       "failed to remove temporary object file", e
+    ).into()))?;
 
     Ok(lines_of_code)
 }
@@ -164,8 +174,8 @@ impl std::fmt::Display for GErrorDisplay<'_> {
             GEKind::AError(error) => {
                 write!(f, "{}", AErrorDisplay::new(&self.state.unwrap(), error))?;
             }
-            GEKind::IoError(err) => {
-                writeln!(f, "{}", err)?;
+            GEKind::IoError(message, err) => {
+                writeln!(f, "{}: {}", message, err)?;
             }
             GEKind::InvalidTriplet(error) => {
                 writeln!(f, "invalid triplet: {}", error)?;
@@ -199,7 +209,7 @@ pub enum GEKind {
     MTError(MTError),
     FError(FError),
     AError(AError),
-    IoError(std::io::Error),
+    IoError(&'static str, std::io::Error),
     InvalidTriplet(LookupError),
     CompilationFlagError(SetError),
     NoFiles,

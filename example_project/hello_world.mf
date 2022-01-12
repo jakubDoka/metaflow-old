@@ -3,7 +3,7 @@ fun hello_world_program:
   print("Hello, World!\n")
   var buffer: Seq[u8]
   var o = 0
-  loop:
+  for:
     if o == 10:
       buffer.push('\0'.u8())
       print(buffer.data)

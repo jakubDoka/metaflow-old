@@ -1,5 +1,9 @@
 # MetaFlow
 
+## Setting up
+
+To setup compiler you have to have Rust and cargo installed so you can compile the project. All you have to do is run `cargo build --release` from the root of the project. You will also need `cc` for linking the program. For me the path of `cc` is `C:\msys64\mingw64\bin\cc.exe` which beautifully shows what you have to install. Though you can link with any other linker by specifying `--linker <name>` flag `cc` is just default.
+
 ## Mindset
 
 (All you see is more planned then implemented and subject of change.)
