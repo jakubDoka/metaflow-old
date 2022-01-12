@@ -2,7 +2,7 @@
     "name": "metaflow",
     "displayName": "metaflow",
     "description": "syntax highlighting for metaflow",
-    "version": "0.0.4",
+    "version": "0.0.5",
     "publisher": "JakubDka",
     "repository": "github.com/jakubDoka/metaflow",
     "engines": {
