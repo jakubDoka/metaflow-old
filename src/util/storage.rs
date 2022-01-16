@@ -167,9 +167,11 @@ impl<V: Default> Map<V> {
 
     #[inline]
     fn hash_u64(seed: u64) -> u64 {
-        let a = 11400714819323198549u64;
-        let val = a.wrapping_mul(seed);
-        val
+        // don't need it here
+        //let a = 11400714819323198549u64;
+        //let val = a.wrapping_mul(seed);
+        //val
+        seed
     }
 
     #[inline]

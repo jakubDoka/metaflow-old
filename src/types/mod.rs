@@ -181,6 +181,9 @@ impl<'a> TParser<'a> {
             AKind::Struct(_) => {
                 self.connect_structure(module, id, ast, SKind::Struct, depth)?;
             }
+            AKind::Union(_) => {
+                self.connect_structure(module, id, ast, SKind::Union, depth)?;
+            }
             kind => unreachable!("{:?}", kind),
         }
 
@@ -524,14 +527,12 @@ impl<'a> TParser<'a> {
                         ..Default::default()
                     };
 
-                    let (replaced, id) = self.add_type_low(datatype, true);
+                    let (replaced, _) = self.add_type_low(datatype, true);
                     if let Some(other) = replaced {
                         return Err(TError::new(TEKind::Redefinition(other.hint), token));
                     }
-
-                    self.context.unresolved.push((id, 0));
                 }
-                AKind::Struct(vis) => {
+                AKind::Struct(vis) | AKind::Union(vis) => {
                     let ident = module_ent.get(sons, 0);
                     let ident_ent = module_ent.load(ident);
                     let (ident, kind) = if ident_ent.kind == AKind::Ident {
@@ -958,7 +959,9 @@ impl TState {
     }
 
     pub fn add_type(&mut self, ent: TypeEnt) -> Ty {
-        self.add_type_low(ent, false).1
+        let (shadow, id) = self.add_type_low(ent, false);
+        debug_assert!(shadow.is_none(), "{:?}", id);
+        id
     }
 
     pub fn add_type_low(&mut self, ent: TypeEnt, allow_shadow: bool) -> (Option<TypeEnt>, Ty) {

@@ -1186,6 +1186,7 @@ impl<'a> Generator<'a> {
                 let size = self.types[ty].size.pick(self.s32);
                 match final_source_value {
                     FinalValue::Zero => {
+                        println!("{}", size);
                         static_stack_memset(slot, target.offset.pick(self.s32), 0, size, builder)
                     }
                     FinalValue::Value(value) => {

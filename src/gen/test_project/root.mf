@@ -243,3 +243,8 @@ enum ResultEnum:
 union ResultUnion[V, E]:
   ok: V
   err: E
+
+struct Nothing
+
+struct InstantiationOfResult:
+  embed result: Result[Nothing, Nothing]
