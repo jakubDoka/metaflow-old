@@ -174,10 +174,14 @@ impl<'a> Lexer<'a> {
                 self.advance();
                 continue;
             }
-            if !ch.is_numeric() {
-                break Some((number, exponent));
+
+            let char = self.peek().map(|d| d.to_digit(base32)).flatten();
+            if char.is_none() {
+                return Some((number, exponent));
             }
-            number = number * base + self.advance().unwrap().to_digit(base32)? as u64;
+            self.advance();
+
+            number = number * base + char.unwrap() as u64;
             exponent *= base;
         }
     }

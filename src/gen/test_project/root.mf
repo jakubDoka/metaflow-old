@@ -225,9 +225,9 @@ fun test_case_14:
 fun test_case_15:
   var weird: Weird
   let array = [weird, weird]
-  array[1].a = 0xFF
+  array[1].a = 0xFFu8
   array[0] = weird
-  assert(array[1].a == 0xFF)
+  assert(array[1].a == 0xFFu8)
 
 struct Weird:
   a, b, c: u8

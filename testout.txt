@@ -2187,3 +2187,1678 @@ Fun(None) "fun some_string -> &u8:\r\n  \"\r\nhello there\r\n  \"":
   None
  Group ":":
   Lit "\"\r\nhello there\r\n  \""
+fun pub exit(code: int)
+
+
+fun pub print(str: &u8)
+
+
+fun pub ceil(x: f64) -> f64
+
+
+fun pub log10(x: f64) -> f64
+
+
+fun pub memcpy(dest: &u8, src: &u8, size: int)
+
+
+fun pub memmove(dest: &u8, src: &u8, size: int)
+
+
+fun pub memset(ptr: &u8, value: u8, size: int)
+
+
+fun pub putchar(c: u32)
+
+
+fun pub free(ptr: &u8)
+
+
+fun pub realloc(ptr: &u8, size: int) -> &u8
+
+
+fun pub alloc(size: int) -> &u8
+
+
+fun pub pop_frame
+
+  block1 []:
+    v4 = GlobalLoad(gv0)
+    v6 = Ref(v4)
+    v5 = Call(Fun(481), EntityList { index: 5, unused: PhantomData })
+    Return(None)
+
+32
+function u0:0() fast {
+    ss0 = explicit_slot 32
+    ss1 = explicit_slot 24
+    ss2 = explicit_slot 32
+    ss3 = explicit_slot 32
+    gv0 = symbol colocated u1:0
+
+block0:
+    v0 = global_value.i64 gv0
+    v1 = stack_addr.i64 ss0
+    jump block1(v0, v1)
+
+block1(v3: i64, v4: i64):
+    v5 = iconst.i64 0
+    v6 = load.i64 v3+8
+    v7 = icmp eq v6, v5
+    brnz v7, block3
+    jump block4
+
+block3:
+    v8 = iconst.i64 0
+    store v8, v4
+    store v8, v4+8
+    store v8, v4+16
+    store v8, v4+24
+    jump block2(v4)
+
+block4:
+    v9 = iconst.i64 1
+    v10 = load.i64 v3+8
+    v11 = isub v10, v9
+    jump block5(v3, v11)
+
+block5(v13: i64, v14: i64):
+    v15 = iconst.i64 24
+    v16 = imul v14, v15
+    v17 = load.i64 v13
+    v18 = iadd v17, v16
+    jump block6(v18)
+
+block6(v12: i64):
+    v19 = stack_addr.i64 ss1
+    v20 = load.i64 v12
+    store v20, v19
+    v21 = load.i64 v12+8
+    store v21, v19+8
+    v22 = load.i64 v12+16
+    store v22, v19+16
+    v23 = iconst.i64 1
+    v24 = load.i64 v3+8
+    v25 = isub v24, v23
+    store v25, v3+8
+    v26 = stack_addr.i64 ss1
+    v27 = stack_addr.i64 ss2
+    jump block7(v26, v27)
+
+block7(v29: i64, v30: i64):
+    v31 = iconst.i64 0
+    stack_store v31, ss3
+    stack_store v31, ss3+8
+    stack_store v31, ss3+16
+    stack_store v31, ss3+24
+    stack_store v29, ss3
+    v32 = bconst.b1 true
+    v33 = bint.i8 v32
+    stack_store v33, ss3+24
+    v34 = stack_addr.i64 ss3
+    v35 = load.i64 v34
+    store v35, v30
+    v36 = load.i64 v34+8
+    store v36, v30+8
+    v37 = load.i64 v34+16
+    store v37, v30+16
+    v38 = load.i64 v34+24
+    store v38, v30+24
+    jump block8(v30)
+
+block8(v28: i64):
+    v39 = load.i64 v28
+    store v39, v4
+    v40 = load.i64 v28+8
+    store v40, v4+8
+    v41 = load.i64 v28+16
+    store v41, v4+16
+    v42 = load.i64 v28+24
+    store v42, v4+24
+    jump block2(v4)
+
+block2(v2: i64):
+    return
+}
+
+fun pop(s: &Self) -> Option[T]
+
+  block2 [v7, v8]:
+    v9 = Offset(v7)
+    v10 = Deref(v9, false)
+    v11 = Offset(v10)
+    v12 = Lit(Int(0, 0))
+    v13 = Call(Fun(309), EntityList { index: 13, unused: PhantomData })
+    JumpIfTrue(v13, block3, EntityList { index: 0, unused: PhantomData })
+    Jump(block4, EntityList { index: 0, unused: PhantomData })
+  block3 []:
+    v14 = Zeroed
+    v15 = Deref(v8, false)
+    v14 = Assign(v15)
+    Return(Some(v8))
+  block4 []:
+    v16 = Offset(v7)
+    v17 = Deref(v16, false)
+    v18 = Offset(v17)
+    v19 = Lit(Int(1, 0))
+    v20 = Call(Fun(269), EntityList { index: 17, unused: PhantomData })
+    v21 = Call(Fun(482), EntityList { index: 21, unused: PhantomData })
+    v22 = Deref(v21, false)
+    v23 = VarDecl(v22)
+    v24 = Offset(v7)
+    v25 = Deref(v24, true)
+    v26 = Offset(v25)
+    v27 = Offset(v7)
+    v28 = Deref(v27, false)
+    v29 = Offset(v28)
+    v30 = Lit(Int(1, 0))
+    v31 = Call(Fun(269), EntityList { index: 25, unused: PhantomData })
+    v31 = Assign(v26)
+    v32 = Call(Fun(483), EntityList { index: 29, unused: PhantomData })
+    v33 = Deref(v8, false)
+    v32 = Assign(v33)
+    Return(Some(v8))
+
+32
+function u0:0(i64, i64 sret) -> i64 sret fast {
+    ss0 = explicit_slot 24
+    ss1 = explicit_slot 32
+    ss2 = explicit_slot 32
+
+block0(v0: i64, v1: i64):
+    v2 = iconst.i64 0
+    v3 = load.i64 v0+8
+    v4 = icmp eq v3, v2
+    brnz v4, block1
+    jump block2
+
+block1:
+    v5 = iconst.i64 0
+    store v5, v1
+    store v5, v1+8
+    store v5, v1+16
+    store v5, v1+24
+    return v1
+
+block2:
+    v6 = iconst.i64 1
+    v7 = load.i64 v0+8
+    v8 = isub v7, v6
+    jump block3(v0, v8)
+
+block3(v10: i64, v11: i64):
+    v12 = iconst.i64 24
+    v13 = imul v11, v12
+    v14 = load.i64 v10
+    v15 = iadd v14, v13
+    jump block4(v15)
+
+block4(v9: i64):
+    v16 = stack_addr.i64 ss0
+    v17 = load.i64 v9
+    store v17, v16
+    v18 = load.i64 v9+8
+    store v18, v16+8
+    v19 = load.i64 v9+16
+    store v19, v16+16
+    v20 = iconst.i64 1
+    v21 = load.i64 v0+8
+    v22 = isub v21, v20
+    store v22, v0+8
+    v23 = stack_addr.i64 ss0
+    v24 = stack_addr.i64 ss1
+    jump block5(v23, v24)
+
+block5(v26: i64, v27: i64):
+    v28 = iconst.i64 0
+    stack_store v28, ss2
+    stack_store v28, ss2+8
+    stack_store v28, ss2+16
+    stack_store v28, ss2+24
+    stack_store v26, ss2
+    v29 = bconst.b1 true
+    v30 = bint.i8 v29
+    stack_store v30, ss2+24
+    v31 = stack_addr.i64 ss2
+    v32 = load.i64 v31
+    store v32, v27
+    v33 = load.i64 v31+8
+    store v33, v27+8
+    v34 = load.i64 v31+16
+    store v34, v27+16
+    v35 = load.i64 v31+24
+    store v35, v27+24
+    jump block6(v27)
+
+block6(v25: i64):
+    v36 = load.i64 v25
+    store v36, v1
+    v37 = load.i64 v25+8
+    store v37, v1+8
+    v38 = load.i64 v25+16
+    store v38, v1+16
+    v39 = load.i64 v25+24
+    store v39, v1+24
+    return v1
+}
+
+fun some(value: T) -> Self
+
+  block5 [v34, v35]:
+    v36 = Zeroed
+    v37 = VarDecl(v36)
+    v38 = Offset(v37)
+    v34 = Assign(v38)
+    v39 = Offset(v37)
+    v40 = Lit(Bool(true))
+    v40 = Assign(v39)
+    v41 = Deref(v35, false)
+    v37 = Assign(v41)
+    Return(Some(v35))
+
+32
+function u0:0(i64, i64 sret) -> i64 sret fast {
+    ss0 = explicit_slot 32
+
+block0(v0: i64, v1: i64):
+    v2 = iconst.i64 0
+    stack_store v2, ss0
+    stack_store v2, ss0+8
+    stack_store v2, ss0+16
+    stack_store v2, ss0+24
+    stack_store v0, ss0
+    v3 = bconst.b1 true
+    v4 = bint.i8 v3
+    stack_store v4, ss0+24
+    v5 = stack_addr.i64 ss0
+    v6 = load.i64 v5
+    store v6, v1
+    v7 = load.i64 v5+8
+    store v7, v1+8
+    v8 = load.i64 v5+16
+    store v8, v1+16
+    v9 = load.i64 v5+24
+    store v9, v1+24
+    return v1
+}
+
+fun get_unchecked(s: &Self, index: int) -> &T
+
+  block6 [v42, v43]:
+    v44 = Offset(v42)
+    v45 = Deref(v44, false)
+    v46 = Offset(v45)
+    v47 = Cast(v46)
+    v48 = Call(Fun(484), EntityList { index: 0, unused: PhantomData })
+    v49 = Call(Fun(279), EntityList { index: 41, unused: PhantomData })
+    v50 = Call(Fun(259), EntityList { index: 45, unused: PhantomData })
+    v51 = Cast(v50)
+    Return(Some(v51))
+
+function u0:0(i64, i64) -> i64 fast {
+block0(v0: i64, v1: i64):
+    v2 = iconst.i64 24
+    v3 = imul v1, v2
+    v4 = load.i64 v0
+    v5 = iadd v4, v3
+    return v5
+}
+
+fun pub sizeof[T] -> int
+
+
+fun pub push_frame(line, column: int, file: &u8)
+
+  block7 [v52, v53, v54]:
+    v55 = Zeroed
+    v56 = VarDecl(v55)
+    v57 = Offset(v56)
+    v52 = Assign(v57)
+    v58 = Offset(v56)
+    v53 = Assign(v58)
+    v59 = Offset(v56)
+    v54 = Assign(v59)
+    v60 = GlobalLoad(gv0)
+    v61 = Ref(v60)
+    Call(Fun(485), EntityList { index: 53, unused: PhantomData })
+    Return(None)
+
+24
+function u0:0(i64, i64, i64) fast {
+    ss0 = explicit_slot 24
+    gv0 = symbol colocated u1:0
+    sig0 = (i64, i64) -> i64 windows_fastcall
+    fn0 = u0:9 sig0
+
+block0(v0: i64, v1: i64, v2: i64):
+    v3 = iconst.i64 0
+    stack_store v3, ss0
+    stack_store v3, ss0+8
+    stack_store v3, ss0+16
+    stack_store v0, ss0
+    stack_store v1, ss0+8
+    stack_store v2, ss0+16
+    v4 = global_value.i64 gv0
+    v5 = stack_addr.i64 ss0
+    jump block1(v4, v5)
+
+block1(v6: i64, v7: i64):
+    v8 = iconst.i64 1
+    v9 = load.i64 v6+8
+    v10 = iadd v9, v8
+    v11 = load.i64 v6+16
+    v12 = icmp sgt v10, v11
+    brnz v12, block3
+    jump block4
+
+block3:
+    v13 = iconst.i64 2
+    v14 = imul.i64 v10, v13
+    store v14, v6+16
+    v15 = iconst.i64 24
+    v16 = load.i64 v6+16
+    v17 = imul v16, v15
+    v18 = load.i64 v6
+    v19 = call fn0(v18, v17)
+    store v19, v6
+    jump block4
+
+block4:
+    v20 = load.i64 v6+8
+    jump block5(v6, v20)
+
+block5(v22: i64, v23: i64):
+    v24 = iconst.i64 24
+    v25 = imul v23, v24
+    v26 = load.i64 v22
+    v27 = iadd v26, v25
+    jump block6(v27)
+
+block6(v21: i64):
+    v28 = load.i64 v7
+    store v28, v21
+    v29 = load.i64 v7+8
+    store v29, v21+8
+    v30 = load.i64 v7+16
+    store v30, v21+16
+    store.i64 v10, v6+8
+    jump block2
+
+block2:
+    return
+}
+
+fun push(s: &Self, value: T)
+
+  block8 [v62, v63]:
+    v64 = Offset(v62)
+    v65 = Deref(v64, false)
+    v66 = Offset(v65)
+    v67 = Lit(Int(1, 0))
+    v68 = Call(Fun(259), EntityList { index: 61, unused: PhantomData })
+    v69 = VarDecl(v68)
+    v70 = Offset(v62)
+    v71 = Deref(v70, false)
+    v72 = Offset(v71)
+    v73 = Call(Fun(349), EntityList { index: 65, unused: PhantomData })
+    JumpIfTrue(v73, block9, EntityList { index: 0, unused: PhantomData })
+    Jump(block10, EntityList { index: 0, unused: PhantomData })
+  block9 []:
+    v74 = Offset(v62)
+    v75 = Deref(v74, true)
+    v76 = Offset(v75)
+    v77 = Lit(Int(2, 0))
+    v78 = Call(Fun(279), EntityList { index: 69, unused: PhantomData })
+    v78 = Assign(v76)
+    v79 = Offset(v62)
+    v80 = Deref(v79, true)
+    v81 = Offset(v80)
+    v82 = Offset(v62)
+    v83 = Deref(v82, false)
+    v84 = Offset(v83)
+    v85 = Cast(v84)
+    v86 = Offset(v62)
+    v87 = Deref(v86, false)
+    v88 = Offset(v87)
+    v89 = Call(Fun(484), EntityList { index: 0, unused: PhantomData })
+    v90 = Call(Fun(279), EntityList { index: 73, unused: PhantomData })
+    v91 = Call(Fun(471), EntityList { index: 77, unused: PhantomData })
+    v92 = Cast(v91)
+    v92 = Assign(v81)
+    Jump(block10, EntityList { index: 0, unused: PhantomData })
+  block10 []:
+    v93 = Offset(v62)
+    v94 = Deref(v93, true)
+    v95 = Offset(v94)
+    v96 = Call(Fun(482), EntityList { index: 81, unused: PhantomData })
+    v97 = Deref(v96, true)
+    v63 = Assign(v97)
+    v98 = Offset(v62)
+    v99 = Deref(v98, true)
+    v100 = Offset(v99)
+    v69 = Assign(v100)
+    Return(None)
+
+function u0:0(i64, i64) fast {
+    sig0 = (i64, i64) -> i64 windows_fastcall
+    fn0 = u0:9 sig0
+
+block0(v0: i64, v1: i64):
+    v2 = iconst.i64 1
+    v3 = load.i64 v0+8
+    v4 = iadd v3, v2
+    v5 = load.i64 v0+16
+    v6 = icmp sgt v4, v5
+    brnz v6, block1
+    jump block2
+
+block1:
+    v7 = iconst.i64 2
+    v8 = imul.i64 v4, v7
+    store v8, v0+16
+    v9 = iconst.i64 24
+    v10 = load.i64 v0+16
+    v11 = imul v10, v9
+    v12 = load.i64 v0
+    v13 = call fn0(v12, v11)
+    store v13, v0
+    jump block2
+
+block2:
+    v14 = load.i64 v0+8
+    jump block3(v0, v14)
+
+block3(v16: i64, v17: i64):
+    v18 = iconst.i64 24
+    v19 = imul v17, v18
+    v20 = load.i64 v16
+    v21 = iadd v20, v19
+    jump block4(v21)
+
+block4(v15: i64):
+    v22 = load.i64 v1
+    store v22, v15
+    v23 = load.i64 v1+8
+    store v23, v15+8
+    v24 = load.i64 v1+16
+    store v24, v15+16
+    store.i64 v4, v0+8
+    return
+}
+
+fun pub panic(msg: &u8)
+
+  block11 [v101]:
+    v102 = Lit(String(Span { source: Source(0), hash: ID(13432806085582464995), start: 226, end: 234, line: 0, column: 0 }))
+    Call(Fun(479), EntityList { index: 89, unused: PhantomData })
+    Call(Fun(479), EntityList { index: 93, unused: PhantomData })
+    v103 = Lit(String(Span { source: Source(0), hash: ID(655990), start: 234, end: 236, line: 0, column: 0 }))
+    Call(Fun(479), EntityList { index: 97, unused: PhantomData })
+    v104 = GlobalLoad(gv0)
+    v105 = Offset(v104)
+    v106 = Lit(Int(0, 0))
+    v107 = Call(Fun(309), EntityList { index: 101, unused: PhantomData })
+    JumpIfTrue(v107, block12, EntityList { index: 0, unused: PhantomData })
+    Jump(block13, EntityList { index: 0, unused: PhantomData })
+  block12 []:
+    v108 = Lit(String(Span { source: Source(0), hash: ID(5614517716665998117), start: 236, end: 312, line: 0, column: 0 }))
+    Call(Fun(479), EntityList { index: 105, unused: PhantomData })
+    v109 = Lit(Int(1, 0))
+    Call(Fun(480), EntityList { index: 109, unused: PhantomData })
+    Return(None)
+  block13 []:
+    v110 = Zeroed
+    v111 = VarDecl(v110)
+    v112 = Zeroed
+    v113 = VarDecl(v112)
+    Jump(block14, EntityList { index: 0, unused: PhantomData })
+  block14 []:
+    v114 = GlobalLoad(gv0)
+    v115 = Offset(v114)
+    v116 = Call(Fun(329), EntityList { index: 113, unused: PhantomData })
+    JumpIfTrue(v116, block16, EntityList { index: 0, unused: PhantomData })
+    Jump(block17, EntityList { index: 0, unused: PhantomData })
+  block15 []:
+    v139 = Lit(Char('\u{0}'))
+    v140 = Call(Fun(62), EntityList { index: 161, unused: PhantomData })
+    v141 = Ref(v111)
+    Call(Fun(487), EntityList { index: 165, unused: PhantomData })
+    v142 = Offset(v111)
+    Call(Fun(479), EntityList { index: 169, unused: PhantomData })
+    v143 = Lit(Int(1, 0))
+    Call(Fun(480), EntityList { index: 173, unused: PhantomData })
+    Return(None)
+  block16 []:
+    Jump(block15, EntityList { index: 0, unused: PhantomData })
+  block17 []:
+    v117 = GlobalLoad(gv0)
+    v119 = Ref(v117)
+    v118 = Call(Fun(486), EntityList { index: 117, unused: PhantomData })
+    v120 = Deref(v118, false)
+    v121 = VarDecl(v120)
+    v122 = Offset(v121)
+    v123 = Ref(v111)
+    Call(Fun(444), EntityList { index: 121, unused: PhantomData })
+    v124 = Lit(Char(':'))
+    v125 = Call(Fun(62), EntityList { index: 125, unused: PhantomData })
+    v126 = Ref(v111)
+    Call(Fun(487), EntityList { index: 129, unused: PhantomData })
+    v127 = Offset(v121)
+    v128 = Ref(v111)
+    Call(Fun(444), EntityList { index: 133, unused: PhantomData })
+    v129 = Lit(Char(' '))
+    v130 = Call(Fun(62), EntityList { index: 137, unused: PhantomData })
+    v131 = Ref(v111)
+    Call(Fun(487), EntityList { index: 141, unused: PhantomData })
+    v132 = Offset(v121)
+    v133 = Ref(v111)
+    Call(Fun(445), EntityList { index: 145, unused: PhantomData })
+    v134 = Lit(Char('\n'))
+    v135 = Call(Fun(62), EntityList { index: 149, unused: PhantomData })
+    v136 = Ref(v111)
+    Call(Fun(487), EntityList { index: 153, unused: PhantomData })
+    v137 = Lit(Int(1, 0))
+    v138 = Call(Fun(259), EntityList { index: 157, unused: PhantomData })
+    v138 = Assign(v113)
+    Jump(block14, EntityList { index: 0, unused: PhantomData })
+
+24
+function u0:0(i64) fast {
+    ss0 = explicit_slot 24
+    ss1 = explicit_slot 24
+    gv0 = symbol colocated u1:1
+    gv1 = symbol colocated u1:2
+    gv2 = symbol colocated u1:0
+    gv3 = symbol colocated u1:3
+    gv4 = symbol colocated u1:4
+    sig0 = (i64) windows_fastcall
+    sig1 = (i64) windows_fastcall
+    sig2 = (i64, i64) -> i64 windows_fastcall
+    sig3 = (i64) fast
+    sig4 = (i64, i64) fast
+    sig5 = (i64, i64) fast
+    fn0 = u0:1 sig0
+    fn1 = u0:0 sig1
+    fn2 = u0:9 sig2
+    fn3 = colocated u0:18 sig3
+    fn4 = colocated u0:28 sig4
+    fn5 = colocated u0:26 sig5
+
+block0(v0: i64):
+    v157 = iconst.i64 0
+    v11 -> v157
+    v156 -> v157
+    v1 = global_value.i64 gv0
+    call fn0(v1)
+    call fn0(v0)
+    v2 = global_value.i64 gv1
+    call fn0(v2)
+    v3 = global_value.i64 gv2
+    v4 = iconst.i64 0
+    v5 = load.i64 v3+8
+    v6 = icmp eq v5, v4
+    brnz v6, block1
+    jump block2
+
+block1:
+    v7 = global_value.i64 gv3
+    call fn0(v7)
+    v8 = iconst.i64 1
+    call fn1(v8)
+    return
+
+block2:
+    v9 = iconst.i64 0
+    stack_store v9, ss0
+    stack_store v9, ss0+8
+    stack_store v9, ss0+16
+    v10 = iconst.i64 0
+    jump block3(v10)
+
+block3(v13: i64):
+    v44 -> v13
+    v158 -> v13
+    v159 -> v13
+    v160 -> v13
+    v161 -> v13
+    v162 -> v13
+    v154 -> v158
+    v12 = global_value.i64 gv2
+    v14 = load.i64 v12+8
+    v15 = icmp sge v13, v14
+    brnz v15, block5
+    jump block6
+
+block4:
+    v16 = iconst.i32 0
+    v17 = ireduce.i8 v16
+    v18 = stack_addr.i64 ss0
+    jump block7(v18, v17)
+
+block7(v19: i64, v20: i8):
+    v21 = iconst.i64 1
+    v22 = load.i64 v19+8
+    v23 = iadd v22, v21
+    v24 = load.i64 v19+16
+    v25 = icmp sgt v23, v24
+    brnz v25, block9
+    jump block10
+
+block9:
+    v26 = iconst.i64 2
+    v27 = imul.i64 v23, v26
+    store v27, v19+16
+    v28 = iconst.i64 1
+    v29 = load.i64 v19+16
+    v30 = imul v29, v28
+    v31 = load.i64 v19
+    v32 = call fn2(v31, v30)
+    store v32, v19
+    jump block10
+
+block10:
+    v33 = load.i64 v19+8
+    jump block11(v19, v33)
+
+block11(v35: i64, v36: i64):
+    v37 = iconst.i64 1
+    v38 = imul v36, v37
+    v39 = load.i64 v35
+    v40 = iadd v39, v38
+    jump block12(v40)
+
+block12(v34: i64):
+    store.i8 v20, v34
+    store.i64 v23, v19+8
+    jump block8
+
+block8:
+    v41 = stack_load.i64 ss0
+    call fn0(v41)
+    v42 = iconst.i64 1
+    call fn1(v42)
+    return
+
+block5:
+    jump block4
+
+block6:
+    v43 = global_value.i64 gv2
+    jump block13(v43, v44)
+
+block13(v46: i64, v47: i64):
+    jump block15(v46, v47)
+
+block15(v48: i64, v49: i64):
+    jump block19(v48, v49)
+
+block19(v51: i64, v52: i64):
+    v53 = iconst.i64 0
+    v54 = icmp sge v52, v53
+    v55 = load.i64 v51+8
+    v56 = icmp slt v52, v55
+    v57 = band v54, v56
+    jump block20(v57)
+
+block20(v50: b1):
+    v58 = bint.i8 v50
+    v59 = icmp_imm eq v58, 0
+    brnz v59, block17
+    jump block18
+
+block17:
+    v60 = global_value.i64 gv4
+    call fn3(v60)
+    jump block18
+
+block18:
+    jump block16
+
+block16:
+    jump block21(v46, v47)
+
+block21(v62: i64, v63: i64):
+    v64 = iconst.i64 24
+    v65 = imul v63, v64
+    v66 = load.i64 v62
+    v67 = iadd v66, v65
+    jump block22(v67)
+
+block22(v61: i64):
+    jump block14(v61)
+
+block14(v45: i64):
+    v68 = stack_addr.i64 ss1
+    v69 = load.i64 v45
+    store v69, v68
+    v70 = load.i64 v45+8
+    store v70, v68+8
+    v71 = load.i64 v45+16
+    store v71, v68+16
+    v72 = stack_addr.i64 ss0
+    v73 = stack_load.i64 ss1
+    call fn4(v72, v73)
+    v74 = iconst.i32 58
+    v75 = ireduce.i8 v74
+    v76 = stack_addr.i64 ss0
+    jump block23(v76, v75)
+
+block23(v77: i64, v78: i8):
+    v79 = iconst.i64 1
+    v80 = load.i64 v77+8
+    v81 = iadd v80, v79
+    v82 = load.i64 v77+16
+    v83 = icmp sgt v81, v82
+    brnz v83, block25
+    jump block26
+
+block25:
+    v84 = iconst.i64 2
+    v85 = imul.i64 v81, v84
+    store v85, v77+16
+    v86 = iconst.i64 1
+    v87 = load.i64 v77+16
+    v88 = imul v87, v86
+    v89 = load.i64 v77
+    v90 = call fn2(v89, v88)
+    store v90, v77
+    jump block26
+
+block26:
+    v91 = load.i64 v77+8
+    jump block27(v77, v91)
+
+block27(v93: i64, v94: i64):
+    v95 = iconst.i64 1
+    v96 = imul v94, v95
+    v97 = load.i64 v93
+    v98 = iadd v97, v96
+    jump block28(v98)
+
+block28(v92: i64):
+    store.i8 v78, v92
+    store.i64 v81, v77+8
+    jump block24
+
+block24:
+    v99 = stack_addr.i64 ss0
+    v100 = stack_load.i64 ss1+8
+    call fn4(v99, v100)
+    v101 = iconst.i32 32
+    v102 = ireduce.i8 v101
+    v103 = stack_addr.i64 ss0
+    jump block29(v103, v102)
+
+block29(v104: i64, v105: i8):
+    v106 = iconst.i64 1
+    v107 = load.i64 v104+8
+    v108 = iadd v107, v106
+    v109 = load.i64 v104+16
+    v110 = icmp sgt v108, v109
+    brnz v110, block31
+    jump block32
+
+block31:
+    v111 = iconst.i64 2
+    v112 = imul.i64 v108, v111
+    store v112, v104+16
+    v113 = iconst.i64 1
+    v114 = load.i64 v104+16
+    v115 = imul v114, v113
+    v116 = load.i64 v104
+    v117 = call fn2(v116, v115)
+    store v117, v104
+    jump block32
+
+block32:
+    v118 = load.i64 v104+8
+    jump block33(v104, v118)
+
+block33(v120: i64, v121: i64):
+    v122 = iconst.i64 1
+    v123 = imul v121, v122
+    v124 = load.i64 v120
+    v125 = iadd v124, v123
+    jump block34(v125)
+
+block34(v119: i64):
+    store.i8 v105, v119
+    store.i64 v108, v104+8
+    jump block30
+
+block30:
+    v126 = stack_addr.i64 ss0
+    v127 = stack_load.i64 ss1+16
+    call fn5(v126, v127)
+    v128 = iconst.i32 10
+    v129 = ireduce.i8 v128
+    v130 = stack_addr.i64 ss0
+    jump block35(v130, v129)
+
+block35(v131: i64, v132: i8):
+    v133 = iconst.i64 1
+    v134 = load.i64 v131+8
+    v135 = iadd v134, v133
+    v136 = load.i64 v131+16
+    v137 = icmp sgt v135, v136
+    brnz v137, block37
+    jump block38
+
+block37:
+    v138 = iconst.i64 2
+    v139 = imul.i64 v135, v138
+    store v139, v131+16
+    v140 = iconst.i64 1
+    v141 = load.i64 v131+16
+    v142 = imul v141, v140
+    v143 = load.i64 v131
+    v144 = call fn2(v143, v142)
+    store v144, v131
+    jump block38
+
+block38:
+    v145 = load.i64 v131+8
+    jump block39(v131, v145)
+
+block39(v147: i64, v148: i64):
+    v149 = iconst.i64 1
+    v150 = imul v148, v149
+    v151 = load.i64 v147
+    v152 = iadd v151, v150
+    jump block40(v152)
+
+block40(v146: i64):
+    store.i8 v132, v146
+    store.i64 v135, v131+8
+    jump block36
+
+block36:
+    v153 = iconst.i64 1
+    v155 = iadd.i64 v154, v153
+    jump block3(v155)
+}
+
+fun push(s: &Self, value: T)
+
+  block18 [v144, v145]:
+    v146 = Offset(v144)
+    v147 = Deref(v146, false)
+    v148 = Offset(v147)
+    v149 = Lit(Int(1, 0))
+    v150 = Call(Fun(259), EntityList { index: 181, unused: PhantomData })
+    v151 = VarDecl(v150)
+    v152 = Offset(v144)
+    v153 = Deref(v152, false)
+    v154 = Offset(v153)
+    v155 = Call(Fun(349), EntityList { index: 185, unused: PhantomData })
+    JumpIfTrue(v155, block19, EntityList { index: 0, unused: PhantomData })
+    Jump(block20, EntityList { index: 0, unused: PhantomData })
+  block19 []:
+    v156 = Offset(v144)
+    v157 = Deref(v156, true)
+    v158 = Offset(v157)
+    v159 = Lit(Int(2, 0))
+    v160 = Call(Fun(279), EntityList { index: 189, unused: PhantomData })
+    v160 = Assign(v158)
+    v161 = Offset(v144)
+    v162 = Deref(v161, true)
+    v163 = Offset(v162)
+    v164 = Offset(v144)
+    v165 = Deref(v164, false)
+    v166 = Offset(v165)
+    v167 = Cast(v166)
+    v168 = Offset(v144)
+    v169 = Deref(v168, false)
+    v170 = Offset(v169)
+    v171 = Call(Fun(488), EntityList { index: 0, unused: PhantomData })
+    v172 = Call(Fun(279), EntityList { index: 193, unused: PhantomData })
+    v173 = Call(Fun(471), EntityList { index: 197, unused: PhantomData })
+    v174 = Cast(v173)
+    v174 = Assign(v163)
+    Jump(block20, EntityList { index: 0, unused: PhantomData })
+  block20 []:
+    v175 = Offset(v144)
+    v176 = Deref(v175, true)
+    v177 = Offset(v176)
+    v178 = Call(Fun(489), EntityList { index: 201, unused: PhantomData })
+    v179 = Deref(v178, true)
+    v145 = Assign(v179)
+    v180 = Offset(v144)
+    v181 = Deref(v180, true)
+    v182 = Offset(v181)
+    v151 = Assign(v182)
+    Return(None)
+
+function u0:0(i64, i8) fast {
+    sig0 = (i64, i64) -> i64 windows_fastcall
+    fn0 = u0:9 sig0
+
+block0(v0: i64, v1: i8):
+    v2 = iconst.i64 1
+    v3 = load.i64 v0+8
+    v4 = iadd v3, v2
+    v5 = load.i64 v0+16
+    v6 = icmp sgt v4, v5
+    brnz v6, block1
+    jump block2
+
+block1:
+    v7 = iconst.i64 2
+    v8 = imul.i64 v4, v7
+    store v8, v0+16
+    v9 = iconst.i64 1
+    v10 = load.i64 v0+16
+    v11 = imul v10, v9
+    v12 = load.i64 v0
+    v13 = call fn0(v12, v11)
+    store v13, v0
+    jump block2
+
+block2:
+    v14 = load.i64 v0+8
+    jump block3(v0, v14)
+
+block3(v16: i64, v17: i64):
+    v18 = iconst.i64 1
+    v19 = imul v17, v18
+    v20 = load.i64 v16
+    v21 = iadd v20, v19
+    jump block4(v21)
+
+block4(v15: i64):
+    store.i8 v1, v15
+    store.i64 v4, v0+8
+    return
+}
+
+fun get_unchecked(s: &Self, index: int) -> &T
+
+  block21 [v183, v184]:
+    v185 = Offset(v183)
+    v186 = Deref(v185, false)
+    v187 = Offset(v186)
+    v188 = Cast(v187)
+    v189 = Call(Fun(488), EntityList { index: 0, unused: PhantomData })
+    v190 = Call(Fun(279), EntityList { index: 209, unused: PhantomData })
+    v191 = Call(Fun(259), EntityList { index: 213, unused: PhantomData })
+    v192 = Cast(v191)
+    Return(Some(v192))
+
+function u0:0(i64, i64) -> i64 fast {
+block0(v0: i64, v1: i64):
+    v2 = iconst.i64 1
+    v3 = imul v1, v2
+    v4 = load.i64 v0
+    v5 = iadd v4, v3
+    return v5
+}
+
+fun pub sizeof[T] -> int
+
+
+fun __index__(s: &Self, index: int) -> &T
+
+  block22 [v193, v194]:
+    Call(Fun(490), EntityList { index: 221, unused: PhantomData })
+    v195 = Call(Fun(482), EntityList { index: 225, unused: PhantomData })
+    Return(Some(v195))
+
+function u0:0(i64, i64) -> i64 fast {
+    gv0 = symbol colocated u1:4
+    sig0 = (i64) fast
+    fn0 = colocated u0:18 sig0
+
+block0(v0: i64, v1: i64):
+    jump block1(v0, v1)
+
+block1(v2: i64, v3: i64):
+    jump block5(v2, v3)
+
+block5(v5: i64, v6: i64):
+    v7 = iconst.i64 0
+    v8 = icmp sge v6, v7
+    v9 = load.i64 v5+8
+    v10 = icmp slt v6, v9
+    v11 = band v8, v10
+    jump block6(v11)
+
+block6(v4: b1):
+    v12 = bint.i8 v4
+    v13 = icmp_imm eq v12, 0
+    brnz v13, block3
+    jump block4
+
+block3:
+    v14 = global_value.i64 gv0
+    call fn0(v14)
+    jump block4
+
+block4:
+    jump block2
+
+block2:
+    jump block7(v0, v1)
+
+block7(v16: i64, v17: i64):
+    v18 = iconst.i64 24
+    v19 = imul v17, v18
+    v20 = load.i64 v16
+    v21 = iadd v20, v19
+    jump block8(v21)
+
+block8(v15: i64):
+    return v15
+}
+
+fun assert_in_bounds(s: &Self, index: int)
+
+  block23 [v196, v197]:
+    v198 = Call(Fun(491), EntityList { index: 233, unused: PhantomData })
+    v199 = Call(Fun(250), EntityList { index: 237, unused: PhantomData })
+    JumpIfTrue(v199, block24, EntityList { index: 0, unused: PhantomData })
+    Jump(block25, EntityList { index: 0, unused: PhantomData })
+  block24 []:
+    v200 = Lit(String(Span { source: Source(0), hash: ID(6484216913505728610), start: 88, end: 108, line: 0, column: 0 }))
+    Call(Fun(467), EntityList { index: 241, unused: PhantomData })
+    Jump(block25, EntityList { index: 0, unused: PhantomData })
+  block25 []:
+    Return(None)
+
+function u0:0(i64, i64) fast {
+    gv0 = symbol colocated u1:4
+    sig0 = (i64) fast
+    fn0 = colocated u0:18 sig0
+
+block0(v0: i64, v1: i64):
+    jump block3(v0, v1)
+
+block3(v3: i64, v4: i64):
+    v5 = iconst.i64 0
+    v6 = icmp sge v4, v5
+    v7 = load.i64 v3+8
+    v8 = icmp slt v4, v7
+    v9 = band v6, v8
+    jump block4(v9)
+
+block4(v2: b1):
+    v10 = bint.i8 v2
+    v11 = icmp_imm eq v10, 0
+    brnz v11, block1
+    jump block2
+
+block1:
+    v12 = global_value.i64 gv0
+    call fn0(v12)
+    jump block2
+
+block2:
+    return
+}
+
+fun in_bounds(s: &Self, index: int) -> bool
+
+  block26 [v201, v202]:
+    v203 = Lit(Int(0, 0))
+    v204 = Call(Fun(329), EntityList { index: 249, unused: PhantomData })
+    v205 = Offset(v201)
+    v206 = Deref(v205, false)
+    v207 = Offset(v206)
+    v208 = Call(Fun(359), EntityList { index: 253, unused: PhantomData })
+    v209 = Call(Fun(435), EntityList { index: 257, unused: PhantomData })
+    Return(Some(v209))
+
+function u0:0(i64, i64) -> b1 fast {
+block0(v0: i64, v1: i64):
+    v2 = iconst.i64 0
+    v3 = icmp sge v1, v2
+    v4 = load.i64 v0+8
+    v5 = icmp slt v1, v4
+    v6 = band v3, v5
+    return v6
+}
+
+fun pub assert(cond: bool)
+
+  block27 [v210]:
+    v211 = Call(Fun(250), EntityList { index: 265, unused: PhantomData })
+    JumpIfTrue(v211, block28, EntityList { index: 0, unused: PhantomData })
+    Jump(block29, EntityList { index: 0, unused: PhantomData })
+  block28 []:
+    v212 = Lit(String(Span { source: Source(0), hash: ID(18405710474171729989), start: 209, end: 226, line: 0, column: 0 }))
+    Call(Fun(467), EntityList { index: 269, unused: PhantomData })
+    Jump(block29, EntityList { index: 0, unused: PhantomData })
+  block29 []:
+    Return(None)
+
+function u0:0(b1) fast {
+    gv0 = symbol colocated u1:5
+    sig0 = (i64) fast
+    fn0 = colocated u0:18 sig0
+
+block0(v0: b1):
+    v1 = bint.i8 v0
+    v2 = icmp_imm eq v1, 0
+    brnz v2, block1
+    jump block2
+
+block1:
+    v3 = global_value.i64 gv0
+    call fn0(v3)
+    jump block2
+
+block2:
+    return
+}
+
+fun print(s: &Self, value: &u8)
+
+  block30 [v213, v214]:
+    v215 = Lit(Int(0, 0))
+    v216 = VarDecl(v215)
+    Jump(block31, EntityList { index: 0, unused: PhantomData })
+  block31 []:
+    v217 = Cast(v214)
+    v218 = Call(Fun(259), EntityList { index: 277, unused: PhantomData })
+    v219 = Cast(v218)
+    v220 = Deref(v219, false)
+    v221 = VarDecl(v220)
+    v222 = Lit(Uint(0, 8))
+    v223 = Call(Fun(305), EntityList { index: 281, unused: PhantomData })
+    JumpIfTrue(v223, block33, EntityList { index: 0, unused: PhantomData })
+    Jump(block34, EntityList { index: 0, unused: PhantomData })
+  block32 []:
+    Call(Fun(492), EntityList { index: 289, unused: PhantomData })
+    v226 = Offset(v213)
+    v227 = Deref(v226, false)
+    v228 = Offset(v227)
+    v229 = Call(Fun(489), EntityList { index: 293, unused: PhantomData })
+    Call(Fun(476), EntityList { index: 297, unused: PhantomData })
+    v230 = Offset(v213)
+    v231 = Deref(v230, true)
+    v232 = Offset(v231)
+    v233 = Offset(v213)
+    v234 = Deref(v233, false)
+    v235 = Offset(v234)
+    v236 = Call(Fun(259), EntityList { index: 301, unused: PhantomData })
+    v236 = Assign(v232)
+    Return(None)
+  block33 []:
+    Jump(block32, EntityList { index: 0, unused: PhantomData })
+  block34 []:
+    v224 = Lit(Int(1, 0))
+    v225 = Call(Fun(259), EntityList { index: 285, unused: PhantomData })
+    v225 = Assign(v216)
+    Jump(block31, EntityList { index: 0, unused: PhantomData })
+
+function u0:0(i64, i64) fast {
+    sig0 = (i64, i64) -> i64 windows_fastcall
+    sig1 = (i64, i64, i64) windows_fastcall
+    fn0 = u0:9 sig0
+    fn1 = u0:4 sig1
+
+block0(v0: i64, v1: i64):
+    v32 = iconst.i64 0
+    v3 -> v32
+    v2 = iconst.i64 0
+    jump block1(v2)
+
+block1(v4: i64):
+    v26 -> v4
+    v30 -> v4
+    v33 -> v4
+    v34 -> v4
+    v9 -> v33
+    v5 = iadd.i64 v1, v4
+    v6 = load.i8 v5
+    v7 = iconst.i8 0
+    v8 = icmp eq v6, v7
+    brnz v8, block3
+    jump block4
+
+block2:
+    jump block5(v0, v9)
+
+block5(v10: i64, v11: i64):
+    v12 = load.i64 v10+16
+    v13 = icmp sgt v12, v11
+    brnz v13, block7
+    jump block8
+
+block7:
+    jump block6
+
+block8:
+    v14 = iconst.i64 1
+    v15 = imul.i64 v11, v14
+    v16 = load.i64 v10
+    v17 = call fn0(v16, v15)
+    store v17, v10
+    store.i64 v11, v10+16
+    jump block6
+
+block6:
+    v18 = load.i64 v0+8
+    jump block9(v0, v18)
+
+block9(v20: i64, v21: i64):
+    v22 = iconst.i64 1
+    v23 = imul v21, v22
+    v24 = load.i64 v20
+    v25 = iadd v24, v23
+    jump block10(v25)
+
+block10(v19: i64):
+    call fn1(v19, v1, v26)
+    v27 = load.i64 v0+8
+    v28 = iadd v27, v26
+    store v28, v0+8
+    return
+
+block3:
+    jump block2
+
+block4:
+    v29 = iconst.i64 1
+    v31 = iadd.i64 v30, v29
+    jump block1(v31)
+}
+
+fun reserve(s: &Self, new_cap: int)
+
+  block35 [v237, v238]:
+    v239 = Offset(v237)
+    v240 = Deref(v239, false)
+    v241 = Offset(v240)
+    v242 = Call(Fun(349), EntityList { index: 309, unused: PhantomData })
+    JumpIfTrue(v242, block36, EntityList { index: 0, unused: PhantomData })
+    Jump(block37, EntityList { index: 0, unused: PhantomData })
+  block36 []:
+    Return(None)
+  block37 []:
+    v243 = Offset(v237)
+    v244 = Deref(v243, true)
+    v245 = Offset(v244)
+    v246 = Offset(v237)
+    v247 = Deref(v246, false)
+    v248 = Offset(v247)
+    v249 = Call(Fun(488), EntityList { index: 0, unused: PhantomData })
+    v250 = Call(Fun(279), EntityList { index: 313, unused: PhantomData })
+    v251 = Call(Fun(471), EntityList { index: 317, unused: PhantomData })
+    v251 = Assign(v245)
+    v252 = Offset(v237)
+    v253 = Deref(v252, true)
+    v254 = Offset(v253)
+    v238 = Assign(v254)
+    Return(None)
+
+function u0:0(i64, i64) fast {
+    sig0 = (i64, i64) -> i64 windows_fastcall
+    fn0 = u0:9 sig0
+
+block0(v0: i64, v1: i64):
+    v2 = load.i64 v0+16
+    v3 = icmp sgt v2, v1
+    brnz v3, block1
+    jump block2
+
+block1:
+    return
+
+block2:
+    v4 = iconst.i64 1
+    v5 = imul.i64 v1, v4
+    v6 = load.i64 v0
+    v7 = call fn0(v6, v5)
+    store v7, v0
+    store.i64 v1, v0+16
+    return
+}
+
+fun print_int(s: &Self, value: int)
+
+  block38 [v255, v256]:
+    v257 = Offset(v255)
+    v258 = Deref(v257, false)
+    v259 = Offset(v258)
+    v260 = VarDecl(v259)
+    v261 = Lit(Int(0, 0))
+    v262 = Call(Fun(319), EntityList { index: 325, unused: PhantomData })
+    JumpIfTrue(v262, block39, EntityList { index: 0, unused: PhantomData })
+    Jump(block41, EntityList { index: 0, unused: PhantomData })
+  block39 []:
+    v263 = Call(Fun(137), EntityList { index: 329, unused: PhantomData })
+    v264 = Call(Fun(477), EntityList { index: 333, unused: PhantomData })
+    v265 = Call(Fun(163), EntityList { index: 337, unused: PhantomData })
+    Jump(block40, EntityList { index: 341, unused: PhantomData })
+  block40 [v266]:
+    v268 = Lit(Int(1, 0))
+    v269 = Call(Fun(259), EntityList { index: 353, unused: PhantomData })
+    v270 = VarDecl(v269)
+    v271 = Call(Fun(259), EntityList { index: 357, unused: PhantomData })
+    Call(Fun(492), EntityList { index: 361, unused: PhantomData })
+    v272 = Offset(v255)
+    v273 = Deref(v272, true)
+    v274 = Offset(v273)
+    v275 = Call(Fun(259), EntityList { index: 365, unused: PhantomData })
+    v275 = Assign(v274)
+    v276 = VarDecl(v270)
+    v277 = VarDecl(v256)
+    Jump(block42, EntityList { index: 0, unused: PhantomData })
+  block41 []:
+    v267 = Lit(Int(0, 0))
+    Jump(block40, EntityList { index: 349, unused: PhantomData })
+  block42 []:
+    v278 = Lit(Int(0, 0))
+    v279 = Call(Fun(309), EntityList { index: 369, unused: PhantomData })
+    JumpIfTrue(v279, block44, EntityList { index: 0, unused: PhantomData })
+    Jump(block45, EntityList { index: 0, unused: PhantomData })
+  block43 []:
+    Return(None)
+  block44 []:
+    Jump(block43, EntityList { index: 0, unused: PhantomData })
+  block45 []:
+    v280 = Lit(Int(10, 0))
+    v281 = Call(Fun(299), EntityList { index: 373, unused: PhantomData })
+    v282 = VarDecl(v281)
+    v283 = Lit(Int(10, 0))
+    v284 = Call(Fun(289), EntityList { index: 377, unused: PhantomData })
+    v284 = Assign(v277)
+    v285 = Call(Fun(259), EntityList { index: 381, unused: PhantomData })
+    v286 = Lit(Int(1, 0))
+    v287 = Call(Fun(269), EntityList { index: 385, unused: PhantomData })
+    v288 = Call(Fun(489), EntityList { index: 389, unused: PhantomData })
+    v289 = Deref(v288, true)
+    v290 = Call(Fun(95), EntityList { index: 393, unused: PhantomData })
+    v291 = Lit(Char('0'))
+    v292 = Call(Fun(257), EntityList { index: 397, unused: PhantomData })
+    v293 = Call(Fun(62), EntityList { index: 401, unused: PhantomData })
+    v293 = Assign(v289)
+    v294 = Lit(Int(1, 0))
+    v295 = Call(Fun(269), EntityList { index: 405, unused: PhantomData })
+    v295 = Assign(v276)
+    Jump(block42, EntityList { index: 0, unused: PhantomData })
+
+function u0:0(i64, i64) fast {
+    sig0 = (f64) -> f64 windows_fastcall
+    sig1 = (i64, i64) -> i64 windows_fastcall
+    fn0 = u0:3 sig0
+    fn1 = u0:9 sig1
+
+block0(v0: i64, v1: i64):
+    v70 = iconst.i64 0
+    v69 -> v70
+    v67 = iconst.i64 0
+    v66 -> v67
+    v64 = iconst.i64 0
+    v63 -> v64
+    v3 = load.i64 v0+8
+    v4 = iconst.i64 0
+    v5 = icmp ne v1, v4
+    brnz v5, block1
+    jump block3
+
+block1:
+    v6 = fcvt_from_sint.f64 v1
+    v7 = call fn0(v6)
+    v8 = fcvt_to_sint.i64 v7
+    jump block2(v8, v64, v67, v70)
+
+block2(v2: i64, v62: i64, v65: i64, v68: i64):
+    v56 -> v62
+    v57 -> v62
+    v58 -> v65
+    v59 -> v65
+    v60 -> v68
+    v61 -> v68
+    v9 = iconst.i64 1
+    v10 = iadd v2, v9
+    v11 = iadd.i64 v3, v10
+    jump block8(v0, v11)
+
+block8(v12: i64, v13: i64):
+    v14 = load.i64 v12+16
+    v15 = icmp sgt v14, v13
+    brnz v15, block10
+    jump block11
+
+block10:
+    jump block9(v56, v58, v60)
+
+block11:
+    v16 = iconst.i64 1
+    v17 = imul.i64 v13, v16
+    v18 = load.i64 v12
+    v19 = call fn1(v18, v17)
+    store v19, v12
+    store.i64 v13, v12+16
+    jump block9(v57, v59, v61)
+
+block9(v21: i64, v22: i64, v55: i64):
+    v20 = iadd.i64 v3, v10
+    store v20, v0+8
+    jump block4(v10, v1, v55)
+
+block3:
+    v23 = iconst.i64 0
+    jump block2(v23, v63, v66, v69)
+
+block4(v25: i64, v52: i64, v54: i64):
+    v33 -> v25
+    v50 -> v25
+    v28 -> v52
+    v30 -> v54
+    v24 = iconst.i64 0
+    v26 = icmp eq v25, v24
+    brnz v26, block6
+    jump block7
+
+block5:
+    return
+
+block6:
+    jump block5
+
+block7:
+    v27 = iconst.i64 10
+    v29 = srem.i64 v28, v27
+    v44 -> v29
+    v31 = iconst.i64 10
+    v32 = sdiv.i64 v28, v31
+    v53 -> v32
+    v34 = iadd.i64 v3, v33
+    v35 = iconst.i64 1
+    v36 = isub v34, v35
+    jump block12(v0, v36)
+
+block12(v38: i64, v39: i64):
+    v40 = iconst.i64 1
+    v41 = imul v39, v40
+    v42 = load.i64 v38
+    v43 = iadd v42, v41
+    jump block13(v43)
+
+block13(v37: i64):
+    v45 = ireduce.i32 v44
+    v46 = iconst.i32 48
+    v47 = iadd v45, v46
+    v48 = ireduce.i8 v47
+    store v48, v37
+    v49 = iconst.i64 1
+    v51 = isub.i64 v50, v49
+    jump block4(v51, v53, v44)
+}
+
+
+
+  block0 [v0, v1]:
+    v2 = Zeroed
+    v3 = VarDecl(v2)
+    Return(Some(v3))
+
+function u0:0(i64, i64) -> i64 fast {
+block0(v0: i64, v1: i64):
+    v4 = iconst.i64 0
+    v3 -> v4
+    v2 = iconst.i64 0
+    return v2
+}
+
+fun calls_a
+
+  block1 []:
+    v7 = Lit(Int(245, 0))
+    v8 = Lit(Int(10, 0))
+    v9 = Lit(String(Span { source: Source(0), hash: ID(14979365136090743649), start: 338, end: 367, line: 0, column: 0 }))
+    Call(Fun(468), EntityList { index: 5, unused: PhantomData })
+    Call(Fun(520), EntityList { index: 0, unused: PhantomData })
+    Call(Fun(469), EntityList { index: 0, unused: PhantomData })
+    Return(None)
+
+function u0:0() fast {
+    gv0 = symbol colocated u1:8
+    sig0 = (i64, i64, i64) fast
+    sig1 = () fast
+    sig2 = () fast
+    fn0 = colocated u0:16 sig0
+    fn1 = colocated u0:30 sig1
+    fn2 = colocated u0:11 sig2
+
+block0:
+    v0 = iconst.i64 245
+    v1 = iconst.i64 10
+    v2 = global_value.i64 gv0
+    call fn0(v0, v1, v2)
+    jump block1
+
+block1:
+    v3 = iconst.i64 241
+    v4 = iconst.i64 10
+    v5 = global_value.i64 gv0
+    call fn0(v3, v4, v5)
+    call fn1()
+    call fn2()
+    jump block2
+
+block2:
+    call fn2()
+    return
+}
+
+fun calls_b
+
+  block2 []:
+    v10 = Lit(Int(241, 0))
+    v11 = Lit(Int(10, 0))
+    v12 = Lit(String(Span { source: Source(0), hash: ID(14979365136090743649), start: 338, end: 367, line: 0, column: 0 }))
+    Call(Fun(468), EntityList { index: 9, unused: PhantomData })
+    Call(Fun(521), EntityList { index: 0, unused: PhantomData })
+    Call(Fun(469), EntityList { index: 0, unused: PhantomData })
+    Return(None)
+
+function u0:0() fast {
+    gv0 = symbol colocated u1:8
+    sig0 = (i64, i64, i64) fast
+    sig1 = () fast
+    sig2 = () fast
+    fn0 = colocated u0:16 sig0
+    fn1 = colocated u0:31 sig1
+    fn2 = colocated u0:11 sig2
+
+block0:
+    v0 = iconst.i64 241
+    v1 = iconst.i64 10
+    v2 = global_value.i64 gv0
+    call fn0(v0, v1, v2)
+    jump block1
+
+block1:
+    v3 = iconst.i64 245
+    v4 = iconst.i64 10
+    v5 = global_value.i64 gv0
+    call fn0(v3, v4, v5)
+    call fn1()
+    call fn2()
+    jump block2
+
+block2:
+    call fn2()
+    return
+}
+
+fun assert(cond: bool)
+
+  block3 [v13]:
+    Call(Fun(466), EntityList { index: 17, unused: PhantomData })
+    v14 = Lit(String(Span { source: Source(0), hash: ID(31334373625102386), start: 334, end: 338, line: 0, column: 0 }))
+    Call(Fun(479), EntityList { index: 21, unused: PhantomData })
+    Return(None)
+
+function u0:0(b1) fast {
+    gv0 = symbol colocated u1:5
+    gv1 = symbol colocated u1:9
+    sig0 = (i64) fast
+    sig1 = (i64) windows_fastcall
+    fn0 = colocated u0:18 sig0
+    fn1 = u0:1 sig1
+
+block0(v0: b1):
+    jump block1(v0)
+
+block1(v1: b1):
+    v2 = bint.i8 v1
+    v3 = icmp_imm eq v2, 0
+    brnz v3, block3
+    jump block4
+
+block3:
+    v4 = global_value.i64 gv0
+    call fn0(v4)
+    jump block4
+
+block4:
+    jump block2
+
+block2:
+    v5 = global_value.i64 gv1
+    call fn1(v5)
+    return
+}
+
+fun test_case_15
+
+  block4 []:
+    v15 = Zeroed
+    v16 = VarDecl(v15)
+    v17 = Uninitialized
+    v18 = Offset(v17)
+    v16 = Assign(v18)
+    v19 = Offset(v17)
+    v16 = Assign(v19)
+    v20 = VarDecl(v17)
+    v21 = Lit(Int(1, 0))
+    v23 = Ref(v20)
+    v22 = Call(Fun(522), EntityList { index: 25, unused: PhantomData })
+    v24 = Deref(v22, true)
+    v25 = Offset(v24)
+    v26 = Lit(Uint(255, 8))
+    v26 = Assign(v25)
+    v27 = Lit(Int(0, 0))
+    v29 = Ref(v20)
+    v28 = Call(Fun(522), EntityList { index: 29, unused: PhantomData })
+    v30 = Deref(v28, true)
+    v16 = Assign(v30)
+    v31 = Lit(Int(1, 0))
+    v33 = Ref(v20)
+    v32 = Call(Fun(522), EntityList { index: 33, unused: PhantomData })
+    v34 = Deref(v32, false)
+    v35 = Offset(v34)
+    v36 = Lit(Uint(255, 8))
+    v37 = Call(Fun(305), EntityList { index: 37, unused: PhantomData })
+    v38 = Lit(Int(230, 0))
+    v39 = Lit(Int(9, 0))
+    v40 = Lit(String(Span { source: Source(0), hash: ID(14979365136090743649), start: 338, end: 367, line: 0, column: 0 }))
+    Call(Fun(468), EntityList { index: 41, unused: PhantomData })
+    Call(Fun(519), EntityList { index: 45, unused: PhantomData })
+    Call(Fun(469), EntityList { index: 0, unused: PhantomData })
+    Return(None)
+
