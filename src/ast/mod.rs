@@ -182,7 +182,10 @@ impl<'a> AParser<'a> {
         while self.token.kind != TKind::Eof {
             self.top_item(
                 Ast::reserved_value(),
-                "expected 'fun' or 'attr' or 'struct' or 'let' or 'var' or 'impl' or '##'",
+                concat!(
+                    "expected 'fun' | 'attr' | 'struct' | 'enum'",
+                    " | 'union' | 'let' | 'var' | 'impl' | '##'",
+                ),
             )?;
         }
 
@@ -224,7 +227,7 @@ impl<'a> AParser<'a> {
         self.walk_block(|s| {
             s.top_item(
                 impl_ast,
-                "expected 'fun' or 'attr' or 'let' or 'var' or '##'",
+                "expected 'fun' | 'attr' | 'let' | 'var' | '##'",
             )
         })?;
 
@@ -234,7 +237,14 @@ impl<'a> AParser<'a> {
     fn top_item(&mut self, impl_ast: Ast, message: &'static str) -> Result {
         let kind = self.token.kind;
         let collect_attributes =
-            matches!(kind, TKind::Struct | TKind::Fun | TKind::Var | TKind::Let);
+            matches!(kind, 
+                TKind::Union |
+                TKind::Enum |
+                TKind::Struct | 
+                TKind::Fun |
+                TKind::Var |
+                TKind::Let
+            );
 
         let attributes = if collect_attributes {
             self.context
@@ -265,8 +275,13 @@ impl<'a> AParser<'a> {
                     .attrib_stack
                     .truncate(self.context.attrib_frames.pop().unwrap());
             }
-            TKind::Struct if impl_ast == Ast::reserved_value() => {
-                let item = self.struct_declaration()?;
+            TKind::Struct | TKind::Union | TKind::Enum if impl_ast == Ast::reserved_value() => {
+                let item = match kind {
+                    TKind::Struct => self.structure_declaration(false)?,
+                    TKind::Union => self.structure_declaration(true)?,
+                    TKind::Enum => self.enum_declaration()?,
+                    _ => unreachable!(),
+                };
                 self.state
                     .types
                     .extend([item, attributes], &mut self.state.cons);
@@ -301,11 +316,37 @@ impl<'a> AParser<'a> {
         Ok(())
     }
 
-    fn struct_declaration(&mut self) -> Result<Ast> {
+    fn enum_declaration(&mut self) -> Result<Ast> {
+        let mut ast = self.ast_ent(AKind::Pass);
+        self.next()?;
+
+        let vis = self.vis()?;
+        ast.kind = AKind::Enum(vis);
+
+        let name = self.ident()?;
+        self.push(&mut ast.sons, name);
+        
+        let variants = if self.token == TKind::Colon {
+            self.block(Self::ident)?
+        } else {
+            Ast::reserved_value()
+        };
+
+        self.push(&mut ast.sons, variants);
+
+        Ok(self.add(ast))
+    }
+
+    fn structure_declaration(&mut self, union: bool) -> Result<Ast> {
         let mut ast_ent = self.ast_ent(AKind::Pass);
         self.next()?;
 
-        ast_ent.kind = AKind::StructDeclaration(self.vis()?);
+        let vis = self.vis()?;
+        ast_ent.kind = if union {
+            AKind::Union(vis)
+        } else { 
+            AKind::Struct(vis)
+        };
 
         let expr = self.type_expr()?;
         self.push(&mut ast_ent.sons, expr);
@@ -1536,8 +1577,11 @@ pub enum AKind {
     Call(bool), // true if dot syntax is used
     Index,
 
-    StructDeclaration(Vis),
+    Union(Vis),
+    Struct(Vis),
     StructField(Vis, bool),
+
+    Enum(Vis),
 
     Attribute,
     AttributeElement,

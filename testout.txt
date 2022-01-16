@@ -1650,19 +1650,19 @@ VarStatement(None, false) "let hello = \"hello\"":
 ===type===
 Group "":
  Comment "##[\r\n  multiline doc comment\r\n]#"
-StructDeclaration(None) "struct":
+Struct(None) "struct":
  Ident "Scope"
  None
 ===type===
 None
-StructDeclaration(None) "struct":
+Struct(None) "struct":
  Instantiation "Template[T]":
   Ident "Template"
   Ident "T"
  None
 ===type===
 None
-StructDeclaration(None) "struct":
+Struct(None) "struct":
  Ident "Foo"
  Group ":":
   StructField(None, false) "a, b, c: int":
@@ -1672,7 +1672,7 @@ StructDeclaration(None) "struct":
    Ident "int"
 ===type===
 None
-StructDeclaration(None) "struct":
+Struct(None) "struct":
  Ident "Goo"
  Group ":":
   StructField(None, true) "foo: Foo":
@@ -2187,22 +2187,3 @@ Fun(None) "fun some_string -> &u8:\r\n  \"\r\nhello there\r\n  \"":
   None
  Group ":":
   Lit "\"\r\nhello there\r\n  \""
-output:
-ok
-ok
-ok
-ok
-ok
-ok
-ok
-ok
-Hello, World!ok
-ok
-ok
-ok
-ok
-ok
-ok
-ok
-
-:end

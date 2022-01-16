@@ -181,7 +181,8 @@ item =
   doc_comment |
   function |
   global_var |
-  struct
+  struct |
+  union
 
 impl =
   'impl'
@@ -215,10 +216,12 @@ global_var =
       '=' expression 
     ) 
   )
-struct = 
-  'struct'
+union = 'union' structure
+struct = 'struct' structure
+structure =
   [ vis ] ident [ generics ]
   [ ':' : field ]
+enum = 'enum' [ vis ] [ ':' : ident ]
 
 field = 
   [ vis ] [ 'embed' ] 

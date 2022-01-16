@@ -231,3 +231,15 @@ fun calls_b:
 attr inline
 fun calls_a:
   calls_b()
+
+struct Result[V, E]:
+  kind: ResultEnum
+  base: ResultUnion[V, E]
+
+enum ResultEnum:
+  reOk
+  reErr
+
+union ResultUnion[V, E]:
+  ok: V
+  err: E

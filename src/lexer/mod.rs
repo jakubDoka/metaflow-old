@@ -58,6 +58,8 @@ impl<'a> Lexer<'a> {
             "struct" => TKind::Struct,
             "embed" => TKind::Embed,
             "impl" => TKind::Impl,
+            "enum" => TKind::Enum,
+            "union" => TKind::Union,
             "max" | "min" | "as" | "abs" => TKind::Op,
             "true" => TKind::Bool(true),
             "false" => TKind::Bool(false),
@@ -645,6 +647,8 @@ pub enum TKind {
     Struct,
     Embed,
     Impl,
+    Enum,
+    Union,
 
     //identifiers
     Tag,
@@ -705,6 +709,9 @@ impl std::fmt::Display for TKind {
             TKind::Embed => "'embed'",
             TKind::Tag => "'label'",
             TKind::Impl => "'impl'",
+            TKind::Enum => "'enum'",
+            TKind::Union => "'ident'",
+
             TKind::Ident => "ident",
             TKind::Op => "operator",
             TKind::LPar => "'('",

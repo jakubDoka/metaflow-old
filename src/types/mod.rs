@@ -178,7 +178,7 @@ impl<'a> TParser<'a> {
 
     fn connect_type(&mut self, module: Mod, id: Ty, ast: Ast, depth: usize) -> Result {
         match self.modules[module].kind(ast) {
-            AKind::StructDeclaration(_) => {
+            AKind::Struct(_) => {
                 self.connect_structure(module, id, ast, SKind::Struct, depth)?;
             }
             kind => unreachable!("{:?}", kind),
@@ -495,7 +495,43 @@ impl<'a> TParser<'a> {
             let attrs = types[i + 1];
             let &AstEnt { token, kind, sons } = module_ent.load(type_ast);
             match kind {
-                AKind::StructDeclaration(vis) => {
+                AKind::Enum(vis) => {
+                    let ident = *module_ent.get_ent(sons, 0);
+                    let variants = module_ent.get(sons, 1);
+                    let variants = if !variants.is_reserved_value() {
+                        let variants = module_ent.sons(variants);
+                        let variants_len = module_ent.len(variants);
+                        let mut real_variants = Vec::with_capacity(variants_len);
+                        for i in 0..variants_len {
+                            real_variants.push(module_ent.get_ent(variants, i).token.span.hash);
+                        }
+                        real_variants
+                    } else {
+                        vec![]
+                    };
+
+                    let kind = TKind::Enumeration(variants);
+                    let id = TYPE_SALT.add(ident.token.span.hash).add(module_name);
+                    let datatype = TypeEnt {
+                        vis,
+                        id,
+                        module,
+                        kind,
+                        name: ident.token.span,
+                        attrs,
+                        hint: ident.token,
+
+                        ..Default::default()
+                    };
+
+                    let (replaced, id) = self.add_type_low(datatype, true);
+                    if let Some(other) = replaced {
+                        return Err(TError::new(TEKind::Redefinition(other.hint), token));
+                    }
+
+                    self.context.unresolved.push((id, 0));
+                }
+                AKind::Struct(vis) => {
                     let ident = module_ent.get(sons, 0);
                     let ident_ent = module_ent.load(ident);
                     let (ident, kind) = if ident_ent.kind == AKind::Ident {
@@ -581,7 +617,7 @@ impl<'a> TreeStorage<Ty> for TParser<'a> {
         let node = &self.types[id];
 
         match &node.kind {
-            TKind::Builtin(_) | TKind::Pointer(..) => 0,
+            TKind::Builtin(_) | TKind::Pointer(..) | TKind::Enumeration(_) => 0,
             TKind::FunPointer(fun) => {
                 self.modules[node.module].type_slice(fun.args).len() + fun.ret.is_some() as usize
             }
@@ -655,8 +691,19 @@ pub struct TypeEnt {
 impl TypeEnt {
     pub fn to_cr_type(&self, isa: &dyn TargetIsa) -> Type {
         match &self.kind {
-            TKind::Pointer(_) | TKind::Array(_, _) | TKind::FunPointer(_) | TKind::Structure(_) => {
+            TKind::Pointer(_) | TKind::Array(_, _) | TKind::FunPointer(_)  => {
                 isa.pointer_type()
+            }
+            TKind::Enumeration(_) => I8, //temporary solution
+            TKind::Structure(_) => {
+                let max_size = isa.pointer_bytes() as u32;
+                let size = self.size.pick(max_size == 4).min(max_size);
+                match size {
+                    0 | 1 => I8,
+                    2 => I16,
+                    3 | 4 => I32,
+                    _ => I64,
+                }
             }
             &TKind::Builtin(ty) => ty.0,
             TKind::Generic(_) | TKind::Constant(_) | TKind::Unresolved(_) => unreachable!(),
@@ -672,6 +719,7 @@ impl TypeEnt {
 pub enum TKind {
     Builtin(CrTypeWr),
     Pointer(Ty),
+    Enumeration(Vec<ID>),
     Array(Ty, u32),
     FunPointer(Signature),
     Constant(TypeConst),
@@ -1111,7 +1159,11 @@ impl<'a> std::fmt::Display for TypeDisplay<'a> {
                 }
                 write!(f, "]")
             }
-            TKind::Builtin(_) | TKind::Unresolved(_) | TKind::Generic(_) | TKind::Structure(_) => {
+            TKind::Builtin(_) | 
+            TKind::Unresolved(_) | 
+            TKind::Generic(_) | 
+            TKind::Structure(_) | 
+            TKind::Enumeration(_) => {
                 write!(f, "{}", self.state.display(&ty.name))
             }
             TKind::Constant(value) => {
