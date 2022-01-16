@@ -147,8 +147,14 @@ impl<'a> TParser<'a> {
                 let element_size = self.types[element].size;
                 self.types[ty].size = Size::new(size, size).mul(element_size);
             }
-            TKind::Pointer(..) | TKind::Builtin(..) | TKind::FunPointer(..) => (),
-            _ => unreachable!("{:?}", ty_ent.kind),
+            TKind::Enumeration(_) |
+            TKind::Pointer(..) | 
+            TKind::Builtin(..) | 
+            TKind::FunPointer(..) => (),
+            
+            TKind::Constant(_) |
+            TKind::Generic(_) |
+            TKind::Unresolved(_) => unreachable!("{:?}", ty_ent.kind),
         }
 
         Ok(())

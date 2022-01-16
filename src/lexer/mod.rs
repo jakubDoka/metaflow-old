@@ -111,13 +111,24 @@ impl<'a> Lexer<'a> {
 
     fn number(&mut self) -> Result {
         let start = self.state.progress;
-        let number = self.parse_number_err(10)?.0;
-        let is_float = self.peek() == Some('.');
-        let (fraction, exponent) = if is_float {
-            self.advance();
-            self.parse_number_err(10)?
-        } else {
-            (0, 0)
+        let mut number = self.parse_number_err(10)?.0;
+        let (fraction, exponent, is_float) = match self.peek() {
+            Some('.') => {
+                self.advance();
+                let (f, e) = self.parse_number_err(10)?;
+                (f, e, true)
+            }
+            Some('x') if number == 0 => {
+                self.advance();
+                number = self.parse_number_err(16)?.0;
+                (0, 0, false)
+            }
+            Some('b') if number == 0 => {
+                self.advance();
+                number = self.parse_number_err(2)?.0;
+                (0, 0, false)
+            } 
+            _ => (0, 0, false),
         };
         let next_char = self.peek().unwrap_or('\0');
         let kind = match next_char {
