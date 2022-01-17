@@ -1,16 +1,16 @@
 use crate::{
-    lexer::{TKind, Token},
-    util::{sdbm::ID, Size},
+    lexer::{TKind as LTKind, Token, Span},
+    util::{sdbm::ID, Size}, ast::Vis,
 };
-use cranelift::entity::packed_option::ReservedValue;
+use cranelift::{entity::packed_option::ReservedValue, codegen::{isa::{CallConv as CrCallConv, TargetIsa}}};
 use cranelift::{
     codegen::{
-        ir::{Block, GlobalValue, Inst, Value},
+        ir::{Block, GlobalValue, Inst, Value, types::*},
         packed_option::PackedOption,
     },
     entity::EntityList,
 };
-use quick_proc::{QuickDefault, RealQuickSer};
+use quick_proc::{QuickDefault, RealQuickSer, QuickSer, QuickEnumGets};
 
 pub const BUILTIN_MODULE: Mod = Mod(0);
 
@@ -61,7 +61,7 @@ pub enum IKind {
     VarDecl(Value),
     Zeroed,
     Uninitialized,
-    Lit(TKind),
+    Lit(LTKind),
     Return(PackedOption<Value>),
     Assign(Value),
     Jump(Block, EntityList<Value>),
@@ -109,5 +109,158 @@ impl FunBody {
         self.entry_block = PackedOption::default();
         self.last_block = PackedOption::default();
         self.current_block = PackedOption::default();
+    }
+}
+
+#[derive(Debug, Clone, QuickSer, QuickDefault)]
+pub struct TypeEnt {
+    pub id: ID,
+    #[default(Mod::reserved_value())]
+    pub module: Mod,
+    pub vis: Vis,
+    pub params: EntityList<Ty>,
+    pub kind: TKind,
+    pub name: Span,
+    pub hint: Token,
+    #[default(Ast::reserved_value())]
+    pub attrs: Ast,
+    pub size: Size,
+    pub align: Size,
+}
+
+impl TypeEnt {
+    pub fn to_cr_type(&self, isa: &dyn TargetIsa) -> Type {
+        match &self.kind {
+            TKind::Pointer(..) | TKind::Array(..) | TKind::FunPointer(_)  => {
+                isa.pointer_type()
+            }
+            TKind::Enumeration(_) => I8, //temporary solution
+            TKind::Structure(_) => {
+                let max_size = isa.pointer_bytes() as u32;
+                let size = self.size.pick(max_size == 4).min(max_size);
+                match size {
+                    0 | 1 => I8,
+                    2 => I16,
+                    3 | 4 => I32,
+                    _ => I64,
+                }
+            }
+            &TKind::Builtin(ty) => ty.0,
+            TKind::Generic(_) | TKind::Constant(_) | TKind::Unresolved(_) => unreachable!(),
+        }
+    }
+
+    pub fn on_stack(&self, ptr_ty: Type) -> bool {
+        self.size.pick(ptr_ty == I32) > ptr_ty.bytes() as u32
+    }
+}
+
+#[derive(Debug, Clone, QuickEnumGets, QuickSer)]
+pub enum TKind {
+    Builtin(CrTypeWr),
+    Pointer(Ty, bool),
+    Enumeration(Vec<ID>),
+    Array(Ty, u32),
+    FunPointer(Signature),
+    Constant(TypeConst),
+    Structure(SType),
+    Generic(Ast),
+    Unresolved(Ast),
+}
+
+crate::impl_wrapper!(CrTypeWr, Type);
+
+impl Default for TKind {
+    fn default() -> Self {
+        TKind::Builtin(CrTypeWr(INVALID))
+    }
+}
+
+#[derive(Debug, Clone, Copy, Default, RealQuickSer)]
+pub struct Signature {
+    pub call_conv: CallConv,
+    pub args: EntityList<Ty>,
+    pub ret: PackedOption<Ty>,
+}
+
+#[derive(Debug, Clone, Copy, RealQuickSer)]
+pub enum TypeConst {
+    Bool(bool),
+    Int(i64),
+    Float(f64),
+    Char(char),
+    String(Span),
+}
+
+#[derive(Debug, Clone, QuickSer)]
+pub struct SType {
+    pub kind: SKind,
+    pub fields: Vec<SField>,
+}
+
+#[derive(Debug, Clone, Copy, RealQuickSer)]
+pub struct SField {
+    pub embedded: bool,
+    pub vis: Vis,
+    pub id: ID,
+    pub offset: Size,
+    pub ty: Ty,
+    pub hint: Token,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, RealQuickSer)]
+pub enum SKind {
+    Struct,
+    Union,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, RealQuickSer)]
+pub enum CallConv {
+    Fast,
+    Cold,
+    SystemV,
+    WindowsFastcall,
+    AppleAarch64,
+    BaldrdashSystemV,
+    BaldrdashWindows,
+    Baldrdash2020,
+    Probestack,
+    WasmtimeSystemV,
+    WasmtimeFastcall,
+    WasmtimeAppleAarch64,
+    Platform,
+}
+
+impl CallConv {
+    pub fn from_str(s: &str) -> Option<Self> {
+        Some(match s {
+            "fast" => Self::Fast,
+            "cold" => Self::Cold,
+            "system_v" => Self::SystemV,
+            "windows_fastcall" => Self::WindowsFastcall,
+            "apple_aarch64" => Self::AppleAarch64,
+            "baldrdash_system_v" => Self::BaldrdashSystemV,
+            "baldrdash_windows" => Self::BaldrdashWindows,
+            "baldrdash_2020" => Self::Baldrdash2020,
+            "probestack" => Self::Probestack,
+            "wasmtime_system_v" => Self::WasmtimeSystemV,
+            "wasmtime_fastcall" => Self::WasmtimeFastcall,
+            "wasmtime_apple_aarch64" => Self::WasmtimeAppleAarch64,
+            "platform" => Self::Platform,
+            _ => return None,
+        })
+    }
+
+    pub fn to_cr_call_conv(&self, isa: &dyn TargetIsa) -> CrCallConv {
+        match self {
+            Self::Platform => isa.default_call_conv(),
+            _ => unsafe { std::mem::transmute(*self) },
+        }
+    }
+}
+
+impl Default for CallConv {
+    fn default() -> Self {
+        Self::Fast
     }
 }

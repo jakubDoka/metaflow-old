@@ -26,12 +26,12 @@ use quick_proc::{QuickDefault, QuickSer, RealQuickSer};
 
 use std::ops::{Deref, DerefMut};
 
-use crate::entities::{BlockEnt, BUILTIN_MODULE};
+use crate::entities::{BlockEnt, BUILTIN_MODULE, TKind, CrTypeWr, TypeEnt};
 use crate::{
     entities::{Fun, IKind, InstEnt, Mod, Ty, ValueEnt},
     functions::{FContext, FKind, FParser, FState, FunEnt, GlobalEnt},
     lexer::{Span, TKind as LTKind, Token},
-    types::{CrTypeWr, TKind, TypeDisplay, TypeEnt},
+    types::TypeDisplay,
     util::{
         sdbm::{SdbmHash, ID},
         storage::Map,

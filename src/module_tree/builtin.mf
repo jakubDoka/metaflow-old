@@ -70,7 +70,7 @@ impl pub [T] Seq[T]:
     let new_len = s.len + other.len
     s.reserve(new_len)
     memcpy(
-      s.get_unchecked(s.len) as &u8, 
+      s.get_unchecked_var(s.len) as &var u8, 
       other.get_unchecked(0) as &u8, 
       other.len * sizeof::[T]()
     )
@@ -88,7 +88,7 @@ impl pub [T] Seq[T]:
     s.push(value)
 
     memmove(
-      s.get_unchecked(index + 1) as &u8, 
+      s.get_unchecked_var(index + 1) as &var u8, 
       s.get_unchecked(index) as &u8, 
       (s.len - index) * sizeof::[T]()
     )
@@ -100,7 +100,7 @@ impl pub [T] Seq[T]:
     let value = s[index]
 
     memcpy(
-      s.get_unchecked(index) as &u8, 
+      s.get_unchecked_var(index) as &var u8, 
       s.get_unchecked(index + 1) as &u8, 
       (s.len - index - 1) * sizeof::[T]()
     )
@@ -113,7 +113,7 @@ impl pub [T] Seq[T]:
     let new_len = s.len + 1
     if new_len > s.cap:
       s.cap = new_len * 2
-      s.data = realloc(s.data as &u8, s.cap * sizeof::[T]()) as &T
+      s.data = realloc(s.data as &var u8, s.cap * sizeof::[T]()) as &var T
       pass
     *s.get_unchecked(s.len) = value
     s.len = new_len

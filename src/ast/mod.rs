@@ -800,7 +800,11 @@ impl<'a> AParser<'a> {
                 match self.main_state.display(&self.token.span) {
                     "&" => {
                         self.next()?;
-                        ast_ent.kind = AKind::Ref;
+                        let mutable = self.token.kind == TKind::Var;
+                        if mutable {
+                            self.next()?;
+                        }
+                        ast_ent.kind = AKind::Ref(mutable);
                     }
                     "*" => {
                         self.next()?;
@@ -1596,7 +1600,7 @@ pub enum AKind {
     UnaryOp,
     IfExpr,
     DotExpr,
-    Ref,
+    Ref(bool), // true if mutable
     Deref,
     Array,
     ExprColonExpr,

@@ -12,7 +12,7 @@ use quick_proc::{QuickDefault, QuickSer, RealQuickSer};
 
 use crate::ast::{AContext, AError, AErrorDisplay, AMainState, AParser, AState, Dep, Vis};
 use crate::entities::{
-    BlockEnt, Fun, FunBody, IKind, InstEnt, Manifest, Mod, Source, Ty, ValueEnt, BUILTIN_MODULE,
+    BlockEnt, Fun, FunBody, IKind, InstEnt, Manifest, Mod, Source, Ty, ValueEnt, BUILTIN_MODULE, TypeEnt, TKind,
 };
 use crate::incr;
 use crate::lexer::Token;
@@ -925,9 +925,14 @@ impl ModEnt {
         self.values.push(value_ent)
     }
 
-    pub fn verify_args(&self, args: &[Ty], sig_args: EntityList<Ty>) -> bool {
+    pub fn verify_args(&self, types: &Table<Ty, TypeEnt>, args: &[Ty], sig_args: EntityList<Ty>) -> bool {
         let slice = self.type_slice(sig_args);
-        slice.len() != args.len() || slice.iter().zip(args.iter()).any(|(ty, arg)| arg != ty)
+        slice.len() != args.len() || slice.iter()
+            .zip(args.iter())
+            .any(|(&ty, &arg)| arg != ty && !matches!(
+                (&types[ty].kind, &types[arg].kind),
+                (&TKind::Pointer(_, a), &TKind::Pointer(_, b)) if b && !a,
+            ))
     }
 
     pub fn clear_types(&mut self, target: &mut EntityList<Ty>) {

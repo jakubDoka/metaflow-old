@@ -1,9 +1,14 @@
 use std::ops::{Deref, DerefMut};
 
 use crate::ast::{AError, AErrorDisplay, AKind, AstEnt, Vis};
-use crate::entities::{Ast, Mod, Ty, BUILTIN_MODULE};
+use crate::entities::{
+    Ast, Mod, Ty, 
+    BUILTIN_MODULE, TypeConst, Signature, 
+    TKind, TypeEnt, CallConv, 
+    SField, SType, SKind, CrTypeWr,
+};
 use crate::incr;
-use crate::lexer::{Span, TKind as LTKind, Token, TokenDisplay};
+use crate::lexer::{TKind as LTKind, Token, TokenDisplay};
 use crate::module_tree::{MTContext, MTErrorDisplay, MTParser, MTState, TreeStorage};
 use crate::util::sdbm::ID;
 use crate::util::storage::Table;
@@ -11,12 +16,11 @@ use crate::util::Size;
 use cranelift::codegen::ir::types::Type;
 use cranelift::codegen::ir::Signature as CrSignature;
 use cranelift::codegen::ir::{types::*, AbiParam, ArgumentPurpose};
-use cranelift::codegen::isa::CallConv as CrCallConv;
 use cranelift::codegen::isa::TargetIsa;
 use cranelift::codegen::packed_option::PackedOption;
 use cranelift::entity::EntityList;
 use cranelift::entity::{packed_option::ReservedValue, EntityRef};
-use quick_proc::{QuickDefault, QuickEnumGets, QuickSer, RealQuickSer};
+use quick_proc::{QuickSer, RealQuickSer};
 
 type Result<T = ()> = std::result::Result<T, TError>;
 
@@ -296,7 +300,7 @@ impl<'a> TParser<'a> {
                 self.simple_type(module, Some(module_name), name, &token)
             }
             AKind::Instantiation => self.instance(module, ast, depth),
-            AKind::Ref => self.pointer(module, ast, depth),
+            AKind::Ref(mutable) => self.pointer(module, ast, depth, mutable),
             AKind::Array => self.array(module, ast, depth),
             AKind::Lit => self.constant(module, &token),
             AKind::FunHeader(..) => self.function_pointer(module, ast, depth),
@@ -388,9 +392,9 @@ impl<'a> TParser<'a> {
         Ok((module, ty))
     }
 
-    fn pointer(&mut self, module: Mod, ast: Ast, depth: usize) -> Result<(Mod, Ty)> {
+    fn pointer(&mut self, module: Mod, ast: Ast, depth: usize, mutable: bool) -> Result<(Mod, Ty)> {
         let (module, datatype) = self.ty(module, self.modules[module].son(ast, 0), depth)?;
-        let datatype = self.pointer_of(datatype);
+        let datatype = self.pointer_of(datatype, mutable);
 
         Ok((module, datatype))
     }
@@ -679,75 +683,27 @@ pub trait ItemSearch<T: EntityRef> {
     }
 }
 
-#[derive(Debug, Clone, QuickSer, QuickDefault)]
-pub struct TypeEnt {
-    pub id: ID,
-    #[default(Mod::reserved_value())]
-    pub module: Mod,
-    pub vis: Vis,
-    pub params: EntityList<Ty>,
-    pub kind: TKind,
-    pub name: Span,
-    pub hint: Token,
-    #[default(Ast::reserved_value())]
-    pub attrs: Ast,
-    pub size: Size,
-    pub align: Size,
+pub struct TypeConstDisplay<'a> {
+    state: &'a TState,
+    constant: &'a TypeConst,
 }
 
-impl TypeEnt {
-    pub fn to_cr_type(&self, isa: &dyn TargetIsa) -> Type {
-        match &self.kind {
-            TKind::Pointer(_) | TKind::Array(_, _) | TKind::FunPointer(_)  => {
-                isa.pointer_type()
-            }
-            TKind::Enumeration(_) => I8, //temporary solution
-            TKind::Structure(_) => {
-                let max_size = isa.pointer_bytes() as u32;
-                let size = self.size.pick(max_size == 4).min(max_size);
-                match size {
-                    0 | 1 => I8,
-                    2 => I16,
-                    3 | 4 => I32,
-                    _ => I64,
-                }
-            }
-            &TKind::Builtin(ty) => ty.0,
-            TKind::Generic(_) | TKind::Constant(_) | TKind::Unresolved(_) => unreachable!(),
+impl<'a> TypeConstDisplay<'a> {
+    pub fn new(state: &'a TState, constant: &'a TypeConst) -> Self {
+        Self { state, constant }
+    }
+}
+
+impl std::fmt::Display for TypeConstDisplay<'_> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self.constant {
+            TypeConst::Bool(b) => write!(f, "{}", b),
+            TypeConst::Int(i) => write!(f, "{}", i),
+            TypeConst::Float(float) => write!(f, "{}", float),
+            TypeConst::Char(c) => write!(f, "'{}'", c),
+            TypeConst::String(s) => write!(f, "\"{}\"", self.state.display(s)),
         }
     }
-
-    pub fn on_stack(&self, ptr_ty: Type) -> bool {
-        self.size.pick(ptr_ty == I32) > ptr_ty.bytes() as u32
-    }
-}
-
-#[derive(Debug, Clone, QuickEnumGets, QuickSer)]
-pub enum TKind {
-    Builtin(CrTypeWr),
-    Pointer(Ty),
-    Enumeration(Vec<ID>),
-    Array(Ty, u32),
-    FunPointer(Signature),
-    Constant(TypeConst),
-    Structure(SType),
-    Generic(Ast),
-    Unresolved(Ast),
-}
-
-crate::impl_wrapper!(CrTypeWr, Type);
-
-impl Default for TKind {
-    fn default() -> Self {
-        TKind::Builtin(CrTypeWr(INVALID))
-    }
-}
-
-#[derive(Debug, Clone, Copy, Default, RealQuickSer)]
-pub struct Signature {
-    pub call_conv: CallConv,
-    pub args: EntityList<Ty>,
-    pub ret: PackedOption<Ty>,
 }
 
 impl Signature {
@@ -780,60 +736,6 @@ impl Signature {
     }
 }
 
-#[derive(Debug, Clone, Copy, RealQuickSer)]
-pub enum TypeConst {
-    Bool(bool),
-    Int(i64),
-    Float(f64),
-    Char(char),
-    String(Span),
-}
-
-pub struct TypeConstDisplay<'a> {
-    state: &'a TState,
-    constant: &'a TypeConst,
-}
-
-impl<'a> TypeConstDisplay<'a> {
-    pub fn new(state: &'a TState, constant: &'a TypeConst) -> Self {
-        Self { state, constant }
-    }
-}
-
-impl std::fmt::Display for TypeConstDisplay<'_> {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self.constant {
-            TypeConst::Bool(b) => write!(f, "{}", b),
-            TypeConst::Int(i) => write!(f, "{}", i),
-            TypeConst::Float(float) => write!(f, "{}", float),
-            TypeConst::Char(c) => write!(f, "'{}'", c),
-            TypeConst::String(s) => write!(f, "\"{}\"", self.state.display(s)),
-        }
-    }
-}
-
-#[derive(Debug, Clone, QuickSer)]
-pub struct SType {
-    pub kind: SKind,
-    pub fields: Vec<SField>,
-}
-
-#[derive(Debug, Clone, Copy, RealQuickSer)]
-pub struct SField {
-    pub embedded: bool,
-    pub vis: Vis,
-    pub id: ID,
-    pub offset: Size,
-    pub ty: Ty,
-    pub hint: Token,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq, RealQuickSer)]
-pub enum SKind {
-    Struct,
-    Union,
-}
-
 #[derive(Debug, Clone, Default)]
 pub struct TContext {
     pub mt_context: MTContext,
@@ -854,9 +756,9 @@ pub struct TState {
 }
 
 impl TState {
-    pub fn pointer_of(&mut self, ty: Ty) -> Ty {
+    pub fn pointer_of(&mut self, ty: Ty, mutable: bool) -> Ty {
         let module = self.types[ty].module;
-        let name = "&";
+        let name = if mutable { "&var " } else { "&" };
         let id = TYPE_SALT
             .add(ID::new(name))
             .add(self.types[ty].id)
@@ -871,7 +773,7 @@ impl TState {
         let pointer_type = TypeEnt {
             vis: Vis::Public,
             id,
-            kind: TKind::Pointer(ty),
+            kind: TKind::Pointer(ty, mutable),
             module,
             size,
             align: size,
@@ -979,10 +881,18 @@ impl TState {
     }
 
     pub fn pointer_base(&self, ty: Ty) -> Option<Ty> {
-        if let TKind::Pointer(base) = self.types[ty].kind {
+        if let TKind::Pointer(base, _) = self.types[ty].kind {
             Some(base)
         } else {
             None
+        }
+    }
+
+    pub fn pointer_mutability(&self, ty: Ty) -> bool {
+        if let TKind::Pointer(_, mutability) = self.types[ty].kind {
+            mutability
+        } else {
+            false
         }
     }
 
@@ -1089,57 +999,6 @@ define_repo!(
     array, INVALID, 0, 0
 );
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, RealQuickSer)]
-pub enum CallConv {
-    Fast,
-    Cold,
-    SystemV,
-    WindowsFastcall,
-    AppleAarch64,
-    BaldrdashSystemV,
-    BaldrdashWindows,
-    Baldrdash2020,
-    Probestack,
-    WasmtimeSystemV,
-    WasmtimeFastcall,
-    WasmtimeAppleAarch64,
-    Platform,
-}
-
-impl CallConv {
-    pub fn from_str(s: &str) -> Option<Self> {
-        Some(match s {
-            "fast" => Self::Fast,
-            "cold" => Self::Cold,
-            "system_v" => Self::SystemV,
-            "windows_fastcall" => Self::WindowsFastcall,
-            "apple_aarch64" => Self::AppleAarch64,
-            "baldrdash_system_v" => Self::BaldrdashSystemV,
-            "baldrdash_windows" => Self::BaldrdashWindows,
-            "baldrdash_2020" => Self::Baldrdash2020,
-            "probestack" => Self::Probestack,
-            "wasmtime_system_v" => Self::WasmtimeSystemV,
-            "wasmtime_fastcall" => Self::WasmtimeFastcall,
-            "wasmtime_apple_aarch64" => Self::WasmtimeAppleAarch64,
-            "platform" => Self::Platform,
-            _ => return None,
-        })
-    }
-
-    pub fn to_cr_call_conv(&self, isa: &dyn TargetIsa) -> CrCallConv {
-        match self {
-            Self::Platform => isa.default_call_conv(),
-            _ => unsafe { std::mem::transmute(*self) },
-        }
-    }
-}
-
-impl Default for CallConv {
-    fn default() -> Self {
-        Self::Fast
-    }
-}
-
 pub struct TypeDisplay<'a> {
     state: &'a TState,
     type_id: Ty,
@@ -1155,8 +1014,10 @@ impl<'a> std::fmt::Display for TypeDisplay<'a> {
     fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
         let ty = &self.state.types[self.type_id];
         match &ty.kind {
-            TKind::Pointer(id, ..) => {
-                write!(f, "&{}", Self::new(self.state, *id))
+            &TKind::Pointer(id, mutable) => if mutable {
+                write!(f, "&var {}", Self::new(self.state, id))
+            } else {
+                write!(f, "&{}", Self::new(self.state, id))
             }
             TKind::Structure(_) if !ty.params.is_empty() => {
                 let params = self.state.modules[ty.module].type_slice(ty.params);

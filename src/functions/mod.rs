@@ -1,7 +1,7 @@
 use std::ops::{Deref, DerefMut};
 
 use crate::ast::{AKind, AstDisplay, AstEnt, OpKind, Vis};
-use crate::entities::{Ast, Fun, FunBody, IKind, Mod, Ty, ValueEnt, BUILTIN_MODULE};
+use crate::entities::{Ast, Fun, FunBody, IKind, Mod, Ty, ValueEnt, BUILTIN_MODULE, TKind, Signature, CallConv, TypeConst, TypeEnt};
 use crate::lexer::TKind as LTKind;
 use crate::lexer::{Span, Token, TokenDisplay};
 use crate::module_tree::{MTErrorDisplay, MTParser};
@@ -192,7 +192,7 @@ impl<'a> FParser<'a> {
             let ty = sig.ret.unwrap();
             let ty_ent = &self.types[ty];
             if ty_ent.on_stack(self.ptr_ty) {
-                let ty = self.pointer_of(ty);
+                let ty = self.pointer_of(ty, true);
                 let module_ent = &mut self.modules[module];
                 let value = module_ent.add_temp_value(ty);
                 module_ent.push_block_arg(entry_point, value);
@@ -487,7 +487,7 @@ impl<'a> FParser<'a> {
             AKind::Loop => self.loop_expr(fun, ast, body),
             AKind::DotExpr => self.dot_expr(fun, ast, body),
             AKind::Deref => self.deref_expr(fun, ast, body),
-            AKind::Ref => self.ref_expr(fun, ast, body),
+            AKind::Ref(mutable) => self.ref_expr(fun, ast, mutable, body),
             AKind::UnaryOp => self.unary_op(fun, ast, body),
             AKind::Pass => Ok(None),
             AKind::Array => self.array(fun, ast, body),
@@ -561,7 +561,7 @@ impl<'a> FParser<'a> {
         Ok(Some(result))
     }
 
-    fn ref_expr(&mut self, fun: Fun, ast: Ast, body: &mut FunBody) -> ExprResult {
+    fn ref_expr(&mut self, fun: Fun, ast: Ast, mutable: bool, body: &mut FunBody) -> ExprResult {
         let module = self.funs[fun].module;
         let module_ent = &self.state.modules[module];
         let &AstEnt { sons, token, .. } = module_ent.load(ast);
@@ -572,16 +572,16 @@ impl<'a> FParser<'a> {
         let value = self.expr(fun, value, body)?;
         self.context.in_assign = prev;
 
-        let reference = self.ref_expr_low(fun, value, token, body);
+        let reference = self.ref_expr_low(fun, value, token, mutable, body);
 
         Ok(Some(reference))
     }
 
-    fn ref_expr_low(&mut self, fun: Fun, value: Value, token: Token, body: &mut FunBody) -> Value {
+    fn ref_expr_low(&mut self, fun: Fun, value: Value, token: Token, mutable: bool, body: &mut FunBody) -> Value {
         let module = self.funs[fun].module;
         let module_ent = &self.state.modules[module];
         let ty = module_ent.type_of_value(value);
-        let ty = self.pointer_of(ty);
+        let ty = self.pointer_of(ty, mutable);
         let module_ent = &mut self.state.modules[module];
         let reference = module_ent.reference(ty, value, token, body);
 
@@ -682,7 +682,7 @@ impl<'a> FParser<'a> {
         while i < frontier.len() {
             let stype = match &self.types[frontier[i].2].kind {
                 TKind::Structure(stype) => stype,
-                &TKind::Pointer(pointed) => match &self.types[pointed].kind {
+                &TKind::Pointer(pointed, _) => match &self.types[pointed].kind {
                     TKind::Structure(stype) => stype,
                     _ => continue,
                 },
@@ -898,7 +898,7 @@ impl<'a> FParser<'a> {
                         }
                     };
 
-                    (self.modules[fp_module].verify_args(&types, fp.args), fp.ret)
+                    (self.modules[fp_module].verify_args(&self.types, &types, fp.args), fp.ret)
                 };
 
                 if mismatched {
@@ -1057,12 +1057,30 @@ impl<'a> FParser<'a> {
 
         let other_fun = if let FKind::Generic = self.funs[other_fun].kind {
             if caller.is_none() {
-                let result = self.create(other_fun, params, &types)?;
-                types[0] = self.pointer_of(types[0]);
-                if result.is_some() {
-                    result
-                } else {
-                    self.create(other_fun, params, &types)?
+                let g_fun = self.generic_funs.get(other_fun).unwrap();
+                // figure out whether receiver is pointer
+                let (pointer, mutable) = match g_fun.sig.elements[1] {
+                    GenericElement::Pointer(mutable) => (true, mutable),
+                    _ => (false, false),
+                };
+                let (other_pointer, other_mutable) = match &self.types[types[0]].kind {
+                    &TKind::Pointer(_, mutable) => (true, mutable),
+                    _ => (false, false),
+                };
+
+                match (pointer, other_pointer) {
+                    (true, false) => {
+                        types[0] = self.pointer_of(types[0], mutable);
+                        self.create(other_fun, params, &types)?
+                    },
+                    (false, true) => {
+                        types[0] = self.t_state.pointer_base(types[0]).unwrap();
+                        self.create(other_fun, params, &types)?
+                    },
+                    (true, true) if mutable && !other_mutable => {
+                        None
+                    },
+                    _ => self.create(other_fun, params, &types)?,
                 }
             } else {
                 self.create(other_fun, params, &types)?
@@ -1100,7 +1118,8 @@ impl<'a> FParser<'a> {
             None
         };
 
-        if caller.is_none() {
+        let mut changed = caller.is_none();
+        if changed {
             if let Some(field) = field {
                 values[0] = self.field_access(fun, values[0], field, token, body)?;
             }
@@ -1109,13 +1128,29 @@ impl<'a> FParser<'a> {
             let first_real_arg_ty = self.modules[module].type_of_value(values[0]);
 
             if first_real_arg_ty != first_arg_ty {
+                
                 if self.t_state.pointer_base(first_real_arg_ty) == Some(first_arg_ty) {
                     values[0] = self.deref_expr_low(fun, values[0], token, body)?;
-                } else {
-                    values[0] = self.ref_expr_low(fun, values[0], token, body);
+                } else if self.t_state.pointer_base(first_arg_ty) == Some(first_real_arg_ty) {
+                    let mutable = self.pointer_mutability(first_arg_ty);
+                    values[0] = self.ref_expr_low(fun, values[0], token, mutable, body);
+                } else { 
+                    // adjust mutability if '&var' instead of '&' is passed 
+                    let mutability_mismatch = matches!(
+                        (
+                            &self.types[first_real_arg_ty].kind,
+                            &self.types[first_arg_ty].kind
+                        ),
+                        (&TKind::Pointer(_, a), &TKind::Pointer(_, b)) if a != b && b && !a
+                    );
+                    if mutability_mismatch {
+                        types[0] = first_arg_ty; // just overwrite to so it matches later check
+                    }
+                    changed = false;
                 }
+
                 debug_assert!(
-                    self.modules[module].type_of_value(values[0]) == first_arg_ty,
+                    self.modules[module].type_of_value(values[0]) == first_arg_ty || !changed,
                     "{}({:?}) != {}({:?})",
                     TypeDisplay::new(self.state, self.modules[module].type_of_value(values[0])),
                     self.modules[module].type_of_value(values[0]),
@@ -1125,11 +1160,11 @@ impl<'a> FParser<'a> {
             }
         }
 
-        if types.len() > 0 {
+        if changed {
             types[0] = self.modules[module].type_of_value(values[0]);
         }
 
-        let mismatched = self.modules[other_module].verify_args(&types, sig_args);
+        let mismatched = self.modules[other_module].verify_args(&self.types, &types, sig_args);
 
         if mismatched {
             return Err(FError::new(
@@ -1202,7 +1237,7 @@ impl<'a> FParser<'a> {
         final_file_name.push_str(file_name);
         final_file_name.push('\x00');
         let span = self.state.builtin_span(&final_file_name);
-        let ptr = self.pointer_of(u8);
+        let ptr = self.pointer_of(u8, false);
         let module_ent = &mut self.modules[module];
         let file_name = module_ent.add_temp_value(ptr);
         module_ent.add_inst(IKind::Lit(LTKind::String(span)), file_name, token, body);
@@ -1385,7 +1420,7 @@ impl<'a> FParser<'a> {
                         TypeConst::Int(val) => (LTKind::Int(val, 0), repo.int),
                         TypeConst::Float(val) => (LTKind::Float(val, 64), repo.f64),
                         TypeConst::Char(val) => (LTKind::Char(val), repo.u32),
-                        TypeConst::String(val) => (LTKind::String(val), self.pointer_of(repo.u8)),
+                        TypeConst::String(val) => (LTKind::String(val), self.pointer_of(repo.u8, false)),
                     };
 
                     let module_ent = &mut self.modules[module];
@@ -1426,7 +1461,7 @@ impl<'a> FParser<'a> {
             },
             LTKind::Bool(_) => repo.bool,
             LTKind::Char(_) => repo.u32,
-            LTKind::String(_) => self.pointer_of(repo.u8),
+            LTKind::String(_) => self.pointer_of(repo.u8, false),
             _ => unreachable!(
                 "{}",
                 AstDisplay::new(self.state, &self.modules[module].a_state, ast)
@@ -1507,7 +1542,7 @@ impl<'a> FParser<'a> {
         let module = self.funs[fun].module;
         let module_ent = &self.state.modules[module];
         let ty = module_ent.type_of_value(header);
-        let mutable = module_ent.is_mutable(header) || self.t_state.pointer_base(ty).is_some();
+        let mut mutable = module_ent.is_mutable(header) || self.t_state.pointer_mutability(ty);
         let mut path = self.context.pool.get();
         let success = self.find_field(ty, field, &mut path);
         if !success {
@@ -1527,7 +1562,8 @@ impl<'a> FParser<'a> {
                     offset = offset.add(s_field.offset);
                     current_type = s_field.ty;
                 }
-                &TKind::Pointer(pointed) => {
+                &TKind::Pointer(pointed, p_mutable) => {
+                    mutable &= p_mutable;
                     let value =
                         self.modules[module].offset_value(header, pointed, offset, token, body);
                     let ty = &self.types[pointed];
@@ -2114,8 +2150,8 @@ impl<'a> FParser<'a> {
             &[] => EntityList::new(),
             &[count, args] => {
                 let int = self.state.builtin_repo.int;
-                let temp_ptr = self.pointer_of(int);
-                if count != int || args != self.pointer_of(temp_ptr) {
+                let temp_ptr = self.pointer_of(int, false);
+                if count != int || args != self.pointer_of(temp_ptr, false) {
                     return Err(FError::new(FEKind::InvalidEntrySignature, hint));
                 }
                 self.modules[module].add_values(&[arg1, arg2])
@@ -2215,9 +2251,9 @@ impl<'a> FParser<'a> {
                             .map(|&a| (a, false)),
                     );
                 }
-                AKind::Ref => {
+                AKind::Ref(mutable) => {
                     let pointed = module_ent.get(sons, 0);
-                    buffer.push(GenericElement::Pointer);
+                    buffer.push(GenericElement::Pointer(mutable));
                     stack.push((pointed, false));
                 }
                 AKind::Array => {
@@ -2271,8 +2307,8 @@ impl<'a> FParser<'a> {
 
             if params.is_empty() {
                 match kind {
-                    &TKind::Pointer(pointed) => {
-                        arg_buffer.push(GenericElement::Pointer);
+                    &TKind::Pointer(pointed, mutable) => {
+                        arg_buffer.push(GenericElement::Pointer(mutable));
                         stack.push((pointed, false));
                     }
                     &TKind::Array(element, size) => {
@@ -2759,9 +2795,8 @@ pub struct GenericSignature {
 pub enum GenericElement {
     ScopeStart,
     ScopeEnd,
-    Pointer,
+    Pointer(bool), // true if mutable
     Array(Option<Ty>),
-    ArraySize(u32),
     Element(Ty, Option<Ty>),
     Parameter(usize),
     NextArgument(usize, usize), // amount of arguments, amount of elements for representation
