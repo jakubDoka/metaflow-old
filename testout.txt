@@ -2187,3 +2187,27 @@ Fun(None) "fun some_string -> &u8:\r\n  \"\r\nhello there\r\n  \"":
   None
  Group ":":
   Lit "\"\r\nhello there\r\n  \""
+output:
+ok
+ok
+ok
+ok
+ok
+ok
+ok
+ok
+Hello, World!ok
+ok
+ok
+ok
+ok
+ok
+ok
+ok
+ok
+0
+panic: assertion failed
+22:15 src/gen/test_project\root.mf
+234:9 src/gen/test_project\root.mf
+
+:end

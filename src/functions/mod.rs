@@ -1073,19 +1073,19 @@ impl<'a> FParser<'a> {
                 match (pointer, other_pointer) {
                     (true, false) => {
                         types[0] = self.pointer_of(types[0], mutable);
-                        self.create(other_fun, params, &types)?
+                        self.create(module, other_fun, params, &types)?
                     },
                     (false, true) => {
                         types[0] = self.t_state.pointer_base(types[0]).unwrap();
-                        self.create(other_fun, params, &types)?
+                        self.create(module, other_fun, params, &types)?
                     },
                     (true, true) if mutable && !other_mutable => {
                         None
                     },
-                    _ => self.create(other_fun, params, &types)?,
+                    _ => self.create(module, other_fun, params, &types)?,
                 }
             } else {
-                self.create(other_fun, params, &types)?
+                self.create(module, other_fun, params, &types)?
             }
             .ok_or_else(|| {
                 FError::new(FEKind::GenericMismatch(name.clone(), types.to_vec()), token)
@@ -1630,7 +1630,7 @@ impl<'a> FParser<'a> {
         Ok(Some(value))
     }
 
-    fn create(&mut self, fun: Fun, explicit_params: &[Ty], values: &[Ty]) -> Result<Option<Fun>> {
+    fn create(&mut self, host: Mod, fun: Fun, explicit_params: &[Ty], values: &[Ty]) -> Result<Option<Fun>> {
         let mut arg_buffer = self.context.pool.get();
         let mut stack = self.context.pool.get();
         let mut params = self.context.pool.get();
@@ -1786,7 +1786,7 @@ impl<'a> FParser<'a> {
             body: FunBody::default(),
         };
 
-        let (shadowed, id) = self.add_fun(new_fun_ent);
+        let (shadowed, id) = self.add_fun_low(host, new_fun_ent);
         debug_assert!(shadowed.is_none());
 
         self.context.unresolved.push(id);
@@ -2381,6 +2381,10 @@ impl<'a> FParser<'a> {
 
     fn add_fun(&mut self, fun_ent: FunEnt) -> (Option<FunEnt>, Fun) {
         let module = fun_ent.module;
+        self.add_fun_low(module, fun_ent)
+    }
+
+    fn add_fun_low(&mut self, module: Mod, fun_ent: FunEnt) -> (Option<FunEnt>, Fun) {
         let id = fun_ent.id;
         let (shadow, fun) = self.funs.insert(id, fun_ent);
         self.modules[module].add_fun(fun);
