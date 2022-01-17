@@ -3,18 +3,6 @@ var pub stacktrace: Seq[StackFrame]
 
 attr push(untraced)
 
-## allocates the given type on heap and returns a pointer
-## to the allocated memory, memory is zero initialized
-fun pub new[T] -> &T:
-  let new = alloc(sizeof::[T]())
-  memset(new, 0, sizeof::[T]())
-  new as &T
-
-## drops the given pointer assuming it was previously allocated with
-## 'new' function
-fun pub drop[T](ptr: &T):
-  free(ptr as &u8)
-
 ## returns size of T in bytes
 fun pub sizeof[T] -> int
 
@@ -25,20 +13,22 @@ impl pub [T, L] [T, L]:
       panic("index out of bounds")
     a.get_unchecked(index)
 
+  fun __index_var__(a: &var Self, index: int) -> &var T:
+    if index < 0 | index >= L:
+      panic("index out of bounds")
+    a.get_unchecked_var(index)
+
   fun get_unchecked(a: &Self, index: int) -> &T:
     (a as int + index * sizeof::[T]()) as &T
-
-  fun to_seq(a: &Self) -> Seq[T]:
-    var seq: Seq[T]
-    seq.reserve(L)
-    *(seq.data as &Self) = *a
-    seq
+  
+  fun get_unchecked_var(a: &var Self, index: int) -> &var T:
+    (a as int + index * sizeof::[T]()) as &var T
 
   fun len(array: &Self) -> int:
     L
 
 impl pub Seq[u8]:
-  fun print_int(s: &Self, value: int):
+  fun print_int(s: &var Self, value: int):
     let 
       prev_len = s.len
       width = (if value != 0: log10(value.f64()).int() else: 0) + 1
@@ -56,7 +46,7 @@ impl pub Seq[u8]:
       *s.get_unchecked(prev_len + i - 1) = (digit.u32() + '0').u8()
       i -= 1
   
-  fun print(s: &Self, value: &u8):
+  fun print(s: &var Self, value: &u8):
     var i = 0
     for:
       let value = *((value as int + i) as &u8)
@@ -69,13 +59,14 @@ impl pub Seq[u8]:
     s.len += i
 
 struct pub Seq[T]:
-  data: &T
+  data: &var T
   len: int
   cap: int
 
 attr inline
 impl pub [T] Seq[T]:
-  fun extend(s, other: &Self):
+
+  fun extend(s: &var Self, other: &Self):
     let new_len = s.len + other.len
     s.reserve(new_len)
     memcpy(
@@ -85,13 +76,13 @@ impl pub [T] Seq[T]:
     )
     s.len = new_len
 
-  fun reserve(s: &Self, new_cap: int):
+  fun reserve(s: &var Self, new_cap: int):
     if s.cap > new_cap:
       return
     s.data = realloc(s.data, new_cap * sizeof::[T]())
     s.cap = new_cap
   
-  fun insert(s: &Self, index: int, value: T):
+  fun insert(s: &var Self, index: int, value: T):
     if index < 0 | index > s.len:
       panic("index out of range")
     s.push(value)
@@ -104,7 +95,7 @@ impl pub [T] Seq[T]:
 
     s[index] = value
   
-  fun remove(s: &Self, index: int) -> T:
+  fun remove(s: &var Self, index: int) -> T:
     s.assert_in_bounds(index)
     let value = s[index]
 
@@ -118,7 +109,7 @@ impl pub [T] Seq[T]:
 
     value
   
-  fun push(s: &Self, value: T):
+  fun push(s: &var Self, value: T):
     let new_len = s.len + 1
     if new_len > s.cap:
       s.cap = new_len * 2
@@ -127,7 +118,7 @@ impl pub [T] Seq[T]:
     *s.get_unchecked(s.len) = value
     s.len = new_len
   
-  fun pop(s: &Self) -> Option[T]:
+  fun pop(s: &var Self) -> Option[T]:
     if s.len == 0:
       return
     let value = *s.get_unchecked(s.len - 1)
@@ -137,13 +128,22 @@ impl pub [T] Seq[T]:
   fun get(s: &Self, index: int) -> Option[&T]:
     if !s.in_bounds(index):
       return
-    Option::some(s[index])
+    Option::some(s.get_unchecked(index))
+
+  fun get_var(s: &var Self, index: int) -> Option[&var T]:
+    if !s.in_bounds(index):
+      return
+    Option::some(s.get_unchecked_var(index))
 
   fun __index__(s: &Self, index: int) -> &T:
     s.assert_in_bounds(index)
     s.get_unchecked(index)
   
-  fun set_len(s: &Self, new_len: int):
+  fun __index_var__(s: &var Self, index: int) -> &var T:
+    s.assert_in_bounds(index)
+    s.get_unchecked_var(index)
+
+  fun set_len(s: &var Self, new_len: int):
     if new_len > s.cap | new_len < 0:
       panic("invalid length, must be positive and less or equal to capacity")
     s.len = new_len
@@ -151,6 +151,9 @@ impl pub [T] Seq[T]:
   fun get_unchecked(s: &Self, index: int) -> &T:
     (s.data as int + index * sizeof::[T]()) as &T
   
+  fun get_unchecked_var(s: &var Self, index: int) -> &var T:
+    (s.data as int + index * sizeof::[T]()) as &var T
+
   fun assert_in_bounds(s: &Self, index: int):
     if !s.in_bounds(index):
       panic("index out of bounds")
@@ -158,12 +161,6 @@ impl pub [T] Seq[T]:
   fun in_bounds(s: &Self, index: int) -> bool:
     index >= 0 & index < s.len
   
-  fun drop(s: &Self):
-    s.len = 0
-    s.cap = 0
-    free(s.data)
-    s.data = 0 as &T
-
 struct pub Option[T]:
   priv value: T
   priv is_some: bool
@@ -188,6 +185,12 @@ impl pub [T] Option[T]:
     else:
       panic("no value in option")
   
+  fun get_var(option: &var Self) -> &var T:
+    if option.is_some:
+      &var option.value
+    else:
+      panic("no value in option")
+
   fun unwrap(option: Self) -> T:
     if option.is_some:
       option.value
@@ -196,6 +199,9 @@ impl pub [T] Option[T]:
   
   fun get_unchecked(option: &Self) -> &T:
     &option.value
+  
+  fun get_unchecked_var(option: &var Self) -> &var T:
+    &var option.value
   
   fun unwrap_unchecked(option: Self) -> T:
     option.value
@@ -261,19 +267,19 @@ fun pub pop_frame:
 attr push(linkage(import), call_conv(platform))
 
 attr linkage(import, malloc)
-fun pub alloc(size: int) -> &u8
+fun pub alloc(size: int) -> &var u8
 
-fun pub realloc(ptr: &u8, size: int) -> &u8
+fun pub realloc(ptr: &var u8, size: int) -> &var u8
 
-fun pub free(ptr: &u8)
+fun pub free(ptr: &var u8)
 
 fun pub putchar(c: u32)
 
-fun pub memset(ptr: &u8, value: u8, size: int)
+fun pub memset(ptr: &var u8, value: u8, size: int)
 
-fun pub memmove(dest: &u8, src: &u8, size: int)
+fun pub memmove(dest: &var u8, src: &u8, size: int)
 
-fun pub memcpy(dest: &u8, src: &u8, size: int)
+fun pub memcpy(dest: &var u8, src: &u8, size: int)
 
 fun pub log10(x: f64) -> f64
 
