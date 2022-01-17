@@ -225,6 +225,7 @@ impl Into<GError> for GEKind {
 }
 
 pub fn test() {
+    println!("gen-test");
     let args = Arguments::from_str("root src/gen/test_project -trace").unwrap();
 
     compile(args)

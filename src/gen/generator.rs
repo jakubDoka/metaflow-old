@@ -1727,7 +1727,7 @@ fn static_value_memcpy_base<T: Copy, F: Fn(
     walk_mem(size, |mover, offset| {
         let src_ty = builder.func.dfg.value_type(src_value);
         let value = if src_ty.bits() != mover.bits() {
-            let mut mask = 1i64 << (mover.bits() + 1) as i64 - 1; // turn first 'mover.bits()' bits on
+            let mut mask = (1i64 << mover.bits() as i64) - 1; // turn first 'mover.bits()' bits on
             mask <<= offset * 8;
             let mask = builder.ins().iconst(I64, mask);
             let value = builder.ins().band(src_value, mask);

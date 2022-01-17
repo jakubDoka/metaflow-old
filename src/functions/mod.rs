@@ -81,6 +81,7 @@ impl<'a> FParser<'a> {
             id,
             sig,
             module,
+            host: module,
             kind: FKind::Represented,
             untraced: true,
             inline: true,
@@ -986,7 +987,11 @@ impl<'a> FParser<'a> {
         let mut module_buffer = self.context.pool.get();
         let mut values = self.context.pool.get();
         let mut types = self.context.pool.get();
-        let module = self.funs[fun].module;
+        let FunEnt {
+            module,
+            host,
+            ..
+        } = self.funs[fun];
         let module_ent = &self.modules[module];
         values.extend_from_slice(original_values);
         types.extend(values.iter().map(|&v| module_ent.type_of_value(v)));
@@ -1073,19 +1078,19 @@ impl<'a> FParser<'a> {
                 match (pointer, other_pointer) {
                     (true, false) => {
                         types[0] = self.pointer_of(types[0], mutable);
-                        self.create(module, other_fun, params, &types)?
+                        self.create(host, other_fun, params, &types)?
                     },
                     (false, true) => {
                         types[0] = self.t_state.pointer_base(types[0]).unwrap();
-                        self.create(module, other_fun, params, &types)?
+                        self.create(host, other_fun, params, &types)?
                     },
                     (true, true) if mutable && !other_mutable => {
                         None
                     },
-                    _ => self.create(module, other_fun, params, &types)?,
+                    _ => self.create(host, other_fun, params, &types)?,
                 }
             } else {
-                self.create(module, other_fun, params, &types)?
+                self.create(host, other_fun, params, &types)?
             }
             .ok_or_else(|| {
                 FError::new(FEKind::GenericMismatch(name.clone(), types.to_vec()), token)
@@ -1631,6 +1636,7 @@ impl<'a> FParser<'a> {
     }
 
     fn create(&mut self, host: Mod, fun: Fun, explicit_params: &[Ty], values: &[Ty]) -> Result<Option<Fun>> {
+        println!("=== {:?} {:?}", host, self.display(&self.funs[fun].name));
         let mut arg_buffer = self.context.pool.get();
         let mut stack = self.context.pool.get();
         let mut params = self.context.pool.get();
@@ -1769,6 +1775,7 @@ impl<'a> FParser<'a> {
             vis,
             id,
             module,
+            host,
             hint,
             name,
             attrs,
@@ -2094,6 +2101,7 @@ impl<'a> FParser<'a> {
             vis,
             id,
             module,
+            host: module,
             hint,
             kind,
             name,
@@ -2746,6 +2754,7 @@ pub enum DotInstr {
 pub struct FunEnt {
     pub id: ID,
     pub module: Mod,
+    pub host: Mod,
     pub hint: Token,
     pub params: EntityList<Ty>,
     pub base_fun: PackedOption<Fun>,
