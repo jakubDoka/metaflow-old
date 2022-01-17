@@ -1188,28 +1188,26 @@ impl<'a> Generator<'a> {
                     FinalValue::Zero => {
                         static_stack_memset(slot, target.offset.pick(self.s32), 0, size, builder)
                     }
-                    FinalValue::Value(value) => {
+                    FinalValue::Var(_) | FinalValue::Value(_) => {
+                        let value = match final_source_value {
+                            FinalValue::Var(var) => builder.use_var(var),
+                            FinalValue::Value(value) => value,
+                            _ => unreachable!(),
+                        };
                         let value = if target.ty == self.state.builtin_repo.bool {
                             builder.ins().bint(I8, value)
                         } else {
                             value
                         };
-                        builder
-                            .ins()
-                            .stack_store(value, slot, target.offset.pick(self.s32) as i32);
+                        static_value_stack_memcpy(
+                            slot, 
+                            target.offset.pick(self.s32), 
+                            value,
+                            size,
+                            builder,
+                        );
                     }
-                    FinalValue::Var(var) => {
-                        let value = builder.use_var(var);
-                        let value = if target.ty == self.state.builtin_repo.bool {
-                            builder.ins().bint(I8, value)
-                        } else {
-                            value
-                        };
-                        builder
-                            .ins()
-                            .stack_store(value, slot, target.offset.pick(self.s32) as i32);
-                    }
-                    FinalValue::StackSlot(other) => static_stack_memmove(
+                    FinalValue::StackSlot(other) => static_stack_memcpy(
                         slot,
                         target.offset.pick(self.s32),
                         other,
@@ -1220,7 +1218,7 @@ impl<'a> Generator<'a> {
                     FinalValue::Pointer(pointer) => {
                         let pt = self.ptr_ty;
                         let target_ptr = builder.ins().stack_addr(pt, slot, 0);
-                        static_memmove(
+                        static_memcpy(
                             target_ptr,
                             target.offset.pick(self.s32),
                             pointer,
@@ -1255,34 +1253,36 @@ impl<'a> Generator<'a> {
                 builder.def_var(var, value);
             }
             FinalValue::Pointer(pointer) => {
+                let size = self.types[ty].size.pick(self.s32);
                 if final_source_value == FinalValue::Zero {
                     static_memset(
                         pointer,
                         target.offset.pick(self.s32),
                         0,
-                        self.types[ty].size.pick(self.s32),
+                        size,
                         builder,
                     );
                 } else {
                     let mut value = self.unwrap_val(module, source_value, builder);
                     if source.on_stack || self.on_stack(source.ty) {
-                        static_memmove(
+                        static_memcpy(
                             pointer,
                             target.offset.pick(self.s32),
                             value,
                             source.offset.pick(self.s32),
-                            self.types[ty].size.pick(self.s32),
+                            size,
                             builder,
                         );
                     } else {
                         if target.ty == self.state.builtin_repo.bool {
                             value = builder.ins().bint(I8, value)
                         }
-                        builder.ins().store(
-                            MemFlags::new(),
+                        static_value_memcpy(
+                            pointer, 
+                            target.offset.pick(self.s32), 
                             value,
-                            pointer,
-                            target.offset.pick(self.s32) as i32,
+                            size,
+                            builder,
                         );
                     }
                 }
@@ -1630,7 +1630,7 @@ fn static_stack_memset(
     });
 }
 
-fn static_memmove(
+fn static_memcpy(
     dst_pointer: Value,
     dst_pointer_offset: u32,
     src_pointer: Value,
@@ -1656,7 +1656,7 @@ fn static_memmove(
     });
 }
 
-fn static_stack_memmove(
+fn static_stack_memcpy(
     dst_pointer: StackSlot,
     dst_pointer_offset: u32,
     src_pointer: StackSlot,
@@ -1673,6 +1673,71 @@ fn static_stack_memmove(
             .ins()
             .stack_store(value, dst_pointer, (offset + dst_pointer_offset) as i32);
     });
+}
+
+fn static_value_stack_memcpy(
+    dst_pointer: StackSlot,
+    dst_pointer_offset: u32,
+    src_value: Value,
+    size: u32,
+    builder: &mut FunctionBuilder,
+) {
+    static_value_memcpy_base(
+        dst_pointer, 
+        dst_pointer_offset, 
+        src_value, 
+        size, 
+        builder, 
+        |dst, src, offset, builder| 
+            builder.ins().stack_store(src, dst, offset)
+    );
+}
+
+fn static_value_memcpy(
+    dst_pointer: Value,
+    dst_pointer_offset: u32,
+    src_value: Value,
+    size: u32,
+    builder: &mut FunctionBuilder,
+) {
+    static_value_memcpy_base(
+        dst_pointer, 
+        dst_pointer_offset, 
+        src_value, 
+        size, 
+        builder, 
+        |dst, src, offset, builder| 
+            builder.ins().store(MemFlags::new(), src, dst, offset)
+    );
+}
+
+fn static_value_memcpy_base<T: Copy, F: Fn(
+    T, 
+    Value, 
+    i32, 
+    &mut FunctionBuilder
+) -> Inst>(
+    dst_pointer: T,
+    dst_pointer_offset: u32,
+    src_value: Value,
+    size: u32,
+    builder: &mut FunctionBuilder,
+    f: F,
+) {
+    walk_mem(size, |mover, offset| {
+        let src_ty = builder.func.dfg.value_type(src_value);
+        let value = if src_ty.bits() != mover.bits() {
+            let mut mask = 1i64 << (mover.bits() + 1) as i64 - 1; // turn first 'mover.bits()' bits on
+            mask <<= offset * 8;
+            let mask = builder.ins().iconst(I64, mask);
+            let value = builder.ins().band(src_value, mask);
+            let value = builder.ins().ushr_imm(value, (offset * 8) as i64);
+            builder.ins().ireduce(mover, value)
+        } else {
+            src_value
+        };
+        f(dst_pointer, value, (offset + dst_pointer_offset) as i32, builder);
+    })
 }
 
 fn walk_mem<F: FnMut(Type, u32)>(size: u32, mut fun: F) {

@@ -3,7 +3,6 @@ var something = "hell no i quit"
 attr oh_ma_god, god
 fun goo[T](x: T) -> T: x
 
-
 impl int:
   fun ++(a, b: Self) -> Self: a + b
 
