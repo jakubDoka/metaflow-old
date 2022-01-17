@@ -229,6 +229,8 @@ fun test_case_15:
   array[0] = weird
   var buffer: Seq[u8]
   buffer.print_int(array[1].a.int())
+  print(buffer.data)
+
   assert(array[1].a == 0xFFu8)
 
 struct Weird:
@@ -251,8 +253,8 @@ struct Result[V, E]:
   base: ResultUnion[V, E]
 
 enum ResultEnum:
-  reOk
-  reErr
+  Ok
+  Err
 
 union ResultUnion[V, E]:
   ok: V
@@ -261,4 +263,5 @@ union ResultUnion[V, E]:
 struct Nothing
 
 struct InstantiationOfResult:
-  embed result: Result[Nothing, Nothing]
+  foo: int
+  

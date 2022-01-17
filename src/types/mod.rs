@@ -785,11 +785,13 @@ impl TState {
     }
 
     pub fn array_of(&mut self, element: Ty, length: usize) -> Ty {
-        let element_id = self.types[element].id;
+        let TypeEnt {
+            id, module, ..
+        } = self.types[element];
 
         let id = TYPE_SALT
             .add(ID::new("[]"))
-            .add(element_id)
+            .add(id)
             .add(ID(length as u64));
 
         if let Some(&index) = self.types.index(id) {
@@ -799,7 +801,7 @@ impl TState {
         let ty_ent = TypeEnt {
             id,
             vis: Vis::Public,
-            module: Mod::new(0),
+            module,
             kind: TKind::Array(element, length as u32),
 
             size: self.types[element]
