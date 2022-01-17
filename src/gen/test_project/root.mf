@@ -126,13 +126,13 @@ fun test_case_6:
         
     
 struct Cell[T]:
-  priv embed p: &T
+  priv embed p: &var T
 
 fun test_case_7:
   var 
     p: Point
     c: Cell[Point]
-  c.p = &p
+  c.p = &var p
   
   c.x = 1
   c.y = 2
@@ -224,9 +224,11 @@ fun test_case_14:
 
 fun test_case_15:
   var weird: Weird
-  let array = [weird, weird]
+  var array = [weird, weird]
   array[1].a = 0xFFu8
   array[0] = weird
+  var buffer: Seq[u8]
+  buffer.print_int(array[1].a.int())
   assert(array[1].a == 0xFFu8)
 
 struct Weird:

@@ -272,30 +272,29 @@ literal =
   boolean |
   '\'' char '\''
 
-# underscores in numbers are allowed
-number = "[\d_]+\.?[\d_]*([iuf]\d{0, 2})?"
-string = '"' { char } '"'
+number = "([\d_]+\.?[\d_]*|0x[0-9a-fA-F]*|0b[01]*)([iuf]\d{0, 2})?"
+string = '"' { char } '"' # does not include unescaped '"'
 boolean = 'true' | 'false'
 
-call = [expr '.'] ident '(' [ expr { ',' expr } ] ')'
-access = [expr '.'] ident
+call = [ expr '.' ] ident '(' [ expr { ',' expr } ] ')'
+access = [ expr '.' ] ident
 assign = expr '=' expr
 binary = expr op expr
 unary = op expr
 cast = expr 'as' datatype
-ref = '&' expr
+ref = '&' [ 'var' ] expr
 deref = '*' expr
 
 datatype = 
   ident [ '[' datatype { ',' datatype } ']' ] |
   'fun' [ '(' datatype { ',' datatype } ')' ] [ '->' datatype ] call_convention |
-  '&' datatype
+  '&' [ 'var' ] datatype
 generics = '[' ident { ',' ident } ']'
 args = '(' { [ 'var' ] ident { ',' ident } ':' datatype } ')'
 vis = 'pub' | 'priv'
 char = '([^\\\']|\\(\\|\'|a|b|e|f|v|n|r|t|0|[0-7]{3}|x[0-9a-fA-F]{2}|u[0-9a-fA-F]{4}|U[0-9a-fA-F]{8}))'
 label = '\'[a-zA-Z0-9_]+\b'
-op = '([\+\-\*/%\^=<>!&\|\?:~]+|\b(min|max|abs)\b)'
+op = '([\+\-\*/%\^=<>!&\|\?:~]+|\b(min|max|abs|as)\b)'
 call_convention = ident
 ident = '\b[a-zA-Z_][a-zA-Z0-9_]*\b'
 # skipped when lexing

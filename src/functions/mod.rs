@@ -549,8 +549,10 @@ impl<'a> FParser<'a> {
         let ty = self.array_of(element_ty, length);
         let module_ent = &mut self.state.modules[module];
 
+        let temp = module_ent.add_temp_value(ty);
+        module_ent.add_inst(IKind::Uninitialized, temp, token, body);
         let result = module_ent.add_value(ty, true);
-        module_ent.add_inst(IKind::Uninitialized, result, token, body);
+        module_ent.add_var_decl(temp, result, token, body);
 
         for (i, &(value, token)) in values.iter().enumerate() {
             let offset = element_size.mul(Size::new(i as u32, i as u32));

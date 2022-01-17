@@ -131,20 +131,10 @@ pub struct TypeEnt {
 impl TypeEnt {
     pub fn to_cr_type(&self, isa: &dyn TargetIsa) -> Type {
         match &self.kind {
-            TKind::Pointer(..) | TKind::Array(..) | TKind::FunPointer(_)  => {
+            TKind::Pointer(..) | TKind::Array(..) | TKind::Structure(_) | TKind::FunPointer(_)  => {
                 isa.pointer_type()
             }
             TKind::Enumeration(_) => I8, //temporary solution
-            TKind::Structure(_) => {
-                let max_size = isa.pointer_bytes() as u32;
-                let size = self.size.pick(max_size == 4).min(max_size);
-                match size {
-                    0 | 1 => I8,
-                    2 => I16,
-                    3 | 4 => I32,
-                    _ => I64,
-                }
-            }
             &TKind::Builtin(ty) => ty.0,
             TKind::Generic(_) | TKind::Constant(_) | TKind::Unresolved(_) => unreachable!(),
         }

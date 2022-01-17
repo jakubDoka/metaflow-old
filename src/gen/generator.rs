@@ -1186,7 +1186,6 @@ impl<'a> Generator<'a> {
                 let size = self.types[ty].size.pick(self.s32);
                 match final_source_value {
                     FinalValue::Zero => {
-                        println!("{}", size);
                         static_stack_memset(slot, target.offset.pick(self.s32), 0, size, builder)
                     }
                     FinalValue::Value(value) => {
@@ -1353,6 +1352,7 @@ impl<'a> Generator<'a> {
                 match self.types[ty].kind {
                     TKind::Pointer(..) => builder.ins().null(repr),
                     TKind::Structure(..) => builder.ins().iconst(repr, 0),
+                    TKind::Array(..) => builder.ins().iconst(repr, 0),
                     _ => match BTKind::of(ty) {
                         BTKind::Int | BTKind::Uint => builder.ins().iconst(repr, 0),
                         BTKind::Float(32) => builder.ins().f32const(0.0),
