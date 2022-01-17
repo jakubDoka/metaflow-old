@@ -28,7 +28,10 @@ impl pub [T, L] [T, L]:
     L
 
 impl pub Seq[u8]:
-  fun print_int(s: &var Self, value: int):
+  fun print_int(s: &var Self, var value: int):
+    if value < 0:
+      s.push('-'.u8())
+      value = -value
     let 
       prev_len = s.len
       width = (if value != 0: log10(value.f64()).int() else: 0) + 1
@@ -65,7 +68,6 @@ struct pub Seq[T]:
 
 attr inline
 impl pub [T] Seq[T]:
-
   fun extend(s: &var Self, other: &Self):
     let new_len = s.len + other.len
     s.reserve(new_len)

@@ -210,7 +210,6 @@ fun even_worse(a, b: int) -> int:
   else:
     return something(b, a)
 
-
 fun test_case_13:
   assert(even_worse(1, 1) == 0)
 
@@ -223,15 +222,8 @@ fun test_case_14:
 fun test_case_15:
   var weird: Weird
   var array = [weird, weird]
-  print("hmmm")
   array[1].a = 0xFFu8
   array[0] = weird
-  var buffer: Seq[u8]
-  buffer.print_int(array[1].a.int())
-  buffer.push(0u8)
-  print(buffer.data)
-  print("\n")
-
   assert(array[1].a == 0xFFu8)
 
 struct Weird:

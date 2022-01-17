@@ -173,14 +173,21 @@ impl<'a> FParser<'a> {
         let mut i = 0;
         for arg_group in 1..header_len - 2 {
             let module_ent = &mut self.modules[module];
-            let arg_sons = module_ent.son_ent(header, arg_group).sons;
-            let arg_sons_len = module_ent.len(arg_sons);
+            let &AstEnt { sons, kind, token } = module_ent.son_ent(header, arg_group);
+            let arg_sons_len = module_ent.len(sons);
             for arg in 0..arg_sons_len - 1 {
                 let module_ent = &mut self.modules[module];
-                let id = module_ent.get_ent(arg_sons, arg).token.span.hash;
+                let id = module_ent.get_ent(sons, arg).token.span.hash;
                 let ty = module_ent.type_slice(sig.args)[i];
                 let var = module_ent.add_temp_value(ty);
                 module_ent.push_block_arg(entry_point, var);
+                let var = if kind == AKind::FunArgument(true) {
+                    let carrier = module_ent.add_value(ty, true); 
+                    module_ent.add_var_decl(var, carrier, token, &mut body);
+                    carrier
+                } else {
+                    var
+                };
                 self.context.vars.push((id, var));
                 i += 1;
             }
@@ -803,15 +810,11 @@ impl<'a> FParser<'a> {
 
         let module_ent = &mut self.state.modules[module];
         let mut result = None;
+        let mut jump_inst = None;
         let mut then_filled = false;
-        if let Some(val) = then_result {
-            if else_block.is_none() {
-                return Err(FError::new(FEKind::MissingElseBranch, token));
-            }
-
+        if let (Some(val), Some(_)) = (then_result, else_block) {
             let args = module_ent.add_values(&[val]);
-            module_ent.add_valueless_inst(IKind::Jump(merge_block, args), token, body);
-
+            jump_inst = Some(module_ent.add_valueless_inst(IKind::Jump(merge_block, args), token, body));
             let ty = module_ent.type_of_value(val);
             let value = module_ent.add_temp_value(ty);
             let args = module_ent.add_values(&[value]);
@@ -843,6 +846,10 @@ impl<'a> FParser<'a> {
                 }
             } else {
                 if body.current_block.is_some() {
+                    if let Some(jump_inst) = jump_inst {
+                        module_ent.insts[jump_inst].kind = IKind::Jump(merge_block, EntityList::new());
+                        module_ent.set_block_args(merge_block, EntityList::new());
+                    }
                     if result.is_some() {
                         return Err(FError::new(FEKind::ExpectedValue, token));
                     }
