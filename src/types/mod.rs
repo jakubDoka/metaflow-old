@@ -786,7 +786,7 @@ impl TState {
 
     pub fn array_of(&mut self, element: Ty, length: usize) -> Ty {
         let TypeEnt {
-            id, module, ..
+            id, module, size, align, vis, ..
         } = self.types[element];
 
         let id = TYPE_SALT
@@ -800,14 +800,11 @@ impl TState {
 
         let ty_ent = TypeEnt {
             id,
-            vis: Vis::Public,
+            vis,
             module,
             kind: TKind::Array(element, length as u32),
-
-            size: self.types[element]
-                .size
-                .mul(Size::new(length as u32, length as u32)),
-            align: self.types[element].align,
+            size: size.mul(Size::new(length as u32, length as u32)),
+            align,
 
             ..Default::default()
         };

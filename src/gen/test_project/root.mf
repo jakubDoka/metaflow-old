@@ -263,5 +263,4 @@ union ResultUnion[V, E]:
 struct Nothing
 
 struct InstantiationOfResult:
-  foo: int
-  
+  embed result: Result[Nothing, Nothing]
