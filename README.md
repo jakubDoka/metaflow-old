@@ -410,6 +410,10 @@ Reason to have two levels of ir is that compiler needs to analyze the source cod
   - [x] characters
   - [x] strings
 - [x] math operations on builtin types
+- [x] pointer mutability
+- [x] global state
+- [ ] compile time constants
+- [ ] generic constraints
 - [ ] functions
   - [x] operator overloads
   - [x] generic functions
