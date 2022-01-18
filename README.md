@@ -22,7 +22,7 @@ There are no builtin garbage collection but moving semantics (Like rust).
 
 Metaflow is not object oriented and it does not support reflection or inheritance as a default feature. On the other hand it allows user simplify the mess in other ways.
 
-```mf
+```txt
 struct Counter:
   count: int
 
@@ -41,7 +41,7 @@ fun main -> int:
   s.counter.count -= 2
   s.count -= 10
 
-  loop:
+  for:
     if s.count < 0:
       break
     # increment 3
@@ -91,7 +91,7 @@ Compilation order is stable and controllable. For example you have modules A -> 
 
 Dependency management is done trough git. Its really simple actually. In manifest you specify:
 
-```mf
+```py
 dependencies:
   something "github.com/someone/something@tag"
   # or
@@ -102,7 +102,7 @@ dependencies:
 
 You can now 'use' modules from `something` as:
 
-```mf
+```py
 use
   "something" # for the root
   alias "something/submodule" # submodule but you now refer to items as 'alias::item'
