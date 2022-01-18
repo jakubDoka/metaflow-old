@@ -450,3 +450,8 @@ Reason to have two levels of ir is that compiler needs to analyze the source cod
 - [ ] lifetime tracking
   - [ ] untraced references
 - [ ] standard library
+- [ ] platform support
+  - [x] windows
+  - [ ] web assembly
+  - [ ] linux
+  - [ ] mac 
