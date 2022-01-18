@@ -1,1625 +1,1625 @@
 Ok(Arguments { _filename: "file", hash: ID(0), flags: ["flag", "flag"], field_flags: [("flag", "value")], args: ["arg", "arg"] })
 Ok(Arguments { _filename: "file", hash: ID(0), flags: [], field_flags: [], args: ["string value"] })
-|> 2:1:text_code.mf
+|> text_code.mf:2:1
 | var something = [1, 2, 3]
 | ^
-|> 2:4:text_code.mf
+|> text_code.mf:2:4
 | var something = [1, 2, 3]
 | ^^^
-|> 2:14:text_code.mf
+|> text_code.mf:2:14
 | var something = [1, 2, 3]
 |     ^^^^^^^^^
-|> 2:16:text_code.mf
+|> text_code.mf:2:16
 | var something = [1, 2, 3]
 |               ^
-|> 2:18:text_code.mf
+|> text_code.mf:2:18
 | var something = [1, 2, 3]
 |                 ^
-|> 2:19:text_code.mf
+|> text_code.mf:2:19
 | var something = [1, 2, 3]
 |                  ^
-|> 2:20:text_code.mf
+|> text_code.mf:2:20
 | var something = [1, 2, 3]
 |                   ^
-|> 2:22:text_code.mf
+|> text_code.mf:2:22
 | var something = [1, 2, 3]
 |                     ^
-|> 2:23:text_code.mf
+|> text_code.mf:2:23
 | var something = [1, 2, 3]
 |                      ^
-|> 2:25:text_code.mf
+|> text_code.mf:2:25
 | var something = [1, 2, 3]
 |                        ^
-|> 2:26:text_code.mf
+|> text_code.mf:2:26
 | var something = [1, 2, 3]
 |                         ^
-|> 3:1:text_code.mf
+|> text_code.mf:3:1
 | let hello = "hello"
 | ^
-|> 3:4:text_code.mf
+|> text_code.mf:3:4
 | let hello = "hello"
 | ^^^
-|> 3:10:text_code.mf
+|> text_code.mf:3:10
 | let hello = "hello"
 |     ^^^^^
-|> 3:12:text_code.mf
+|> text_code.mf:3:12
 | let hello = "hello"
 |           ^
-|> 3:20:text_code.mf
+|> text_code.mf:3:20
 | let hello = "hello"
 |             ^^^^^^^
-|> 4:2:text_code.mf
+|> text_code.mf:4:2
 | 
 | ^
-|> 5:1:text_code.mf
+|> text_code.mf:5:1
 | fun pointed_function(a: Int, b: Int) -> int:
 | ^
-|> 5:4:text_code.mf
+|> text_code.mf:5:4
 | fun pointed_function(a: Int, b: Int) -> int:
 | ^^^
-|> 5:21:text_code.mf
+|> text_code.mf:5:21
 | fun pointed_function(a: Int, b: Int) -> int:
 |     ^^^^^^^^^^^^^^^^
-|> 5:22:text_code.mf
+|> text_code.mf:5:22
 | fun pointed_function(a: Int, b: Int) -> int:
 |                     ^
-|> 5:23:text_code.mf
+|> text_code.mf:5:23
 | fun pointed_function(a: Int, b: Int) -> int:
 |                      ^
-|> 5:24:text_code.mf
+|> text_code.mf:5:24
 | fun pointed_function(a: Int, b: Int) -> int:
 |                       ^
-|> 5:28:text_code.mf
+|> text_code.mf:5:28
 | fun pointed_function(a: Int, b: Int) -> int:
 |                         ^^^
-|> 5:29:text_code.mf
+|> text_code.mf:5:29
 | fun pointed_function(a: Int, b: Int) -> int:
 |                            ^
-|> 5:31:text_code.mf
+|> text_code.mf:5:31
 | fun pointed_function(a: Int, b: Int) -> int:
 |                              ^
-|> 5:32:text_code.mf
+|> text_code.mf:5:32
 | fun pointed_function(a: Int, b: Int) -> int:
 |                               ^
-|> 5:36:text_code.mf
+|> text_code.mf:5:36
 | fun pointed_function(a: Int, b: Int) -> int:
 |                                 ^^^
-|> 5:37:text_code.mf
+|> text_code.mf:5:37
 | fun pointed_function(a: Int, b: Int) -> int:
 |                                    ^
-|> 5:40:text_code.mf
+|> text_code.mf:5:40
 | fun pointed_function(a: Int, b: Int) -> int:
 |                                      ^^
-|> 5:44:text_code.mf
+|> text_code.mf:5:44
 | fun pointed_function(a: Int, b: Int) -> int:
 |                                         ^^^
-|> 5:45:text_code.mf
+|> text_code.mf:5:45
 | fun pointed_function(a: Int, b: Int) -> int:
 |                                            ^
-|> 6:3:text_code.mf
+|> text_code.mf:6:3
 |   return a + b
 | ^^
-|> 6:9:text_code.mf
+|> text_code.mf:6:9
 |   return a + b
 |   ^^^^^^
-|> 6:11:text_code.mf
+|> text_code.mf:6:11
 |   return a + b
 |          ^
-|> 6:13:text_code.mf
+|> text_code.mf:6:13
 |   return a + b
 |            ^
-|> 6:15:text_code.mf
+|> text_code.mf:6:15
 |   return a + b
 |              ^
-|> 7:2:text_code.mf
+|> text_code.mf:7:2
 | 
 | ^
-|> 8:1:text_code.mf
+|> text_code.mf:8:1
 | ## doc comment
 | ^
-|> 8:16:text_code.mf
+|> text_code.mf:8:16
 | ## doc comment
 | ^^^^^^^^^^^^^^
-|> 9:1:text_code.mf
+|> text_code.mf:9:1
 | fun something -> fun(int, int) -> int:
 | ^
-|> 9:4:text_code.mf
+|> text_code.mf:9:4
 | fun something -> fun(int, int) -> int:
 | ^^^
-|> 9:14:text_code.mf
+|> text_code.mf:9:14
 | fun something -> fun(int, int) -> int:
 |     ^^^^^^^^^
-|> 9:17:text_code.mf
+|> text_code.mf:9:17
 | fun something -> fun(int, int) -> int:
 |               ^^
-|> 9:21:text_code.mf
+|> text_code.mf:9:21
 | fun something -> fun(int, int) -> int:
 |                  ^^^
-|> 9:22:text_code.mf
+|> text_code.mf:9:22
 | fun something -> fun(int, int) -> int:
 |                     ^
-|> 9:25:text_code.mf
+|> text_code.mf:9:25
 | fun something -> fun(int, int) -> int:
 |                      ^^^
-|> 9:26:text_code.mf
+|> text_code.mf:9:26
 | fun something -> fun(int, int) -> int:
 |                         ^
-|> 9:30:text_code.mf
+|> text_code.mf:9:30
 | fun something -> fun(int, int) -> int:
 |                           ^^^
-|> 9:31:text_code.mf
+|> text_code.mf:9:31
 | fun something -> fun(int, int) -> int:
 |                              ^
-|> 9:34:text_code.mf
+|> text_code.mf:9:34
 | fun something -> fun(int, int) -> int:
 |                                ^^
-|> 9:38:text_code.mf
+|> text_code.mf:9:38
 | fun something -> fun(int, int) -> int:
 |                                   ^^^
-|> 9:39:text_code.mf
+|> text_code.mf:9:39
 | fun something -> fun(int, int) -> int:
 |                                      ^
-|> 10:3:text_code.mf
+|> text_code.mf:10:3
 |   # ignored comment
 | ^^
-|> 11:3:text_code.mf
+|> text_code.mf:11:3
 |   return #[ even more ignored comment ]# pointed_function
 | ^^
-|> 11:9:text_code.mf
+|> text_code.mf:11:9
 |   return #[ even more ignored comment ]# pointed_function
 |   ^^^^^^
-|> 11:58:text_code.mf
+|> text_code.mf:11:58
 |   return #[ even more ignored comment ]# pointed_function
 |                                          ^^^^^^^^^^^^^^^^
-|> 12:2:text_code.mf
+|> text_code.mf:12:2
 | 
 | ^
-|> 13:1:text_code.mf
+|> text_code.mf:13:1
 | ##[
 | ^
-|> 15:3:text_code.mf
+|> text_code.mf:15:3
 | ##[
 |   multiline doc comment
 | ]#
 | ^^^^^^^^^^^^^^^^^^^^^^^
-|> 16:1:text_code.mf
+|> text_code.mf:16:1
 | struct Scope
 | ^
-|> 16:7:text_code.mf
+|> text_code.mf:16:7
 | struct Scope
 | ^^^^^^
-|> 16:13:text_code.mf
+|> text_code.mf:16:13
 | struct Scope
 |        ^^^^^
-|> 17:2:text_code.mf
+|> text_code.mf:17:2
 | 
 | ^
-|> 18:1:text_code.mf
+|> text_code.mf:18:1
 | impl Scope:
 | ^
-|> 18:5:text_code.mf
+|> text_code.mf:18:5
 | impl Scope:
 | ^^^^
-|> 18:11:text_code.mf
+|> text_code.mf:18:11
 | impl Scope:
 |      ^^^^^
-|> 18:12:text_code.mf
+|> text_code.mf:18:12
 | impl Scope:
 |           ^
-|> 19:3:text_code.mf
+|> text_code.mf:19:3
 |   fun new -> Self:
 | ^^
-|> 19:6:text_code.mf
+|> text_code.mf:19:6
 |   fun new -> Self:
 |   ^^^
-|> 19:10:text_code.mf
+|> text_code.mf:19:10
 |   fun new -> Self:
 |       ^^^
-|> 19:13:text_code.mf
+|> text_code.mf:19:13
 |   fun new -> Self:
 |           ^^
-|> 19:18:text_code.mf
+|> text_code.mf:19:18
 |   fun new -> Self:
 |              ^^^^
-|> 19:19:text_code.mf
+|> text_code.mf:19:19
 |   fun new -> Self:
 |                  ^
-|> 20:5:text_code.mf
+|> text_code.mf:20:5
 |     return
 | ^^^^
-|> 20:11:text_code.mf
+|> text_code.mf:20:11
 |     return
 |     ^^^^^^
-|> 21:4:text_code.mf
+|> text_code.mf:21:4
 |   
 | ^^^
-|> 22:3:text_code.mf
+|> text_code.mf:22:3
 |   fun do_nothing(s: Self):
 | ^^
-|> 22:6:text_code.mf
+|> text_code.mf:22:6
 |   fun do_nothing(s: Self):
 |   ^^^
-|> 22:17:text_code.mf
+|> text_code.mf:22:17
 |   fun do_nothing(s: Self):
 |       ^^^^^^^^^^
-|> 22:18:text_code.mf
+|> text_code.mf:22:18
 |   fun do_nothing(s: Self):
 |                 ^
-|> 22:19:text_code.mf
+|> text_code.mf:22:19
 |   fun do_nothing(s: Self):
 |                  ^
-|> 22:20:text_code.mf
+|> text_code.mf:22:20
 |   fun do_nothing(s: Self):
 |                   ^
-|> 22:25:text_code.mf
+|> text_code.mf:22:25
 |   fun do_nothing(s: Self):
 |                     ^^^^
-|> 22:26:text_code.mf
+|> text_code.mf:22:26
 |   fun do_nothing(s: Self):
 |                         ^
-|> 22:27:text_code.mf
+|> text_code.mf:22:27
 |   fun do_nothing(s: Self):
 |                          ^
-|> 23:5:text_code.mf
+|> text_code.mf:23:5
 |     pass
 | ^^^^
-|> 23:9:text_code.mf
+|> text_code.mf:23:9
 |     pass
 |     ^^^^
-|> 24:2:text_code.mf
+|> text_code.mf:24:2
 | 
 | ^
-|> 25:1:text_code.mf
+|> text_code.mf:25:1
 | struct Template[T]
 | ^
-|> 25:7:text_code.mf
+|> text_code.mf:25:7
 | struct Template[T]
 | ^^^^^^
-|> 25:16:text_code.mf
+|> text_code.mf:25:16
 | struct Template[T]
 |        ^^^^^^^^
-|> 25:17:text_code.mf
+|> text_code.mf:25:17
 | struct Template[T]
 |                ^
-|> 25:18:text_code.mf
+|> text_code.mf:25:18
 | struct Template[T]
 |                 ^
-|> 25:19:text_code.mf
+|> text_code.mf:25:19
 | struct Template[T]
 |                  ^
-|> 26:2:text_code.mf
+|> text_code.mf:26:2
 | 
 | ^
-|> 27:1:text_code.mf
+|> text_code.mf:27:1
 | impl[T] Template[T]:
 | ^
-|> 27:5:text_code.mf
+|> text_code.mf:27:5
 | impl[T] Template[T]:
 | ^^^^
-|> 27:6:text_code.mf
+|> text_code.mf:27:6
 | impl[T] Template[T]:
 |     ^
-|> 27:7:text_code.mf
+|> text_code.mf:27:7
 | impl[T] Template[T]:
 |      ^
-|> 27:8:text_code.mf
+|> text_code.mf:27:8
 | impl[T] Template[T]:
 |       ^
-|> 27:17:text_code.mf
+|> text_code.mf:27:17
 | impl[T] Template[T]:
 |         ^^^^^^^^
-|> 27:18:text_code.mf
+|> text_code.mf:27:18
 | impl[T] Template[T]:
 |                 ^
-|> 27:19:text_code.mf
+|> text_code.mf:27:19
 | impl[T] Template[T]:
 |                  ^
-|> 27:20:text_code.mf
+|> text_code.mf:27:20
 | impl[T] Template[T]:
 |                   ^
-|> 27:21:text_code.mf
+|> text_code.mf:27:21
 | impl[T] Template[T]:
 |                    ^
-|> 28:3:text_code.mf
+|> text_code.mf:28:3
 |   fun new -> Self:
 | ^^
-|> 28:6:text_code.mf
+|> text_code.mf:28:6
 |   fun new -> Self:
 |   ^^^
-|> 28:10:text_code.mf
+|> text_code.mf:28:10
 |   fun new -> Self:
 |       ^^^
-|> 28:13:text_code.mf
+|> text_code.mf:28:13
 |   fun new -> Self:
 |           ^^
-|> 28:18:text_code.mf
+|> text_code.mf:28:18
 |   fun new -> Self:
 |              ^^^^
-|> 28:19:text_code.mf
+|> text_code.mf:28:19
 |   fun new -> Self:
 |                  ^
-|> 29:5:text_code.mf
+|> text_code.mf:29:5
 |     return
 | ^^^^
-|> 29:11:text_code.mf
+|> text_code.mf:29:11
 |     return
 |     ^^^^^^
-|> 30:4:text_code.mf
+|> text_code.mf:30:4
 |   
 | ^^^
-|> 31:3:text_code.mf
+|> text_code.mf:31:3
 |   fun do_nothing(s: Self, value: T) -> T:
 | ^^
-|> 31:6:text_code.mf
+|> text_code.mf:31:6
 |   fun do_nothing(s: Self, value: T) -> T:
 |   ^^^
-|> 31:17:text_code.mf
+|> text_code.mf:31:17
 |   fun do_nothing(s: Self, value: T) -> T:
 |       ^^^^^^^^^^
-|> 31:18:text_code.mf
+|> text_code.mf:31:18
 |   fun do_nothing(s: Self, value: T) -> T:
 |                 ^
-|> 31:19:text_code.mf
+|> text_code.mf:31:19
 |   fun do_nothing(s: Self, value: T) -> T:
 |                  ^
-|> 31:20:text_code.mf
+|> text_code.mf:31:20
 |   fun do_nothing(s: Self, value: T) -> T:
 |                   ^
-|> 31:25:text_code.mf
+|> text_code.mf:31:25
 |   fun do_nothing(s: Self, value: T) -> T:
 |                     ^^^^
-|> 31:26:text_code.mf
+|> text_code.mf:31:26
 |   fun do_nothing(s: Self, value: T) -> T:
 |                         ^
-|> 31:32:text_code.mf
+|> text_code.mf:31:32
 |   fun do_nothing(s: Self, value: T) -> T:
 |                           ^^^^^
-|> 31:33:text_code.mf
+|> text_code.mf:31:33
 |   fun do_nothing(s: Self, value: T) -> T:
 |                                ^
-|> 31:35:text_code.mf
+|> text_code.mf:31:35
 |   fun do_nothing(s: Self, value: T) -> T:
 |                                  ^
-|> 31:36:text_code.mf
+|> text_code.mf:31:36
 |   fun do_nothing(s: Self, value: T) -> T:
 |                                   ^
-|> 31:39:text_code.mf
+|> text_code.mf:31:39
 |   fun do_nothing(s: Self, value: T) -> T:
 |                                     ^^
-|> 31:41:text_code.mf
+|> text_code.mf:31:41
 |   fun do_nothing(s: Self, value: T) -> T:
 |                                        ^
-|> 31:42:text_code.mf
+|> text_code.mf:31:42
 |   fun do_nothing(s: Self, value: T) -> T:
 |                                         ^
-|> 32:5:text_code.mf
+|> text_code.mf:32:5
 |     value
 | ^^^^
-|> 32:10:text_code.mf
+|> text_code.mf:32:10
 |     value
 |     ^^^^^
-|> 33:2:text_code.mf
+|> text_code.mf:33:2
 | 
 | ^
-|> 34:1:text_code.mf
+|> text_code.mf:34:1
 | fun use_chain:
 | ^
-|> 34:4:text_code.mf
+|> text_code.mf:34:4
 | fun use_chain:
 | ^^^
-|> 34:14:text_code.mf
+|> text_code.mf:34:14
 | fun use_chain:
 |     ^^^^^^^^^
-|> 34:15:text_code.mf
+|> text_code.mf:34:15
 | fun use_chain:
 |              ^
-|> 35:3:text_code.mf
+|> text_code.mf:35:3
 |   module::Type::method::[param]()
 | ^^
-|> 35:9:text_code.mf
+|> text_code.mf:35:9
 |   module::Type::method::[param]()
 |   ^^^^^^
-|> 35:11:text_code.mf
+|> text_code.mf:35:11
 |   module::Type::method::[param]()
 |         ^^
-|> 35:15:text_code.mf
+|> text_code.mf:35:15
 |   module::Type::method::[param]()
 |           ^^^^
-|> 35:17:text_code.mf
+|> text_code.mf:35:17
 |   module::Type::method::[param]()
 |               ^^
-|> 35:23:text_code.mf
+|> text_code.mf:35:23
 |   module::Type::method::[param]()
 |                 ^^^^^^
-|> 35:25:text_code.mf
+|> text_code.mf:35:25
 |   module::Type::method::[param]()
 |                       ^^
-|> 35:26:text_code.mf
+|> text_code.mf:35:26
 |   module::Type::method::[param]()
 |                         ^
-|> 35:31:text_code.mf
+|> text_code.mf:35:31
 |   module::Type::method::[param]()
 |                          ^^^^^
-|> 35:32:text_code.mf
+|> text_code.mf:35:32
 |   module::Type::method::[param]()
 |                               ^
-|> 35:33:text_code.mf
+|> text_code.mf:35:33
 |   module::Type::method::[param]()
 |                                ^
-|> 35:34:text_code.mf
+|> text_code.mf:35:34
 |   module::Type::method::[param]()
 |                                 ^
-|> 36:2:text_code.mf
+|> text_code.mf:36:2
 | 
 | ^
-|> 37:1:text_code.mf
+|> text_code.mf:37:1
 | fun flo: pass
 | ^
-|> 37:4:text_code.mf
+|> text_code.mf:37:4
 | fun flo: pass
 | ^^^
-|> 37:8:text_code.mf
+|> text_code.mf:37:8
 | fun flo: pass
 |     ^^^
-|> 37:9:text_code.mf
+|> text_code.mf:37:9
 | fun flo: pass
 |        ^
-|> 37:14:text_code.mf
+|> text_code.mf:37:14
 | fun flo: pass
 |          ^^^^
-|> 38:2:text_code.mf
+|> text_code.mf:38:2
 | 
 | ^
-|> 39:1:text_code.mf
+|> text_code.mf:39:1
 | fun foo(): pass
 | ^
-|> 39:4:text_code.mf
+|> text_code.mf:39:4
 | fun foo(): pass
 | ^^^
-|> 39:8:text_code.mf
+|> text_code.mf:39:8
 | fun foo(): pass
 |     ^^^
-|> 39:9:text_code.mf
+|> text_code.mf:39:9
 | fun foo(): pass
 |        ^
-|> 39:10:text_code.mf
+|> text_code.mf:39:10
 | fun foo(): pass
 |         ^
-|> 39:11:text_code.mf
+|> text_code.mf:39:11
 | fun foo(): pass
 |          ^
-|> 39:16:text_code.mf
+|> text_code.mf:39:16
 | fun foo(): pass
 |            ^^^^
-|> 40:2:text_code.mf
+|> text_code.mf:40:2
 | 
 | ^
-|> 41:1:text_code.mf
+|> text_code.mf:41:1
 | fun goo(a: i8, b: i8): pass
 | ^
-|> 41:4:text_code.mf
+|> text_code.mf:41:4
 | fun goo(a: i8, b: i8): pass
 | ^^^
-|> 41:8:text_code.mf
+|> text_code.mf:41:8
 | fun goo(a: i8, b: i8): pass
 |     ^^^
-|> 41:9:text_code.mf
+|> text_code.mf:41:9
 | fun goo(a: i8, b: i8): pass
 |        ^
-|> 41:10:text_code.mf
+|> text_code.mf:41:10
 | fun goo(a: i8, b: i8): pass
 |         ^
-|> 41:11:text_code.mf
+|> text_code.mf:41:11
 | fun goo(a: i8, b: i8): pass
 |          ^
-|> 41:14:text_code.mf
+|> text_code.mf:41:14
 | fun goo(a: i8, b: i8): pass
 |            ^^
-|> 41:15:text_code.mf
+|> text_code.mf:41:15
 | fun goo(a: i8, b: i8): pass
 |              ^
-|> 41:17:text_code.mf
+|> text_code.mf:41:17
 | fun goo(a: i8, b: i8): pass
 |                ^
-|> 41:18:text_code.mf
+|> text_code.mf:41:18
 | fun goo(a: i8, b: i8): pass
 |                 ^
-|> 41:21:text_code.mf
+|> text_code.mf:41:21
 | fun goo(a: i8, b: i8): pass
 |                   ^^
-|> 41:22:text_code.mf
+|> text_code.mf:41:22
 | fun goo(a: i8, b: i8): pass
 |                     ^
-|> 41:23:text_code.mf
+|> text_code.mf:41:23
 | fun goo(a: i8, b: i8): pass
 |                      ^
-|> 41:28:text_code.mf
+|> text_code.mf:41:28
 | fun goo(a: i8, b: i8): pass
 |                        ^^^^
-|> 42:2:text_code.mf
+|> text_code.mf:42:2
 | 
 | ^
-|> 43:1:text_code.mf
+|> text_code.mf:43:1
 | fun loo:
 | ^
-|> 43:4:text_code.mf
+|> text_code.mf:43:4
 | fun loo:
 | ^^^
-|> 43:8:text_code.mf
+|> text_code.mf:43:8
 | fun loo:
 |     ^^^
-|> 43:9:text_code.mf
+|> text_code.mf:43:9
 | fun loo:
 |        ^
-|> 44:3:text_code.mf
+|> text_code.mf:44:3
 |   noo::loo::[i8]()
 | ^^
-|> 44:6:text_code.mf
+|> text_code.mf:44:6
 |   noo::loo::[i8]()
 |   ^^^
-|> 44:8:text_code.mf
+|> text_code.mf:44:8
 |   noo::loo::[i8]()
 |      ^^
-|> 44:11:text_code.mf
+|> text_code.mf:44:11
 |   noo::loo::[i8]()
 |        ^^^
-|> 44:13:text_code.mf
+|> text_code.mf:44:13
 |   noo::loo::[i8]()
 |           ^^
-|> 44:14:text_code.mf
+|> text_code.mf:44:14
 |   noo::loo::[i8]()
 |             ^
-|> 44:16:text_code.mf
+|> text_code.mf:44:16
 |   noo::loo::[i8]()
 |              ^^
-|> 44:17:text_code.mf
+|> text_code.mf:44:17
 |   noo::loo::[i8]()
 |                ^
-|> 44:18:text_code.mf
+|> text_code.mf:44:18
 |   noo::loo::[i8]()
 |                 ^
-|> 44:19:text_code.mf
+|> text_code.mf:44:19
 |   noo::loo::[i8]()
 |                  ^
-|> 45:2:text_code.mf
+|> text_code.mf:45:2
 | 
 | ^
-|> 46:3:text_code.mf
+|> text_code.mf:46:3
 |   let array = [1, 2, 3]
 | ^^
-|> 46:6:text_code.mf
+|> text_code.mf:46:6
 |   let array = [1, 2, 3]
 |   ^^^
-|> 46:12:text_code.mf
+|> text_code.mf:46:12
 |   let array = [1, 2, 3]
 |       ^^^^^
-|> 46:14:text_code.mf
+|> text_code.mf:46:14
 |   let array = [1, 2, 3]
 |             ^
-|> 46:16:text_code.mf
+|> text_code.mf:46:16
 |   let array = [1, 2, 3]
 |               ^
-|> 46:17:text_code.mf
+|> text_code.mf:46:17
 |   let array = [1, 2, 3]
 |                ^
-|> 46:18:text_code.mf
+|> text_code.mf:46:18
 |   let array = [1, 2, 3]
 |                 ^
-|> 46:20:text_code.mf
+|> text_code.mf:46:20
 |   let array = [1, 2, 3]
 |                   ^
-|> 46:21:text_code.mf
+|> text_code.mf:46:21
 |   let array = [1, 2, 3]
 |                    ^
-|> 46:23:text_code.mf
+|> text_code.mf:46:23
 |   let array = [1, 2, 3]
 |                      ^
-|> 46:24:text_code.mf
+|> text_code.mf:46:24
 |   let array = [1, 2, 3]
 |                       ^
-|> 47:3:text_code.mf
+|> text_code.mf:47:3
 |   array[0] = 3
 | ^^
-|> 47:8:text_code.mf
+|> text_code.mf:47:8
 |   array[0] = 3
 |   ^^^^^
-|> 47:9:text_code.mf
+|> text_code.mf:47:9
 |   array[0] = 3
 |        ^
-|> 47:10:text_code.mf
+|> text_code.mf:47:10
 |   array[0] = 3
 |         ^
-|> 47:11:text_code.mf
+|> text_code.mf:47:11
 |   array[0] = 3
 |          ^
-|> 47:13:text_code.mf
+|> text_code.mf:47:13
 |   array[0] = 3
 |            ^
-|> 47:15:text_code.mf
+|> text_code.mf:47:15
 |   array[0] = 3
 |              ^
-|> 48:3:text_code.mf
+|> text_code.mf:48:3
 |   array[2] = always[1]
 | ^^
-|> 48:8:text_code.mf
+|> text_code.mf:48:8
 |   array[2] = always[1]
 |   ^^^^^
-|> 48:9:text_code.mf
+|> text_code.mf:48:9
 |   array[2] = always[1]
 |        ^
-|> 48:10:text_code.mf
+|> text_code.mf:48:10
 |   array[2] = always[1]
 |         ^
-|> 48:11:text_code.mf
+|> text_code.mf:48:11
 |   array[2] = always[1]
 |          ^
-|> 48:13:text_code.mf
+|> text_code.mf:48:13
 |   array[2] = always[1]
 |            ^
-|> 48:20:text_code.mf
+|> text_code.mf:48:20
 |   array[2] = always[1]
 |              ^^^^^^
-|> 48:21:text_code.mf
+|> text_code.mf:48:21
 |   array[2] = always[1]
 |                    ^
-|> 48:22:text_code.mf
+|> text_code.mf:48:22
 |   array[2] = always[1]
 |                     ^
-|> 48:23:text_code.mf
+|> text_code.mf:48:23
 |   array[2] = always[1]
 |                      ^
-|> 49:3:text_code.mf
+|> text_code.mf:49:3
 |   array[1] = 1
 | ^^
-|> 49:8:text_code.mf
+|> text_code.mf:49:8
 |   array[1] = 1
 |   ^^^^^
-|> 49:9:text_code.mf
+|> text_code.mf:49:9
 |   array[1] = 1
 |        ^
-|> 49:10:text_code.mf
+|> text_code.mf:49:10
 |   array[1] = 1
 |         ^
-|> 49:11:text_code.mf
+|> text_code.mf:49:11
 |   array[1] = 1
 |          ^
-|> 49:13:text_code.mf
+|> text_code.mf:49:13
 |   array[1] = 1
 |            ^
-|> 49:15:text_code.mf
+|> text_code.mf:49:15
 |   array[1] = 1
 |              ^
-|> 50:2:text_code.mf
+|> text_code.mf:50:2
 | 
 | ^
-|> 51:3:text_code.mf
+|> text_code.mf:51:3
 |   pass
 | ^^
-|> 51:7:text_code.mf
+|> text_code.mf:51:7
 |   pass
 |   ^^^^
-|> 52:2:text_code.mf
+|> text_code.mf:52:2
 | 
 | ^
-|> 53:1:text_code.mf
+|> text_code.mf:53:1
 | fun main -> i64:
 | ^
-|> 53:4:text_code.mf
+|> text_code.mf:53:4
 | fun main -> i64:
 | ^^^
-|> 53:9:text_code.mf
+|> text_code.mf:53:9
 | fun main -> i64:
 |     ^^^^
-|> 53:12:text_code.mf
+|> text_code.mf:53:12
 | fun main -> i64:
 |          ^^
-|> 53:16:text_code.mf
+|> text_code.mf:53:16
 | fun main -> i64:
 |             ^^^
-|> 53:17:text_code.mf
+|> text_code.mf:53:17
 | fun main -> i64:
 |                ^
-|> 54:3:text_code.mf
+|> text_code.mf:54:3
 |   return 10 + 4 - 2 * 1 + 8
 | ^^
-|> 54:9:text_code.mf
+|> text_code.mf:54:9
 |   return 10 + 4 - 2 * 1 + 8
 |   ^^^^^^
-|> 54:12:text_code.mf
+|> text_code.mf:54:12
 |   return 10 + 4 - 2 * 1 + 8
 |          ^^
-|> 54:14:text_code.mf
+|> text_code.mf:54:14
 |   return 10 + 4 - 2 * 1 + 8
 |             ^
-|> 54:16:text_code.mf
+|> text_code.mf:54:16
 |   return 10 + 4 - 2 * 1 + 8
 |               ^
-|> 54:18:text_code.mf
+|> text_code.mf:54:18
 |   return 10 + 4 - 2 * 1 + 8
 |                 ^
-|> 54:20:text_code.mf
+|> text_code.mf:54:20
 |   return 10 + 4 - 2 * 1 + 8
 |                   ^
-|> 54:22:text_code.mf
+|> text_code.mf:54:22
 |   return 10 + 4 - 2 * 1 + 8
 |                     ^
-|> 54:24:text_code.mf
+|> text_code.mf:54:24
 |   return 10 + 4 - 2 * 1 + 8
 |                       ^
-|> 54:26:text_code.mf
+|> text_code.mf:54:26
 |   return 10 + 4 - 2 * 1 + 8
 |                         ^
-|> 54:28:text_code.mf
+|> text_code.mf:54:28
 |   return 10 + 4 - 2 * 1 + 8
 |                           ^
-|> 55:2:text_code.mf
+|> text_code.mf:55:2
 | 
 | ^
-|> 56:1:text_code.mf
+|> text_code.mf:56:1
 | fun operator_stress_test -> i64:
 | ^
-|> 56:4:text_code.mf
+|> text_code.mf:56:4
 | fun operator_stress_test -> i64:
 | ^^^
-|> 56:25:text_code.mf
+|> text_code.mf:56:25
 | fun operator_stress_test -> i64:
 |     ^^^^^^^^^^^^^^^^^^^^
-|> 56:28:text_code.mf
+|> text_code.mf:56:28
 | fun operator_stress_test -> i64:
 |                          ^^
-|> 56:32:text_code.mf
+|> text_code.mf:56:32
 | fun operator_stress_test -> i64:
 |                             ^^^
-|> 56:33:text_code.mf
+|> text_code.mf:56:33
 | fun operator_stress_test -> i64:
 |                                ^
-|> 57:3:text_code.mf
+|> text_code.mf:57:3
 |   return 10 + 2 * 1 - 9 | 4 & 1 ^ 2 >> 1 << 7 min 20 max 10
 | ^^
-|> 57:9:text_code.mf
+|> text_code.mf:57:9
 |   return 10 + 2 * 1 - 9 | 4 & 1 ^ 2 >> 1 << 7 min 20 max 10
 |   ^^^^^^
-|> 57:12:text_code.mf
+|> text_code.mf:57:12
 |   return 10 + 2 * 1 - 9 | 4 & 1 ^ 2 >> 1 << 7 min 20 max 10
 |          ^^
-|> 57:14:text_code.mf
+|> text_code.mf:57:14
 |   return 10 + 2 * 1 - 9 | 4 & 1 ^ 2 >> 1 << 7 min 20 max 10
 |             ^
-|> 57:16:text_code.mf
+|> text_code.mf:57:16
 |   return 10 + 2 * 1 - 9 | 4 & 1 ^ 2 >> 1 << 7 min 20 max 10
 |               ^
-|> 57:18:text_code.mf
+|> text_code.mf:57:18
 |   return 10 + 2 * 1 - 9 | 4 & 1 ^ 2 >> 1 << 7 min 20 max 10
 |                 ^
-|> 57:20:text_code.mf
+|> text_code.mf:57:20
 |   return 10 + 2 * 1 - 9 | 4 & 1 ^ 2 >> 1 << 7 min 20 max 10
 |                   ^
-|> 57:22:text_code.mf
+|> text_code.mf:57:22
 |   return 10 + 2 * 1 - 9 | 4 & 1 ^ 2 >> 1 << 7 min 20 max 10
 |                     ^
-|> 57:24:text_code.mf
+|> text_code.mf:57:24
 |   return 10 + 2 * 1 - 9 | 4 & 1 ^ 2 >> 1 << 7 min 20 max 10
 |                       ^
-|> 57:26:text_code.mf
+|> text_code.mf:57:26
 |   return 10 + 2 * 1 - 9 | 4 & 1 ^ 2 >> 1 << 7 min 20 max 10
 |                         ^
-|> 57:28:text_code.mf
+|> text_code.mf:57:28
 |   return 10 + 2 * 1 - 9 | 4 & 1 ^ 2 >> 1 << 7 min 20 max 10
 |                           ^
-|> 57:30:text_code.mf
+|> text_code.mf:57:30
 |   return 10 + 2 * 1 - 9 | 4 & 1 ^ 2 >> 1 << 7 min 20 max 10
 |                             ^
-|> 57:32:text_code.mf
+|> text_code.mf:57:32
 |   return 10 + 2 * 1 - 9 | 4 & 1 ^ 2 >> 1 << 7 min 20 max 10
 |                               ^
-|> 57:34:text_code.mf
+|> text_code.mf:57:34
 |   return 10 + 2 * 1 - 9 | 4 & 1 ^ 2 >> 1 << 7 min 20 max 10
 |                                 ^
-|> 57:36:text_code.mf
+|> text_code.mf:57:36
 |   return 10 + 2 * 1 - 9 | 4 & 1 ^ 2 >> 1 << 7 min 20 max 10
 |                                   ^
-|> 57:39:text_code.mf
+|> text_code.mf:57:39
 |   return 10 + 2 * 1 - 9 | 4 & 1 ^ 2 >> 1 << 7 min 20 max 10
 |                                     ^^
-|> 57:41:text_code.mf
+|> text_code.mf:57:41
 |   return 10 + 2 * 1 - 9 | 4 & 1 ^ 2 >> 1 << 7 min 20 max 10
 |                                        ^
-|> 57:44:text_code.mf
+|> text_code.mf:57:44
 |   return 10 + 2 * 1 - 9 | 4 & 1 ^ 2 >> 1 << 7 min 20 max 10
 |                                          ^^
-|> 57:46:text_code.mf
+|> text_code.mf:57:46
 |   return 10 + 2 * 1 - 9 | 4 & 1 ^ 2 >> 1 << 7 min 20 max 10
 |                                             ^
-|> 57:50:text_code.mf
+|> text_code.mf:57:50
 |   return 10 + 2 * 1 - 9 | 4 & 1 ^ 2 >> 1 << 7 min 20 max 10
 |                                               ^^^
-|> 57:53:text_code.mf
+|> text_code.mf:57:53
 |   return 10 + 2 * 1 - 9 | 4 & 1 ^ 2 >> 1 << 7 min 20 max 10
 |                                                   ^^
-|> 57:57:text_code.mf
+|> text_code.mf:57:57
 |   return 10 + 2 * 1 - 9 | 4 & 1 ^ 2 >> 1 << 7 min 20 max 10
 |                                                      ^^^
-|> 57:60:text_code.mf
+|> text_code.mf:57:60
 |   return 10 + 2 * 1 - 9 | 4 & 1 ^ 2 >> 1 << 7 min 20 max 10
 |                                                          ^^
-|> 58:2:text_code.mf
+|> text_code.mf:58:2
 | 
 | ^
-|> 59:1:text_code.mf
+|> text_code.mf:59:1
 | fun conditional -> i64:
 | ^
-|> 59:4:text_code.mf
+|> text_code.mf:59:4
 | fun conditional -> i64:
 | ^^^
-|> 59:16:text_code.mf
+|> text_code.mf:59:16
 | fun conditional -> i64:
 |     ^^^^^^^^^^^
-|> 59:19:text_code.mf
+|> text_code.mf:59:19
 | fun conditional -> i64:
 |                 ^^
-|> 59:23:text_code.mf
+|> text_code.mf:59:23
 | fun conditional -> i64:
 |                    ^^^
-|> 59:24:text_code.mf
+|> text_code.mf:59:24
 | fun conditional -> i64:
 |                       ^
-|> 60:3:text_code.mf
+|> text_code.mf:60:3
 |   if false:
 | ^^
-|> 60:5:text_code.mf
+|> text_code.mf:60:5
 |   if false:
 |   ^^
-|> 60:11:text_code.mf
+|> text_code.mf:60:11
 |   if false:
 |      ^^^^^
-|> 60:12:text_code.mf
+|> text_code.mf:60:12
 |   if false:
 |           ^
-|> 61:5:text_code.mf
+|> text_code.mf:61:5
 |     return 10
 | ^^^^
-|> 61:11:text_code.mf
+|> text_code.mf:61:11
 |     return 10
 |     ^^^^^^
-|> 61:14:text_code.mf
+|> text_code.mf:61:14
 |     return 10
 |            ^^
-|> 62:3:text_code.mf
+|> text_code.mf:62:3
 |   elif true:
 | ^^
-|> 62:7:text_code.mf
+|> text_code.mf:62:7
 |   elif true:
 |   ^^^^
-|> 62:12:text_code.mf
+|> text_code.mf:62:12
 |   elif true:
 |        ^^^^
-|> 62:13:text_code.mf
+|> text_code.mf:62:13
 |   elif true:
 |            ^
-|> 63:5:text_code.mf
+|> text_code.mf:63:5
 |     return if true: 10 else: 20
 | ^^^^
-|> 63:11:text_code.mf
+|> text_code.mf:63:11
 |     return if true: 10 else: 20
 |     ^^^^^^
-|> 63:14:text_code.mf
+|> text_code.mf:63:14
 |     return if true: 10 else: 20
 |            ^^
-|> 63:19:text_code.mf
+|> text_code.mf:63:19
 |     return if true: 10 else: 20
 |               ^^^^
-|> 63:20:text_code.mf
+|> text_code.mf:63:20
 |     return if true: 10 else: 20
 |                   ^
-|> 63:23:text_code.mf
+|> text_code.mf:63:23
 |     return if true: 10 else: 20
 |                     ^^
-|> 63:28:text_code.mf
+|> text_code.mf:63:28
 |     return if true: 10 else: 20
 |                        ^^^^
-|> 63:29:text_code.mf
+|> text_code.mf:63:29
 |     return if true: 10 else: 20
 |                            ^
-|> 63:32:text_code.mf
+|> text_code.mf:63:32
 |     return if true: 10 else: 20
 |                              ^^
-|> 64:3:text_code.mf
+|> text_code.mf:64:3
 |   else:
 | ^^
-|> 64:7:text_code.mf
+|> text_code.mf:64:7
 |   else:
 |   ^^^^
-|> 64:8:text_code.mf
+|> text_code.mf:64:8
 |   else:
 |       ^
-|> 65:5:text_code.mf
+|> text_code.mf:65:5
 |     return 0
 | ^^^^
-|> 65:11:text_code.mf
+|> text_code.mf:65:11
 |     return 0
 |     ^^^^^^
-|> 65:13:text_code.mf
+|> text_code.mf:65:13
 |     return 0
 |            ^
-|> 66:2:text_code.mf
+|> text_code.mf:66:2
 | 
 | ^
-|> 67:1:text_code.mf
+|> text_code.mf:67:1
 | attr inline = always, call_conv = cold
 | ^
-|> 67:5:text_code.mf
+|> text_code.mf:67:5
 | attr inline = always, call_conv = cold
 | ^^^^
-|> 67:12:text_code.mf
+|> text_code.mf:67:12
 | attr inline = always, call_conv = cold
 |      ^^^^^^
-|> 67:14:text_code.mf
+|> text_code.mf:67:14
 | attr inline = always, call_conv = cold
 |             ^
-|> 67:21:text_code.mf
+|> text_code.mf:67:21
 | attr inline = always, call_conv = cold
 |               ^^^^^^
-|> 67:22:text_code.mf
+|> text_code.mf:67:22
 | attr inline = always, call_conv = cold
 |                     ^
-|> 67:32:text_code.mf
+|> text_code.mf:67:32
 | attr inline = always, call_conv = cold
 |                       ^^^^^^^^^
-|> 67:34:text_code.mf
+|> text_code.mf:67:34
 | attr inline = always, call_conv = cold
 |                                 ^
-|> 67:39:text_code.mf
+|> text_code.mf:67:39
 | attr inline = always, call_conv = cold
 |                                   ^^^^
-|> 68:1:text_code.mf
+|> text_code.mf:68:1
 | fun inline_fn -> u32:
 | ^
-|> 68:4:text_code.mf
+|> text_code.mf:68:4
 | fun inline_fn -> u32:
 | ^^^
-|> 68:14:text_code.mf
+|> text_code.mf:68:14
 | fun inline_fn -> u32:
 |     ^^^^^^^^^
-|> 68:17:text_code.mf
+|> text_code.mf:68:17
 | fun inline_fn -> u32:
 |               ^^
-|> 68:21:text_code.mf
+|> text_code.mf:68:21
 | fun inline_fn -> u32:
 |                  ^^^
-|> 68:22:text_code.mf
+|> text_code.mf:68:22
 | fun inline_fn -> u32:
 |                     ^
-|> 69:3:text_code.mf
+|> text_code.mf:69:3
 |   return 10
 | ^^
-|> 69:9:text_code.mf
+|> text_code.mf:69:9
 |   return 10
 |   ^^^^^^
-|> 69:12:text_code.mf
+|> text_code.mf:69:12
 |   return 10
 |          ^^
-|> 70:2:text_code.mf
+|> text_code.mf:70:2
 | 
 | ^
-|> 71:1:text_code.mf
+|> text_code.mf:71:1
 | fun fib(v: i64) -> i64:
 | ^
-|> 71:4:text_code.mf
+|> text_code.mf:71:4
 | fun fib(v: i64) -> i64:
 | ^^^
-|> 71:8:text_code.mf
+|> text_code.mf:71:8
 | fun fib(v: i64) -> i64:
 |     ^^^
-|> 71:9:text_code.mf
+|> text_code.mf:71:9
 | fun fib(v: i64) -> i64:
 |        ^
-|> 71:10:text_code.mf
+|> text_code.mf:71:10
 | fun fib(v: i64) -> i64:
 |         ^
-|> 71:11:text_code.mf
+|> text_code.mf:71:11
 | fun fib(v: i64) -> i64:
 |          ^
-|> 71:15:text_code.mf
+|> text_code.mf:71:15
 | fun fib(v: i64) -> i64:
 |            ^^^
-|> 71:16:text_code.mf
+|> text_code.mf:71:16
 | fun fib(v: i64) -> i64:
 |               ^
-|> 71:19:text_code.mf
+|> text_code.mf:71:19
 | fun fib(v: i64) -> i64:
 |                 ^^
-|> 71:23:text_code.mf
+|> text_code.mf:71:23
 | fun fib(v: i64) -> i64:
 |                    ^^^
-|> 71:24:text_code.mf
+|> text_code.mf:71:24
 | fun fib(v: i64) -> i64:
 |                       ^
-|> 72:3:text_code.mf
+|> text_code.mf:72:3
 |   return if v == 0 | v == 1:
 | ^^
-|> 72:9:text_code.mf
+|> text_code.mf:72:9
 |   return if v == 0 | v == 1:
 |   ^^^^^^
-|> 72:12:text_code.mf
+|> text_code.mf:72:12
 |   return if v == 0 | v == 1:
 |          ^^
-|> 72:14:text_code.mf
+|> text_code.mf:72:14
 |   return if v == 0 | v == 1:
 |             ^
-|> 72:17:text_code.mf
+|> text_code.mf:72:17
 |   return if v == 0 | v == 1:
 |               ^^
-|> 72:19:text_code.mf
+|> text_code.mf:72:19
 |   return if v == 0 | v == 1:
 |                  ^
-|> 72:21:text_code.mf
+|> text_code.mf:72:21
 |   return if v == 0 | v == 1:
 |                    ^
-|> 72:23:text_code.mf
+|> text_code.mf:72:23
 |   return if v == 0 | v == 1:
 |                      ^
-|> 72:26:text_code.mf
+|> text_code.mf:72:26
 |   return if v == 0 | v == 1:
 |                        ^^
-|> 72:28:text_code.mf
+|> text_code.mf:72:28
 |   return if v == 0 | v == 1:
 |                           ^
-|> 72:29:text_code.mf
+|> text_code.mf:72:29
 |   return if v == 0 | v == 1:
 |                            ^
-|> 73:5:text_code.mf
+|> text_code.mf:73:5
 |     1
 | ^^^^
-|> 73:6:text_code.mf
+|> text_code.mf:73:6
 |     1
 |     ^
-|> 74:3:text_code.mf
+|> text_code.mf:74:3
 |   else:
 | ^^
-|> 74:7:text_code.mf
+|> text_code.mf:74:7
 |   else:
 |   ^^^^
-|> 74:8:text_code.mf
+|> text_code.mf:74:8
 |   else:
 |       ^
-|> 75:5:text_code.mf
+|> text_code.mf:75:5
 |     fib(v - 1) + fib(v - 2)
 | ^^^^
-|> 75:8:text_code.mf
+|> text_code.mf:75:8
 |     fib(v - 1) + fib(v - 2)
 |     ^^^
-|> 75:9:text_code.mf
+|> text_code.mf:75:9
 |     fib(v - 1) + fib(v - 2)
 |        ^
-|> 75:10:text_code.mf
+|> text_code.mf:75:10
 |     fib(v - 1) + fib(v - 2)
 |         ^
-|> 75:12:text_code.mf
+|> text_code.mf:75:12
 |     fib(v - 1) + fib(v - 2)
 |           ^
-|> 75:14:text_code.mf
+|> text_code.mf:75:14
 |     fib(v - 1) + fib(v - 2)
 |             ^
-|> 75:15:text_code.mf
+|> text_code.mf:75:15
 |     fib(v - 1) + fib(v - 2)
 |              ^
-|> 75:17:text_code.mf
+|> text_code.mf:75:17
 |     fib(v - 1) + fib(v - 2)
 |                ^
-|> 75:21:text_code.mf
+|> text_code.mf:75:21
 |     fib(v - 1) + fib(v - 2)
 |                  ^^^
-|> 75:22:text_code.mf
+|> text_code.mf:75:22
 |     fib(v - 1) + fib(v - 2)
 |                     ^
-|> 75:23:text_code.mf
+|> text_code.mf:75:23
 |     fib(v - 1) + fib(v - 2)
 |                      ^
-|> 75:25:text_code.mf
+|> text_code.mf:75:25
 |     fib(v - 1) + fib(v - 2)
 |                        ^
-|> 75:27:text_code.mf
+|> text_code.mf:75:27
 |     fib(v - 1) + fib(v - 2)
 |                          ^
-|> 75:28:text_code.mf
+|> text_code.mf:75:28
 |     fib(v - 1) + fib(v - 2)
 |                           ^
-|> 76:2:text_code.mf
+|> text_code.mf:76:2
 | 
 | ^
-|> 77:1:text_code.mf
+|> text_code.mf:77:1
 | fun fib_loop(v: i64) -> i64:
 | ^
-|> 77:4:text_code.mf
+|> text_code.mf:77:4
 | fun fib_loop(v: i64) -> i64:
 | ^^^
-|> 77:13:text_code.mf
+|> text_code.mf:77:13
 | fun fib_loop(v: i64) -> i64:
 |     ^^^^^^^^
-|> 77:14:text_code.mf
+|> text_code.mf:77:14
 | fun fib_loop(v: i64) -> i64:
 |             ^
-|> 77:15:text_code.mf
+|> text_code.mf:77:15
 | fun fib_loop(v: i64) -> i64:
 |              ^
-|> 77:16:text_code.mf
+|> text_code.mf:77:16
 | fun fib_loop(v: i64) -> i64:
 |               ^
-|> 77:20:text_code.mf
+|> text_code.mf:77:20
 | fun fib_loop(v: i64) -> i64:
 |                 ^^^
-|> 77:21:text_code.mf
+|> text_code.mf:77:21
 | fun fib_loop(v: i64) -> i64:
 |                    ^
-|> 77:24:text_code.mf
+|> text_code.mf:77:24
 | fun fib_loop(v: i64) -> i64:
 |                      ^^
-|> 77:28:text_code.mf
+|> text_code.mf:77:28
 | fun fib_loop(v: i64) -> i64:
 |                         ^^^
-|> 77:29:text_code.mf
+|> text_code.mf:77:29
 | fun fib_loop(v: i64) -> i64:
 |                            ^
-|> 78:3:text_code.mf
+|> text_code.mf:78:3
 |   var a, b, c = 1
 | ^^
-|> 78:6:text_code.mf
+|> text_code.mf:78:6
 |   var a, b, c = 1
 |   ^^^
-|> 78:8:text_code.mf
+|> text_code.mf:78:8
 |   var a, b, c = 1
 |       ^
-|> 78:9:text_code.mf
+|> text_code.mf:78:9
 |   var a, b, c = 1
 |        ^
-|> 78:11:text_code.mf
+|> text_code.mf:78:11
 |   var a, b, c = 1
 |          ^
-|> 78:12:text_code.mf
+|> text_code.mf:78:12
 |   var a, b, c = 1
 |           ^
-|> 78:14:text_code.mf
+|> text_code.mf:78:14
 |   var a, b, c = 1
 |             ^
-|> 78:16:text_code.mf
+|> text_code.mf:78:16
 |   var a, b, c = 1
 |               ^
-|> 78:18:text_code.mf
+|> text_code.mf:78:18
 |   var a, b, c = 1
 |                 ^
-|> 79:3:text_code.mf
+|> text_code.mf:79:3
 |   for'a:
 | ^^
-|> 79:6:text_code.mf
+|> text_code.mf:79:6
 |   for'a:
 |   ^^^
-|> 79:8:text_code.mf
+|> text_code.mf:79:8
 |   for'a:
 |      ^^
-|> 79:9:text_code.mf
+|> text_code.mf:79:9
 |   for'a:
 |        ^
-|> 80:5:text_code.mf
+|> text_code.mf:80:5
 |     c = a + b
 | ^^^^
-|> 80:6:text_code.mf
+|> text_code.mf:80:6
 |     c = a + b
 |     ^
-|> 80:8:text_code.mf
+|> text_code.mf:80:8
 |     c = a + b
 |       ^
-|> 80:10:text_code.mf
+|> text_code.mf:80:10
 |     c = a + b
 |         ^
-|> 80:12:text_code.mf
+|> text_code.mf:80:12
 |     c = a + b
 |           ^
-|> 80:14:text_code.mf
+|> text_code.mf:80:14
 |     c = a + b
 |             ^
-|> 81:5:text_code.mf
+|> text_code.mf:81:5
 |     a = b
 | ^^^^
-|> 81:6:text_code.mf
+|> text_code.mf:81:6
 |     a = b
 |     ^
-|> 81:8:text_code.mf
+|> text_code.mf:81:8
 |     a = b
 |       ^
-|> 81:10:text_code.mf
+|> text_code.mf:81:10
 |     a = b
 |         ^
-|> 82:5:text_code.mf
+|> text_code.mf:82:5
 |     b = c
 | ^^^^
-|> 82:6:text_code.mf
+|> text_code.mf:82:6
 |     b = c
 |     ^
-|> 82:8:text_code.mf
+|> text_code.mf:82:8
 |     b = c
 |       ^
-|> 82:10:text_code.mf
+|> text_code.mf:82:10
 |     b = c
 |         ^
-|> 83:5:text_code.mf
+|> text_code.mf:83:5
 |     v = v - 1
 | ^^^^
-|> 83:6:text_code.mf
+|> text_code.mf:83:6
 |     v = v - 1
 |     ^
-|> 83:8:text_code.mf
+|> text_code.mf:83:8
 |     v = v - 1
 |       ^
-|> 83:10:text_code.mf
+|> text_code.mf:83:10
 |     v = v - 1
 |         ^
-|> 83:12:text_code.mf
+|> text_code.mf:83:12
 |     v = v - 1
 |           ^
-|> 83:14:text_code.mf
+|> text_code.mf:83:14
 |     v = v - 1
 |             ^
-|> 84:5:text_code.mf
+|> text_code.mf:84:5
 |     if v == 0:
 | ^^^^
-|> 84:7:text_code.mf
+|> text_code.mf:84:7
 |     if v == 0:
 |     ^^
-|> 84:9:text_code.mf
+|> text_code.mf:84:9
 |     if v == 0:
 |        ^
-|> 84:12:text_code.mf
+|> text_code.mf:84:12
 |     if v == 0:
 |          ^^
-|> 84:14:text_code.mf
+|> text_code.mf:84:14
 |     if v == 0:
 |             ^
-|> 84:15:text_code.mf
+|> text_code.mf:84:15
 |     if v == 0:
 |              ^
-|> 85:7:text_code.mf
+|> text_code.mf:85:7
 |       break'a
 | ^^^^^^
-|> 85:12:text_code.mf
+|> text_code.mf:85:12
 |       break'a
 |       ^^^^^
-|> 85:14:text_code.mf
+|> text_code.mf:85:14
 |       break'a
 |            ^^
-|> 86:3:text_code.mf
+|> text_code.mf:86:3
 |   return c
 | ^^
-|> 86:9:text_code.mf
+|> text_code.mf:86:9
 |   return c
 |   ^^^^^^
-|> 86:11:text_code.mf
+|> text_code.mf:86:11
 |   return c
 |          ^
-|> 87:2:text_code.mf
+|> text_code.mf:87:2
 | 
 | ^
-|> 88:1:text_code.mf
+|> text_code.mf:88:1
 | fun unary_operators(a: i64) -> i64:
 | ^
-|> 88:4:text_code.mf
+|> text_code.mf:88:4
 | fun unary_operators(a: i64) -> i64:
 | ^^^
-|> 88:20:text_code.mf
+|> text_code.mf:88:20
 | fun unary_operators(a: i64) -> i64:
 |     ^^^^^^^^^^^^^^^
-|> 88:21:text_code.mf
+|> text_code.mf:88:21
 | fun unary_operators(a: i64) -> i64:
 |                    ^
-|> 88:22:text_code.mf
+|> text_code.mf:88:22
 | fun unary_operators(a: i64) -> i64:
 |                     ^
-|> 88:23:text_code.mf
+|> text_code.mf:88:23
 | fun unary_operators(a: i64) -> i64:
 |                      ^
-|> 88:27:text_code.mf
+|> text_code.mf:88:27
 | fun unary_operators(a: i64) -> i64:
 |                        ^^^
-|> 88:28:text_code.mf
+|> text_code.mf:88:28
 | fun unary_operators(a: i64) -> i64:
 |                           ^
-|> 88:31:text_code.mf
+|> text_code.mf:88:31
 | fun unary_operators(a: i64) -> i64:
 |                             ^^
-|> 88:35:text_code.mf
+|> text_code.mf:88:35
 | fun unary_operators(a: i64) -> i64:
 |                                ^^^
-|> 88:36:text_code.mf
+|> text_code.mf:88:36
 | fun unary_operators(a: i64) -> i64:
 |                                   ^
-|> 89:3:text_code.mf
+|> text_code.mf:89:3
 |   return -a + ~a + !a + ++a + --a
 | ^^
-|> 89:9:text_code.mf
+|> text_code.mf:89:9
 |   return -a + ~a + !a + ++a + --a
 |   ^^^^^^
-|> 89:11:text_code.mf
+|> text_code.mf:89:11
 |   return -a + ~a + !a + ++a + --a
 |          ^
-|> 89:12:text_code.mf
+|> text_code.mf:89:12
 |   return -a + ~a + !a + ++a + --a
 |           ^
-|> 89:14:text_code.mf
+|> text_code.mf:89:14
 |   return -a + ~a + !a + ++a + --a
 |             ^
-|> 89:16:text_code.mf
+|> text_code.mf:89:16
 |   return -a + ~a + !a + ++a + --a
 |               ^
-|> 89:17:text_code.mf
+|> text_code.mf:89:17
 |   return -a + ~a + !a + ++a + --a
 |                ^
-|> 89:19:text_code.mf
+|> text_code.mf:89:19
 |   return -a + ~a + !a + ++a + --a
 |                  ^
-|> 89:21:text_code.mf
+|> text_code.mf:89:21
 |   return -a + ~a + !a + ++a + --a
 |                    ^
-|> 89:22:text_code.mf
+|> text_code.mf:89:22
 |   return -a + ~a + !a + ++a + --a
 |                     ^
-|> 89:24:text_code.mf
+|> text_code.mf:89:24
 |   return -a + ~a + !a + ++a + --a
 |                       ^
-|> 89:27:text_code.mf
+|> text_code.mf:89:27
 |   return -a + ~a + !a + ++a + --a
 |                         ^^
-|> 89:28:text_code.mf
+|> text_code.mf:89:28
 |   return -a + ~a + !a + ++a + --a
 |                           ^
-|> 89:30:text_code.mf
+|> text_code.mf:89:30
 |   return -a + ~a + !a + ++a + --a
 |                             ^
-|> 89:33:text_code.mf
+|> text_code.mf:89:33
 |   return -a + ~a + !a + ++a + --a
 |                               ^^
-|> 89:34:text_code.mf
+|> text_code.mf:89:34
 |   return -a + ~a + !a + ++a + --a
 |                                 ^
-|> 90:2:text_code.mf
+|> text_code.mf:90:2
 | 
 | ^
-|> 91:1:text_code.mf
+|> text_code.mf:91:1
 | struct Foo:
 | ^
-|> 91:7:text_code.mf
+|> text_code.mf:91:7
 | struct Foo:
 | ^^^^^^
-|> 91:11:text_code.mf
+|> text_code.mf:91:11
 | struct Foo:
 |        ^^^
-|> 91:12:text_code.mf
+|> text_code.mf:91:12
 | struct Foo:
 |           ^
-|> 92:3:text_code.mf
+|> text_code.mf:92:3
 |   a, b, c: int
 | ^^
-|> 92:4:text_code.mf
+|> text_code.mf:92:4
 |   a, b, c: int
 |   ^
-|> 92:5:text_code.mf
+|> text_code.mf:92:5
 |   a, b, c: int
 |    ^
-|> 92:7:text_code.mf
+|> text_code.mf:92:7
 |   a, b, c: int
 |      ^
-|> 92:8:text_code.mf
+|> text_code.mf:92:8
 |   a, b, c: int
 |       ^
-|> 92:10:text_code.mf
+|> text_code.mf:92:10
 |   a, b, c: int
 |         ^
-|> 92:11:text_code.mf
+|> text_code.mf:92:11
 |   a, b, c: int
 |          ^
-|> 92:15:text_code.mf
+|> text_code.mf:92:15
 |   a, b, c: int
 |            ^^^
-|> 93:2:text_code.mf
+|> text_code.mf:93:2
 | 
 | ^
-|> 94:1:text_code.mf
+|> text_code.mf:94:1
 | struct Goo:
 | ^
-|> 94:7:text_code.mf
+|> text_code.mf:94:7
 | struct Goo:
 | ^^^^^^
-|> 94:11:text_code.mf
+|> text_code.mf:94:11
 | struct Goo:
 |        ^^^
-|> 94:12:text_code.mf
+|> text_code.mf:94:12
 | struct Goo:
 |           ^
-|> 95:3:text_code.mf
+|> text_code.mf:95:3
 |   embed foo: Foo
 | ^^
-|> 95:8:text_code.mf
+|> text_code.mf:95:8
 |   embed foo: Foo
 |   ^^^^^
-|> 95:12:text_code.mf
+|> text_code.mf:95:12
 |   embed foo: Foo
 |         ^^^
-|> 95:13:text_code.mf
+|> text_code.mf:95:13
 |   embed foo: Foo
 |            ^
-|> 95:17:text_code.mf
+|> text_code.mf:95:17
 |   embed foo: Foo
 |              ^^^
-|> 96:3:text_code.mf
+|> text_code.mf:96:3
 |   gva: int
 | ^^
-|> 96:6:text_code.mf
+|> text_code.mf:96:6
 |   gva: int
 |   ^^^
-|> 96:7:text_code.mf
+|> text_code.mf:96:7
 |   gva: int
 |      ^
-|> 96:11:text_code.mf
+|> text_code.mf:96:11
 |   gva: int
 |        ^^^
-|> 97:2:text_code.mf
+|> text_code.mf:97:2
 | 
 | ^
-|> 98:1:text_code.mf
+|> text_code.mf:98:1
 | fun strings -> i64:
 | ^
-|> 98:4:text_code.mf
+|> text_code.mf:98:4
 | fun strings -> i64:
 | ^^^
-|> 98:12:text_code.mf
+|> text_code.mf:98:12
 | fun strings -> i64:
 |     ^^^^^^^
-|> 98:15:text_code.mf
+|> text_code.mf:98:15
 | fun strings -> i64:
 |             ^^
-|> 98:19:text_code.mf
+|> text_code.mf:98:19
 | fun strings -> i64:
 |                ^^^
-|> 98:20:text_code.mf
+|> text_code.mf:98:20
 | fun strings -> i64:
 |                   ^
-|> 99:3:text_code.mf
+|> text_code.mf:99:3
 |   var hello = "hello"
 | ^^
-|> 99:6:text_code.mf
+|> text_code.mf:99:6
 |   var hello = "hello"
 |   ^^^
-|> 99:12:text_code.mf
+|> text_code.mf:99:12
 |   var hello = "hello"
 |       ^^^^^
-|> 99:14:text_code.mf
+|> text_code.mf:99:14
 |   var hello = "hello"
 |             ^
-|> 99:22:text_code.mf
+|> text_code.mf:99:22
 |   var hello = "hello"
 |               ^^^^^^^
-|> 100:3:text_code.mf
+|> text_code.mf:100:3
 |   return 0
 | ^^
-|> 100:9:text_code.mf
+|> text_code.mf:100:9
 |   return 0
 |   ^^^^^^
-|> 100:11:text_code.mf
+|> text_code.mf:100:11
 |   return 0
 |          ^
-|> 101:2:text_code.mf
+|> text_code.mf:101:2
 | 
 | ^
-|> 102:1:text_code.mf
+|> text_code.mf:102:1
 | fun mutable_ref(a: &Foo):
 | ^
-|> 102:4:text_code.mf
+|> text_code.mf:102:4
 | fun mutable_ref(a: &Foo):
 | ^^^
-|> 102:16:text_code.mf
+|> text_code.mf:102:16
 | fun mutable_ref(a: &Foo):
 |     ^^^^^^^^^^^
-|> 102:17:text_code.mf
+|> text_code.mf:102:17
 | fun mutable_ref(a: &Foo):
 |                ^
-|> 102:18:text_code.mf
+|> text_code.mf:102:18
 | fun mutable_ref(a: &Foo):
 |                 ^
-|> 102:19:text_code.mf
+|> text_code.mf:102:19
 | fun mutable_ref(a: &Foo):
 |                  ^
-|> 102:21:text_code.mf
+|> text_code.mf:102:21
 | fun mutable_ref(a: &Foo):
 |                    ^
-|> 102:24:text_code.mf
+|> text_code.mf:102:24
 | fun mutable_ref(a: &Foo):
 |                     ^^^
-|> 102:25:text_code.mf
+|> text_code.mf:102:25
 | fun mutable_ref(a: &Foo):
 |                        ^
-|> 102:26:text_code.mf
+|> text_code.mf:102:26
 | fun mutable_ref(a: &Foo):
 |                         ^
-|> 103:3:text_code.mf
+|> text_code.mf:103:3
 |   a.a = 10
 | ^^
-|> 103:4:text_code.mf
+|> text_code.mf:103:4
 |   a.a = 10
 |   ^
-|> 103:5:text_code.mf
+|> text_code.mf:103:5
 |   a.a = 10
 |    ^
-|> 103:6:text_code.mf
+|> text_code.mf:103:6
 |   a.a = 10
 |     ^
-|> 103:8:text_code.mf
+|> text_code.mf:103:8
 |   a.a = 10
 |       ^
-|> 103:11:text_code.mf
+|> text_code.mf:103:11
 |   a.a = 10
 |         ^^
-|> 104:3:text_code.mf
+|> text_code.mf:104:3
 |   a.b = 20
 | ^^
-|> 104:4:text_code.mf
+|> text_code.mf:104:4
 |   a.b = 20
 |   ^
-|> 104:5:text_code.mf
+|> text_code.mf:104:5
 |   a.b = 20
 |    ^
-|> 104:6:text_code.mf
+|> text_code.mf:104:6
 |   a.b = 20
 |     ^
-|> 104:8:text_code.mf
+|> text_code.mf:104:8
 |   a.b = 20
 |       ^
-|> 104:11:text_code.mf
+|> text_code.mf:104:11
 |   a.b = 20
 |         ^^
-|> 105:3:text_code.mf
+|> text_code.mf:105:3
 |   a.c = 30
 | ^^
-|> 105:4:text_code.mf
+|> text_code.mf:105:4
 |   a.c = 30
 |   ^
-|> 105:5:text_code.mf
+|> text_code.mf:105:5
 |   a.c = 30
 |    ^
-|> 105:6:text_code.mf
+|> text_code.mf:105:6
 |   a.c = 30
 |     ^
-|> 105:8:text_code.mf
+|> text_code.mf:105:8
 |   a.c = 30
 |       ^
-|> 105:11:text_code.mf
+|> text_code.mf:105:11
 |   a.c = 30
 |         ^^
-|> 106:2:text_code.mf
+|> text_code.mf:106:2
 | 
 | ^
-|> 107:1:text_code.mf
+|> text_code.mf:107:1
 | fun some_string -> &u8:
 | ^
-|> 107:4:text_code.mf
+|> text_code.mf:107:4
 | fun some_string -> &u8:
 | ^^^
-|> 107:16:text_code.mf
+|> text_code.mf:107:16
 | fun some_string -> &u8:
 |     ^^^^^^^^^^^
-|> 107:19:text_code.mf
+|> text_code.mf:107:19
 | fun some_string -> &u8:
 |                 ^^
-|> 107:21:text_code.mf
+|> text_code.mf:107:21
 | fun some_string -> &u8:
 |                    ^
-|> 107:23:text_code.mf
+|> text_code.mf:107:23
 | fun some_string -> &u8:
 |                     ^^
-|> 107:24:text_code.mf
+|> text_code.mf:107:24
 | fun some_string -> &u8:
 |                       ^
-|> 108:3:text_code.mf
+|> text_code.mf:108:3
 |   "
 | ^^
-|> 110:4:text_code.mf
+|> text_code.mf:110:4
 |   "
 | hello there
 |   "
@@ -2225,3 +2225,4471 @@ Fun(None) "fun some_string -> &u8:\r\n  \"\r\nhello there\r\n  \"":
 === Mod(1) "goo"
 === Mod(1) "boo"
 gen-test
+=== Mod(0) "pop"
+=== Mod(0) "get_unchecked"
+=== Mod(0) "some"
+=== Mod(0) "sizeof"
+=== Mod(0) "push"
+=== Mod(0) "sizeof"
+=== Mod(0) "get_unchecked_var"
+=== Mod(0) "sizeof"
+=== Mod(0) "__index__"
+=== Mod(0) "push"
+=== Mod(0) "push"
+=== Mod(0) "push"
+=== Mod(0) "push"
+=== Mod(0) "sizeof"
+=== Mod(0) "get_unchecked_var"
+=== Mod(0) "sizeof"
+=== Mod(0) "assert_in_bounds"
+=== Mod(0) "get_unchecked"
+=== Mod(0) "in_bounds"
+=== Mod(0) "reserve"
+=== Mod(0) "get_unchecked_var"
+=== Mod(0) "sizeof"
+=== Mod(0) "push"
+=== Mod(0) "reserve"
+=== Mod(0) "get_unchecked_var"
+fun pub exit(code: int)
+
+
+fun pub print(str: &u8)
+
+
+fun pub ceil(x: f64) -> f64
+
+
+fun pub log10(x: f64) -> f64
+
+
+fun pub memcpy(dest: &var u8, src: &u8, size: int)
+
+
+fun pub memmove(dest: &var u8, src: &u8, size: int)
+
+
+fun pub memset(ptr: &var u8, value: u8, size: int)
+
+
+fun pub putchar(c: u32)
+
+
+fun pub free(ptr: &var u8)
+
+
+fun pub realloc(ptr: &var u8, size: int) -> &var u8
+
+
+fun pub alloc(size: int) -> &var u8
+
+
+fun pub pop_frame
+
+  block1 []:
+    v4 = GlobalLoad(gv0)
+    v6 = Ref(v4)
+    v5 = Call(Fun(484), EntityList { index: 5, unused: PhantomData })
+    Return(None)
+
+function u0:0() fast {
+    ss0 = explicit_slot 32
+    ss1 = explicit_slot 24
+    ss2 = explicit_slot 32
+    ss3 = explicit_slot 32
+    gv0 = symbol colocated u1:0
+
+block0:
+    v0 = global_value.i64 gv0
+    v1 = stack_addr.i64 ss0
+    jump block1(v0, v1)
+
+block1(v3: i64, v4: i64):
+    v5 = iconst.i64 0
+    v6 = load.i64 v3+8
+    v7 = icmp eq v6, v5
+    brnz v7, block3
+    jump block4
+
+block3:
+    v8 = iconst.i64 0
+    store v8, v4
+    store v8, v4+8
+    store v8, v4+16
+    store v8, v4+24
+    jump block2(v4)
+
+block4:
+    v9 = iconst.i64 1
+    v10 = load.i64 v3+8
+    v11 = isub v10, v9
+    jump block5(v3, v11)
+
+block5(v13: i64, v14: i64):
+    v15 = iconst.i64 24
+    v16 = imul v14, v15
+    v17 = load.i64 v13
+    v18 = iadd v17, v16
+    jump block6(v18)
+
+block6(v12: i64):
+    v19 = stack_addr.i64 ss1
+    v20 = load.i64 v12
+    store v20, v19
+    v21 = load.i64 v12+8
+    store v21, v19+8
+    v22 = load.i64 v12+16
+    store v22, v19+16
+    v23 = iconst.i64 1
+    v24 = load.i64 v3+8
+    v25 = isub v24, v23
+    store v25, v3+8
+    v26 = stack_addr.i64 ss1
+    v27 = stack_addr.i64 ss2
+    jump block7(v26, v27)
+
+block7(v29: i64, v30: i64):
+    v31 = iconst.i64 0
+    stack_store v31, ss3
+    stack_store v31, ss3+8
+    stack_store v31, ss3+16
+    stack_store v31, ss3+24
+    stack_store v29, ss3
+    stack_store v29, ss3+8
+    stack_store v29, ss3+16
+    v32 = bconst.b1 true
+    v33 = bint.i8 v32
+    stack_store v33, ss3+24
+    v34 = stack_addr.i64 ss3
+    v35 = load.i64 v34
+    store v35, v30
+    v36 = load.i64 v34+8
+    store v36, v30+8
+    v37 = load.i64 v34+16
+    store v37, v30+16
+    v38 = load.i64 v34+24
+    store v38, v30+24
+    jump block8(v30)
+
+block8(v28: i64):
+    v39 = load.i64 v28
+    store v39, v4
+    v40 = load.i64 v28+8
+    store v40, v4+8
+    v41 = load.i64 v28+16
+    store v41, v4+16
+    v42 = load.i64 v28+24
+    store v42, v4+24
+    jump block2(v4)
+
+block2(v2: i64):
+    return
+}
+
+fun pop(s: &var Self) -> Option[T]
+
+  block2 [v7, v8]:
+    v9 = Offset(v7)
+    v10 = Deref(v9, false)
+    v11 = Offset(v10)
+    v12 = Lit(Int(0, 0))
+    v13 = Call(Fun(309), EntityList { index: 13, unused: PhantomData })
+    JumpIfTrue(v13, block3, EntityList { index: 0, unused: PhantomData })
+    Jump(block4, EntityList { index: 0, unused: PhantomData })
+  block3 []:
+    v14 = Zeroed
+    v15 = Deref(v8, false)
+    v14 = Assign(v15)
+    Return(Some(v8))
+  block4 []:
+    v16 = Offset(v7)
+    v17 = Deref(v16, false)
+    v18 = Offset(v17)
+    v19 = Lit(Int(1, 0))
+    v20 = Call(Fun(269), EntityList { index: 17, unused: PhantomData })
+    v21 = Call(Fun(485), EntityList { index: 21, unused: PhantomData })
+    v22 = Deref(v21, false)
+    v23 = VarDecl(v22)
+    v24 = Offset(v7)
+    v25 = Deref(v24, true)
+    v26 = Offset(v25)
+    v27 = Offset(v7)
+    v28 = Deref(v27, false)
+    v29 = Offset(v28)
+    v30 = Lit(Int(1, 0))
+    v31 = Call(Fun(269), EntityList { index: 25, unused: PhantomData })
+    v31 = Assign(v26)
+    v32 = Call(Fun(486), EntityList { index: 29, unused: PhantomData })
+    v33 = Deref(v8, false)
+    v32 = Assign(v33)
+    Return(Some(v8))
+
+function u0:0(i64, i64 sret) -> i64 sret fast {
+    ss0 = explicit_slot 24
+    ss1 = explicit_slot 32
+    ss2 = explicit_slot 32
+
+block0(v0: i64, v1: i64):
+    v2 = iconst.i64 0
+    v3 = load.i64 v0+8
+    v4 = icmp eq v3, v2
+    brnz v4, block1
+    jump block2
+
+block1:
+    v5 = iconst.i64 0
+    store v5, v1
+    store v5, v1+8
+    store v5, v1+16
+    store v5, v1+24
+    return v1
+
+block2:
+    v6 = iconst.i64 1
+    v7 = load.i64 v0+8
+    v8 = isub v7, v6
+    jump block3(v0, v8)
+
+block3(v10: i64, v11: i64):
+    v12 = iconst.i64 24
+    v13 = imul v11, v12
+    v14 = load.i64 v10
+    v15 = iadd v14, v13
+    jump block4(v15)
+
+block4(v9: i64):
+    v16 = stack_addr.i64 ss0
+    v17 = load.i64 v9
+    store v17, v16
+    v18 = load.i64 v9+8
+    store v18, v16+8
+    v19 = load.i64 v9+16
+    store v19, v16+16
+    v20 = iconst.i64 1
+    v21 = load.i64 v0+8
+    v22 = isub v21, v20
+    store v22, v0+8
+    v23 = stack_addr.i64 ss0
+    v24 = stack_addr.i64 ss1
+    jump block5(v23, v24)
+
+block5(v26: i64, v27: i64):
+    v28 = iconst.i64 0
+    stack_store v28, ss2
+    stack_store v28, ss2+8
+    stack_store v28, ss2+16
+    stack_store v28, ss2+24
+    stack_store v26, ss2
+    stack_store v26, ss2+8
+    stack_store v26, ss2+16
+    v29 = bconst.b1 true
+    v30 = bint.i8 v29
+    stack_store v30, ss2+24
+    v31 = stack_addr.i64 ss2
+    v32 = load.i64 v31
+    store v32, v27
+    v33 = load.i64 v31+8
+    store v33, v27+8
+    v34 = load.i64 v31+16
+    store v34, v27+16
+    v35 = load.i64 v31+24
+    store v35, v27+24
+    jump block6(v27)
+
+block6(v25: i64):
+    v36 = load.i64 v25
+    store v36, v1
+    v37 = load.i64 v25+8
+    store v37, v1+8
+    v38 = load.i64 v25+16
+    store v38, v1+16
+    v39 = load.i64 v25+24
+    store v39, v1+24
+    return v1
+}
+
+fun some(value: T) -> Self
+
+  block5 [v34, v35]:
+    v36 = Zeroed
+    v37 = VarDecl(v36)
+    v38 = Offset(v37)
+    v34 = Assign(v38)
+    v39 = Offset(v37)
+    v40 = Lit(Bool(true))
+    v40 = Assign(v39)
+    v41 = Deref(v35, false)
+    v37 = Assign(v41)
+    Return(Some(v35))
+
+function u0:0(i64, i64 sret) -> i64 sret fast {
+    ss0 = explicit_slot 32
+
+block0(v0: i64, v1: i64):
+    v2 = iconst.i64 0
+    stack_store v2, ss0
+    stack_store v2, ss0+8
+    stack_store v2, ss0+16
+    stack_store v2, ss0+24
+    stack_store v0, ss0
+    stack_store v0, ss0+8
+    stack_store v0, ss0+16
+    v3 = bconst.b1 true
+    v4 = bint.i8 v3
+    stack_store v4, ss0+24
+    v5 = stack_addr.i64 ss0
+    v6 = load.i64 v5
+    store v6, v1
+    v7 = load.i64 v5+8
+    store v7, v1+8
+    v8 = load.i64 v5+16
+    store v8, v1+16
+    v9 = load.i64 v5+24
+    store v9, v1+24
+    return v1
+}
+
+fun get_unchecked(s: &Self, index: int) -> &T
+
+  block6 [v42, v43]:
+    v44 = Offset(v42)
+    v45 = Deref(v44, false)
+    v46 = Offset(v45)
+    v47 = Cast(v46)
+    v48 = Call(Fun(487), EntityList { index: 0, unused: PhantomData })
+    v49 = Call(Fun(279), EntityList { index: 41, unused: PhantomData })
+    v50 = Call(Fun(259), EntityList { index: 45, unused: PhantomData })
+    v51 = Cast(v50)
+    Return(Some(v51))
+
+function u0:0(i64, i64) -> i64 fast {
+block0(v0: i64, v1: i64):
+    v2 = iconst.i64 24
+    v3 = imul v1, v2
+    v4 = load.i64 v0
+    v5 = iadd v4, v3
+    return v5
+}
+
+fun pub sizeof[T] -> int
+
+
+fun pub push_frame(line, column: int, file: &u8)
+
+  block7 [v52, v53, v54]:
+    v55 = Zeroed
+    v56 = VarDecl(v55)
+    v57 = Offset(v56)
+    v52 = Assign(v57)
+    v58 = Offset(v56)
+    v53 = Assign(v58)
+    v59 = Offset(v56)
+    v54 = Assign(v59)
+    v60 = GlobalLoad(gv0)
+    v61 = Ref(v60)
+    Call(Fun(488), EntityList { index: 53, unused: PhantomData })
+    Return(None)
+
+function u0:0(i64, i64, i64) fast {
+    ss0 = explicit_slot 24
+    gv0 = symbol colocated u1:0
+    sig0 = (i64, i64) -> i64 windows_fastcall
+    fn0 = u0:9 sig0
+
+block0(v0: i64, v1: i64, v2: i64):
+    v3 = iconst.i64 0
+    stack_store v3, ss0
+    stack_store v3, ss0+8
+    stack_store v3, ss0+16
+    stack_store v0, ss0
+    stack_store v1, ss0+8
+    stack_store v2, ss0+16
+    v4 = global_value.i64 gv0
+    v5 = stack_addr.i64 ss0
+    jump block1(v4, v5)
+
+block1(v6: i64, v7: i64):
+    v8 = iconst.i64 1
+    v9 = load.i64 v6+8
+    v10 = iadd v9, v8
+    v11 = load.i64 v6+16
+    v12 = icmp sgt v10, v11
+    brnz v12, block3
+    jump block4
+
+block3:
+    v13 = iconst.i64 2
+    v14 = imul.i64 v10, v13
+    store v14, v6+16
+    v15 = iconst.i64 24
+    v16 = load.i64 v6+16
+    v17 = imul v16, v15
+    v18 = load.i64 v6
+    v19 = call fn0(v18, v17)
+    store v19, v6
+    jump block4
+
+block4:
+    v20 = load.i64 v6+8
+    jump block5(v6, v20)
+
+block5(v22: i64, v23: i64):
+    v24 = iconst.i64 24
+    v25 = imul v23, v24
+    v26 = load.i64 v22
+    v27 = iadd v26, v25
+    jump block6(v27)
+
+block6(v21: i64):
+    v28 = load.i64 v7
+    store v28, v21
+    v29 = load.i64 v7+8
+    store v29, v21+8
+    v30 = load.i64 v7+16
+    store v30, v21+16
+    store.i64 v10, v6+8
+    jump block2
+
+block2:
+    return
+}
+
+fun push(s: &var Self, value: T)
+
+  block8 [v62, v63]:
+    v64 = Offset(v62)
+    v65 = Deref(v64, false)
+    v66 = Offset(v65)
+    v67 = Lit(Int(1, 0))
+    v68 = Call(Fun(259), EntityList { index: 61, unused: PhantomData })
+    v69 = VarDecl(v68)
+    v70 = Offset(v62)
+    v71 = Deref(v70, false)
+    v72 = Offset(v71)
+    v73 = Call(Fun(349), EntityList { index: 65, unused: PhantomData })
+    JumpIfTrue(v73, block9, EntityList { index: 0, unused: PhantomData })
+    Jump(block10, EntityList { index: 0, unused: PhantomData })
+  block9 []:
+    v74 = Offset(v62)
+    v75 = Deref(v74, true)
+    v76 = Offset(v75)
+    v77 = Lit(Int(2, 0))
+    v78 = Call(Fun(279), EntityList { index: 69, unused: PhantomData })
+    v78 = Assign(v76)
+    v79 = Offset(v62)
+    v80 = Deref(v79, true)
+    v81 = Offset(v80)
+    v82 = Offset(v62)
+    v83 = Deref(v82, false)
+    v84 = Offset(v83)
+    v85 = Cast(v84)
+    v86 = Offset(v62)
+    v87 = Deref(v86, false)
+    v88 = Offset(v87)
+    v89 = Call(Fun(487), EntityList { index: 0, unused: PhantomData })
+    v90 = Call(Fun(279), EntityList { index: 73, unused: PhantomData })
+    v91 = Call(Fun(474), EntityList { index: 77, unused: PhantomData })
+    v92 = Cast(v91)
+    v92 = Assign(v81)
+    Jump(block10, EntityList { index: 0, unused: PhantomData })
+  block10 []:
+    v93 = Offset(v62)
+    v94 = Deref(v93, true)
+    v95 = Offset(v94)
+    v96 = Call(Fun(489), EntityList { index: 81, unused: PhantomData })
+    v97 = Deref(v96, true)
+    v63 = Assign(v97)
+    v98 = Offset(v62)
+    v99 = Deref(v98, true)
+    v100 = Offset(v99)
+    v69 = Assign(v100)
+    Return(None)
+
+function u0:0(i64, i64) fast {
+    sig0 = (i64, i64) -> i64 windows_fastcall
+    fn0 = u0:9 sig0
+
+block0(v0: i64, v1: i64):
+    v2 = iconst.i64 1
+    v3 = load.i64 v0+8
+    v4 = iadd v3, v2
+    v5 = load.i64 v0+16
+    v6 = icmp sgt v4, v5
+    brnz v6, block1
+    jump block2
+
+block1:
+    v7 = iconst.i64 2
+    v8 = imul.i64 v4, v7
+    store v8, v0+16
+    v9 = iconst.i64 24
+    v10 = load.i64 v0+16
+    v11 = imul v10, v9
+    v12 = load.i64 v0
+    v13 = call fn0(v12, v11)
+    store v13, v0
+    jump block2
+
+block2:
+    v14 = load.i64 v0+8
+    jump block3(v0, v14)
+
+block3(v16: i64, v17: i64):
+    v18 = iconst.i64 24
+    v19 = imul v17, v18
+    v20 = load.i64 v16
+    v21 = iadd v20, v19
+    jump block4(v21)
+
+block4(v15: i64):
+    v22 = load.i64 v1
+    store v22, v15
+    v23 = load.i64 v1+8
+    store v23, v15+8
+    v24 = load.i64 v1+16
+    store v24, v15+16
+    store.i64 v4, v0+8
+    return
+}
+
+fun get_unchecked_var(s: &var Self, index: int) -> &var T
+
+  block11 [v101, v102]:
+    v103 = Offset(v101)
+    v104 = Deref(v103, false)
+    v105 = Offset(v104)
+    v106 = Cast(v105)
+    v107 = Call(Fun(487), EntityList { index: 0, unused: PhantomData })
+    v108 = Call(Fun(279), EntityList { index: 89, unused: PhantomData })
+    v109 = Call(Fun(259), EntityList { index: 93, unused: PhantomData })
+    v110 = Cast(v109)
+    Return(Some(v110))
+
+function u0:0(i64, i64) -> i64 fast {
+block0(v0: i64, v1: i64):
+    v2 = iconst.i64 24
+    v3 = imul v1, v2
+    v4 = load.i64 v0
+    v5 = iadd v4, v3
+    return v5
+}
+
+fun pub panic(msg: &u8)
+
+  block12 [v111]:
+    v112 = Lit(String(Span { source: Source(0), hash: ID(13432806085582464995), start: 239, end: 247, line: 0, column: 0 }))
+    Call(Fun(482), EntityList { index: 101, unused: PhantomData })
+    Call(Fun(482), EntityList { index: 105, unused: PhantomData })
+    v113 = Lit(String(Span { source: Source(0), hash: ID(655990), start: 247, end: 249, line: 0, column: 0 }))
+    Call(Fun(482), EntityList { index: 109, unused: PhantomData })
+    v114 = GlobalLoad(gv0)
+    v115 = Offset(v114)
+    v116 = Lit(Int(0, 0))
+    v117 = Call(Fun(309), EntityList { index: 113, unused: PhantomData })
+    JumpIfTrue(v117, block13, EntityList { index: 0, unused: PhantomData })
+    Jump(block14, EntityList { index: 0, unused: PhantomData })
+  block13 []:
+    v118 = Lit(String(Span { source: Source(0), hash: ID(5614517716665998117), start: 249, end: 325, line: 0, column: 0 }))
+    Call(Fun(482), EntityList { index: 117, unused: PhantomData })
+    v119 = Lit(Int(1, 0))
+    Call(Fun(483), EntityList { index: 121, unused: PhantomData })
+    Return(None)
+  block14 []:
+    v120 = Zeroed
+    v121 = VarDecl(v120)
+    v122 = Zeroed
+    v123 = VarDecl(v122)
+    Jump(block15, EntityList { index: 0, unused: PhantomData })
+  block15 []:
+    v124 = GlobalLoad(gv0)
+    v125 = Offset(v124)
+    v126 = Call(Fun(329), EntityList { index: 125, unused: PhantomData })
+    JumpIfTrue(v126, block17, EntityList { index: 0, unused: PhantomData })
+    Jump(block18, EntityList { index: 0, unused: PhantomData })
+  block16 []:
+    v149 = Lit(Char('\u{0}'))
+    v150 = Call(Fun(62), EntityList { index: 173, unused: PhantomData })
+    v151 = Ref(v121)
+    Call(Fun(491), EntityList { index: 177, unused: PhantomData })
+    v152 = Offset(v121)
+    Call(Fun(482), EntityList { index: 181, unused: PhantomData })
+    v153 = Lit(Int(1, 0))
+    Call(Fun(483), EntityList { index: 185, unused: PhantomData })
+    Return(None)
+  block17 []:
+    Jump(block16, EntityList { index: 0, unused: PhantomData })
+  block18 []:
+    v127 = GlobalLoad(gv0)
+    v129 = Ref(v127)
+    v128 = Call(Fun(490), EntityList { index: 129, unused: PhantomData })
+    v130 = Deref(v128, false)
+    v131 = VarDecl(v130)
+    v132 = Offset(v131)
+    v133 = Ref(v121)
+    Call(Fun(444), EntityList { index: 133, unused: PhantomData })
+    v134 = Lit(Char('\n'))
+    v135 = Call(Fun(62), EntityList { index: 137, unused: PhantomData })
+    v136 = Ref(v121)
+    Call(Fun(491), EntityList { index: 141, unused: PhantomData })
+    v137 = Offset(v131)
+    v138 = Ref(v121)
+    Call(Fun(443), EntityList { index: 145, unused: PhantomData })
+    v139 = Lit(Char(':'))
+    v140 = Call(Fun(62), EntityList { index: 149, unused: PhantomData })
+    v141 = Ref(v121)
+    Call(Fun(491), EntityList { index: 153, unused: PhantomData })
+    v142 = Offset(v131)
+    v143 = Ref(v121)
+    Call(Fun(443), EntityList { index: 157, unused: PhantomData })
+    v144 = Lit(Char(':'))
+    v145 = Call(Fun(62), EntityList { index: 161, unused: PhantomData })
+    v146 = Ref(v121)
+    Call(Fun(491), EntityList { index: 165, unused: PhantomData })
+    v147 = Lit(Int(1, 0))
+    v148 = Call(Fun(259), EntityList { index: 169, unused: PhantomData })
+    v148 = Assign(v123)
+    Jump(block15, EntityList { index: 0, unused: PhantomData })
+
+function u0:0(i64) fast {
+    ss0 = explicit_slot 24
+    ss1 = explicit_slot 24
+    gv0 = symbol colocated u1:1
+    gv1 = symbol colocated u1:2
+    gv2 = symbol colocated u1:0
+    gv3 = symbol colocated u1:3
+    gv4 = symbol colocated u1:4
+    sig0 = (i64) windows_fastcall
+    sig1 = (i64) windows_fastcall
+    sig2 = (i64, i64) -> i64 windows_fastcall
+    sig3 = (i64) fast
+    sig4 = (i64, i64) fast
+    sig5 = (i64, i64) fast
+    fn0 = u0:1 sig0
+    fn1 = u0:0 sig1
+    fn2 = u0:9 sig2
+    fn3 = colocated u0:19 sig3
+    fn4 = colocated u0:27 sig4
+    fn5 = colocated u0:29 sig5
+
+block0(v0: i64):
+    v157 = iconst.i64 0
+    v11 -> v157
+    v156 -> v157
+    v1 = global_value.i64 gv0
+    call fn0(v1)
+    call fn0(v0)
+    v2 = global_value.i64 gv1
+    call fn0(v2)
+    v3 = global_value.i64 gv2
+    v4 = iconst.i64 0
+    v5 = load.i64 v3+8
+    v6 = icmp eq v5, v4
+    brnz v6, block1
+    jump block2
+
+block1:
+    v7 = global_value.i64 gv3
+    call fn0(v7)
+    v8 = iconst.i64 1
+    call fn1(v8)
+    return
+
+block2:
+    v9 = iconst.i64 0
+    stack_store v9, ss0
+    stack_store v9, ss0+8
+    stack_store v9, ss0+16
+    v10 = iconst.i64 0
+    jump block3(v10)
+
+block3(v13: i64):
+    v44 -> v13
+    v158 -> v13
+    v159 -> v13
+    v160 -> v13
+    v161 -> v13
+    v162 -> v13
+    v154 -> v158
+    v12 = global_value.i64 gv2
+    v14 = load.i64 v12+8
+    v15 = icmp sge v13, v14
+    brnz v15, block5
+    jump block6
+
+block4:
+    v16 = iconst.i32 0
+    v17 = ireduce.i8 v16
+    v18 = stack_addr.i64 ss0
+    jump block7(v18, v17)
+
+block7(v19: i64, v20: i8):
+    v21 = iconst.i64 1
+    v22 = load.i64 v19+8
+    v23 = iadd v22, v21
+    v24 = load.i64 v19+16
+    v25 = icmp sgt v23, v24
+    brnz v25, block9
+    jump block10
+
+block9:
+    v26 = iconst.i64 2
+    v27 = imul.i64 v23, v26
+    store v27, v19+16
+    v28 = iconst.i64 1
+    v29 = load.i64 v19+16
+    v30 = imul v29, v28
+    v31 = load.i64 v19
+    v32 = call fn2(v31, v30)
+    store v32, v19
+    jump block10
+
+block10:
+    v33 = load.i64 v19+8
+    jump block11(v19, v33)
+
+block11(v35: i64, v36: i64):
+    v37 = iconst.i64 1
+    v38 = imul v36, v37
+    v39 = load.i64 v35
+    v40 = iadd v39, v38
+    jump block12(v40)
+
+block12(v34: i64):
+    store.i8 v20, v34
+    store.i64 v23, v19+8
+    jump block8
+
+block8:
+    v41 = stack_load.i64 ss0
+    call fn0(v41)
+    v42 = iconst.i64 1
+    call fn1(v42)
+    return
+
+block5:
+    jump block4
+
+block6:
+    v43 = global_value.i64 gv2
+    jump block13(v43, v44)
+
+block13(v46: i64, v47: i64):
+    jump block15(v46, v47)
+
+block15(v48: i64, v49: i64):
+    jump block19(v48, v49)
+
+block19(v51: i64, v52: i64):
+    v53 = iconst.i64 0
+    v54 = icmp sge v52, v53
+    v55 = load.i64 v51+8
+    v56 = icmp slt v52, v55
+    v57 = band v54, v56
+    jump block20(v57)
+
+block20(v50: b1):
+    v58 = bint.i8 v50
+    v59 = icmp_imm eq v58, 0
+    brnz v59, block17
+    jump block18
+
+block17:
+    v60 = global_value.i64 gv4
+    call fn3(v60)
+    jump block18
+
+block18:
+    jump block16
+
+block16:
+    jump block21(v46, v47)
+
+block21(v62: i64, v63: i64):
+    v64 = iconst.i64 24
+    v65 = imul v63, v64
+    v66 = load.i64 v62
+    v67 = iadd v66, v65
+    jump block22(v67)
+
+block22(v61: i64):
+    jump block14(v61)
+
+block14(v45: i64):
+    v68 = stack_addr.i64 ss1
+    v69 = load.i64 v45
+    store v69, v68
+    v70 = load.i64 v45+8
+    store v70, v68+8
+    v71 = load.i64 v45+16
+    store v71, v68+16
+    v72 = stack_addr.i64 ss0
+    v73 = stack_load.i64 ss1+16
+    call fn4(v72, v73)
+    v74 = iconst.i32 10
+    v75 = ireduce.i8 v74
+    v76 = stack_addr.i64 ss0
+    jump block23(v76, v75)
+
+block23(v77: i64, v78: i8):
+    v79 = iconst.i64 1
+    v80 = load.i64 v77+8
+    v81 = iadd v80, v79
+    v82 = load.i64 v77+16
+    v83 = icmp sgt v81, v82
+    brnz v83, block25
+    jump block26
+
+block25:
+    v84 = iconst.i64 2
+    v85 = imul.i64 v81, v84
+    store v85, v77+16
+    v86 = iconst.i64 1
+    v87 = load.i64 v77+16
+    v88 = imul v87, v86
+    v89 = load.i64 v77
+    v90 = call fn2(v89, v88)
+    store v90, v77
+    jump block26
+
+block26:
+    v91 = load.i64 v77+8
+    jump block27(v77, v91)
+
+block27(v93: i64, v94: i64):
+    v95 = iconst.i64 1
+    v96 = imul v94, v95
+    v97 = load.i64 v93
+    v98 = iadd v97, v96
+    jump block28(v98)
+
+block28(v92: i64):
+    store.i8 v78, v92
+    store.i64 v81, v77+8
+    jump block24
+
+block24:
+    v99 = stack_addr.i64 ss0
+    v100 = stack_load.i64 ss1
+    call fn5(v99, v100)
+    v101 = iconst.i32 58
+    v102 = ireduce.i8 v101
+    v103 = stack_addr.i64 ss0
+    jump block29(v103, v102)
+
+block29(v104: i64, v105: i8):
+    v106 = iconst.i64 1
+    v107 = load.i64 v104+8
+    v108 = iadd v107, v106
+    v109 = load.i64 v104+16
+    v110 = icmp sgt v108, v109
+    brnz v110, block31
+    jump block32
+
+block31:
+    v111 = iconst.i64 2
+    v112 = imul.i64 v108, v111
+    store v112, v104+16
+    v113 = iconst.i64 1
+    v114 = load.i64 v104+16
+    v115 = imul v114, v113
+    v116 = load.i64 v104
+    v117 = call fn2(v116, v115)
+    store v117, v104
+    jump block32
+
+block32:
+    v118 = load.i64 v104+8
+    jump block33(v104, v118)
+
+block33(v120: i64, v121: i64):
+    v122 = iconst.i64 1
+    v123 = imul v121, v122
+    v124 = load.i64 v120
+    v125 = iadd v124, v123
+    jump block34(v125)
+
+block34(v119: i64):
+    store.i8 v105, v119
+    store.i64 v108, v104+8
+    jump block30
+
+block30:
+    v126 = stack_addr.i64 ss0
+    v127 = stack_load.i64 ss1+8
+    call fn5(v126, v127)
+    v128 = iconst.i32 58
+    v129 = ireduce.i8 v128
+    v130 = stack_addr.i64 ss0
+    jump block35(v130, v129)
+
+block35(v131: i64, v132: i8):
+    v133 = iconst.i64 1
+    v134 = load.i64 v131+8
+    v135 = iadd v134, v133
+    v136 = load.i64 v131+16
+    v137 = icmp sgt v135, v136
+    brnz v137, block37
+    jump block38
+
+block37:
+    v138 = iconst.i64 2
+    v139 = imul.i64 v135, v138
+    store v139, v131+16
+    v140 = iconst.i64 1
+    v141 = load.i64 v131+16
+    v142 = imul v141, v140
+    v143 = load.i64 v131
+    v144 = call fn2(v143, v142)
+    store v144, v131
+    jump block38
+
+block38:
+    v145 = load.i64 v131+8
+    jump block39(v131, v145)
+
+block39(v147: i64, v148: i64):
+    v149 = iconst.i64 1
+    v150 = imul v148, v149
+    v151 = load.i64 v147
+    v152 = iadd v151, v150
+    jump block40(v152)
+
+block40(v146: i64):
+    store.i8 v132, v146
+    store.i64 v135, v131+8
+    jump block36
+
+block36:
+    v153 = iconst.i64 1
+    v155 = iadd.i64 v154, v153
+    jump block3(v155)
+}
+
+fun push(s: &var Self, value: T)
+
+  block19 [v154, v155]:
+    v156 = Offset(v154)
+    v157 = Deref(v156, false)
+    v158 = Offset(v157)
+    v159 = Lit(Int(1, 0))
+    v160 = Call(Fun(259), EntityList { index: 193, unused: PhantomData })
+    v161 = VarDecl(v160)
+    v162 = Offset(v154)
+    v163 = Deref(v162, false)
+    v164 = Offset(v163)
+    v165 = Call(Fun(349), EntityList { index: 197, unused: PhantomData })
+    JumpIfTrue(v165, block20, EntityList { index: 0, unused: PhantomData })
+    Jump(block21, EntityList { index: 0, unused: PhantomData })
+  block20 []:
+    v166 = Offset(v154)
+    v167 = Deref(v166, true)
+    v168 = Offset(v167)
+    v169 = Lit(Int(2, 0))
+    v170 = Call(Fun(279), EntityList { index: 201, unused: PhantomData })
+    v170 = Assign(v168)
+    v171 = Offset(v154)
+    v172 = Deref(v171, true)
+    v173 = Offset(v172)
+    v174 = Offset(v154)
+    v175 = Deref(v174, false)
+    v176 = Offset(v175)
+    v177 = Cast(v176)
+    v178 = Offset(v154)
+    v179 = Deref(v178, false)
+    v180 = Offset(v179)
+    v181 = Call(Fun(492), EntityList { index: 0, unused: PhantomData })
+    v182 = Call(Fun(279), EntityList { index: 205, unused: PhantomData })
+    v183 = Call(Fun(474), EntityList { index: 209, unused: PhantomData })
+    v184 = Cast(v183)
+    v184 = Assign(v173)
+    Jump(block21, EntityList { index: 0, unused: PhantomData })
+  block21 []:
+    v185 = Offset(v154)
+    v186 = Deref(v185, true)
+    v187 = Offset(v186)
+    v188 = Call(Fun(493), EntityList { index: 213, unused: PhantomData })
+    v189 = Deref(v188, true)
+    v155 = Assign(v189)
+    v190 = Offset(v154)
+    v191 = Deref(v190, true)
+    v192 = Offset(v191)
+    v161 = Assign(v192)
+    Return(None)
+
+function u0:0(i64, i8) fast {
+    sig0 = (i64, i64) -> i64 windows_fastcall
+    fn0 = u0:9 sig0
+
+block0(v0: i64, v1: i8):
+    v2 = iconst.i64 1
+    v3 = load.i64 v0+8
+    v4 = iadd v3, v2
+    v5 = load.i64 v0+16
+    v6 = icmp sgt v4, v5
+    brnz v6, block1
+    jump block2
+
+block1:
+    v7 = iconst.i64 2
+    v8 = imul.i64 v4, v7
+    store v8, v0+16
+    v9 = iconst.i64 1
+    v10 = load.i64 v0+16
+    v11 = imul v10, v9
+    v12 = load.i64 v0
+    v13 = call fn0(v12, v11)
+    store v13, v0
+    jump block2
+
+block2:
+    v14 = load.i64 v0+8
+    jump block3(v0, v14)
+
+block3(v16: i64, v17: i64):
+    v18 = iconst.i64 1
+    v19 = imul v17, v18
+    v20 = load.i64 v16
+    v21 = iadd v20, v19
+    jump block4(v21)
+
+block4(v15: i64):
+    store.i8 v1, v15
+    store.i64 v4, v0+8
+    return
+}
+
+fun get_unchecked_var(s: &var Self, index: int) -> &var T
+
+  block22 [v193, v194]:
+    v195 = Offset(v193)
+    v196 = Deref(v195, false)
+    v197 = Offset(v196)
+    v198 = Cast(v197)
+    v199 = Call(Fun(492), EntityList { index: 0, unused: PhantomData })
+    v200 = Call(Fun(279), EntityList { index: 221, unused: PhantomData })
+    v201 = Call(Fun(259), EntityList { index: 225, unused: PhantomData })
+    v202 = Cast(v201)
+    Return(Some(v202))
+
+function u0:0(i64, i64) -> i64 fast {
+block0(v0: i64, v1: i64):
+    v2 = iconst.i64 1
+    v3 = imul v1, v2
+    v4 = load.i64 v0
+    v5 = iadd v4, v3
+    return v5
+}
+
+fun pub sizeof[T] -> int
+
+
+fun __index__(s: &Self, index: int) -> &T
+
+  block23 [v203, v204]:
+    Call(Fun(494), EntityList { index: 233, unused: PhantomData })
+    v205 = Call(Fun(485), EntityList { index: 237, unused: PhantomData })
+    Return(Some(v205))
+
+function u0:0(i64, i64) -> i64 fast {
+    gv0 = symbol colocated u1:4
+    sig0 = (i64) fast
+    fn0 = colocated u0:19 sig0
+
+block0(v0: i64, v1: i64):
+    jump block1(v0, v1)
+
+block1(v2: i64, v3: i64):
+    jump block5(v2, v3)
+
+block5(v5: i64, v6: i64):
+    v7 = iconst.i64 0
+    v8 = icmp sge v6, v7
+    v9 = load.i64 v5+8
+    v10 = icmp slt v6, v9
+    v11 = band v8, v10
+    jump block6(v11)
+
+block6(v4: b1):
+    v12 = bint.i8 v4
+    v13 = icmp_imm eq v12, 0
+    brnz v13, block3
+    jump block4
+
+block3:
+    v14 = global_value.i64 gv0
+    call fn0(v14)
+    jump block4
+
+block4:
+    jump block2
+
+block2:
+    jump block7(v0, v1)
+
+block7(v16: i64, v17: i64):
+    v18 = iconst.i64 24
+    v19 = imul v17, v18
+    v20 = load.i64 v16
+    v21 = iadd v20, v19
+    jump block8(v21)
+
+block8(v15: i64):
+    return v15
+}
+
+fun assert_in_bounds(s: &Self, index: int)
+
+  block24 [v206, v207]:
+    v208 = Call(Fun(495), EntityList { index: 245, unused: PhantomData })
+    v209 = Call(Fun(250), EntityList { index: 249, unused: PhantomData })
+    JumpIfTrue(v209, block25, EntityList { index: 0, unused: PhantomData })
+    Jump(block26, EntityList { index: 0, unused: PhantomData })
+  block25 []:
+    v210 = Lit(String(Span { source: Source(0), hash: ID(6484216913505728610), start: 101, end: 121, line: 0, column: 0 }))
+    Call(Fun(470), EntityList { index: 253, unused: PhantomData })
+    Jump(block26, EntityList { index: 0, unused: PhantomData })
+  block26 []:
+    Return(None)
+
+function u0:0(i64, i64) fast {
+    gv0 = symbol colocated u1:4
+    sig0 = (i64) fast
+    fn0 = colocated u0:19 sig0
+
+block0(v0: i64, v1: i64):
+    jump block3(v0, v1)
+
+block3(v3: i64, v4: i64):
+    v5 = iconst.i64 0
+    v6 = icmp sge v4, v5
+    v7 = load.i64 v3+8
+    v8 = icmp slt v4, v7
+    v9 = band v6, v8
+    jump block4(v9)
+
+block4(v2: b1):
+    v10 = bint.i8 v2
+    v11 = icmp_imm eq v10, 0
+    brnz v11, block1
+    jump block2
+
+block1:
+    v12 = global_value.i64 gv0
+    call fn0(v12)
+    jump block2
+
+block2:
+    return
+}
+
+fun in_bounds(s: &Self, index: int) -> bool
+
+  block27 [v211, v212]:
+    v213 = Lit(Int(0, 0))
+    v214 = Call(Fun(329), EntityList { index: 261, unused: PhantomData })
+    v215 = Offset(v211)
+    v216 = Deref(v215, false)
+    v217 = Offset(v216)
+    v218 = Call(Fun(359), EntityList { index: 265, unused: PhantomData })
+    v219 = Call(Fun(435), EntityList { index: 269, unused: PhantomData })
+    Return(Some(v219))
+
+function u0:0(i64, i64) -> b1 fast {
+block0(v0: i64, v1: i64):
+    v2 = iconst.i64 0
+    v3 = icmp sge v1, v2
+    v4 = load.i64 v0+8
+    v5 = icmp slt v1, v4
+    v6 = band v3, v5
+    return v6
+}
+
+fun pub assert(cond: bool)
+
+  block28 [v220]:
+    v221 = Call(Fun(250), EntityList { index: 277, unused: PhantomData })
+    JumpIfTrue(v221, block29, EntityList { index: 0, unused: PhantomData })
+    Jump(block30, EntityList { index: 0, unused: PhantomData })
+  block29 []:
+    v222 = Lit(String(Span { source: Source(0), hash: ID(18405710474171729989), start: 222, end: 239, line: 0, column: 0 }))
+    Call(Fun(470), EntityList { index: 281, unused: PhantomData })
+    Jump(block30, EntityList { index: 0, unused: PhantomData })
+  block30 []:
+    Return(None)
+
+function u0:0(b1) fast {
+    gv0 = symbol colocated u1:5
+    sig0 = (i64) fast
+    fn0 = colocated u0:19 sig0
+
+block0(v0: b1):
+    v1 = bint.i8 v0
+    v2 = icmp_imm eq v1, 0
+    brnz v2, block1
+    jump block2
+
+block1:
+    v3 = global_value.i64 gv0
+    call fn0(v3)
+    jump block2
+
+block2:
+    return
+}
+
+fun print(s: &var Self, value: &u8)
+
+  block31 [v223, v224]:
+    v225 = Lit(Int(0, 0))
+    v226 = VarDecl(v225)
+    Jump(block32, EntityList { index: 0, unused: PhantomData })
+  block32 []:
+    v227 = Cast(v224)
+    v228 = Call(Fun(259), EntityList { index: 289, unused: PhantomData })
+    v229 = Cast(v228)
+    v230 = Deref(v229, false)
+    v231 = VarDecl(v230)
+    v232 = Lit(Uint(0, 8))
+    v233 = Call(Fun(305), EntityList { index: 293, unused: PhantomData })
+    JumpIfTrue(v233, block34, EntityList { index: 0, unused: PhantomData })
+    Jump(block35, EntityList { index: 0, unused: PhantomData })
+  block33 []:
+    Call(Fun(496), EntityList { index: 301, unused: PhantomData })
+    v236 = Offset(v223)
+    v237 = Deref(v236, false)
+    v238 = Offset(v237)
+    v239 = Call(Fun(493), EntityList { index: 305, unused: PhantomData })
+    Call(Fun(479), EntityList { index: 309, unused: PhantomData })
+    v240 = Offset(v223)
+    v241 = Deref(v240, true)
+    v242 = Offset(v241)
+    v243 = Offset(v223)
+    v244 = Deref(v243, false)
+    v245 = Offset(v244)
+    v246 = Call(Fun(259), EntityList { index: 313, unused: PhantomData })
+    v246 = Assign(v242)
+    Return(None)
+  block34 []:
+    Jump(block33, EntityList { index: 0, unused: PhantomData })
+  block35 []:
+    v234 = Lit(Int(1, 0))
+    v235 = Call(Fun(259), EntityList { index: 297, unused: PhantomData })
+    v235 = Assign(v226)
+    Jump(block32, EntityList { index: 0, unused: PhantomData })
+
+function u0:0(i64, i64) fast {
+    sig0 = (i64, i64) -> i64 windows_fastcall
+    sig1 = (i64, i64, i64) windows_fastcall
+    fn0 = u0:9 sig0
+    fn1 = u0:4 sig1
+
+block0(v0: i64, v1: i64):
+    v32 = iconst.i64 0
+    v3 -> v32
+    v2 = iconst.i64 0
+    jump block1(v2)
+
+block1(v4: i64):
+    v26 -> v4
+    v30 -> v4
+    v33 -> v4
+    v34 -> v4
+    v9 -> v33
+    v5 = iadd.i64 v1, v4
+    v6 = load.i8 v5
+    v7 = iconst.i8 0
+    v8 = icmp eq v6, v7
+    brnz v8, block3
+    jump block4
+
+block2:
+    jump block5(v0, v9)
+
+block5(v10: i64, v11: i64):
+    v12 = load.i64 v10+16
+    v13 = icmp sgt v12, v11
+    brnz v13, block7
+    jump block8
+
+block7:
+    jump block6
+
+block8:
+    v14 = iconst.i64 1
+    v15 = imul.i64 v11, v14
+    v16 = load.i64 v10
+    v17 = call fn0(v16, v15)
+    store v17, v10
+    store.i64 v11, v10+16
+    jump block6
+
+block6:
+    v18 = load.i64 v0+8
+    jump block9(v0, v18)
+
+block9(v20: i64, v21: i64):
+    v22 = iconst.i64 1
+    v23 = imul v21, v22
+    v24 = load.i64 v20
+    v25 = iadd v24, v23
+    jump block10(v25)
+
+block10(v19: i64):
+    call fn1(v19, v1, v26)
+    v27 = load.i64 v0+8
+    v28 = iadd v27, v26
+    store v28, v0+8
+    return
+
+block3:
+    jump block2
+
+block4:
+    v29 = iconst.i64 1
+    v31 = iadd.i64 v30, v29
+    jump block1(v31)
+}
+
+fun reserve(s: &var Self, new_cap: int)
+
+  block36 [v247, v248]:
+    v249 = Offset(v247)
+    v250 = Deref(v249, false)
+    v251 = Offset(v250)
+    v252 = Call(Fun(349), EntityList { index: 321, unused: PhantomData })
+    JumpIfTrue(v252, block37, EntityList { index: 0, unused: PhantomData })
+    Jump(block38, EntityList { index: 0, unused: PhantomData })
+  block37 []:
+    Return(None)
+  block38 []:
+    v253 = Offset(v247)
+    v254 = Deref(v253, true)
+    v255 = Offset(v254)
+    v256 = Offset(v247)
+    v257 = Deref(v256, false)
+    v258 = Offset(v257)
+    v259 = Call(Fun(492), EntityList { index: 0, unused: PhantomData })
+    v260 = Call(Fun(279), EntityList { index: 325, unused: PhantomData })
+    v261 = Call(Fun(474), EntityList { index: 329, unused: PhantomData })
+    v261 = Assign(v255)
+    v262 = Offset(v247)
+    v263 = Deref(v262, true)
+    v264 = Offset(v263)
+    v248 = Assign(v264)
+    Return(None)
+
+function u0:0(i64, i64) fast {
+    sig0 = (i64, i64) -> i64 windows_fastcall
+    fn0 = u0:9 sig0
+
+block0(v0: i64, v1: i64):
+    v2 = load.i64 v0+16
+    v3 = icmp sgt v2, v1
+    brnz v3, block1
+    jump block2
+
+block1:
+    return
+
+block2:
+    v4 = iconst.i64 1
+    v5 = imul.i64 v1, v4
+    v6 = load.i64 v0
+    v7 = call fn0(v6, v5)
+    store v7, v0
+    store.i64 v1, v0+16
+    return
+}
+
+fun print_int(s: &var Self, var value: int)
+
+  block39 [v265, v266]:
+    v267 = VarDecl(v266)
+    v268 = Lit(Int(0, 0))
+    v269 = Call(Fun(359), EntityList { index: 337, unused: PhantomData })
+    JumpIfTrue(v269, block40, EntityList { index: 0, unused: PhantomData })
+    Jump(block41, EntityList { index: 0, unused: PhantomData })
+  block40 []:
+    v270 = Lit(Char('-'))
+    v271 = Call(Fun(62), EntityList { index: 341, unused: PhantomData })
+    Call(Fun(491), EntityList { index: 345, unused: PhantomData })
+    v272 = Call(Fun(242), EntityList { index: 349, unused: PhantomData })
+    v272 = Assign(v267)
+    Jump(block41, EntityList { index: 0, unused: PhantomData })
+  block41 []:
+    v273 = Offset(v265)
+    v274 = Deref(v273, false)
+    v275 = Offset(v274)
+    v276 = VarDecl(v275)
+    v277 = Lit(Int(0, 0))
+    v278 = Call(Fun(319), EntityList { index: 353, unused: PhantomData })
+    JumpIfTrue(v278, block42, EntityList { index: 0, unused: PhantomData })
+    Jump(block44, EntityList { index: 0, unused: PhantomData })
+  block42 []:
+    v279 = Call(Fun(137), EntityList { index: 357, unused: PhantomData })
+    v280 = Call(Fun(480), EntityList { index: 361, unused: PhantomData })
+    v281 = Call(Fun(163), EntityList { index: 365, unused: PhantomData })
+    Jump(block43, EntityList { index: 369, unused: PhantomData })
+  block43 [v282]:
+    v284 = Lit(Int(1, 0))
+    v285 = Call(Fun(259), EntityList { index: 381, unused: PhantomData })
+    v286 = VarDecl(v285)
+    v287 = Call(Fun(259), EntityList { index: 385, unused: PhantomData })
+    Call(Fun(496), EntityList { index: 389, unused: PhantomData })
+    v288 = Offset(v265)
+    v289 = Deref(v288, true)
+    v290 = Offset(v289)
+    v291 = Call(Fun(259), EntityList { index: 393, unused: PhantomData })
+    v291 = Assign(v290)
+    v292 = VarDecl(v286)
+    v293 = VarDecl(v267)
+    Jump(block45, EntityList { index: 0, unused: PhantomData })
+  block44 []:
+    v283 = Lit(Int(0, 0))
+    Jump(block43, EntityList { index: 377, unused: PhantomData })
+  block45 []:
+    v294 = Lit(Int(0, 0))
+    v295 = Call(Fun(309), EntityList { index: 397, unused: PhantomData })
+    JumpIfTrue(v295, block47, EntityList { index: 0, unused: PhantomData })
+    Jump(block48, EntityList { index: 0, unused: PhantomData })
+  block46 []:
+    Return(None)
+  block47 []:
+    Jump(block46, EntityList { index: 0, unused: PhantomData })
+  block48 []:
+    v296 = Lit(Int(10, 0))
+    v297 = Call(Fun(299), EntityList { index: 401, unused: PhantomData })
+    v298 = VarDecl(v297)
+    v299 = Lit(Int(10, 0))
+    v300 = Call(Fun(289), EntityList { index: 405, unused: PhantomData })
+    v300 = Assign(v293)
+    v301 = Call(Fun(259), EntityList { index: 409, unused: PhantomData })
+    v302 = Lit(Int(1, 0))
+    v303 = Call(Fun(269), EntityList { index: 413, unused: PhantomData })
+    v304 = Call(Fun(493), EntityList { index: 417, unused: PhantomData })
+    v305 = Deref(v304, true)
+    v306 = Call(Fun(95), EntityList { index: 421, unused: PhantomData })
+    v307 = Lit(Char('0'))
+    v308 = Call(Fun(257), EntityList { index: 425, unused: PhantomData })
+    v309 = Call(Fun(62), EntityList { index: 429, unused: PhantomData })
+    v309 = Assign(v305)
+    v310 = Lit(Int(1, 0))
+    v311 = Call(Fun(269), EntityList { index: 433, unused: PhantomData })
+    v311 = Assign(v292)
+    Jump(block45, EntityList { index: 0, unused: PhantomData })
+
+function u0:0(i64, i64) fast {
+    sig0 = (i64, i64) -> i64 windows_fastcall
+    sig1 = (f64) -> f64 windows_fastcall
+    fn0 = u0:9 sig0
+    fn1 = u0:3 sig1
+
+block0(v0: i64, v1: i64):
+    v89 -> v1
+    v90 -> v1
+    v30 -> v89
+    v113 = iconst.i64 0
+    v111 -> v113
+    v112 -> v113
+    v114 -> v113
+    v108 = iconst.i64 0
+    v106 -> v108
+    v107 -> v108
+    v109 -> v108
+    v102 = iconst.i64 0
+    v100 -> v102
+    v101 -> v102
+    v103 -> v102
+    v84 = iconst.i64 0
+    v3 -> v84
+    v4 = iconst.i64 0
+    v5 = icmp slt v1, v4
+    brnz v5, block1
+    jump block2(v1)
+
+block1:
+    v6 = iconst.i32 45
+    v7 = ireduce.i8 v6
+    jump block10(v0, v7)
+
+block10(v8: i64, v9: i8):
+    v10 = iconst.i64 1
+    v11 = load.i64 v8+8
+    v12 = iadd v11, v10
+    v13 = load.i64 v8+16
+    v14 = icmp sgt v12, v13
+    brnz v14, block12
+    jump block13
+
+block12:
+    v15 = iconst.i64 2
+    v16 = imul.i64 v12, v15
+    store v16, v8+16
+    v17 = iconst.i64 1
+    v18 = load.i64 v8+16
+    v19 = imul v18, v17
+    v20 = load.i64 v8
+    v21 = call fn0(v20, v19)
+    store v21, v8
+    jump block13
+
+block13:
+    v22 = load.i64 v8+8
+    jump block14(v8, v22)
+
+block14(v24: i64, v25: i64):
+    v26 = iconst.i64 1
+    v27 = imul v25, v26
+    v28 = load.i64 v24
+    v29 = iadd v28, v27
+    jump block15(v29)
+
+block15(v23: i64):
+    store.i8 v9, v23
+    store.i64 v12, v8+8
+    jump block11
+
+block11:
+    v31 = ineg.i64 v30
+    jump block2(v31)
+
+block2(v34: i64):
+    v36 -> v34
+    v32 = load.i64 v0+8
+    v33 = iconst.i64 0
+    v35 = icmp ne v34, v33
+    brnz v35, block3
+    jump block5
+
+block3:
+    v37 = fcvt_from_sint.f64 v36
+    v38 = call fn1(v37)
+    v39 = fcvt_to_sint.i64 v38
+    jump block4(v39, v102, v36, v108, v113)
+
+block4(v2: i64, v99: i64, v104: i64, v105: i64, v110: i64):
+    v91 -> v99
+    v92 -> v99
+    v93 -> v104
+    v94 -> v104
+    v95 -> v105
+    v96 -> v105
+    v97 -> v110
+    v98 -> v110
+    v40 = iconst.i64 1
+    v41 = iadd v2, v40
+    v42 = iadd.i64 v32, v41
+    jump block16(v0, v42)
+
+block16(v43: i64, v44: i64):
+    v45 = load.i64 v43+16
+    v46 = icmp sgt v45, v44
+    brnz v46, block18
+    jump block19
+
+block18:
+    jump block17(v91, v93, v95, v97)
+
+block19:
+    v47 = iconst.i64 1
+    v48 = imul.i64 v44, v47
+    v49 = load.i64 v43
+    v50 = call fn0(v49, v48)
+    store v50, v43
+    store.i64 v44, v43+16
+    jump block17(v92, v94, v96, v98)
+
+block17(v52: i64, v53: i64, v54: i64, v88: i64):
+    v51 = iadd.i64 v32, v41
+    store v51, v0+8
+    jump block6(v41, v53, v88)
+
+block5:
+    v55 = iconst.i64 0
+    jump block4(v55, v100, v34, v106, v111)
+
+block6(v57: i64, v85: i64, v87: i64):
+    v65 -> v57
+    v82 -> v57
+    v60 -> v85
+    v62 -> v87
+    v56 = iconst.i64 0
+    v58 = icmp eq v57, v56
+    brnz v58, block8
+    jump block9
+
+block7:
+    return
+
+block8:
+    jump block7
+
+block9:
+    v59 = iconst.i64 10
+    v61 = srem.i64 v60, v59
+    v76 -> v61
+    v63 = iconst.i64 10
+    v64 = sdiv.i64 v60, v63
+    v86 -> v64
+    v66 = iadd.i64 v32, v65
+    v67 = iconst.i64 1
+    v68 = isub v66, v67
+    jump block20(v0, v68)
+
+block20(v70: i64, v71: i64):
+    v72 = iconst.i64 1
+    v73 = imul v71, v72
+    v74 = load.i64 v70
+    v75 = iadd v74, v73
+    jump block21(v75)
+
+block21(v69: i64):
+    v77 = ireduce.i32 v76
+    v78 = iconst.i32 48
+    v79 = iadd v77, v78
+    v80 = ireduce.i8 v79
+    store v80, v69
+    v81 = iconst.i64 1
+    v83 = isub.i64 v82, v81
+    jump block6(v83, v86, v76)
+}
+
+
+
+  block0 [v0, v1]:
+    v2 = Zeroed
+    v3 = VarDecl(v2)
+    Return(Some(v3))
+
+function u0:0(i64, i64) -> i64 fast {
+block0(v0: i64, v1: i64):
+    v4 = iconst.i64 0
+    v3 -> v4
+    v2 = iconst.i64 0
+    return v2
+}
+
+=== Mod(1) "__index_var__"
+=== Mod(1) "__index_var__"
+=== Mod(1) "__index__"
+=== Mod(1) "get_unchecked"
+=== Mod(1) "sizeof"
+=== Mod(1) "get_unchecked_var"
+=== Mod(1) "sizeof"
+=== Mod(1) "len"
+=== Mod(1) "__index__"
+=== Mod(1) "__index_var__"
+=== Mod(1) "__index__"
+=== Mod(1) "get_unchecked_var"
+=== Mod(1) "sizeof"
+=== Mod(1) "get_unchecked"
+=== Mod(1) "sizeof"
+=== Mod(1) "len"
+=== Mod(1) "__index__"
+fun calls_a
+
+  block1 []:
+    v7 = Lit(Int(250, 0))
+    v8 = Lit(Int(10, 0))
+    v9 = Lit(String(Span { source: Source(0), hash: ID(14979365136090743649), start: 351, end: 380, line: 0, column: 0 }))
+    Call(Fun(471), EntityList { index: 5, unused: PhantomData })
+    Call(Fun(524), EntityList { index: 0, unused: PhantomData })
+    Call(Fun(472), EntityList { index: 0, unused: PhantomData })
+    Return(None)
+
+function u0:0() fast {
+    gv0 = symbol colocated u1:8
+    sig0 = (i64, i64, i64) fast
+    sig1 = () fast
+    sig2 = () fast
+    fn0 = colocated u0:16 sig0
+    fn1 = colocated u0:31 sig1
+    fn2 = colocated u0:11 sig2
+
+block0:
+    v0 = iconst.i64 250
+    v1 = iconst.i64 10
+    v2 = global_value.i64 gv0
+    call fn0(v0, v1, v2)
+    jump block1
+
+block1:
+    v3 = iconst.i64 246
+    v4 = iconst.i64 10
+    v5 = global_value.i64 gv0
+    call fn0(v3, v4, v5)
+    call fn1()
+    call fn2()
+    jump block2
+
+block2:
+    call fn2()
+    return
+}
+
+fun calls_b
+
+  block2 []:
+    v10 = Lit(Int(246, 0))
+    v11 = Lit(Int(10, 0))
+    v12 = Lit(String(Span { source: Source(0), hash: ID(14979365136090743649), start: 351, end: 380, line: 0, column: 0 }))
+    Call(Fun(471), EntityList { index: 9, unused: PhantomData })
+    Call(Fun(525), EntityList { index: 0, unused: PhantomData })
+    Call(Fun(472), EntityList { index: 0, unused: PhantomData })
+    Return(None)
+
+function u0:0() fast {
+    gv0 = symbol colocated u1:8
+    sig0 = (i64, i64, i64) fast
+    sig1 = () fast
+    sig2 = () fast
+    fn0 = colocated u0:16 sig0
+    fn1 = colocated u0:32 sig1
+    fn2 = colocated u0:11 sig2
+
+block0:
+    v0 = iconst.i64 246
+    v1 = iconst.i64 10
+    v2 = global_value.i64 gv0
+    call fn0(v0, v1, v2)
+    jump block1
+
+block1:
+    v3 = iconst.i64 250
+    v4 = iconst.i64 10
+    v5 = global_value.i64 gv0
+    call fn0(v3, v4, v5)
+    call fn1()
+    call fn2()
+    jump block2
+
+block2:
+    call fn2()
+    return
+}
+
+fun assert(cond: bool)
+
+  block3 [v13]:
+    Call(Fun(469), EntityList { index: 17, unused: PhantomData })
+    v14 = Lit(String(Span { source: Source(0), hash: ID(31334373625102386), start: 347, end: 351, line: 0, column: 0 }))
+    Call(Fun(482), EntityList { index: 21, unused: PhantomData })
+    Return(None)
+
+function u0:0(b1) fast {
+    gv0 = symbol colocated u1:5
+    gv1 = symbol colocated u1:9
+    sig0 = (i64) fast
+    sig1 = (i64) windows_fastcall
+    fn0 = colocated u0:19 sig0
+    fn1 = u0:1 sig1
+
+block0(v0: b1):
+    jump block1(v0)
+
+block1(v1: b1):
+    v2 = bint.i8 v1
+    v3 = icmp_imm eq v2, 0
+    brnz v3, block3
+    jump block4
+
+block3:
+    v4 = global_value.i64 gv0
+    call fn0(v4)
+    jump block4
+
+block4:
+    jump block2
+
+block2:
+    v5 = global_value.i64 gv1
+    call fn1(v5)
+    return
+}
+
+fun test_case_15
+
+  block4 []:
+    v15 = Zeroed
+    v16 = VarDecl(v15)
+    v17 = Uninitialized
+    v18 = VarDecl(v17)
+    v19 = Offset(v18)
+    v16 = Assign(v19)
+    v20 = Offset(v18)
+    v16 = Assign(v20)
+    v21 = VarDecl(v18)
+    v22 = Lit(Int(1, 0))
+    v24 = Ref(v21)
+    v23 = Call(Fun(526), EntityList { index: 25, unused: PhantomData })
+    v25 = Deref(v23, true)
+    v26 = Offset(v25)
+    v27 = Lit(Uint(255, 8))
+    v27 = Assign(v26)
+    v28 = Lit(Int(0, 0))
+    v30 = Ref(v21)
+    v29 = Call(Fun(526), EntityList { index: 29, unused: PhantomData })
+    v31 = Deref(v29, true)
+    v16 = Assign(v31)
+    v32 = Lit(Int(1, 0))
+    v34 = Ref(v21)
+    v33 = Call(Fun(527), EntityList { index: 33, unused: PhantomData })
+    v35 = Deref(v33, false)
+    v36 = Offset(v35)
+    v37 = Lit(Uint(255, 8))
+    v38 = Call(Fun(305), EntityList { index: 37, unused: PhantomData })
+    v39 = Lit(Int(235, 0))
+    v40 = Lit(Int(9, 0))
+    v41 = Lit(String(Span { source: Source(0), hash: ID(14979365136090743649), start: 351, end: 380, line: 0, column: 0 }))
+    Call(Fun(471), EntityList { index: 41, unused: PhantomData })
+    Call(Fun(523), EntityList { index: 45, unused: PhantomData })
+    Call(Fun(472), EntityList { index: 0, unused: PhantomData })
+    Return(None)
+
+function u0:0() fast {
+    ss0 = explicit_slot 8
+    gv0 = symbol colocated u1:4
+    gv1 = symbol colocated u1:8
+    sig0 = (i64) fast
+    sig1 = (i64, i64, i64) fast
+    sig2 = (b1) fast
+    sig3 = () fast
+    fn0 = colocated u0:19 sig0
+    fn1 = colocated u0:16 sig1
+    fn2 = colocated u0:33 sig2
+    fn3 = colocated u0:11 sig3
+
+block0:
+    v80 = iconst.i64 0
+    v3 -> v80
+    v79 = iconst.i64 0
+    v1 -> v79
+    v0 = iconst.i64 0
+    v81 -> v0
+    v82 -> v0
+    v83 -> v0
+    v47 -> v81
+    v2 = iconst.i64 0
+    v4 = iconst.i64 0xffff_ffff
+    v5 = band v0, v4
+    v6 = ushr_imm v5, 0
+    v7 = ireduce.i32 v6
+    stack_store v7, ss0
+    v8 = iconst.i64 0xffff_ffff_0000
+    v9 = band v0, v8
+    v10 = ushr_imm v9, 16
+    v11 = ireduce.i32 v10
+    stack_store v11, ss0+2
+    v12 = iconst.i64 1
+    v13 = stack_addr.i64 ss0
+    jump block1(v13, v12)
+
+block1(v15: i64, v16: i64):
+    v17 = iconst.i64 0
+    v18 = icmp slt v16, v17
+    v19 = iconst.i64 2
+    v20 = icmp sge v16, v19
+    v21 = bor v18, v20
+    brnz v21, block3
+    jump block4
+
+block3:
+    v22 = global_value.i64 gv0
+    call fn0(v22)
+    jump block4
+
+block4:
+    jump block5(v15, v16)
+
+block5(v24: i64, v25: i64):
+    v26 = iconst.i64 3
+    v27 = imul v25, v26
+    v28 = iadd v24, v27
+    jump block6(v28)
+
+block6(v23: i64):
+    jump block2(v23)
+
+block2(v14: i64):
+    v29 = iconst.i8 255
+    store v29, v14
+    v30 = iconst.i64 0
+    v31 = stack_addr.i64 ss0
+    jump block7(v31, v30)
+
+block7(v33: i64, v34: i64):
+    v35 = iconst.i64 0
+    v36 = icmp slt v34, v35
+    v37 = iconst.i64 2
+    v38 = icmp sge v34, v37
+    v39 = bor v36, v38
+    brnz v39, block9
+    jump block10
+
+block9:
+    v40 = global_value.i64 gv0
+    call fn0(v40)
+    jump block10
+
+block10:
+    jump block11(v33, v34)
+
+block11(v42: i64, v43: i64):
+    v44 = iconst.i64 3
+    v45 = imul v43, v44
+    v46 = iadd v42, v45
+    jump block12(v46)
+
+block12(v41: i64):
+    jump block8(v41)
+
+block8(v32: i64):
+    v48 = iconst.i64 0xffff
+    v49 = band.i64 v47, v48
+    v50 = ushr_imm v49, 0
+    v51 = ireduce.i16 v50
+    store v51, v32
+    v52 = iconst.i64 0x00ff_ff00
+    v53 = band.i64 v47, v52
+    v54 = ushr_imm v53, 8
+    v55 = ireduce.i16 v54
+    store v55, v32+1
+    v56 = iconst.i64 1
+    v57 = stack_addr.i64 ss0
+    jump block13(v57, v56)
+
+block13(v59: i64, v60: i64):
+    v61 = iconst.i64 0
+    v62 = icmp slt v60, v61
+    v63 = iconst.i64 2
+    v64 = icmp sge v60, v63
+    v65 = bor v62, v64
+    brnz v65, block15
+    jump block16
+
+block15:
+    v66 = global_value.i64 gv0
+    call fn0(v66)
+    jump block16
+
+block16:
+    jump block17(v59, v60)
+
+block17(v68: i64, v69: i64):
+    v70 = iconst.i64 3
+    v71 = imul v69, v70
+    v72 = iadd v68, v71
+    jump block18(v72)
+
+block18(v67: i64):
+    jump block14(v67)
+
+block14(v58: i64):
+    v73 = iconst.i8 255
+    v74 = load.i8 v58
+    v75 = icmp eq v74, v73
+    v76 = iconst.i64 235
+    v77 = iconst.i64 9
+    v78 = global_value.i64 gv1
+    call fn1(v76, v77, v78)
+    call fn2(v75)
+    call fn3()
+    return
+}
+
+fun __index__(a: &Self, index: int) -> &T
+
+  block49 [v312, v313]:
+    v314 = Lit(Int(0, 0))
+    v315 = Call(Fun(359), EntityList { index: 441, unused: PhantomData })
+    v316 = Lit(Int(2, 0))
+    v317 = Call(Fun(329), EntityList { index: 445, unused: PhantomData })
+    v318 = Call(Fun(434), EntityList { index: 449, unused: PhantomData })
+    JumpIfTrue(v318, block50, EntityList { index: 0, unused: PhantomData })
+    Jump(block51, EntityList { index: 0, unused: PhantomData })
+  block50 []:
+    v319 = Lit(String(Span { source: Source(0), hash: ID(6484216913505728610), start: 101, end: 121, line: 0, column: 0 }))
+    Call(Fun(470), EntityList { index: 453, unused: PhantomData })
+    Jump(block51, EntityList { index: 0, unused: PhantomData })
+  block51 []:
+    v320 = Call(Fun(528), EntityList { index: 457, unused: PhantomData })
+    Return(Some(v320))
+
+function u0:0(i64, i64) -> i64 fast {
+    gv0 = symbol colocated u1:4
+    sig0 = (i64) fast
+    fn0 = colocated u0:19 sig0
+
+block0(v0: i64, v1: i64):
+    v2 = iconst.i64 0
+    v3 = icmp slt v1, v2
+    v4 = iconst.i64 2
+    v5 = icmp sge v1, v4
+    v6 = bor v3, v5
+    brnz v6, block1
+    jump block2
+
+block1:
+    v7 = global_value.i64 gv0
+    call fn0(v7)
+    jump block2
+
+block2:
+    jump block3(v0, v1)
+
+block3(v9: i64, v10: i64):
+    v11 = iconst.i64 3
+    v12 = imul v10, v11
+    v13 = iadd v9, v12
+    jump block4(v13)
+
+block4(v8: i64):
+    return v8
+}
+
+fun get_unchecked(a: &Self, index: int) -> &T
+
+  block52 [v321, v322]:
+    v323 = Cast(v321)
+    v324 = Call(Fun(529), EntityList { index: 0, unused: PhantomData })
+    v325 = Call(Fun(279), EntityList { index: 465, unused: PhantomData })
+    v326 = Call(Fun(259), EntityList { index: 469, unused: PhantomData })
+    v327 = Cast(v326)
+    Return(Some(v327))
+
+function u0:0(i64, i64) -> i64 fast {
+block0(v0: i64, v1: i64):
+    v2 = iconst.i64 3
+    v3 = imul v1, v2
+    v4 = iadd v0, v3
+    return v4
+}
+
+fun pub sizeof[T] -> int
+
+
+fun __index_var__(a: &var Self, index: int) -> &var T
+
+  block53 [v328, v329]:
+    v330 = Lit(Int(0, 0))
+    v331 = Call(Fun(359), EntityList { index: 477, unused: PhantomData })
+    v332 = Lit(Int(2, 0))
+    v333 = Call(Fun(329), EntityList { index: 481, unused: PhantomData })
+    v334 = Call(Fun(434), EntityList { index: 485, unused: PhantomData })
+    JumpIfTrue(v334, block54, EntityList { index: 0, unused: PhantomData })
+    Jump(block55, EntityList { index: 0, unused: PhantomData })
+  block54 []:
+    v335 = Lit(String(Span { source: Source(0), hash: ID(6484216913505728610), start: 101, end: 121, line: 0, column: 0 }))
+    Call(Fun(470), EntityList { index: 489, unused: PhantomData })
+    Jump(block55, EntityList { index: 0, unused: PhantomData })
+  block55 []:
+    v336 = Call(Fun(530), EntityList { index: 493, unused: PhantomData })
+    Return(Some(v336))
+
+function u0:0(i64, i64) -> i64 fast {
+    gv0 = symbol colocated u1:4
+    sig0 = (i64) fast
+    fn0 = colocated u0:19 sig0
+
+block0(v0: i64, v1: i64):
+    v2 = iconst.i64 0
+    v3 = icmp slt v1, v2
+    v4 = iconst.i64 2
+    v5 = icmp sge v1, v4
+    v6 = bor v3, v5
+    brnz v6, block1
+    jump block2
+
+block1:
+    v7 = global_value.i64 gv0
+    call fn0(v7)
+    jump block2
+
+block2:
+    jump block3(v0, v1)
+
+block3(v9: i64, v10: i64):
+    v11 = iconst.i64 3
+    v12 = imul v10, v11
+    v13 = iadd v9, v12
+    jump block4(v13)
+
+block4(v8: i64):
+    return v8
+}
+
+fun get_unchecked_var(a: &var Self, index: int) -> &var T
+
+  block56 [v337, v338]:
+    v339 = Cast(v337)
+    v340 = Call(Fun(529), EntityList { index: 0, unused: PhantomData })
+    v341 = Call(Fun(279), EntityList { index: 501, unused: PhantomData })
+    v342 = Call(Fun(259), EntityList { index: 505, unused: PhantomData })
+    v343 = Cast(v342)
+    Return(Some(v343))
+
+function u0:0(i64, i64) -> i64 fast {
+block0(v0: i64, v1: i64):
+    v2 = iconst.i64 3
+    v3 = imul v1, v2
+    v4 = iadd v0, v3
+    return v4
+}
+
+fun test_case_14
+
+  block5 []:
+    v42 = FunPointer(Fun(520))
+    v43 = VarDecl(v42)
+    v44 = Lit(Int(226, 0))
+    v45 = Lit(Int(11, 0))
+    v46 = Lit(String(Span { source: Source(0), hash: ID(14979365136090743649), start: 351, end: 380, line: 0, column: 0 }))
+    Call(Fun(471), EntityList { index: 49, unused: PhantomData })
+    v47 = FunPointerCall(v43, EntityList { index: 0, unused: PhantomData })
+    Call(Fun(472), EntityList { index: 0, unused: PhantomData })
+    v48 = Lit(Int(1, 0))
+    v49 = Call(Fun(309), EntityList { index: 53, unused: PhantomData })
+    v50 = Lit(Int(226, 0))
+    v51 = Lit(Int(9, 0))
+    v52 = Lit(String(Span { source: Source(0), hash: ID(14979365136090743649), start: 351, end: 380, line: 0, column: 0 }))
+    Call(Fun(471), EntityList { index: 57, unused: PhantomData })
+    Call(Fun(523), EntityList { index: 61, unused: PhantomData })
+    Call(Fun(472), EntityList { index: 0, unused: PhantomData })
+    Return(None)
+
+function u0:0() fast {
+    gv0 = symbol colocated u1:8
+    sig0 = () -> i64 fast
+    sig1 = (i64, i64, i64) fast
+    sig2 = () -> i64 fast
+    sig3 = () fast
+    sig4 = (b1) fast
+    fn0 = colocated u0:41 sig0
+    fn1 = colocated u0:16 sig1
+    fn2 = colocated u0:11 sig3
+    fn3 = colocated u0:33 sig4
+
+block0:
+    v0 = func_addr.i64 fn0
+    v1 = iconst.i64 226
+    v2 = iconst.i64 11
+    v3 = global_value.i64 gv0
+    call fn1(v1, v2, v3)
+    v4 = call_indirect sig2, v0()
+    call fn2()
+    v5 = iconst.i64 1
+    v6 = icmp eq v4, v5
+    v7 = iconst.i64 226
+    v8 = iconst.i64 9
+    v9 = global_value.i64 gv0
+    call fn1(v7, v8, v9)
+    call fn3(v6)
+    call fn2()
+    return
+}
+
+fun test_fun -> int
+
+  block6 []:
+    v53 = Lit(Int(1, 0))
+    Return(Some(v53))
+
+function u0:0() -> i64 fast {
+block0:
+    v0 = iconst.i64 1
+    return v0
+}
+
+fun test_case_13
+
+  block7 []:
+    v54 = Lit(Int(1, 0))
+    v55 = Lit(Int(1, 0))
+    v57 = Lit(Int(218, 0))
+    v58 = Lit(Int(20, 0))
+    v59 = Lit(String(Span { source: Source(0), hash: ID(14979365136090743649), start: 351, end: 380, line: 0, column: 0 }))
+    Call(Fun(471), EntityList { index: 65, unused: PhantomData })
+    v56 = Call(Fun(518), EntityList { index: 69, unused: PhantomData })
+    Call(Fun(472), EntityList { index: 0, unused: PhantomData })
+    v60 = Lit(Int(0, 0))
+    v61 = Call(Fun(309), EntityList { index: 73, unused: PhantomData })
+    v62 = Lit(Int(218, 0))
+    v63 = Lit(Int(9, 0))
+    v64 = Lit(String(Span { source: Source(0), hash: ID(14979365136090743649), start: 351, end: 380, line: 0, column: 0 }))
+    Call(Fun(471), EntityList { index: 77, unused: PhantomData })
+    Call(Fun(523), EntityList { index: 81, unused: PhantomData })
+    Call(Fun(472), EntityList { index: 0, unused: PhantomData })
+    Return(None)
+
+function u0:0() fast {
+    gv0 = symbol colocated u1:8
+    sig0 = (i64, i64, i64) fast
+    sig1 = () fast
+    sig2 = (b1) fast
+    fn0 = colocated u0:16 sig0
+    fn1 = colocated u0:11 sig1
+    fn2 = colocated u0:33 sig2
+
+block0:
+    v0 = iconst.i64 1
+    v1 = iconst.i64 1
+    v2 = iconst.i64 218
+    v3 = iconst.i64 20
+    v4 = global_value.i64 gv0
+    call fn0(v2, v3, v4)
+    jump block1(v0, v1)
+
+block1(v6: i64, v7: i64):
+    v8 = icmp sgt v6, v7
+    brnz v8, block3
+    jump block5
+
+block3:
+    v9 = iconst.i64 212
+    v10 = iconst.i64 21
+    v11 = global_value.i64 gv0
+    call fn0(v9, v10, v11)
+    jump block6(v6, v7)
+
+block6(v13: i64, v14: i64):
+    v15 = iadd v13, v14
+    v16 = iconst.i64 2
+    v17 = imul v16, v13
+    v18 = isub v15, v17
+    jump block7(v18)
+
+block7(v12: i64):
+    call fn1()
+    jump block2(v12)
+
+block4:
+    v19 = iconst.i64 0
+    jump block2(v19)
+
+block5:
+    v20 = iconst.i64 214
+    v21 = iconst.i64 21
+    v22 = global_value.i64 gv0
+    call fn0(v20, v21, v22)
+    jump block8(v7, v6)
+
+block8(v24: i64, v25: i64):
+    v26 = iadd v24, v25
+    v27 = iconst.i64 2
+    v28 = imul v27, v24
+    v29 = isub v26, v28
+    jump block9(v29)
+
+block9(v23: i64):
+    call fn1()
+    jump block2(v23)
+
+block2(v5: i64):
+    call fn1()
+    v30 = iconst.i64 0
+    v31 = icmp eq v5, v30
+    v32 = iconst.i64 218
+    v33 = iconst.i64 9
+    v34 = global_value.i64 gv0
+    call fn0(v32, v33, v34)
+    call fn2(v31)
+    call fn1()
+    return
+}
+
+fun even_worse(a, b: int) -> int
+
+  block8 [v65, v66]:
+    v67 = Call(Fun(349), EntityList { index: 89, unused: PhantomData })
+    JumpIfTrue(v67, block9, EntityList { index: 0, unused: PhantomData })
+    Jump(block11, EntityList { index: 0, unused: PhantomData })
+  block9 []:
+    v69 = Lit(Int(212, 0))
+    v70 = Lit(Int(21, 0))
+    v71 = Lit(String(Span { source: Source(0), hash: ID(14979365136090743649), start: 351, end: 380, line: 0, column: 0 }))
+    Call(Fun(471), EntityList { index: 93, unused: PhantomData })
+    v68 = Call(Fun(517), EntityList { index: 97, unused: PhantomData })
+    Call(Fun(472), EntityList { index: 0, unused: PhantomData })
+    Return(Some(v68))
+  block10 []:
+    v76 = Zeroed
+    Return(Some(v76))
+  block11 []:
+    v73 = Lit(Int(214, 0))
+    v74 = Lit(Int(21, 0))
+    v75 = Lit(String(Span { source: Source(0), hash: ID(14979365136090743649), start: 351, end: 380, line: 0, column: 0 }))
+    Call(Fun(471), EntityList { index: 101, unused: PhantomData })
+    v72 = Call(Fun(517), EntityList { index: 105, unused: PhantomData })
+    Call(Fun(472), EntityList { index: 0, unused: PhantomData })
+    Return(Some(v72))
+
+function u0:0(i64, i64) -> i64 fast {
+    gv0 = symbol colocated u1:8
+    sig0 = (i64, i64, i64) fast
+    sig1 = () fast
+    fn0 = colocated u0:16 sig0
+    fn1 = colocated u0:11 sig1
+
+block0(v0: i64, v1: i64):
+    v2 = icmp sgt v0, v1
+    brnz v2, block1
+    jump block3
+
+block1:
+    v3 = iconst.i64 212
+    v4 = iconst.i64 21
+    v5 = global_value.i64 gv0
+    call fn0(v3, v4, v5)
+    jump block4(v0, v1)
+
+block4(v7: i64, v8: i64):
+    v9 = iadd v7, v8
+    v10 = iconst.i64 2
+    v11 = imul v10, v7
+    v12 = isub v9, v11
+    jump block5(v12)
+
+block5(v6: i64):
+    call fn1()
+    return v6
+
+block2:
+    v13 = iconst.i64 0
+    return v13
+
+block3:
+    v14 = iconst.i64 214
+    v15 = iconst.i64 21
+    v16 = global_value.i64 gv0
+    call fn0(v14, v15, v16)
+    jump block6(v1, v0)
+
+block6(v18: i64, v19: i64):
+    v20 = iadd v18, v19
+    v21 = iconst.i64 2
+    v22 = imul v21, v18
+    v23 = isub v20, v22
+    jump block7(v23)
+
+block7(v17: i64):
+    call fn1()
+    return v17
+}
+
+fun something(a, b: int) -> int
+
+  block12 [v77, v78]:
+    v79 = Call(Fun(259), EntityList { index: 113, unused: PhantomData })
+    v80 = Lit(Int(2, 0))
+    v81 = Call(Fun(279), EntityList { index: 117, unused: PhantomData })
+    v82 = Call(Fun(269), EntityList { index: 121, unused: PhantomData })
+    Return(Some(v82))
+
+function u0:0(i64, i64) -> i64 fast {
+block0(v0: i64, v1: i64):
+    v2 = iadd v0, v1
+    v3 = iconst.i64 2
+    v4 = imul v3, v0
+    v5 = isub v2, v4
+    return v5
+}
+
+fun test_case_12
+
+  block13 []:
+    v83 = GlobalLoad(gv2)
+    v84 = Lit(Int(1, 0))
+    v85 = Call(Fun(309), EntityList { index: 125, unused: PhantomData })
+    v86 = Lit(Int(202, 0))
+    v87 = Lit(Int(9, 0))
+    v88 = Lit(String(Span { source: Source(0), hash: ID(14979365136090743649), start: 351, end: 380, line: 0, column: 0 }))
+    Call(Fun(471), EntityList { index: 129, unused: PhantomData })
+    Call(Fun(523), EntityList { index: 133, unused: PhantomData })
+    Call(Fun(472), EntityList { index: 0, unused: PhantomData })
+    Return(None)
+
+function u0:0() fast {
+    gv0 = symbol colocated u1:7
+    gv1 = symbol colocated u1:8
+    sig0 = (i64, i64, i64) fast
+    sig1 = (b1) fast
+    sig2 = () fast
+    fn0 = colocated u0:16 sig0
+    fn1 = colocated u0:33 sig1
+    fn2 = colocated u0:11 sig2
+
+block0:
+    v0 = global_value.i64 gv0
+    v1 = iconst.i64 1
+    v2 = load.i64 v0
+    v3 = icmp eq v2, v1
+    v4 = iconst.i64 202
+    v5 = iconst.i64 9
+    v6 = global_value.i64 gv1
+    call fn0(v4, v5, v6)
+    call fn1(v3)
+    call fn2()
+    return
+}
+
+fun test_case_11
+
+  block14 []:
+    v89 = Lit(Int(1, 0))
+    v90 = VarDecl(v89)
+    v91 = Ref(v90)
+    v92 = VarDecl(v91)
+    v93 = Deref(v92, true)
+    v94 = Lit(Int(0, 0))
+    v94 = Assign(v93)
+    v95 = Lit(Int(0, 0))
+    v96 = Call(Fun(309), EntityList { index: 137, unused: PhantomData })
+    v97 = Lit(Int(196, 0))
+    v98 = Lit(Int(9, 0))
+    v99 = Lit(String(Span { source: Source(0), hash: ID(14979365136090743649), start: 351, end: 380, line: 0, column: 0 }))
+    Call(Fun(471), EntityList { index: 141, unused: PhantomData })
+    Call(Fun(523), EntityList { index: 145, unused: PhantomData })
+    Call(Fun(472), EntityList { index: 0, unused: PhantomData })
+    Return(None)
+
+function u0:0() fast {
+    ss0 = explicit_slot 8
+    gv0 = symbol colocated u1:8
+    sig0 = (i64, i64, i64) fast
+    sig1 = (b1) fast
+    sig2 = () fast
+    fn0 = colocated u0:16 sig0
+    fn1 = colocated u0:33 sig1
+    fn2 = colocated u0:11 sig2
+
+block0:
+    v10 = iconst.i64 0
+    v2 -> v10
+    v0 = iconst.i64 1
+    stack_store v0, ss0
+    v1 = stack_addr.i64 ss0
+    v3 = iconst.i64 0
+    store v3, v1
+    v4 = iconst.i64 0
+    v5 = stack_load.i64 ss0
+    v6 = icmp eq v5, v4
+    v7 = iconst.i64 196
+    v8 = iconst.i64 9
+    v9 = global_value.i64 gv0
+    call fn0(v7, v8, v9)
+    call fn1(v6)
+    call fn2()
+    return
+}
+
+fun test_case_10
+
+  block15 []:
+    v100 = Lit(Int(1, 0))
+    v101 = Lit(Int(2, 0))
+    v102 = Lit(Int(3, 0))
+    v103 = Lit(Int(4, 0))
+    v104 = Lit(Int(5, 0))
+    v105 = Lit(Int(6, 0))
+    v106 = Lit(Int(7, 0))
+    v107 = Lit(Int(8, 0))
+    v108 = Lit(Int(9, 0))
+    v109 = Lit(Int(10, 0))
+    v110 = Uninitialized
+    v111 = VarDecl(v110)
+    v112 = Offset(v111)
+    v100 = Assign(v112)
+    v113 = Offset(v111)
+    v101 = Assign(v113)
+    v114 = Offset(v111)
+    v102 = Assign(v114)
+    v115 = Offset(v111)
+    v103 = Assign(v115)
+    v116 = Offset(v111)
+    v104 = Assign(v116)
+    v117 = Offset(v111)
+    v105 = Assign(v117)
+    v118 = Offset(v111)
+    v106 = Assign(v118)
+    v119 = Offset(v111)
+    v107 = Assign(v119)
+    v120 = Offset(v111)
+    v108 = Assign(v120)
+    v121 = Offset(v111)
+    v109 = Assign(v121)
+    v122 = VarDecl(v111)
+    v123 = Lit(Int(0, 0))
+    v124 = VarDecl(v123)
+    v125 = Lit(Int(0, 0))
+    v126 = VarDecl(v125)
+    Jump(block16, EntityList { index: 0, unused: PhantomData })
+  block16 []:
+    v128 = Ref(v122)
+    v127 = Call(Fun(531), EntityList { index: 149, unused: PhantomData })
+    v129 = Call(Fun(329), EntityList { index: 153, unused: PhantomData })
+    JumpIfTrue(v129, block18, EntityList { index: 0, unused: PhantomData })
+    Jump(block19, EntityList { index: 0, unused: PhantomData })
+  block17 []:
+    v143 = Lit(Int(11, 0))
+    v144 = Lit(Int(5, 0))
+    v145 = Call(Fun(279), EntityList { index: 177, unused: PhantomData })
+    v146 = Call(Fun(309), EntityList { index: 181, unused: PhantomData })
+    v147 = Lit(Int(188, 0))
+    v148 = Lit(Int(9, 0))
+    v149 = Lit(String(Span { source: Source(0), hash: ID(14979365136090743649), start: 351, end: 380, line: 0, column: 0 }))
+    Call(Fun(471), EntityList { index: 185, unused: PhantomData })
+    Call(Fun(523), EntityList { index: 189, unused: PhantomData })
+    Call(Fun(472), EntityList { index: 0, unused: PhantomData })
+    Return(None)
+  block18 []:
+    Jump(block17, EntityList { index: 0, unused: PhantomData })
+  block19 []:
+    v131 = Ref(v122)
+    v130 = Call(Fun(532), EntityList { index: 157, unused: PhantomData })
+    v132 = Deref(v130, false)
+    v133 = Call(Fun(259), EntityList { index: 161, unused: PhantomData })
+    v133 = Assign(v126)
+    v134 = GlobalLoad(gv1)
+    v136 = Ref(v134)
+    v135 = Call(Fun(533), EntityList { index: 165, unused: PhantomData })
+    v137 = Deref(v135, true)
+    v139 = Ref(v122)
+    v138 = Call(Fun(532), EntityList { index: 169, unused: PhantomData })
+    v140 = Deref(v138, false)
+    v140 = Assign(v137)
+    v141 = Lit(Int(1, 0))
+    v142 = Call(Fun(259), EntityList { index: 173, unused: PhantomData })
+    v142 = Assign(v124)
+    Jump(block16, EntityList { index: 0, unused: PhantomData })
+
+function u0:0() fast {
+    ss0 = explicit_slot 80
+    ss1 = explicit_slot 80
+    ss2 = explicit_slot 80
+    gv0 = symbol colocated u1:8
+    gv1 = symbol colocated u1:4
+    gv2 = symbol colocated u1:6
+    sig0 = (i64, i64, i64) fast
+    sig1 = (b1) fast
+    sig2 = () fast
+    sig3 = (i64) fast
+    fn0 = colocated u0:16 sig0
+    fn1 = colocated u0:33 sig1
+    fn2 = colocated u0:11 sig2
+    fn3 = colocated u0:19 sig3
+
+block0:
+    v107 = iconst.i64 0
+    v33 -> v107
+    v106 = iconst.i64 0
+    v31 -> v106
+    v0 = iconst.i64 1
+    v1 = iconst.i64 2
+    v2 = iconst.i64 3
+    v3 = iconst.i64 4
+    v4 = iconst.i64 5
+    v5 = iconst.i64 6
+    v6 = iconst.i64 7
+    v7 = iconst.i64 8
+    v8 = iconst.i64 9
+    v9 = iconst.i64 10
+    v10 = stack_load.i64 ss0
+    stack_store v10, ss1
+    v11 = stack_load.i64 ss0+8
+    stack_store v11, ss1+8
+    v12 = stack_load.i64 ss0+16
+    stack_store v12, ss1+16
+    v13 = stack_load.i64 ss0+24
+    stack_store v13, ss1+24
+    v14 = stack_load.i64 ss0+32
+    stack_store v14, ss1+32
+    v15 = stack_load.i64 ss0+40
+    stack_store v15, ss1+40
+    v16 = stack_load.i64 ss0+48
+    stack_store v16, ss1+48
+    v17 = stack_load.i64 ss0+56
+    stack_store v17, ss1+56
+    v18 = stack_load.i64 ss0+64
+    stack_store v18, ss1+64
+    v19 = stack_load.i64 ss0+72
+    stack_store v19, ss1+72
+    stack_store v0, ss1
+    stack_store v1, ss1+8
+    stack_store v2, ss1+16
+    stack_store v3, ss1+24
+    stack_store v4, ss1+32
+    stack_store v5, ss1+40
+    stack_store v6, ss1+48
+    stack_store v7, ss1+56
+    stack_store v8, ss1+64
+    stack_store v9, ss1+72
+    v20 = stack_load.i64 ss1
+    stack_store v20, ss2
+    v21 = stack_load.i64 ss1+8
+    stack_store v21, ss2+8
+    v22 = stack_load.i64 ss1+16
+    stack_store v22, ss2+16
+    v23 = stack_load.i64 ss1+24
+    stack_store v23, ss2+24
+    v24 = stack_load.i64 ss1+32
+    stack_store v24, ss2+32
+    v25 = stack_load.i64 ss1+40
+    stack_store v25, ss2+40
+    v26 = stack_load.i64 ss1+48
+    stack_store v26, ss2+48
+    v27 = stack_load.i64 ss1+56
+    stack_store v27, ss2+56
+    v28 = stack_load.i64 ss1+64
+    stack_store v28, ss2+64
+    v29 = stack_load.i64 ss1+72
+    stack_store v29, ss2+72
+    v30 = iconst.i64 0
+    v32 = iconst.i64 0
+    jump block1(v30, v32)
+
+block1(v110: i64, v111: i64):
+    v38 -> v110
+    v114 -> v110
+    v116 -> v110
+    v117 -> v110
+    v118 -> v110
+    v119 -> v110
+    v121 -> v110
+    v104 -> v119
+    v86 -> v117
+    v69 -> v114
+    v49 -> v38
+    v109 -> v111
+    v113 -> v111
+    v115 -> v111
+    v65 -> v113
+    v108 -> v109
+    v43 -> v108
+    v34 = stack_addr.i64 ss2
+    jump block5(v34)
+
+block5(v36: i64):
+    v37 = iconst.i64 10
+    jump block6(v37)
+
+block6(v35: i64):
+    v39 = icmp.i64 sge v38, v35
+    brnz v39, block3
+    jump block4
+
+block2:
+    v40 = iconst.i64 11
+    v41 = iconst.i64 5
+    v42 = imul v40, v41
+    v44 = icmp.i64 eq v43, v42
+    v45 = iconst.i64 188
+    v46 = iconst.i64 9
+    v47 = global_value.i64 gv0
+    call fn0(v45, v46, v47)
+    call fn1(v44)
+    call fn2()
+    return
+
+block3:
+    jump block2
+
+block4:
+    v48 = stack_addr.i64 ss2
+    jump block7(v48, v49)
+
+block7(v51: i64, v52: i64):
+    v53 = iconst.i64 0
+    v54 = icmp slt v52, v53
+    v55 = iconst.i64 10
+    v56 = icmp sge v52, v55
+    v57 = bor v54, v56
+    brnz v57, block9
+    jump block10
+
+block9:
+    v58 = global_value.i64 gv1
+    call fn3(v58)
+    jump block10
+
+block10:
+    jump block11(v51, v52)
+
+block11(v60: i64, v61: i64):
+    v62 = iconst.i64 8
+    v63 = imul v61, v62
+    v64 = iadd v60, v63
+    jump block12(v64)
+
+block12(v59: i64):
+    jump block8(v59)
+
+block8(v50: i64):
+    v66 = load.i64 v50
+    v67 = iadd.i64 v65, v66
+    v120 -> v67
+    v122 -> v67
+    v123 -> v67
+    v112 -> v120
+    v68 = global_value.i64 gv2
+    jump block13(v68, v69)
+
+block13(v71: i64, v72: i64):
+    v73 = iconst.i64 0
+    v74 = icmp slt v72, v73
+    v75 = iconst.i64 10
+    v76 = icmp sge v72, v75
+    v77 = bor v74, v76
+    brnz v77, block15
+    jump block16
+
+block15:
+    v78 = global_value.i64 gv1
+    call fn3(v78)
+    jump block16
+
+block16:
+    jump block17(v71, v72)
+
+block17(v80: i64, v81: i64):
+    v82 = iconst.i64 8
+    v83 = imul v81, v82
+    v84 = iadd v80, v83
+    jump block18(v84)
+
+block18(v79: i64):
+    jump block14(v79)
+
+block14(v70: i64):
+    v85 = stack_addr.i64 ss2
+    jump block19(v85, v86)
+
+block19(v88: i64, v89: i64):
+    v90 = iconst.i64 0
+    v91 = icmp slt v89, v90
+    v92 = iconst.i64 10
+    v93 = icmp sge v89, v92
+    v94 = bor v91, v93
+    brnz v94, block21
+    jump block22
+
+block21:
+    v95 = global_value.i64 gv1
+    call fn3(v95)
+    jump block22
+
+block22:
+    jump block23(v88, v89)
+
+block23(v97: i64, v98: i64):
+    v99 = iconst.i64 8
+    v100 = imul v98, v99
+    v101 = iadd v97, v100
+    jump block24(v101)
+
+block24(v96: i64):
+    jump block20(v96)
+
+block20(v87: i64):
+    v102 = load.i64 v87
+    store v102, v70
+    v103 = iconst.i64 1
+    v105 = iadd.i64 v104, v103
+    jump block1(v105, v112)
+}
+
+fun __index_var__(a: &var Self, index: int) -> &var T
+
+  block57 [v344, v345]:
+    v346 = Lit(Int(0, 0))
+    v347 = Call(Fun(359), EntityList { index: 513, unused: PhantomData })
+    v348 = Lit(Int(10, 0))
+    v349 = Call(Fun(329), EntityList { index: 517, unused: PhantomData })
+    v350 = Call(Fun(434), EntityList { index: 521, unused: PhantomData })
+    JumpIfTrue(v350, block58, EntityList { index: 0, unused: PhantomData })
+    Jump(block59, EntityList { index: 0, unused: PhantomData })
+  block58 []:
+    v351 = Lit(String(Span { source: Source(0), hash: ID(6484216913505728610), start: 101, end: 121, line: 0, column: 0 }))
+    Call(Fun(470), EntityList { index: 525, unused: PhantomData })
+    Jump(block59, EntityList { index: 0, unused: PhantomData })
+  block59 []:
+    v352 = Call(Fun(534), EntityList { index: 529, unused: PhantomData })
+    Return(Some(v352))
+
+function u0:0(i64, i64) -> i64 fast {
+    gv0 = symbol colocated u1:4
+    sig0 = (i64) fast
+    fn0 = colocated u0:19 sig0
+
+block0(v0: i64, v1: i64):
+    v2 = iconst.i64 0
+    v3 = icmp slt v1, v2
+    v4 = iconst.i64 10
+    v5 = icmp sge v1, v4
+    v6 = bor v3, v5
+    brnz v6, block1
+    jump block2
+
+block1:
+    v7 = global_value.i64 gv0
+    call fn0(v7)
+    jump block2
+
+block2:
+    jump block3(v0, v1)
+
+block3(v9: i64, v10: i64):
+    v11 = iconst.i64 8
+    v12 = imul v10, v11
+    v13 = iadd v9, v12
+    jump block4(v13)
+
+block4(v8: i64):
+    return v8
+}
+
+fun get_unchecked_var(a: &var Self, index: int) -> &var T
+
+  block60 [v353, v354]:
+    v355 = Cast(v353)
+    v356 = Call(Fun(535), EntityList { index: 0, unused: PhantomData })
+    v357 = Call(Fun(279), EntityList { index: 537, unused: PhantomData })
+    v358 = Call(Fun(259), EntityList { index: 541, unused: PhantomData })
+    v359 = Cast(v358)
+    Return(Some(v359))
+
+function u0:0(i64, i64) -> i64 fast {
+block0(v0: i64, v1: i64):
+    v2 = iconst.i64 8
+    v3 = imul v1, v2
+    v4 = iadd v0, v3
+    return v4
+}
+
+fun pub sizeof[T] -> int
+
+
+fun __index__(a: &Self, index: int) -> &T
+
+  block61 [v360, v361]:
+    v362 = Lit(Int(0, 0))
+    v363 = Call(Fun(359), EntityList { index: 549, unused: PhantomData })
+    v364 = Lit(Int(10, 0))
+    v365 = Call(Fun(329), EntityList { index: 553, unused: PhantomData })
+    v366 = Call(Fun(434), EntityList { index: 557, unused: PhantomData })
+    JumpIfTrue(v366, block62, EntityList { index: 0, unused: PhantomData })
+    Jump(block63, EntityList { index: 0, unused: PhantomData })
+  block62 []:
+    v367 = Lit(String(Span { source: Source(0), hash: ID(6484216913505728610), start: 101, end: 121, line: 0, column: 0 }))
+    Call(Fun(470), EntityList { index: 561, unused: PhantomData })
+    Jump(block63, EntityList { index: 0, unused: PhantomData })
+  block63 []:
+    v368 = Call(Fun(536), EntityList { index: 565, unused: PhantomData })
+    Return(Some(v368))
+
+function u0:0(i64, i64) -> i64 fast {
+    gv0 = symbol colocated u1:4
+    sig0 = (i64) fast
+    fn0 = colocated u0:19 sig0
+
+block0(v0: i64, v1: i64):
+    v2 = iconst.i64 0
+    v3 = icmp slt v1, v2
+    v4 = iconst.i64 10
+    v5 = icmp sge v1, v4
+    v6 = bor v3, v5
+    brnz v6, block1
+    jump block2
+
+block1:
+    v7 = global_value.i64 gv0
+    call fn0(v7)
+    jump block2
+
+block2:
+    jump block3(v0, v1)
+
+block3(v9: i64, v10: i64):
+    v11 = iconst.i64 8
+    v12 = imul v10, v11
+    v13 = iadd v9, v12
+    jump block4(v13)
+
+block4(v8: i64):
+    return v8
+}
+
+fun get_unchecked(a: &Self, index: int) -> &T
+
+  block64 [v369, v370]:
+    v371 = Cast(v369)
+    v372 = Call(Fun(535), EntityList { index: 0, unused: PhantomData })
+    v373 = Call(Fun(279), EntityList { index: 573, unused: PhantomData })
+    v374 = Call(Fun(259), EntityList { index: 577, unused: PhantomData })
+    v375 = Cast(v374)
+    Return(Some(v375))
+
+function u0:0(i64, i64) -> i64 fast {
+block0(v0: i64, v1: i64):
+    v2 = iconst.i64 8
+    v3 = imul v1, v2
+    v4 = iadd v0, v3
+    return v4
+}
+
+fun len(array: &Self) -> int
+
+  block65 [v376]:
+    v377 = Lit(Int(10, 0))
+    Return(Some(v377))
+
+function u0:0(i64) -> i64 fast {
+block0(v0: i64):
+    v1 = iconst.i64 10
+    return v1
+}
+
+fun test_case_9
+
+  block20 []:
+    v150 = Lit(Int(1, 0))
+    v151 = Lit(Int(2, 0))
+    v152 = Lit(Int(3, 0))
+    v153 = Lit(Int(4, 0))
+    v154 = Lit(Int(5, 0))
+    v155 = Lit(Int(6, 0))
+    v156 = Lit(Int(7, 0))
+    v157 = Lit(Int(8, 0))
+    v158 = Lit(Int(9, 0))
+    v159 = Lit(Int(10, 0))
+    v160 = Uninitialized
+    v161 = VarDecl(v160)
+    v162 = Offset(v161)
+    v150 = Assign(v162)
+    v163 = Offset(v161)
+    v151 = Assign(v163)
+    v164 = Offset(v161)
+    v152 = Assign(v164)
+    v165 = Offset(v161)
+    v153 = Assign(v165)
+    v166 = Offset(v161)
+    v154 = Assign(v166)
+    v167 = Offset(v161)
+    v155 = Assign(v167)
+    v168 = Offset(v161)
+    v156 = Assign(v168)
+    v169 = Offset(v161)
+    v157 = Assign(v169)
+    v170 = Offset(v161)
+    v158 = Assign(v170)
+    v171 = Offset(v161)
+    v159 = Assign(v171)
+    v172 = VarDecl(v161)
+    v173 = Lit(Int(0, 0))
+    v174 = VarDecl(v173)
+    v175 = Lit(Int(0, 0))
+    v176 = VarDecl(v175)
+    Jump(block21, EntityList { index: 0, unused: PhantomData })
+  block21 []:
+    v178 = Ref(v172)
+    v177 = Call(Fun(531), EntityList { index: 193, unused: PhantomData })
+    v179 = Call(Fun(329), EntityList { index: 197, unused: PhantomData })
+    JumpIfTrue(v179, block23, EntityList { index: 0, unused: PhantomData })
+    Jump(block24, EntityList { index: 0, unused: PhantomData })
+  block22 []:
+    v186 = Lit(Int(11, 0))
+    v187 = Lit(Int(5, 0))
+    v188 = Call(Fun(279), EntityList { index: 213, unused: PhantomData })
+    v189 = Call(Fun(309), EntityList { index: 217, unused: PhantomData })
+    v190 = Lit(Int(171, 0))
+    v191 = Lit(Int(9, 0))
+    v192 = Lit(String(Span { source: Source(0), hash: ID(14979365136090743649), start: 351, end: 380, line: 0, column: 0 }))
+    Call(Fun(471), EntityList { index: 221, unused: PhantomData })
+    Call(Fun(523), EntityList { index: 225, unused: PhantomData })
+    Call(Fun(472), EntityList { index: 0, unused: PhantomData })
+    Return(None)
+  block23 []:
+    Jump(block22, EntityList { index: 0, unused: PhantomData })
+  block24 []:
+    v181 = Ref(v172)
+    v180 = Call(Fun(532), EntityList { index: 201, unused: PhantomData })
+    v182 = Deref(v180, false)
+    v183 = Call(Fun(259), EntityList { index: 205, unused: PhantomData })
+    v183 = Assign(v176)
+    v184 = Lit(Int(1, 0))
+    v185 = Call(Fun(259), EntityList { index: 209, unused: PhantomData })
+    v185 = Assign(v174)
+    Jump(block21, EntityList { index: 0, unused: PhantomData })
+
+function u0:0() fast {
+    ss0 = explicit_slot 80
+    ss1 = explicit_slot 80
+    ss2 = explicit_slot 80
+    gv0 = symbol colocated u1:8
+    gv1 = symbol colocated u1:4
+    sig0 = (i64, i64, i64) fast
+    sig1 = (b1) fast
+    sig2 = () fast
+    sig3 = (i64) fast
+    fn0 = colocated u0:16 sig0
+    fn1 = colocated u0:33 sig1
+    fn2 = colocated u0:11 sig2
+    fn3 = colocated u0:19 sig3
+
+block0:
+    v72 = iconst.i64 0
+    v33 -> v72
+    v71 = iconst.i64 0
+    v31 -> v71
+    v0 = iconst.i64 1
+    v1 = iconst.i64 2
+    v2 = iconst.i64 3
+    v3 = iconst.i64 4
+    v4 = iconst.i64 5
+    v5 = iconst.i64 6
+    v6 = iconst.i64 7
+    v7 = iconst.i64 8
+    v8 = iconst.i64 9
+    v9 = iconst.i64 10
+    v10 = stack_load.i64 ss0
+    stack_store v10, ss1
+    v11 = stack_load.i64 ss0+8
+    stack_store v11, ss1+8
+    v12 = stack_load.i64 ss0+16
+    stack_store v12, ss1+16
+    v13 = stack_load.i64 ss0+24
+    stack_store v13, ss1+24
+    v14 = stack_load.i64 ss0+32
+    stack_store v14, ss1+32
+    v15 = stack_load.i64 ss0+40
+    stack_store v15, ss1+40
+    v16 = stack_load.i64 ss0+48
+    stack_store v16, ss1+48
+    v17 = stack_load.i64 ss0+56
+    stack_store v17, ss1+56
+    v18 = stack_load.i64 ss0+64
+    stack_store v18, ss1+64
+    v19 = stack_load.i64 ss0+72
+    stack_store v19, ss1+72
+    stack_store v0, ss1
+    stack_store v1, ss1+8
+    stack_store v2, ss1+16
+    stack_store v3, ss1+24
+    stack_store v4, ss1+32
+    stack_store v5, ss1+40
+    stack_store v6, ss1+48
+    stack_store v7, ss1+56
+    stack_store v8, ss1+64
+    stack_store v9, ss1+72
+    v20 = stack_load.i64 ss1
+    stack_store v20, ss2
+    v21 = stack_load.i64 ss1+8
+    stack_store v21, ss2+8
+    v22 = stack_load.i64 ss1+16
+    stack_store v22, ss2+16
+    v23 = stack_load.i64 ss1+24
+    stack_store v23, ss2+24
+    v24 = stack_load.i64 ss1+32
+    stack_store v24, ss2+32
+    v25 = stack_load.i64 ss1+40
+    stack_store v25, ss2+40
+    v26 = stack_load.i64 ss1+48
+    stack_store v26, ss2+48
+    v27 = stack_load.i64 ss1+56
+    stack_store v27, ss2+56
+    v28 = stack_load.i64 ss1+64
+    stack_store v28, ss2+64
+    v29 = stack_load.i64 ss1+72
+    stack_store v29, ss2+72
+    v30 = iconst.i64 0
+    v32 = iconst.i64 0
+    jump block1(v30, v32)
+
+block1(v75: i64, v76: i64):
+    v38 -> v75
+    v78 -> v75
+    v80 -> v75
+    v69 -> v78
+    v49 -> v38
+    v74 -> v76
+    v77 -> v76
+    v79 -> v76
+    v65 -> v77
+    v73 -> v74
+    v43 -> v73
+    v34 = stack_addr.i64 ss2
+    jump block5(v34)
+
+block5(v36: i64):
+    v37 = iconst.i64 10
+    jump block6(v37)
+
+block6(v35: i64):
+    v39 = icmp.i64 sge v38, v35
+    brnz v39, block3
+    jump block4
+
+block2:
+    v40 = iconst.i64 11
+    v41 = iconst.i64 5
+    v42 = imul v40, v41
+    v44 = icmp.i64 eq v43, v42
+    v45 = iconst.i64 171
+    v46 = iconst.i64 9
+    v47 = global_value.i64 gv0
+    call fn0(v45, v46, v47)
+    call fn1(v44)
+    call fn2()
+    return
+
+block3:
+    jump block2
+
+block4:
+    v48 = stack_addr.i64 ss2
+    jump block7(v48, v49)
+
+block7(v51: i64, v52: i64):
+    v53 = iconst.i64 0
+    v54 = icmp slt v52, v53
+    v55 = iconst.i64 10
+    v56 = icmp sge v52, v55
+    v57 = bor v54, v56
+    brnz v57, block9
+    jump block10
+
+block9:
+    v58 = global_value.i64 gv1
+    call fn3(v58)
+    jump block10
+
+block10:
+    jump block11(v51, v52)
+
+block11(v60: i64, v61: i64):
+    v62 = iconst.i64 8
+    v63 = imul v61, v62
+    v64 = iadd v60, v63
+    jump block12(v64)
+
+block12(v59: i64):
+    jump block8(v59)
+
+block8(v50: i64):
+    v66 = load.i64 v50
+    v67 = iadd.i64 v65, v66
+    v68 = iconst.i64 1
+    v70 = iadd.i64 v69, v68
+    jump block1(v70, v67)
+}
+
+fun test_case_8
+
+  block25 []:
+    v193 = Zeroed
+    v194 = VarDecl(v193)
+    v195 = Offset(v194)
+    v196 = Lit(Int(1, 8))
+    v196 = Assign(v195)
+    v197 = Offset(v194)
+    v198 = Lit(Int(2, 8))
+    v198 = Assign(v197)
+    v199 = Offset(v194)
+    v200 = Lit(Int(3, 8))
+    v200 = Assign(v199)
+    v201 = Offset(v194)
+    v202 = Lit(Int(4, 8))
+    v202 = Assign(v201)
+    v203 = Offset(v194)
+    v204 = Lit(Int(5, 8))
+    v204 = Assign(v203)
+    v205 = Offset(v194)
+    v206 = Lit(Int(6, 8))
+    v206 = Assign(v205)
+    v207 = Offset(v194)
+    v208 = Lit(Int(7, 8))
+    v208 = Assign(v207)
+    v209 = Offset(v194)
+    v210 = Lit(Int(8, 8))
+    v210 = Assign(v209)
+    v211 = Offset(v194)
+    v212 = Offset(v194)
+    v213 = Call(Fun(251), EntityList { index: 229, unused: PhantomData })
+    v214 = Offset(v194)
+    v215 = Call(Fun(251), EntityList { index: 233, unused: PhantomData })
+    v216 = Offset(v194)
+    v217 = Call(Fun(251), EntityList { index: 237, unused: PhantomData })
+    v218 = Offset(v194)
+    v219 = Call(Fun(251), EntityList { index: 241, unused: PhantomData })
+    v220 = Offset(v194)
+    v221 = Call(Fun(251), EntityList { index: 245, unused: PhantomData })
+    v222 = Offset(v194)
+    v223 = Call(Fun(251), EntityList { index: 249, unused: PhantomData })
+    v224 = Offset(v194)
+    v225 = Call(Fun(251), EntityList { index: 253, unused: PhantomData })
+    v226 = Lit(Int(4, 8))
+    v227 = Lit(Int(9, 8))
+    v228 = Call(Fun(271), EntityList { index: 257, unused: PhantomData })
+    v229 = Call(Fun(301), EntityList { index: 261, unused: PhantomData })
+    v230 = Lit(Int(156, 0))
+    v231 = Lit(Int(9, 0))
+    v232 = Lit(String(Span { source: Source(0), hash: ID(14979365136090743649), start: 351, end: 380, line: 0, column: 0 }))
+    Call(Fun(471), EntityList { index: 265, unused: PhantomData })
+    Call(Fun(523), EntityList { index: 269, unused: PhantomData })
+    Call(Fun(472), EntityList { index: 0, unused: PhantomData })
+    Return(None)
+
+function u0:0() fast {
+    gv0 = symbol colocated u1:8
+    sig0 = (i64, i64, i64) fast
+    sig1 = (b1) fast
+    sig2 = () fast
+    fn0 = colocated u0:16 sig0
+    fn1 = colocated u0:33 sig1
+    fn2 = colocated u0:11 sig2
+
+block0:
+    v80 = iconst.i64 0
+    v1 -> v80
+    v0 = iconst.i64 0
+    v2 = iconst.i8 1
+    v3 = iconst.i64 -256
+    v4 = band v0, v3
+    v5 = uextend.i64 v2
+    v6 = ishl_imm v5, 0
+    v7 = bor v4, v6
+    v8 = iconst.i8 2
+    v9 = iconst.i64 0xffff_ffff_ffff_00ff
+    v10 = band v7, v9
+    v11 = uextend.i64 v8
+    v12 = ishl_imm v11, 8
+    v13 = bor v10, v12
+    v14 = iconst.i8 3
+    v15 = iconst.i64 0xffff_ffff_ff00_ffff
+    v16 = band v13, v15
+    v17 = uextend.i64 v14
+    v18 = ishl_imm v17, 16
+    v19 = bor v16, v18
+    v20 = iconst.i8 4
+    v21 = iconst.i64 0xffff_ffff_00ff_ffff
+    v22 = band v19, v21
+    v23 = uextend.i64 v20
+    v24 = ishl_imm v23, 24
+    v25 = bor v22, v24
+    v26 = iconst.i8 5
+    v27 = iconst.i64 0xffff_ff00_ffff_ffff
+    v28 = band v25, v27
+    v29 = uextend.i64 v26
+    v30 = ishl_imm v29, 32
+    v31 = bor v28, v30
+    v32 = iconst.i8 6
+    v33 = iconst.i64 0xffff_00ff_ffff_ffff
+    v34 = band v31, v33
+    v35 = uextend.i64 v32
+    v36 = ishl_imm v35, 40
+    v37 = bor v34, v36
+    v38 = iconst.i8 7
+    v39 = iconst.i64 0xff00_ffff_ffff_ffff
+    v40 = band v37, v39
+    v41 = uextend.i64 v38
+    v42 = ishl_imm v41, 48
+    v43 = bor v40, v42
+    v44 = iconst.i8 8
+    v45 = iconst.i64 0x00ff_ffff_ffff_ffff
+    v46 = band v43, v45
+    v47 = uextend.i64 v44
+    v48 = ishl_imm v47, 56
+    v49 = bor v46, v48
+    v50 = ushr_imm v49, 0
+    v51 = ireduce.i8 v50
+    v52 = ushr_imm v49, 56
+    v53 = ireduce.i8 v52
+    v54 = iadd v51, v53
+    v55 = ushr_imm v49, 48
+    v56 = ireduce.i8 v55
+    v57 = iadd v54, v56
+    v58 = ushr_imm v49, 40
+    v59 = ireduce.i8 v58
+    v60 = iadd v57, v59
+    v61 = ushr_imm v49, 32
+    v62 = ireduce.i8 v61
+    v63 = iadd v60, v62
+    v64 = ushr_imm v49, 24
+    v65 = ireduce.i8 v64
+    v66 = iadd v63, v65
+    v67 = ushr_imm v49, 16
+    v68 = ireduce.i8 v67
+    v69 = iadd v66, v68
+    v70 = ushr_imm v49, 8
+    v71 = ireduce.i8 v70
+    v72 = iadd v69, v71
+    v73 = iconst.i8 4
+    v74 = iconst.i8 9
+    v75 = imul v73, v74
+    v76 = icmp eq v72, v75
+    v77 = iconst.i64 156
+    v78 = iconst.i64 9
+    v79 = global_value.i64 gv0
+    call fn0(v77, v78, v79)
+    call fn1(v76)
+    call fn2()
+    return
+}
+
+fun test_case_7
+
+  block26 []:
+    v233 = Zeroed
+    v234 = VarDecl(v233)
+    v235 = Zeroed
+    v236 = VarDecl(v235)
+    v237 = Offset(v236)
+    v238 = Ref(v234)
+    v238 = Assign(v237)
+    v239 = Offset(v236)
+    v240 = Deref(v239, true)
+    v241 = Offset(v240)
+    v242 = Lit(Int(1, 0))
+    v242 = Assign(v241)
+    v243 = Offset(v236)
+    v244 = Deref(v243, true)
+    v245 = Offset(v244)
+    v246 = Lit(Int(2, 0))
+    v246 = Assign(v245)
+    v247 = Offset(v236)
+    v248 = Deref(v247, false)
+    v249 = Offset(v248)
+    v250 = Offset(v236)
+    v251 = Deref(v250, false)
+    v252 = Offset(v251)
+    v253 = Call(Fun(259), EntityList { index: 273, unused: PhantomData })
+    v254 = Lit(Int(3, 0))
+    v255 = Call(Fun(309), EntityList { index: 277, unused: PhantomData })
+    v256 = Lit(Int(140, 0))
+    v257 = Lit(Int(9, 0))
+    v258 = Lit(String(Span { source: Source(0), hash: ID(14979365136090743649), start: 351, end: 380, line: 0, column: 0 }))
+    Call(Fun(471), EntityList { index: 281, unused: PhantomData })
+    Call(Fun(523), EntityList { index: 285, unused: PhantomData })
+    Call(Fun(472), EntityList { index: 0, unused: PhantomData })
+    Return(None)
+
+function u0:0() fast {
+    ss0 = explicit_slot 16
+    gv0 = symbol colocated u1:8
+    sig0 = (i64, i64, i64) fast
+    sig1 = (b1) fast
+    sig2 = () fast
+    fn0 = colocated u0:16 sig0
+    fn1 = colocated u0:33 sig1
+    fn2 = colocated u0:11 sig2
+
+block0:
+    v14 = iconst.i64 0
+    v2 -> v14
+    v0 = iconst.i64 0
+    stack_store v0, ss0
+    stack_store v0, ss0+8
+    v1 = iconst.i64 0
+    v3 = stack_addr.i64 ss0
+    v4 = iconst.i64 1
+    store v4, v3
+    v5 = iconst.i64 2
+    store v5, v3+8
+    v6 = load.i64 v3
+    v7 = load.i64 v3+8
+    v8 = iadd v6, v7
+    v9 = iconst.i64 3
+    v10 = icmp eq v8, v9
+    v11 = iconst.i64 140
+    v12 = iconst.i64 9
+    v13 = global_value.i64 gv0
+    call fn0(v11, v12, v13)
+    call fn1(v10)
+    call fn2()
+    return
+}
+
+fun test_case_6
+
+  block27 []:
+    v259 = Zeroed
+    v260 = VarDecl(v259)
+    v261 = Lit(Int(2, 0))
+    v262 = Lit(Int(2, 0))
+    v264 = Ref(v260)
+    v265 = Lit(Int(124, 0))
+    v266 = Lit(Int(4, 0))
+    v267 = Lit(String(Span { source: Source(0), hash: ID(14979365136090743649), start: 351, end: 380, line: 0, column: 0 }))
+    Call(Fun(471), EntityList { index: 289, unused: PhantomData })
+    v263 = Call(Fun(509), EntityList { index: 293, unused: PhantomData })
+    Call(Fun(472), EntityList { index: 0, unused: PhantomData })
+    v268 = Offset(v260)
+    v269 = Offset(v260)
+    v270 = Call(Fun(259), EntityList { index: 301, unused: PhantomData })
+    v271 = Lit(Int(4, 0))
+    v272 = Call(Fun(309), EntityList { index: 305, unused: PhantomData })
+    v273 = Lit(Int(125, 0))
+    v274 = Lit(Int(9, 0))
+    v275 = Lit(String(Span { source: Source(0), hash: ID(14979365136090743649), start: 351, end: 380, line: 0, column: 0 }))
+    Call(Fun(471), EntityList { index: 309, unused: PhantomData })
+    Call(Fun(523), EntityList { index: 313, unused: PhantomData })
+    Call(Fun(472), EntityList { index: 0, unused: PhantomData })
+    Return(None)
+
+function u0:0() fast {
+    ss0 = explicit_slot 16
+    ss1 = explicit_slot 16
+    gv0 = symbol colocated u1:8
+    sig0 = (i64, i64, i64) fast
+    sig1 = (i64, i64, i64, i64 sret) -> i64 sret fast
+    sig2 = () fast
+    sig3 = (b1) fast
+    fn0 = colocated u0:16 sig0
+    fn1 = colocated u0:58 sig1
+    fn2 = colocated u0:11 sig2
+    fn3 = colocated u0:33 sig3
+
+block0:
+    v0 = iconst.i64 0
+    stack_store v0, ss0
+    stack_store v0, ss0+8
+    v1 = iconst.i64 2
+    v2 = iconst.i64 2
+    v3 = stack_addr.i64 ss0
+    v4 = iconst.i64 124
+    v5 = iconst.i64 4
+    v6 = global_value.i64 gv0
+    call fn0(v4, v5, v6)
+    v7 = stack_addr.i64 ss1
+    v8 = call fn1(v3, v1, v2, v7)
+    call fn2()
+    v9 = stack_load.i64 ss0
+    v10 = stack_load.i64 ss0+8
+    v11 = iadd v9, v10
+    v12 = iconst.i64 4
+    v13 = icmp eq v11, v12
+    v14 = iconst.i64 125
+    v15 = iconst.i64 9
+    v16 = global_value.i64 gv0
+    call fn0(v14, v15, v16)
+    call fn3(v13)
+    call fn2()
+    return
+}
+
+fun init(v: &var Point, x: int, y: int) -> Point
+
+  block28 [v276, v277, v278, v279]:
+    v280 = Offset(v276)
+    v281 = Deref(v280, true)
+    v282 = Offset(v281)
+    v277 = Assign(v282)
+    v283 = Offset(v276)
+    v284 = Deref(v283, true)
+    v285 = Offset(v284)
+    v278 = Assign(v285)
+    v286 = Zeroed
+    v287 = Deref(v279, false)
+    v286 = Assign(v287)
+    Return(Some(v279))
+
+function u0:0(i64, i64, i64, i64 sret) -> i64 sret fast {
+block0(v0: i64, v1: i64, v2: i64, v3: i64):
+    store v1, v0
+    store v2, v0+8
+    v4 = iconst.i64 0
+    store v4, v3
+    store v4, v3+8
+    return v3
+}
+
+fun test_case_5
+
+  block29 []:
+    v288 = Lit(String(Span { source: Source(0), hash: ID(14798484927345966379), start: 333, end: 347, line: 0, column: 0 }))
+    v289 = VarDecl(v288)
+    v290 = Cast(v289)
+    v291 = VarDecl(v290)
+    Jump(block30, EntityList { index: 0, unused: PhantomData })
+  block30 []:
+    v292 = Cast(v291)
+    v293 = Deref(v292, false)
+    v294 = VarDecl(v293)
+    v295 = Lit(Uint(0, 8))
+    v296 = Call(Fun(305), EntityList { index: 317, unused: PhantomData })
+    JumpIfTrue(v296, block32, EntityList { index: 0, unused: PhantomData })
+    Jump(block33, EntityList { index: 0, unused: PhantomData })
+  block31 []:
+    Return(None)
+  block32 []:
+    Jump(block31, EntityList { index: 0, unused: PhantomData })
+  block33 []:
+    v297 = Call(Fun(32), EntityList { index: 329, unused: PhantomData })
+    v298 = Lit(Int(113, 0))
+    v299 = Lit(Int(12, 0))
+    v300 = Lit(String(Span { source: Source(0), hash: ID(14979365136090743649), start: 351, end: 380, line: 0, column: 0 }))
+    Call(Fun(471), EntityList { index: 333, unused: PhantomData })
+    Call(Fun(507), EntityList { index: 337, unused: PhantomData })
+    Call(Fun(472), EntityList { index: 0, unused: PhantomData })
+    v301 = Lit(Int(1, 0))
+    v302 = Cast(v301)
+    v303 = Call(Fun(260), EntityList { index: 341, unused: PhantomData })
+    v303 = Assign(v291)
+    Jump(block30, EntityList { index: 0, unused: PhantomData })
+
+function u0:0() fast {
+    gv0 = symbol colocated u1:10
+    gv1 = symbol colocated u1:8
+    sig0 = (i64, i64, i64) fast
+    sig1 = (i32) windows_fastcall
+    sig2 = () fast
+    fn0 = colocated u0:16 sig0
+    fn1 = u0:7 sig1
+    fn2 = colocated u0:11 sig2
+
+block0:
+    v15 = iconst.i64 0
+    v2 -> v15
+    v14 = iconst.i64 0
+    v1 -> v14
+    v0 = global_value.i64 gv0
+    jump block1(v0)
+
+block1(v3: i64):
+    v12 -> v3
+    v4 = load.i8 v3
+    v5 = iconst.i8 0
+    v6 = icmp eq v4, v5
+    brnz v6, block3
+    jump block4
+
+block2:
+    return
+
+block3:
+    jump block2
+
+block4:
+    v7 = sextend.i32 v4
+    v8 = iconst.i64 113
+    v9 = iconst.i64 12
+    v10 = global_value.i64 gv1
+    call fn0(v8, v9, v10)
+    call fn1(v7)
+    call fn2()
+    v11 = iconst.i64 1
+    v13 = iadd.i64 v12, v11
+    jump block1(v13)
+}
+
+fun putchar(c: i32)
+
+
+fun test_case_4
+
+  block34 []:
+    v304 = Lit(Float(1.0, 64))
+    v305 = VarDecl(v304)
+    Jump(block35, EntityList { index: 0, unused: PhantomData })
+  block35 []:
+    v306 = Lit(Float(1.0, 64))
+    v307 = Call(Fun(412), EntityList { index: 345, unused: PhantomData })
+    v307 = Assign(v305)
+    v308 = Lit(Float(100.0, 64))
+    v309 = Call(Fun(428), EntityList { index: 349, unused: PhantomData })
+    JumpIfTrue(v309, block37, EntityList { index: 0, unused: PhantomData })
+    Jump(block38, EntityList { index: 0, unused: PhantomData })
+  block36 []:
+    v310 = Call(Fun(163), EntityList { index: 353, unused: PhantomData })
+    v311 = Lit(Int(101, 0))
+    v312 = Call(Fun(309), EntityList { index: 357, unused: PhantomData })
+    v313 = Lit(Int(99, 0))
+    v314 = Lit(Int(9, 0))
+    v315 = Lit(String(Span { source: Source(0), hash: ID(14979365136090743649), start: 351, end: 380, line: 0, column: 0 }))
+    Call(Fun(471), EntityList { index: 361, unused: PhantomData })
+    Call(Fun(523), EntityList { index: 365, unused: PhantomData })
+    Call(Fun(472), EntityList { index: 0, unused: PhantomData })
+    Return(None)
+  block37 []:
+    Jump(block36, EntityList { index: 0, unused: PhantomData })
+  block38 []:
+    Jump(block35, EntityList { index: 0, unused: PhantomData })
+
+function u0:0() fast {
+    gv0 = symbol colocated u1:8
+    sig0 = (i64, i64, i64) fast
+    sig1 = (b1) fast
+    sig2 = () fast
+    fn0 = colocated u0:16 sig0
+    fn1 = colocated u0:33 sig1
+    fn2 = colocated u0:11 sig2
+
+block0:
+    v14 = f64const 0.0
+    v1 -> v14
+    v0 = f64const 0x1.0000000000000p0
+    jump block1(v0)
+
+block1(v3: f64):
+    v2 = f64const 0x1.0000000000000p0
+    v4 = fadd v3, v2
+    v15 -> v4
+    v16 -> v4
+    v7 -> v16
+    v5 = f64const 0x1.9000000000000p6
+    v6 = fcmp gt v4, v5
+    brnz v6, block3
+    jump block4
+
+block2:
+    v8 = fcvt_to_sint.i64 v7
+    v9 = iconst.i64 101
+    v10 = icmp eq v8, v9
+    v11 = iconst.i64 99
+    v12 = iconst.i64 9
+    v13 = global_value.i64 gv0
+    call fn0(v11, v12, v13)
+    call fn1(v10)
+    call fn2()
+    return
+
+block3:
+    jump block2
+
+block4:
+    jump block1(v15)
+}
+
+fun test_case_3
+
+  block39 []:
+    v316 = Zeroed
+    v317 = VarDecl(v316)
+    v318 = Call(Fun(224), EntityList { index: 369, unused: PhantomData })
+    v319 = Call(Fun(234), EntityList { index: 373, unused: PhantomData })
+    v320 = Lit(Bool(true))
+    v321 = Call(Fun(250), EntityList { index: 377, unused: PhantomData })
+    v322 = Call(Fun(164), EntityList { index: 381, unused: PhantomData })
+    v323 = Lit(Int(1, 0))
+    v324 = Call(Fun(204), EntityList { index: 385, unused: PhantomData })
+    v325 = Call(Fun(259), EntityList { index: 389, unused: PhantomData })
+    v326 = Lit(Int(2, 0))
+    v327 = Call(Fun(259), EntityList { index: 393, unused: PhantomData })
+    v328 = Lit(Int(1, 0))
+    v329 = Call(Fun(242), EntityList { index: 397, unused: PhantomData })
+    v330 = Call(Fun(249), EntityList { index: 401, unused: PhantomData })
+    v331 = Call(Fun(259), EntityList { index: 405, unused: PhantomData })
+    v332 = Lit(Int(1, 0))
+    v333 = Call(Fun(269), EntityList { index: 409, unused: PhantomData })
+    v334 = Call(Fun(259), EntityList { index: 413, unused: PhantomData })
+    v335 = Lit(Int(0, 0))
+    v336 = Call(Fun(309), EntityList { index: 417, unused: PhantomData })
+    v337 = Lit(Int(89, 0))
+    v338 = Lit(Int(9, 0))
+    v339 = Lit(String(Span { source: Source(0), hash: ID(14979365136090743649), start: 351, end: 380, line: 0, column: 0 }))
+    Call(Fun(471), EntityList { index: 421, unused: PhantomData })
+    Call(Fun(523), EntityList { index: 425, unused: PhantomData })
+    Call(Fun(472), EntityList { index: 0, unused: PhantomData })
+    Return(None)
+
+function u0:0() fast {
+    gv0 = symbol colocated u1:8
+    sig0 = (i64, i64, i64) fast
+    sig1 = (b1) fast
+    sig2 = () fast
+    fn0 = colocated u0:16 sig0
+    fn1 = colocated u0:33 sig1
+    fn2 = colocated u0:11 sig2
+
+block0:
+    v27 = iconst.i64 0
+    v1 -> v27
+    v0 = iconst.i64 0
+    v2 = iadd_imm v0, 1
+    v3 = iadd_imm v2, -1
+    v4 = bconst.b1 true
+    v5 = bint.i8 v4
+    v6 = icmp_imm eq v5, 0
+    v7 = bint.i64 v6
+    v8 = iconst.i64 1
+    v9 = bnot v8
+    v10 = iadd v7, v9
+    v11 = iconst.i64 2
+    v12 = iadd v10, v11
+    v13 = iconst.i64 1
+    v14 = ineg v13
+    v15 = icmp_imm sgt v14, 0
+    v16 = ineg v14
+    v17 = select v15, v14, v16
+    v18 = iadd v12, v17
+    v19 = iconst.i64 1
+    v20 = isub v18, v19
+    v21 = iadd v20, v3
+    v22 = iconst.i64 0
+    v23 = icmp eq v21, v22
+    v24 = iconst.i64 89
+    v25 = iconst.i64 9
+    v26 = global_value.i64 gv0
+    call fn0(v24, v25, v26)
+    call fn1(v23)
+    call fn2()
+    return
+}
+
+fun test_case_2
+
+  block40 []:
+    v340 = Zeroed
+    v341 = VarDecl(v340)
+    v342 = Zeroed
+    v343 = VarDecl(v342)
+    v344 = Lit(Int(1, 0))
+    v345 = Lit(Int(2, 0))
+    v347 = Lit(Int(82, 0))
+    v348 = Lit(Int(8, 0))
+    v349 = Lit(String(Span { source: Source(0), hash: ID(14979365136090743649), start: 351, end: 380, line: 0, column: 0 }))
+    Call(Fun(471), EntityList { index: 429, unused: PhantomData })
+    v346 = Call(Fun(503), EntityList { index: 433, unused: PhantomData })
+    Call(Fun(472), EntityList { index: 0, unused: PhantomData })
+    v346 = Assign(v341)
+    v350 = Offset(v341)
+    v351 = Offset(v341)
+    v352 = Call(Fun(259), EntityList { index: 441, unused: PhantomData })
+    v353 = Lit(Int(3, 0))
+    v354 = Call(Fun(309), EntityList { index: 445, unused: PhantomData })
+    v355 = Lit(Int(83, 0))
+    v356 = Lit(Int(9, 0))
+    v357 = Lit(String(Span { source: Source(0), hash: ID(14979365136090743649), start: 351, end: 380, line: 0, column: 0 }))
+    Call(Fun(471), EntityList { index: 449, unused: PhantomData })
+    Call(Fun(523), EntityList { index: 453, unused: PhantomData })
+    Call(Fun(472), EntityList { index: 0, unused: PhantomData })
+    Return(None)
+
+function u0:0() fast {
+    ss0 = explicit_slot 16
+    ss1 = explicit_slot 16
+    ss2 = explicit_slot 16
+    gv0 = symbol colocated u1:8
+    sig0 = (i64, i64, i64) fast
+    sig1 = (i64, i64, i64, i64 sret) -> i64 sret fast
+    sig2 = () fast
+    sig3 = (b1) fast
+    fn0 = colocated u0:16 sig0
+    fn1 = colocated u0:63 sig1
+    fn2 = colocated u0:11 sig2
+    fn3 = colocated u0:33 sig3
+
+block0:
+    v0 = iconst.i64 0
+    stack_store v0, ss0
+    stack_store v0, ss0+8
+    v1 = iconst.i64 0
+    stack_store v1, ss1
+    stack_store v1, ss1+8
+    v2 = iconst.i64 1
+    v3 = iconst.i64 2
+    v4 = iconst.i64 82
+    v5 = iconst.i64 8
+    v6 = global_value.i64 gv0
+    call fn0(v4, v5, v6)
+    v7 = stack_addr.i64 ss0
+    v8 = stack_addr.i64 ss2
+    v9 = call fn1(v7, v2, v3, v8)
+    call fn2()
+    v10 = stack_load.i64 ss2
+    stack_store v10, ss0
+    v11 = stack_load.i64 ss2+8
+    stack_store v11, ss0+8
+    v12 = stack_load.i64 ss0
+    v13 = stack_load.i64 ss0+8
+    v14 = iadd v12, v13
+    v15 = iconst.i64 3
+    v16 = icmp eq v14, v15
+    v17 = iconst.i64 83
+    v18 = iconst.i64 9
+    v19 = global_value.i64 gv0
+    call fn0(v17, v18, v19)
+    call fn3(v16)
+    call fn2()
+    return
+}
+
+fun set(p: Self, x: int, y: int) -> Self
+
+  block41 [v358, v359, v360, v361]:
+    v362 = VarDecl(v358)
+    v363 = Offset(v362)
+    v359 = Assign(v363)
+    v364 = Offset(v362)
+    v360 = Assign(v364)
+    v365 = Deref(v361, false)
+    v362 = Assign(v365)
+    Return(Some(v361))
+
+function u0:0(i64, i64, i64, i64 sret) -> i64 sret fast {
+    ss0 = explicit_slot 16
+
+block0(v0: i64, v1: i64, v2: i64, v3: i64):
+    stack_store v0, ss0
+    stack_store v0, ss0+8
+    stack_store v1, ss0
+    stack_store v2, ss0+8
+    v4 = stack_addr.i64 ss0
+    v5 = load.i64 v4
+    store v5, v3
+    v6 = load.i64 v4+8
+    store v6, v3+8
+    return v3
+}
+
+fun test_case_1
+
+  block42 []:
+    v366 = Zeroed
+    v367 = VarDecl(v366)
+    v368 = Zeroed
+    v369 = VarDecl(v368)
+    v370 = Zeroed
+    v371 = VarDecl(v370)
+    v372 = Offset(v367)
+    v373 = Lit(Int(1, 0))
+    v373 = Assign(v372)
+    v374 = Offset(v369)
+    v367 = Assign(v374)
+    v375 = Offset(v369)
+    v376 = Lit(Int(2, 0))
+    v376 = Assign(v375)
+    v377 = Offset(v371)
+    v378 = Offset(v369)
+    v378 = Assign(v377)
+    v379 = Offset(v371)
+    v380 = Offset(v379)
+    v381 = Offset(v371)
+    v382 = Offset(v381)
+    v383 = Call(Fun(269), EntityList { index: 457, unused: PhantomData })
+    v384 = Lit(Int(1, 0))
+    v385 = Call(Fun(259), EntityList { index: 469, unused: PhantomData })
+    v386 = Lit(Int(0, 0))
+    v387 = Call(Fun(309), EntityList { index: 473, unused: PhantomData })
+    v388 = Lit(Int(70, 0))
+    v389 = Lit(Int(9, 0))
+    v390 = Lit(String(Span { source: Source(0), hash: ID(14979365136090743649), start: 351, end: 380, line: 0, column: 0 }))
+    Call(Fun(471), EntityList { index: 477, unused: PhantomData })
+    Call(Fun(523), EntityList { index: 481, unused: PhantomData })
+    Call(Fun(472), EntityList { index: 0, unused: PhantomData })
+    Return(None)
+
+function u0:0() fast {
+    ss0 = explicit_slot 16
+    ss1 = explicit_slot 24
+    ss2 = explicit_slot 32
+    gv0 = symbol colocated u1:8
+    sig0 = (i64, i64, i64) fast
+    sig1 = (b1) fast
+    sig2 = () fast
+    fn0 = colocated u0:16 sig0
+    fn1 = colocated u0:33 sig1
+    fn2 = colocated u0:11 sig2
+
+block0:
+    v0 = iconst.i64 0
+    stack_store v0, ss0
+    stack_store v0, ss0+8
+    v1 = iconst.i64 0
+    stack_store v1, ss1
+    stack_store v1, ss1+8
+    stack_store v1, ss1+16
+    v2 = iconst.i64 0
+    stack_store v2, ss2
+    stack_store v2, ss2+8
+    stack_store v2, ss2+16
+    stack_store v2, ss2+24
+    v3 = iconst.i64 1
+    stack_store v3, ss0
+    v4 = stack_load.i64 ss0
+    stack_store v4, ss1
+    v5 = stack_load.i64 ss0+8
+    stack_store v5, ss1+8
+    v6 = iconst.i64 2
+    stack_store v6, ss1+8
+    v7 = stack_load.i64 ss1
+    stack_store v7, ss2
+    v8 = stack_load.i64 ss1+8
+    stack_store v8, ss2+8
+    v9 = stack_load.i64 ss2
+    v10 = stack_load.i64 ss2+8
+    v11 = isub v9, v10
+    v12 = iconst.i64 1
+    v13 = iadd v11, v12
+    v14 = iconst.i64 0
+    v15 = icmp eq v13, v14
+    v16 = iconst.i64 70
+    v17 = iconst.i64 9
+    v18 = global_value.i64 gv0
+    call fn0(v16, v17, v18)
+    call fn1(v15)
+    call fn2()
+    return
+}
+
+fun fib_loop(v: int) -> int
+
+  block43 [v391]:
+    v392 = Lit(Int(1, 0))
+    v393 = VarDecl(v392)
+    v394 = VarDecl(v393)
+    v395 = VarDecl(v393)
+    v396 = VarDecl(v391)
+    Jump(block44, EntityList { index: 0, unused: PhantomData })
+  block44 []:
+    v397 = Call(Fun(259), EntityList { index: 489, unused: PhantomData })
+    v397 = Assign(v395)
+    v394 = Assign(v393)
+    v395 = Assign(v394)
+    v398 = Lit(Int(1, 0))
+    v399 = Call(Fun(269), EntityList { index: 493, unused: PhantomData })
+    v399 = Assign(v396)
+    v400 = Lit(Int(1, 0))
+    v401 = Call(Fun(309), EntityList { index: 497, unused: PhantomData })
+    JumpIfTrue(v401, block46, EntityList { index: 0, unused: PhantomData })
+    Jump(block47, EntityList { index: 0, unused: PhantomData })
+  block45 []:
+    Return(Some(v395))
+  block46 []:
+    Jump(block45, EntityList { index: 0, unused: PhantomData })
+  block47 []:
+    Jump(block44, EntityList { index: 0, unused: PhantomData })
+
+function u0:0(i64) -> i64 fast {
+block0(v0: i64):
+    v19 = iconst.i64 0
+    v5 -> v19
+    v18 = iconst.i64 0
+    v4 -> v18
+    v17 = iconst.i64 0
+    v3 -> v17
+    v16 = iconst.i64 0
+    v2 -> v16
+    v1 = iconst.i64 1
+    jump block1(v1, v1, v1, v0)
+
+block1(v6: i64, v7: i64, v9: i64, v11: i64):
+    v20 -> v7
+    v8 = iadd v6, v7
+    v21 -> v8
+    v22 -> v8
+    v24 -> v8
+    v15 -> v24
+    v10 = iconst.i64 1
+    v12 = isub v11, v10
+    v23 -> v12
+    v13 = iconst.i64 1
+    v14 = icmp eq v12, v13
+    brnz v14, block3
+    jump block4
+
+block2:
+    return v15
+
+block3:
+    jump block2
+
+block4:
+    jump block1(v20, v21, v22, v23)
+}
+
+fun fib(v: int) -> int
+
+  block48 [v402]:
+    v403 = Lit(Int(2, 0))
+    v404 = Call(Fun(359), EntityList { index: 505, unused: PhantomData })
+    JumpIfTrue(v404, block49, EntityList { index: 0, unused: PhantomData })
+    Jump(block51, EntityList { index: 0, unused: PhantomData })
+  block49 []:
+    v405 = Lit(Int(1, 0))
+    Jump(block50, EntityList { index: 509, unused: PhantomData })
+  block50 [v406]:
+    Return(Some(v406))
+  block51 []:
+    v407 = Lit(Int(1, 0))
+    v408 = Call(Fun(269), EntityList { index: 517, unused: PhantomData })
+    v410 = Lit(Int(32, 0))
+    v411 = Lit(Int(8, 0))
+    v412 = Lit(String(Span { source: Source(0), hash: ID(14979365136090743649), start: 351, end: 380, line: 0, column: 0 }))
+    Call(Fun(471), EntityList { index: 521, unused: PhantomData })
+    v409 = Call(Fun(500), EntityList { index: 525, unused: PhantomData })
+    Call(Fun(472), EntityList { index: 0, unused: PhantomData })
+    v413 = Lit(Int(2, 0))
+    v414 = Call(Fun(269), EntityList { index: 529, unused: PhantomData })
+    v416 = Lit(Int(32, 0))
+    v417 = Lit(Int(21, 0))
+    v418 = Lit(String(Span { source: Source(0), hash: ID(14979365136090743649), start: 351, end: 380, line: 0, column: 0 }))
+    Call(Fun(471), EntityList { index: 533, unused: PhantomData })
+    v415 = Call(Fun(500), EntityList { index: 537, unused: PhantomData })
+    Call(Fun(472), EntityList { index: 0, unused: PhantomData })
+    v419 = Call(Fun(259), EntityList { index: 541, unused: PhantomData })
+    Jump(block50, EntityList { index: 545, unused: PhantomData })
+
+function u0:0(i64) -> i64 fast {
+    gv0 = symbol colocated u1:8
+    sig0 = (i64, i64, i64) fast
+    sig1 = (i64) -> i64 fast
+    sig2 = () fast
+    fn0 = colocated u0:16 sig0
+    fn1 = colocated u0:66 sig1
+    fn2 = colocated u0:11 sig2
+
+block0(v0: i64):
+    v2 = iconst.i64 2
+    v3 = icmp slt v0, v2
+    brnz v3, block1
+    jump block3
+
+block1:
+    v4 = iconst.i64 1
+    jump block2(v4)
+
+block2(v1: i64):
+    return v1
+
+block3:
+    v5 = iconst.i64 1
+    v6 = isub.i64 v0, v5
+    v7 = iconst.i64 32
+    v8 = iconst.i64 8
+    v9 = global_value.i64 gv0
+    call fn0(v7, v8, v9)
+    v10 = call fn1(v6)
+    call fn2()
+    v11 = iconst.i64 2
+    v12 = isub.i64 v0, v11
+    v13 = iconst.i64 32
+    v14 = iconst.i64 21
+    v15 = global_value.i64 gv0
+    call fn0(v13, v14, v15)
+    v16 = call fn1(v12)
+    call fn2()
+    v17 = iadd v10, v16
+    jump block2(v17)
+}
+
+fun foo()
+
+  block52 []:
+    Return(None)
+
+function u0:0() fast {
+block0:
+    return
+}
+
+fun fine -> int
+
+  block53 []:
+    v420 = Lit(Int(1, 0))
+    v421 = Lit(Int(1, 0))
+    v422 = Call(Fun(269), EntityList { index: 549, unused: PhantomData })
+    v423 = Lit(Int(0, 0))
+    v424 = Call(Fun(309), EntityList { index: 553, unused: PhantomData })
+    v425 = Lit(Int(3, 0))
+    v426 = Lit(Int(9, 0))
+    v427 = Lit(String(Span { source: Source(0), hash: ID(14979365136090743649), start: 351, end: 380, line: 0, column: 0 }))
+    Call(Fun(471), EntityList { index: 557, unused: PhantomData })
+    Call(Fun(523), EntityList { index: 561, unused: PhantomData })
+    Call(Fun(472), EntityList { index: 0, unused: PhantomData })
+    v428 = Lit(Int(1, 0))
+    v429 = Lit(Int(1, 0))
+    v430 = Call(Fun(259), EntityList { index: 565, unused: PhantomData })
+    v431 = Lit(Int(2, 0))
+    v432 = Call(Fun(309), EntityList { index: 569, unused: PhantomData })
+    v433 = Lit(Int(4, 0))
+    v434 = Lit(Int(9, 0))
+    v435 = Lit(String(Span { source: Source(0), hash: ID(14979365136090743649), start: 351, end: 380, line: 0, column: 0 }))
+    Call(Fun(471), EntityList { index: 573, unused: PhantomData })
+    Call(Fun(523), EntityList { index: 577, unused: PhantomData })
+    Call(Fun(472), EntityList { index: 0, unused: PhantomData })
+    v436 = Lit(Int(1, 0))
+    v437 = Lit(Int(1, 0))
+    v438 = Call(Fun(309), EntityList { index: 581, unused: PhantomData })
+    JumpIfTrue(v438, block54, EntityList { index: 0, unused: PhantomData })
+    Jump(block56, EntityList { index: 0, unused: PhantomData })
+  block54 []:
+    v439 = Lit(Int(1, 0))
+    Jump(block55, EntityList { index: 585, unused: PhantomData })
+  block55 [v440]:
+    v442 = Lit(Int(1, 0))
+    v443 = Call(Fun(309), EntityList { index: 597, unused: PhantomData })
+    v444 = Lit(Int(5, 0))
+    v445 = Lit(Int(9, 0))
+    v446 = Lit(String(Span { source: Source(0), hash: ID(14979365136090743649), start: 351, end: 380, line: 0, column: 0 }))
+    Call(Fun(471), EntityList { index: 601, unused: PhantomData })
+    Call(Fun(523), EntityList { index: 605, unused: PhantomData })
+    Call(Fun(472), EntityList { index: 0, unused: PhantomData })
+    v447 = Lit(Int(10, 0))
+    v449 = Lit(Int(6, 0))
+    v450 = Lit(Int(13, 0))
+    v451 = Lit(String(Span { source: Source(0), hash: ID(14979365136090743649), start: 351, end: 380, line: 0, column: 0 }))
+    Call(Fun(471), EntityList { index: 609, unused: PhantomData })
+    v448 = Call(Fun(500), EntityList { index: 613, unused: PhantomData })
+    Call(Fun(472), EntityList { index: 0, unused: PhantomData })
+    v452 = Lit(Int(10, 0))
+    v454 = Lit(Int(6, 0))
+    v455 = Lit(Int(29, 0))
+    v456 = Lit(String(Span { source: Source(0), hash: ID(14979365136090743649), start: 351, end: 380, line: 0, column: 0 }))
+    Call(Fun(471), EntityList { index: 617, unused: PhantomData })
+    v453 = Call(Fun(501), EntityList { index: 621, unused: PhantomData })
+    Call(Fun(472), EntityList { index: 0, unused: PhantomData })
+    v457 = Call(Fun(309), EntityList { index: 625, unused: PhantomData })
+    v458 = Lit(Int(6, 0))
+    v459 = Lit(Int(9, 0))
+    v460 = Lit(String(Span { source: Source(0), hash: ID(14979365136090743649), start: 351, end: 380, line: 0, column: 0 }))
+    Call(Fun(471), EntityList { index: 629, unused: PhantomData })
+    Call(Fun(523), EntityList { index: 633, unused: PhantomData })
+    Call(Fun(472), EntityList { index: 0, unused: PhantomData })
+    v461 = Lit(Int(8, 0))
+    v462 = Lit(Int(14, 0))
+    v463 = Lit(String(Span { source: Source(0), hash: ID(14979365136090743649), start: 351, end: 380, line: 0, column: 0 }))
+    Call(Fun(471), EntityList { index: 637, unused: PhantomData })
+    Call(Fun(502), EntityList { index: 0, unused: PhantomData })
+    Call(Fun(472), EntityList { index: 0, unused: PhantomData })
+    v464 = Lit(Int(9, 0))
+    v465 = Lit(Int(14, 0))
+    v466 = Lit(String(Span { source: Source(0), hash: ID(14979365136090743649), start: 351, end: 380, line: 0, column: 0 }))
+    Call(Fun(471), EntityList { index: 641, unused: PhantomData })
+    Call(Fun(504), EntityList { index: 0, unused: PhantomData })
+    Call(Fun(472), EntityList { index: 0, unused: PhantomData })
+    v467 = Lit(Int(10, 0))
+    v468 = Lit(Int(14, 0))
+    v469 = Lit(String(Span { source: Source(0), hash: ID(14979365136090743649), start: 351, end: 380, line: 0, column: 0 }))
+    Call(Fun(471), EntityList { index: 645, unused: PhantomData })
+    Call(Fun(505), EntityList { index: 0, unused: PhantomData })
+    Call(Fun(472), EntityList { index: 0, unused: PhantomData })
+    v470 = Lit(Int(11, 0))
+    v471 = Lit(Int(14, 0))
+    v472 = Lit(String(Span { source: Source(0), hash: ID(14979365136090743649), start: 351, end: 380, line: 0, column: 0 }))
+    Call(Fun(471), EntityList { index: 649, unused: PhantomData })
+    Call(Fun(506), EntityList { index: 0, unused: PhantomData })
+    Call(Fun(472), EntityList { index: 0, unused: PhantomData })
+    v473 = Lit(Int(12, 0))
+    v474 = Lit(Int(14, 0))
+    v475 = Lit(String(Span { source: Source(0), hash: ID(14979365136090743649), start: 351, end: 380, line: 0, column: 0 }))
+    Call(Fun(471), EntityList { index: 653, unused: PhantomData })
+    Call(Fun(508), EntityList { index: 0, unused: PhantomData })
+    Call(Fun(472), EntityList { index: 0, unused: PhantomData })
+    v476 = Lit(Int(13, 0))
+    v477 = Lit(Int(14, 0))
+    v478 = Lit(String(Span { source: Source(0), hash: ID(14979365136090743649), start: 351, end: 380, line: 0, column: 0 }))
+    Call(Fun(471), EntityList { index: 657, unused: PhantomData })
+    Call(Fun(510), EntityList { index: 0, unused: PhantomData })
+    Call(Fun(472), EntityList { index: 0, unused: PhantomData })
+    v479 = Lit(Int(14, 0))
+    v480 = Lit(Int(14, 0))
+    v481 = Lit(String(Span { source: Source(0), hash: ID(14979365136090743649), start: 351, end: 380, line: 0, column: 0 }))
+    Call(Fun(471), EntityList { index: 661, unused: PhantomData })
+    Call(Fun(511), EntityList { index: 0, unused: PhantomData })
+    Call(Fun(472), EntityList { index: 0, unused: PhantomData })
+    v482 = Lit(Int(15, 0))
+    v483 = Lit(Int(14, 0))
+    v484 = Lit(String(Span { source: Source(0), hash: ID(14979365136090743649), start: 351, end: 380, line: 0, column: 0 }))
+    Call(Fun(471), EntityList { index: 665, unused: PhantomData })
+    Call(Fun(512), EntityList { index: 0, unused: PhantomData })
+    Call(Fun(472), EntityList { index: 0, unused: PhantomData })
+    v485 = Lit(Int(16, 0))
+    v486 = Lit(Int(14, 0))
+    v487 = Lit(String(Span { source: Source(0), hash: ID(14979365136090743649), start: 351, end: 380, line: 0, column: 0 }))
+    Call(Fun(471), EntityList { index: 669, unused: PhantomData })
+    Call(Fun(513), EntityList { index: 0, unused: PhantomData })
+    Call(Fun(472), EntityList { index: 0, unused: PhantomData })
+    v488 = Lit(Int(17, 0))
+    v489 = Lit(Int(15, 0))
+    v490 = Lit(String(Span { source: Source(0), hash: ID(14979365136090743649), start: 351, end: 380, line: 0, column: 0 }))
+    Call(Fun(471), EntityList { index: 673, unused: PhantomData })
+    Call(Fun(514), EntityList { index: 0, unused: PhantomData })
+    Call(Fun(472), EntityList { index: 0, unused: PhantomData })
+    v491 = Lit(Int(18, 0))
+    v492 = Lit(Int(15, 0))
+    v493 = Lit(String(Span { source: Source(0), hash: ID(14979365136090743649), start: 351, end: 380, line: 0, column: 0 }))
+    Call(Fun(471), EntityList { index: 677, unused: PhantomData })
+    Call(Fun(515), EntityList { index: 0, unused: PhantomData })
+    Call(Fun(472), EntityList { index: 0, unused: PhantomData })
+    v494 = Lit(Int(19, 0))
+    v495 = Lit(Int(15, 0))
+    v496 = Lit(String(Span { source: Source(0), hash: ID(14979365136090743649), start: 351, end: 380, line: 0, column: 0 }))
+    Call(Fun(471), EntityList { index: 681, unused: PhantomData })
+    Call(Fun(516), EntityList { index: 0, unused: PhantomData })
+    Call(Fun(472), EntityList { index: 0, unused: PhantomData })
+    v497 = Lit(Int(20, 0))
+    v498 = Lit(Int(15, 0))
+    v499 = Lit(String(Span { source: Source(0), hash: ID(14979365136090743649), start: 351, end: 380, line: 0, column: 0 }))
+    Call(Fun(471), EntityList { index: 685, unused: PhantomData })
+    Call(Fun(519), EntityList { index: 0, unused: PhantomData })
+    Call(Fun(472), EntityList { index: 0, unused: PhantomData })
+    v500 = Lit(Int(21, 0))
+    v501 = Lit(Int(15, 0))
+    v502 = Lit(String(Span { source: Source(0), hash: ID(14979365136090743649), start: 351, end: 380, line: 0, column: 0 }))
+    Call(Fun(471), EntityList { index: 689, unused: PhantomData })
+    Call(Fun(521), EntityList { index: 0, unused: PhantomData })
+    Call(Fun(472), EntityList { index: 0, unused: PhantomData })
+    v503 = Lit(Int(22, 0))
+    v504 = Lit(Int(15, 0))
+    v505 = Lit(String(Span { source: Source(0), hash: ID(14979365136090743649), start: 351, end: 380, line: 0, column: 0 }))
+    Call(Fun(471), EntityList { index: 693, unused: PhantomData })
+    Call(Fun(522), EntityList { index: 0, unused: PhantomData })
+    Call(Fun(472), EntityList { index: 0, unused: PhantomData })
+    v506 = Lit(Int(0, 0))
+    Return(Some(v506))
+  block56 []:
+    v441 = Lit(Int(0, 0))
+    Jump(block55, EntityList { index: 593, unused: PhantomData })
+
+function u0:0() -> i64 fast {
+    gv0 = symbol colocated u1:8
+    sig0 = (i64, i64, i64) fast
+    sig1 = (b1) fast
+    sig2 = () fast
+    sig3 = (i64) -> i64 fast
+    sig4 = (i64) -> i64 fast
+    sig5 = () fast
+    sig6 = () fast
+    sig7 = () fast
+    sig8 = () fast
+    sig9 = () fast
+    sig10 = () fast
+    sig11 = () fast
+    sig12 = () fast
+    sig13 = () fast
+    sig14 = () fast
+    sig15 = () fast
+    sig16 = () fast
+    sig17 = () fast
+    sig18 = () fast
+    sig19 = () fast
+    fn0 = colocated u0:16 sig0
+    fn1 = colocated u0:33 sig1
+    fn2 = colocated u0:11 sig2
+    fn3 = colocated u0:66 sig3
+    fn4 = colocated u0:65 sig4
+    fn5 = colocated u0:64 sig5
+    fn6 = colocated u0:62 sig6
+    fn7 = colocated u0:61 sig7
+    fn8 = colocated u0:60 sig8
+    fn9 = colocated u0:59 sig9
+    fn10 = colocated u0:57 sig10
+    fn11 = colocated u0:56 sig11
+    fn12 = colocated u0:55 sig12
+    fn13 = colocated u0:54 sig13
+    fn14 = colocated u0:47 sig14
+    fn15 = colocated u0:46 sig15
+    fn16 = colocated u0:45 sig16
+    fn17 = colocated u0:42 sig17
+    fn18 = colocated u0:40 sig18
+    fn19 = colocated u0:34 sig19
+
+block0:
+    v1 = iconst.i64 1
+    v2 = iconst.i64 1
+    v3 = isub v1, v2
+    v4 = iconst.i64 0
+    v5 = icmp eq v3, v4
+    v6 = iconst.i64 3
+    v7 = iconst.i64 9
+    v8 = global_value.i64 gv0
+    call fn0(v6, v7, v8)
+    call fn1(v5)
+    call fn2()
+    v9 = iconst.i64 1
+    v10 = iconst.i64 1
+    v11 = iadd v9, v10
+    v12 = iconst.i64 2
+    v13 = icmp eq v11, v12
+    v14 = iconst.i64 4
+    v15 = iconst.i64 9
+    v16 = global_value.i64 gv0
+    call fn0(v14, v15, v16)
+    call fn1(v13)
+    call fn2()
+    v17 = iconst.i64 1
+    v18 = iconst.i64 1
+    v19 = icmp eq v17, v18
+    brnz v19, block1
+    jump block3
+
+block1:
+    v20 = iconst.i64 1
+    jump block2(v20)
+
+block2(v0: i64):
+    v21 = iconst.i64 1
+    v22 = icmp eq v0, v21
+    v23 = iconst.i64 5
+    v24 = iconst.i64 9
+    v25 = global_value.i64 gv0
+    call fn0(v23, v24, v25)
+    call fn1(v22)
+    call fn2()
+    v26 = iconst.i64 10
+    v27 = iconst.i64 6
+    v28 = iconst.i64 13
+    v29 = global_value.i64 gv0
+    call fn0(v27, v28, v29)
+    v30 = call fn3(v26)
+    call fn2()
+    v31 = iconst.i64 10
+    v32 = iconst.i64 6
+    v33 = iconst.i64 29
+    v34 = global_value.i64 gv0
+    call fn0(v32, v33, v34)
+    v35 = call fn4(v31)
+    call fn2()
+    v36 = icmp eq v30, v35
+    v37 = iconst.i64 6
+    v38 = iconst.i64 9
+    v39 = global_value.i64 gv0
+    call fn0(v37, v38, v39)
+    call fn1(v36)
+    call fn2()
+    v40 = iconst.i64 8
+    v41 = iconst.i64 14
+    v42 = global_value.i64 gv0
+    call fn0(v40, v41, v42)
+    call fn5()
+    call fn2()
+    v43 = iconst.i64 9
+    v44 = iconst.i64 14
+    v45 = global_value.i64 gv0
+    call fn0(v43, v44, v45)
+    call fn6()
+    call fn2()
+    v46 = iconst.i64 10
+    v47 = iconst.i64 14
+    v48 = global_value.i64 gv0
+    call fn0(v46, v47, v48)
+    call fn7()
+    call fn2()
+    v49 = iconst.i64 11
+    v50 = iconst.i64 14
+    v51 = global_value.i64 gv0
+    call fn0(v49, v50, v51)
+    call fn8()
+    call fn2()
+    v52 = iconst.i64 12
+    v53 = iconst.i64 14
+    v54 = global_value.i64 gv0
+    call fn0(v52, v53, v54)
+    call fn9()
+    call fn2()
+    v55 = iconst.i64 13
+    v56 = iconst.i64 14
+    v57 = global_value.i64 gv0
+    call fn0(v55, v56, v57)
+    call fn10()
+    call fn2()
+    v58 = iconst.i64 14
+    v59 = iconst.i64 14
+    v60 = global_value.i64 gv0
+    call fn0(v58, v59, v60)
+    call fn11()
+    call fn2()
+    v61 = iconst.i64 15
+    v62 = iconst.i64 14
+    v63 = global_value.i64 gv0
+    call fn0(v61, v62, v63)
+    call fn12()
+    call fn2()
+    v64 = iconst.i64 16
+    v65 = iconst.i64 14
+    v66 = global_value.i64 gv0
+    call fn0(v64, v65, v66)
+    call fn13()
+    call fn2()
+    v67 = iconst.i64 17
+    v68 = iconst.i64 15
+    v69 = global_value.i64 gv0
+    call fn0(v67, v68, v69)
+    call fn14()
+    call fn2()
+    v70 = iconst.i64 18
+    v71 = iconst.i64 15
+    v72 = global_value.i64 gv0
+    call fn0(v70, v71, v72)
+    call fn15()
+    call fn2()
+    v73 = iconst.i64 19
+    v74 = iconst.i64 15
+    v75 = global_value.i64 gv0
+    call fn0(v73, v74, v75)
+    call fn16()
+    call fn2()
+    v76 = iconst.i64 20
+    v77 = iconst.i64 15
+    v78 = global_value.i64 gv0
+    call fn0(v76, v77, v78)
+    call fn17()
+    call fn2()
+    v79 = iconst.i64 21
+    v80 = iconst.i64 15
+    v81 = global_value.i64 gv0
+    call fn0(v79, v80, v81)
+    call fn18()
+    call fn2()
+    v82 = iconst.i64 22
+    v83 = iconst.i64 15
+    v84 = global_value.i64 gv0
+    call fn0(v82, v83, v84)
+    call fn19()
+    call fn2()
+    v85 = iconst.i64 0
+    return v85
+
+block3:
+    v86 = iconst.i64 0
+    jump block2(v86)
+}
+
+
+
+  block0 [v0, v1]:
+    v2 = Zeroed
+    v3 = VarDecl(v2)
+    v4 = Lit(Int(1, 0))
+    v5 = GlobalLoad(gv2)
+    v4 = Assign(v5)
+    v6 = Call(Fun(498), EntityList { index: 0, unused: PhantomData })
+    v6 = Assign(v3)
+    Return(Some(v3))
+
+function u0:0(i64, i64) -> i64 fast {
+    gv0 = symbol colocated u1:7
+    sig0 = () -> i64 fast
+    fn0 = colocated u0:68 sig0
+
+block0(v0: i64, v1: i64):
+    v7 = iconst.i64 0
+    v3 -> v7
+    v2 = iconst.i64 0
+    v4 = iconst.i64 1
+    v5 = global_value.i64 gv0
+    store v4, v5
+    v6 = call fn0()
+    return v6
+}
+
+output:
+ok
+ok
+ok
+ok
+ok
+ok
+ok
+ok
+Hello, World!ok
+ok
+ok
+ok
+ok
+ok
+ok
+ok
+ok
+ok
+
+:end

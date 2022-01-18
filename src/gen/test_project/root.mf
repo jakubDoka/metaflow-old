@@ -114,9 +114,9 @@ fun test_case_5:
     b += 1 as uint
     
 impl Point:
-  fun init(v: &Point, x: int, y: int) -> Point:
-    (*v).x = x
-    (*v).y = y
+  fun init(v: &var Point, x: int, y: int) -> Point:
+    v.x = x
+    v.y = y
     pass
 
 fun test_case_6:
@@ -191,7 +191,7 @@ fun test_case_10:
 # based of this allocated so its addressable
 fun test_case_11:
   var a = 1
-  var b = &a
+  var b = &var a
   *b = 0
   assert(a == 0)
     

@@ -897,7 +897,9 @@ impl Display for SpanDisplay<'_> {
         write!(
             f,
             "{}:{}:{}",
-            self.data.line, self.data.column, self.state.sources[self.data.source].name
+            self.state.sources[self.data.source].name, 
+            self.data.line, 
+            self.data.column,  
         )
     }
 }

@@ -241,12 +241,12 @@ fun pub panic(msg: &u8):
     
     var frame = stacktrace[i]
     
+    buffer.print(frame.file)
+    buffer.push('\n'.u8())
     buffer.print_int(frame.line)
     buffer.push(':'.u8())
     buffer.print_int(frame.column)
-    buffer.push(' '.u8())
-    buffer.print(frame.file)
-    buffer.push('\n'.u8())
+    buffer.push(':'.u8())
 
     i += 1
 
