@@ -46,7 +46,7 @@ impl pub Seq[u8]:
         break
       var digit = value % 10
       value = value / 10
-      *s.get_unchecked(prev_len + i - 1) = (digit.u32() + '0').u8()
+      *s.get_unchecked_var(prev_len + i - 1) = (digit.u32() + '0').u8()
       i -= 1
   
   fun print(s: &var Self, value: &u8):
@@ -117,7 +117,7 @@ impl pub [T] Seq[T]:
       s.cap = new_len * 2
       s.data = realloc(s.data as &var u8, s.cap * sizeof::[T]()) as &var T
       pass
-    *s.get_unchecked(s.len) = value
+    *s.get_unchecked_var(s.len) = value
     s.len = new_len
   
   fun pop(s: &var Self) -> Option[T]:

@@ -163,6 +163,6 @@ fun arrays -> int:
   for:
     if i >= a.len():
       break
-    (&a)[i] = b[i]
+    a[i] = b[i]
     i += 1
   return 0

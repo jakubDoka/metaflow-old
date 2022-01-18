@@ -187,6 +187,8 @@ fun test_case_10:
 
   assert(sum == 11 * 5)
 
+# using pointer mutate value on stack, this value is 
+# based of this allocated so its addressable
 fun test_case_11:
   var a = 1
   var b = &a
@@ -195,10 +197,11 @@ fun test_case_11:
     
 let a = 1
 
+# accessing global variable
 fun test_case_12:
   assert(a == 1)
     
-    
+
 attr inline
 fun something(a, b: int) -> int:
   return (a + b) - 2 * a
@@ -210,15 +213,20 @@ fun even_worse(a, b: int) -> int:
   else:
     return something(b, a)
 
+# Testing the inlining capability
 fun test_case_13:
   assert(even_worse(1, 1) == 0)
 
 fun test_fun -> int: 1
 
+# testing function pointers, the syntax is weird but 
+# it kind of makes sense
 fun test_case_14:
   let fun_pointer = test_fun
   assert((*fun_pointer)() == 1)
 
+# Test verifies that 'Weird' with size of 3 is correctly moved
+# into array.
 fun test_case_15:
   var weird: Weird
   var array = [weird, weird]

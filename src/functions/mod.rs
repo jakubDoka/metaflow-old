@@ -516,7 +516,11 @@ impl<'a> FParser<'a> {
         let target = self.expr(fun, target, body)?;
         let index = self.expr(fun, index, body)?;
         let args = &[target, index];
-        let span = self.state.index_span;
+        let span = if self.context.in_var_ref { 
+            self.state.index_var_span
+        } else { 
+            self.state.index_span
+        };
         let result = self
             .call_low(fun, None, None, FUN_SALT, span, &[], args, token, body)?
             .ok_or_else(|| FError::new(FEKind::ExpectedValue, token))?;
@@ -577,20 +581,30 @@ impl<'a> FParser<'a> {
         let &AstEnt { sons, token, .. } = module_ent.load(ast);
         let value = module_ent.get(sons, 0);
         
-        let prev = self.context.in_assign;
+        let prev_in_var_ref = self.context.in_var_ref;
+        let prev_in_assign = self.context.in_assign;
         self.context.in_assign = true;
+        self.context.in_var_ref = mutable;
         let value = self.expr(fun, value, body)?;
-        self.context.in_assign = prev;
+        self.context.in_assign = prev_in_assign;
+        self.context.in_var_ref = prev_in_var_ref;
 
-        let reference = self.ref_expr_low(fun, value, token, mutable, body);
-
-        Ok(Some(reference))
+        self.ref_expr_low(fun, value, token, mutable, body).map(|v| Some(v))
     }
 
-    fn ref_expr_low(&mut self, fun: Fun, value: Value, token: Token, mutable: bool, body: &mut FunBody) -> Value {
+    fn ref_expr_low(&mut self, fun: Fun, value: Value, token: Token, mutable: bool, body: &mut FunBody) -> Result<Value> {
         let module = self.funs[fun].module;
         let module_ent = &self.state.modules[module];
-        let ty = module_ent.type_of_value(value);
+        let ValueEnt {
+            ty,
+            mutable: prev_mutable,
+            ..
+        } = module_ent.values[value];
+        
+        if !prev_mutable && mutable {
+            return Err(FError::new(FEKind::MutableToImmutable, token));
+        }
+
         let ty = self.pointer_of(ty, mutable);
         let module_ent = &mut self.state.modules[module];
         let reference = module_ent.reference(ty, value, token, body);
@@ -618,7 +632,7 @@ impl<'a> FParser<'a> {
             break;
         }
 
-        reference
+        Ok(reference)
     }
 
     fn deref_expr(&mut self, fun: Fun, ast: Ast, body: &mut FunBody) -> ExprResult {
@@ -645,9 +659,10 @@ impl<'a> FParser<'a> {
         let module_ent = &self.state.modules[module];
         let ty = module_ent.type_of_value(target);
         let pointed = self.pointer_base(ty, token)?;
+        let mutable = self.pointer_mutability(ty);
 
         let module_ent = &mut self.state.modules[module];
-        let value = module_ent.add_value(pointed, true);
+        let value = module_ent.add_value(pointed, mutable);
         module_ent.add_inst(IKind::Deref(target, in_assign), value, token, body);
 
         Ok(value)
@@ -1147,7 +1162,7 @@ impl<'a> FParser<'a> {
                     values[0] = self.deref_expr_low(fun, values[0], token, body)?;
                 } else if self.t_state.pointer_base(first_arg_ty) == Some(first_real_arg_ty) {
                     let mutable = self.pointer_mutability(first_arg_ty);
-                    values[0] = self.ref_expr_low(fun, values[0], token, mutable, body);
+                    values[0] = self.ref_expr_low(fun, values[0], token, mutable, body)?;
                 } else { 
                     // adjust mutability if '&var' instead of '&' is passed 
                     let mutability_mismatch = matches!(
@@ -1622,10 +1637,13 @@ impl<'a> FParser<'a> {
         let target = module_ent.get(sons, 1);
         let value = module_ent.get(sons, 2);
 
+        let prev_in_var_ref = self.context.in_var_ref;
         let prev_in_assign = self.context.in_assign;
         self.context.in_assign = true;
+        self.context.in_var_ref = true;
         let target = self.expr(fun, target, body)?;
         self.context.in_assign = prev_in_assign;
+        self.context.in_var_ref = prev_in_var_ref;
 
         let value = self.expr(fun, value, body)?;
 
@@ -2572,7 +2590,7 @@ crate::def_displayer!(
                 writeln!(f, "  {}: {}", self.state.display(&name), TypeDisplay::new(&self.state, ty))?;
             }
         },
-        FEKind::MutableRefOfImmutable => {
+        FEKind::MutableToImmutable => {
             writeln!(f, "cannot take mutable reference of immutable value")?;
         },
         FEKind::MissingElseBranch => {
@@ -2709,6 +2727,7 @@ impl FError {
 
 #[derive(Debug)]
 pub enum FEKind {
+    MutableToImmutable,
     FunPointerArgMismatch(Ty, Vec<Ty>),
     ExpectedFunctionPointer,
     FunArgMismatch(Fun, Vec<Ty>),
@@ -2740,7 +2759,6 @@ pub enum FEKind {
     UndefinedVariable,
     UnresolvedType,
     UnknownField(Ty),
-    MutableRefOfImmutable,
     MissingElseBranch,
     ContinueOutsideLoop,
     BreakOutsideLoop,
@@ -2899,6 +2917,7 @@ pub struct FState {
     pub globals: Table<GlobalValue, GlobalEnt>,
 
     pub index_span: Span,
+    pub index_var_span: Span,
     pub do_stacktrace: bool,
 
     pub pop_fun_hahs: ID,
@@ -2914,6 +2933,7 @@ impl Default for FState {
             funs: Table::new(),
             generic_funs: SparseMap::new(),
             index_span: Span::default(),
+            index_var_span: Span::default(),
             globals: Table::new(),
             do_stacktrace: false,
             
@@ -2931,9 +2951,8 @@ impl Default for FState {
             .add(ID(0))
             .add(state.modules[BUILTIN_MODULE].id);
 
-        let span = state.builtin_span("__index__");
-
-        state.index_span = span;
+        state.index_span = state.builtin_span("__index__");
+        state.index_var_span = state.builtin_span("__index_var__");
 
         let module_id = BUILTIN_MODULE;
 
@@ -3075,6 +3094,7 @@ pub struct FContext {
     pub label_insts: ListPool<Inst>,
 
     pub in_assign: bool,
+    pub in_var_ref: bool,
 
     pub unresolved_globals: Vec<GlobalValue>,
     pub resolved_globals: Vec<GlobalValue>,
