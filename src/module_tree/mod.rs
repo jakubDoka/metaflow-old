@@ -6,13 +6,14 @@ use std::time::SystemTime;
 use cranelift::codegen::ir::{Block, GlobalValue, Inst, Value};
 use cranelift::codegen::packed_option::PackedOption;
 use cranelift::entity::{packed_option::ReservedValue, EntityList, EntityRef};
-use cranelift::entity::{ListPool, PrimaryMap, EntitySet};
+use cranelift::entity::{EntitySet, ListPool, PrimaryMap};
 use cranelift::module::DataId;
 use quick_proc::{QuickDefault, QuickSer, RealQuickSer};
 
 use crate::ast::{AContext, AError, AErrorDisplay, AMainState, AParser, AState, Dep, Vis};
 use crate::entities::{
-    BlockEnt, Fun, FunBody, IKind, InstEnt, Manifest, Mod, Source, Ty, ValueEnt, BUILTIN_MODULE, TypeEnt, TKind, Unused,
+    BlockEnt, Fun, FunBody, IKind, InstEnt, Manifest, Mod, Source, TKind, Ty, TypeEnt, Unused,
+    ValueEnt, BUILTIN_MODULE,
 };
 use crate::incr::{self, IncrementalData};
 use crate::lexer::Token;
@@ -115,7 +116,7 @@ impl<'a> MTParser<'a> {
             let mut parser = AParser::new(self.state, &mut module.a_state, self.context);
             parser.take_imports(&mut imports).map_err(Into::into)?;
             parser.parse().map_err(Into::into)?;
-            self.context.lines_of_code += module.line; 
+            self.context.lines_of_code += module.line;
 
             for import in imports.drain(..) {
                 let path = self.display(&import.path);
@@ -182,19 +183,22 @@ impl<'a> MTParser<'a> {
     }
 
     fn propagate_changes(&mut self, order: &[Mod]) {
+        let mut globals_to_remove = vec![];
         let mut dependant = self.context.pool.get();
         for &module_id in order {
             let module = &mut self.modules[module_id];
-            if module.clean {
+            if module.clean || module_id == BUILTIN_MODULE {
                 continue;
             }
-            
+
+            globals_to_remove.extend_from_slice(module.used_globals());
             dependant.extend_from_slice(module.dependant());
             module.clear();
             for dep in dependant.drain(..) {
                 self.modules[dep].clean = false;
             }
         }
+        self.context.globals_to_remove = globals_to_remove;
     }
 
     fn load_module(
@@ -245,10 +249,14 @@ impl<'a> MTParser<'a> {
             .map_err(|err| MTError::new(MTEKind::FileReadError(path_buffer.clone(), err), token))?
             .modified()
             .ok();
+        
+        let content = std::fs::read_to_string(&path_buffer)
+            .map_err(|err| MTError::new(MTEKind::FileReadError(path_buffer.clone(), err), token))?;
 
         let last_module = if let Some(&module) = self.modules.index(id) {
             let source = self.modules[module].a_state.l_state.source;
             if modified == Some(self.sources[source].modified) {
+                self.sources[source].content = content;
                 path_buffer.clear();
                 return Ok(module);
             }
@@ -256,9 +264,6 @@ impl<'a> MTParser<'a> {
         } else {
             None
         };
-
-        let content = std::fs::read_to_string(&path_buffer)
-            .map_err(|err| MTError::new(MTEKind::FileReadError(path_buffer.clone(), err), token))?;
 
         let source = SourceEnt {
             name: path_buffer.to_str().unwrap().to_string(),
@@ -288,7 +293,7 @@ impl<'a> MTParser<'a> {
             debug_assert!(shadowed.is_none());
             m
         };
-        
+
         path_buffer.clear();
 
         Ok(module_id)
@@ -572,14 +577,13 @@ where
     }
 }
 
-#[derive(Debug, Clone, QuickDefault, QuickSer)]
+#[derive(Debug, Clone, Default, QuickSer)]
 pub struct ManifestEnt {
     pub id: ID,
     pub base_path: String,
     pub name: Span,
     pub root_path: Span,
     pub deps: Vec<(Dep, Manifest)>,
-    #[default(Source::new(0))]
     pub source: Source,
 }
 
@@ -659,12 +663,16 @@ impl IncrementalData for MTState {
         for (_, module) in self.modules.iter_mut() {
             module.clean = true;
         }
+        for (_, source) in self.sources.iter_mut() {
+            source.content.clear();
+        }
         self.module_order.clear();
     }
 }
 
 #[derive(Debug, Clone, Default)]
 pub struct MTContext {
+    pub globals_to_remove: Vec<GlobalValue>,
     pub seen_manifests: EntitySet<Manifest>,
     pub seen_modules: EntitySet<Mod>,
     pub a_context: AContext,
@@ -687,7 +695,7 @@ pub struct ModEnt {
     pub manifest: Manifest,
 
     // Lists hold all items that either belong to this module,
-    // or are instantiated by this module. They can contain 
+    // or are instantiated by this module. They can contain
     // duplicates, but this is expected behavior.
     pub functions: EntityList<Fun>,
     pub types: EntityList<Ty>,
@@ -839,7 +847,7 @@ impl ModEnt {
     /// it leaves some fields untouched, as they will be used in higher code
     pub fn clear(&mut self) {
         self.entry_point = PackedOption::default();
-        
+
         // we need to get rid of all invalid entity lists
         self.dependant.take();
         self.functions.take();
@@ -946,14 +954,21 @@ impl ModEnt {
         self.values.push(value_ent)
     }
 
-    pub fn verify_args(&self, types: &Table<Ty, TypeEnt>, args: &[Ty], sig_args: EntityList<Ty>) -> bool {
+    pub fn verify_args(
+        &self,
+        types: &Table<Ty, TypeEnt>,
+        args: &[Ty],
+        sig_args: EntityList<Ty>,
+    ) -> bool {
         let slice = self.type_slice(sig_args);
-        slice.len() != args.len() || slice.iter()
-            .zip(args.iter())
-            .any(|(&ty, &arg)| arg != ty && !matches!(
-                (&types[ty].kind, &types[arg].kind),
-                (&TKind::Pointer(_, a), &TKind::Pointer(_, b)) if b && !a,
-            ))
+        slice.len() != args.len()
+            || slice.iter().zip(args.iter()).any(|(&ty, &arg)| {
+                arg != ty
+                    && !matches!(
+                        (&types[ty].kind, &types[arg].kind),
+                        (&TKind::Pointer(_, a), &TKind::Pointer(_, b)) if b && !a,
+                    )
+            })
     }
 
     pub fn clear_types(&mut self, target: &mut EntityList<Ty>) {

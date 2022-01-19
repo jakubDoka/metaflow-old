@@ -127,7 +127,7 @@ impl<'a> Lexer<'a> {
                 self.advance();
                 number = self.parse_number_err(2)?.0;
                 (0, 0, false)
-            } 
+            }
             _ => (0, 0, false),
         };
         let next_char = self.peek().unwrap_or('\0');
@@ -897,9 +897,7 @@ impl Display for SpanDisplay<'_> {
         write!(
             f,
             "{}:{}:{}",
-            self.state.sources[self.data.source].name, 
-            self.data.line, 
-            self.data.column,  
+            self.state.sources[self.data.source].name, self.data.line, self.data.column,
         )
     }
 }

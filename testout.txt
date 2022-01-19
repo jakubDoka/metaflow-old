@@ -2187,48 +2187,4 @@ Fun(None) "fun some_string -> &u8:\r\n  \"\r\nhello there\r\n  \"":
   None
  Group ":":
   Lit "\"\r\nhello there\r\n  \""
-Ident "uint"
-
-FunHeader(Normal) "fun(uint)":
- None
- Ident "uint"
- None
- None
-
-FunHeader(Normal) "fun(uint)":
- None
- Ident "uint"
- None
- None
-
-FunHeader(Normal) "fun(uint)":
- None
- Ident "uint"
- None
- None
-
-FunHeader(Normal) "fun(uint)":
- None
- Ident "uint"
- None
- None
-
-FunHeader(Normal) "fun -> uint":
- None
- Ident "uint"
- None
-
-Array "[":
- Ident "int"
- Lit "8"
-
-Ident "i32"
-
-Ident "Bogus"
-
-Ref(false) "&Focus":
- Ident "Focus"
-
-Ident "Gro"
-
-removing type "Goof"
+0.0430519

@@ -6,7 +6,7 @@
 
 pub mod ast;
 pub mod entities;
-//pub mod functions;
+pub mod functions;
 //pub mod gen;
 pub mod incr;
 pub mod lexer;
@@ -39,8 +39,8 @@ fn run() {
     match gen::compile(args) {
         Ok(line_count) => {
             println!(
-                "Successfully compiled! ({} lines of code in {}s)", 
-                line_count, 
+                "Successfully compiled! ({} lines of code in {}s)",
+                line_count,
                 now.elapsed().as_secs_f32()
             );
         },
@@ -58,6 +58,6 @@ fn test() {
     ast::test();
     module_tree::test();
     types::test();
-    //functions::test();
+    functions::test();
     //gen::test();
 }

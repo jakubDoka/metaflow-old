@@ -11,7 +11,7 @@ struct Gro:
   s, t, u: i32
 
 struct IntOption:
-  #o: module::Option[int]
+  o: module::Option[int]
 
 struct SomeArray:
   a: [int, 8]
@@ -24,4 +24,6 @@ struct Interface:
   div: fun(uint)
   get: fun -> uint
 
-struct Cool#: g: Goof[Interface]
+struct Cool: 
+  g: Goof[Interface]
+  f: StackFrame

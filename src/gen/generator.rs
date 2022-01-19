@@ -25,7 +25,6 @@ use cranelift::{
 use quick_proc::{QuickDefault, QuickSer, RealQuickSer};
 
 use std::ops::{Deref, DerefMut};
-
 use crate::entities::{BlockEnt, TKind, CrTypeWr, TypeEnt};
 use crate::{
     entities::{Fun, IKind, InstEnt, Mod, Ty, ValueEnt},

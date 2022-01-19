@@ -2,7 +2,7 @@ use std::ops::{Index, IndexMut};
 
 use cranelift::{
     codegen::entity::EntityRef,
-    entity::{SecondaryMap, PoolMap},
+    entity::{PoolMap, SecondaryMap},
 };
 use quick_proc::QuickSer;
 
@@ -393,10 +393,8 @@ impl<I: EntityRef + Default, T: Default> Table<I, T> {
     }
 
     pub fn len(&self) -> usize {
-        self.map.len()
+        self.data.len()
     }
-
-    
 }
 
 impl<I: EntityRef + Default, T: Default> Table<I, T> {

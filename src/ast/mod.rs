@@ -225,10 +225,7 @@ impl<'a> AParser<'a> {
         self.expect_str(TKind::Colon, "expected ':' after 'impl' type")?;
         self.next()?;
         self.walk_block(|s| {
-            s.top_item(
-                impl_ast,
-                "expected 'fun' | 'attr' | 'let' | 'var' | '##'",
-            )
+            s.top_item(impl_ast, "expected 'fun' | 'attr' | 'let' | 'var' | '##'")
         })?;
 
         Ok(())
@@ -236,15 +233,10 @@ impl<'a> AParser<'a> {
 
     fn top_item(&mut self, impl_ast: Ast, message: &'static str) -> Result {
         let kind = self.token.kind;
-        let collect_attributes =
-            matches!(kind, 
-                TKind::Union |
-                TKind::Enum |
-                TKind::Struct | 
-                TKind::Fun |
-                TKind::Var |
-                TKind::Let
-            );
+        let collect_attributes = matches!(
+            kind,
+            TKind::Union | TKind::Enum | TKind::Struct | TKind::Fun | TKind::Var | TKind::Let
+        );
 
         let attributes = if collect_attributes {
             self.context
@@ -325,7 +317,7 @@ impl<'a> AParser<'a> {
 
         let name = self.ident()?;
         self.push(&mut ast.sons, name);
-        
+
         let variants = if self.token == TKind::Colon {
             self.block(Self::ident)?
         } else {
@@ -344,7 +336,7 @@ impl<'a> AParser<'a> {
         let vis = self.vis()?;
         ast_ent.kind = if union {
             AKind::Union(vis)
-        } else { 
+        } else {
             AKind::Struct(vis)
         };
 
@@ -791,13 +783,7 @@ impl<'a> AParser<'a> {
                     let mut ast = self.ast_ent(AKind::Tuple);
                     self.push(&mut ast.sons, expr);
                     self.next()?;
-                    self.list(
-                        &mut ast,
-                        TKind::None,
-                        TKind::Comma,
-                        TKind::RPar,
-                        Self::expr,
-                    )?;
+                    self.list(&mut ast, TKind::None, TKind::Comma, TKind::RPar, Self::expr)?;
                     self.add(ast)
                 } else {
                     self.expect_str(TKind::RPar, "expected ')'")?;
@@ -1655,7 +1641,7 @@ impl Vis {
         match (self, other) {
             (_, Vis::Public) | (Vis::Public, Vis::None) => Vis::Public,
             (_, Vis::Private) | (Vis::Private, Vis::None) => Vis::Private,
-            (Vis::None, Vis::None) => Vis::None,
+            _ => Vis::None,
         }
     }
 }

@@ -1,11 +1,7 @@
-use std::ops::{Deref, DerefMut};
-use std::fmt::Write;
-use crate::ast::{AError, AErrorDisplay, AKind, AstEnt, Vis, AstDisplay};
+use crate::ast::{AError, AErrorDisplay, AKind, AstEnt, Vis};
 use crate::entities::{
-    Ast, Mod, Ty, 
-    BUILTIN_MODULE, TypeConst, Signature, 
-    TKind, TypeEnt, CallConv, 
-    SField, SType, SKind, CrTypeWr,
+    Ast, CallConv, CrTypeWr, Mod, SField, SKind, SType, Signature, TKind, Ty, TypeConst, TypeEnt,
+    BUILTIN_MODULE,
 };
 use crate::incr::{self, IncrementalData};
 use crate::lexer::{TKind as LTKind, Token, TokenDisplay};
@@ -18,9 +14,11 @@ use cranelift::codegen::ir::Signature as CrSignature;
 use cranelift::codegen::ir::{types::*, AbiParam, ArgumentPurpose};
 use cranelift::codegen::isa::TargetIsa;
 use cranelift::codegen::packed_option::PackedOption;
-use cranelift::entity::{EntityList, EntitySet};
 use cranelift::entity::{packed_option::ReservedValue, EntityRef};
+use cranelift::entity::{EntityList, EntitySet};
 use quick_proc::{QuickSer, RealQuickSer};
+use std::fmt::Write;
+use std::ops::{Deref, DerefMut};
 
 type Result<T = ()> = std::result::Result<T, TError>;
 
@@ -151,14 +149,14 @@ impl<'a> TParser<'a> {
                 let element_size = self.types[element].size;
                 self.types[ty].size = Size::new(size, size).mul(element_size);
             }
-            TKind::Enumeration(_) |
-            TKind::Pointer(..) | 
-            TKind::Builtin(..) | 
-            TKind::FunPointer(..) => (),
-            
-            TKind::Constant(_) |
-            TKind::Generic(_) |
-            TKind::Unresolved(_) => unreachable!("{:?}", ty_ent.kind),
+            TKind::Enumeration(_)
+            | TKind::Pointer(..)
+            | TKind::Builtin(..)
+            | TKind::FunPointer(..) => (),
+
+            TKind::Constant(_) | TKind::Generic(_) | TKind::Unresolved(_) => {
+                unreachable!("{:?}", ty_ent.kind)
+            }
         }
 
         Ok(())
@@ -251,7 +249,6 @@ impl<'a> TParser<'a> {
                     &AKind::StructField(vis, embedded) => (vis, embedded),
                     _ => unreachable!("{:?}", kind),
                 };
-                println!("{}", AstDisplay::new(self.state, module_ent, type_ast));
                 let ty = self.ty(module, type_ast, depth)?;
                 let hint = token;
                 let module_ent = &self.modules[module];
@@ -305,13 +302,12 @@ impl<'a> TParser<'a> {
             _ => unreachable!("{:?}", kind),
         }?;
 
-        let TypeEnt {
-            vis, module, ..
-        } = self.types[ty];
+        let TypeEnt { vis, module, .. } = self.types[ty];
 
         if !self.state.can_access(module, module, vis) {
             return Err(TError::new(TEKind::VisibilityViolation, token));
         }
+
 
         Ok(ty)
     }
@@ -431,29 +427,36 @@ impl<'a> TParser<'a> {
             }
             _ => unreachable!("{:?}", kind),
         };
+        
 
         let TypeEnt {
-            vis, name, attrs, module, id: ty_id, ..
+            vis,
+            name,
+            attrs,
+            module: original_module,
+            id: ty_id,
+            ..
         } = self.types[ty];
 
+        
         let mut params = EntityList::new();
         let module_ent = &mut self.modules[module];
         let sons = module_ent.sons(ast);
         let ast_len = module_ent.len(sons);
 
-        self.modules[module].push_type(&mut params, ty);
+        self.modules[original_module].push_type(&mut params, ty);
 
         let mut id = TYPE_SALT.add(ty_id);
         for i in 1..ast_len {
             let ty = self.modules[module].get(sons, i);
             let ty = self.ty(module, ty, depth)?;
-            id = id.add(ty_id);
-            self.modules[module].push_type(&mut params, ty);
+            id = id.add(self.types[ty].id);
+            self.modules[original_module].push_type(&mut params, ty);
         }
-        id = id.add(self.modules[module].id);
+        id = id.add(self.modules[original_module].id);
 
-        if let Some(id) = self.find_computed(id) {
-            self.modules[module].clear_type_slice(&mut params);
+        if let Some(id) = self.state.find_computed(self.module, id) {
+            self.modules[original_module].clear_type_slice(&mut params);
             return Ok(id);
         }
 
@@ -471,7 +474,7 @@ impl<'a> TParser<'a> {
 
         let type_ent = TypeEnt {
             id,
-            module,
+            module: original_module,
             vis,
             params,
             kind: TKind::Unresolved(ast),
@@ -482,7 +485,7 @@ impl<'a> TParser<'a> {
             align: Size::ZERO,
         };
 
-        let ty = self.module.add_type(self.module, type_ent);
+        let ty = self.state.add_type(self.module, type_ent);
 
         self.context.unresolved.push((ty, depth));
 
@@ -782,7 +785,7 @@ impl TState {
             let field = SField {
                 id: ID::new(&filed_name),
                 ty,
-                
+
                 embedded: false,
                 vis: Vis::Public,
                 offset: Size::ZERO,
@@ -794,7 +797,7 @@ impl TState {
 
         id = id.add(self.modules[BUILTIN_MODULE].id);
 
-        if let Some(ty) = self.find_computed(id) {
+        if let Some(ty) = self.find_computed(source_module, id) {
             return ty;
         }
 
@@ -808,7 +811,7 @@ impl TState {
             module: BUILTIN_MODULE,
             vis: Vis::Public,
             kind: TKind::Structure(s_ent),
-            
+
             ..Default::default()
         };
 
@@ -818,16 +821,14 @@ impl TState {
     }
 
     pub fn pointer_of(&mut self, source_module: Mod, ty: Ty, mutable: bool) -> Ty {
-        let TypeEnt {
-            module, id, ..
-        } = self.types[ty];
+        let TypeEnt { module, id, .. } = self.types[ty];
         let name = if mutable { "&var " } else { "&" };
         let id = TYPE_SALT
             .add(ID::new(name))
             .add(id)
             .add(self.modules[module].id);
 
-        if let Some(ty) = self.find_computed(id) {
+        if let Some(ty) = self.find_computed(source_module, id) {
             return ty;
         }
 
@@ -849,15 +850,17 @@ impl TState {
 
     pub fn array_of(&mut self, source_module: Mod, element: Ty, length: usize) -> Ty {
         let TypeEnt {
-            id, module, size, align, vis, ..
+            id,
+            module,
+            size,
+            align,
+            vis,
+            ..
         } = self.types[element];
 
-        let id = TYPE_SALT
-            .add(ID::new("[]"))
-            .add(id)
-            .add(ID(length as u64));
+        let id = TYPE_SALT.add(ID::new("[]")).add(id).add(ID(length as u64));
 
-        if let Some(ty) = self.find_computed(id) {
+        if let Some(ty) = self.find_computed(source_module, id) {
             return ty;
         }
 
@@ -880,7 +883,7 @@ impl TState {
 
         let id = TYPE_SALT.add(ID::new(&display));
 
-        if let Some(ty) = self.find_computed(id) {
+        if let Some(ty) = self.find_computed(source_module, id) {
             return ty;
         }
 
@@ -896,9 +899,9 @@ impl TState {
         self.add_type(source_module, ty_ent)
     }
 
-    /// Creates a function pointer type of given `sig`. `module` is the module where signature 
+    /// Creates a function pointer type of given `sig`. `module` is the module where signature
     /// has ist argument slice stored. `source_module` is the module where the function pointer is
-    /// used. 
+    /// used.
     pub fn function_type_of(&mut self, source_module: Mod, module: Mod, sig: Signature) -> Ty {
         let mut id = TYPE_SALT.add(ID::new("fun")).add(ID(unsafe {
             std::mem::transmute::<_, u8>(sig.call_conv)
@@ -914,7 +917,7 @@ impl TState {
 
         id = id.add(self.modules[BUILTIN_MODULE].id);
 
-        if let Some(ty) = self.find_computed(id) {
+        if let Some(ty) = self.find_computed(source_module, id) {
             return ty;
         }
 
@@ -933,12 +936,15 @@ impl TState {
         self.add_type(source_module, type_ent)
     }
 
-    pub fn find_computed(&self, id: ID) -> Option<Ty> {
-        self.types.index(id).map(|&ty| if self.used.contains(ty) {
-            Some(ty)
-        } else {
-            None
-        }).flatten()
+    pub fn find_computed(&mut self, source_module: Mod, id: ID) -> Option<Ty> {
+        if let Some(&ty) = self.types.index(id) {
+            if self.used.contains(ty) {
+                self.modules[source_module].add_type(ty);
+                return Some(ty);
+            }             
+        }
+
+        None
     }
 
     pub fn add_type(&mut self, source_module: Mod, ent: TypeEnt) -> Ty {
@@ -947,9 +953,14 @@ impl TState {
         id
     }
 
-    pub fn add_type_low(&mut self, source_module: Mod, ent: TypeEnt, allow_shadow: bool) -> (Option<TypeEnt>, Ty) {
+    pub fn add_type_low(
+        &mut self,
+        source_module: Mod,
+        ent: TypeEnt,
+        allow_shadow: bool,
+    ) -> (Option<TypeEnt>, Ty) {
         let (mut shadow, ty) = self.types.insert(ent.id, ent);
-        
+
         // this is the case where we but its actually
         // a garbage from previous compilation
         if !self.used.contains(ty) {
@@ -993,7 +1004,6 @@ impl TState {
     fn remove_type(&mut self, ty: Ty) {
         let id = self.types[ty].id;
         let mut ent = self.types.remove(id).unwrap();
-        println!("removing type {:?}", self.display(&ent.name));
         self.modules[ent.module].clear_types(&mut ent.params);
     }
 }
@@ -1011,12 +1021,11 @@ impl IncrementalData for TState {
         for ty in to_remove {
             self.remove_type(ty);
         }
- 
+
         self.type_cycle_map.clear();
         self.mt_state.prepare();
     }
 }
-
 
 impl Default for TState {
     fn default() -> Self {
@@ -1122,10 +1131,12 @@ impl<'a> std::fmt::Display for TypeDisplay<'a> {
     fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
         let ty = &self.state.types[self.type_id];
         match &ty.kind {
-            &TKind::Pointer(id, mutable) => if mutable {
-                write!(f, "&var {}", Self::new(self.state, id))
-            } else {
-                write!(f, "&{}", Self::new(self.state, id))
+            &TKind::Pointer(id, mutable) => {
+                if mutable {
+                    write!(f, "&var {}", Self::new(self.state, id))
+                } else {
+                    write!(f, "&{}", Self::new(self.state, id))
+                }
             }
             TKind::Structure(_) if !ty.params.is_empty() => {
                 let params = self.state.modules[ty.module].type_slice(ty.params);
@@ -1137,11 +1148,11 @@ impl<'a> std::fmt::Display for TypeDisplay<'a> {
                 }
                 write!(f, "]")
             }
-            TKind::Builtin(_) | 
-            TKind::Unresolved(_) | 
-            TKind::Generic(_) | 
-            TKind::Structure(_) | 
-            TKind::Enumeration(_) => {
+            TKind::Builtin(_)
+            | TKind::Unresolved(_)
+            | TKind::Generic(_)
+            | TKind::Structure(_)
+            | TKind::Enumeration(_) => {
                 write!(f, "{}", self.state.display(&ty.name))
             }
             TKind::Constant(value) => {
@@ -1312,7 +1323,7 @@ pub fn test() {
         .parse(PATH)
         .map_err(|e| panic!("{}", MTErrorDisplay::new(&state, &e)))
         .unwrap();
-    
+
     let module_order = std::mem::take(&mut state.module_order);
 
     // mark all unchanged module type dependencies as used
@@ -1335,7 +1346,7 @@ pub fn test() {
             .parse(module)
             .map_err(|e| panic!("\n{}", TErrorDisplay::new(&mut state, &e)))
             .unwrap();
-    }    
+    }
 
     incr::save_data(PATH, &mut state, ID(0), Some(hint)).unwrap();
 }

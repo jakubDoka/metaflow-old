@@ -1,16 +1,20 @@
 use crate::{
-    lexer::{TKind as LTKind, Token, Span},
-    util::{sdbm::ID, Size}, ast::Vis,
+    ast::Vis,
+    lexer::{Span, TKind as LTKind, Token},
+    util::{sdbm::ID, Size},
 };
-use cranelift::{entity::packed_option::ReservedValue, codegen::{isa::{CallConv as CrCallConv, TargetIsa}}};
+use cranelift::{
+    codegen::isa::{CallConv as CrCallConv, TargetIsa},
+    entity::packed_option::ReservedValue,
+};
 use cranelift::{
     codegen::{
-        ir::{Block, GlobalValue, Inst, Value, types::*},
+        ir::{types::*, Block, GlobalValue, Inst, Value},
         packed_option::PackedOption,
     },
     entity::EntityList,
 };
-use quick_proc::{QuickDefault, RealQuickSer, QuickSer, QuickEnumGets};
+use quick_proc::{QuickDefault, QuickEnumGets, QuickSer, RealQuickSer};
 
 pub const BUILTIN_MODULE: Mod = Mod(0);
 
@@ -130,7 +134,7 @@ pub struct TypeEnt {
 impl TypeEnt {
     pub fn to_cr_type(&self, isa: &dyn TargetIsa) -> Type {
         match &self.kind {
-            TKind::Pointer(..) | TKind::Array(..) | TKind::Structure(_) | TKind::FunPointer(_)  => {
+            TKind::Pointer(..) | TKind::Array(..) | TKind::Structure(_) | TKind::FunPointer(_) => {
                 isa.pointer_type()
             }
             TKind::Enumeration(_) => I8, //temporary solution

@@ -1,19 +1,23 @@
 use std::ops::{Deref, DerefMut};
 
 use crate::ast::{AKind, AstDisplay, AstEnt, OpKind, Vis};
-use crate::entities::{Ast, Fun, FunBody, IKind, Mod, Ty, ValueEnt, BUILTIN_MODULE, TKind, Signature, CallConv, TypeConst, TypeEnt};
+use crate::entities::{
+    Ast, CallConv, Fun, FunBody, IKind, Mod, Signature, TKind, Ty, TypeConst, TypeEnt, ValueEnt,
+    BUILTIN_MODULE,
+};
+use crate::incr::IncrementalData;
 use crate::lexer::TKind as LTKind;
 use crate::lexer::{Span, Token, TokenDisplay};
 use crate::module_tree::{MTErrorDisplay, MTParser};
+use crate::{types::*, incr};
 use crate::util::sdbm::ID;
 use crate::util::storage::Table;
 use crate::util::Size;
-use crate::types::*;
 
 use cranelift::codegen::ir::types::I64;
-use cranelift::codegen::ir::{Block, GlobalValue, Type, Value, Inst};
+use cranelift::codegen::ir::{Block, GlobalValue, Inst, Type, Value};
 use cranelift::codegen::packed_option::{PackedOption, ReservedValue};
-use cranelift::entity::{EntityList, SparseMap, SparseMapValue, ListPool, EntitySet};
+use cranelift::entity::{EntityList, EntitySet, ListPool, SparseMap, SparseMapValue};
 use cranelift::module::Linkage;
 use quick_proc::{QuickDefault, QuickSer, RealQuickSer};
 
@@ -30,6 +34,7 @@ pub struct FParser<'a> {
     state: &'a mut FState,
     context: &'a mut FContext,
     ptr_ty: Type,
+    module: Mod,
 }
 
 crate::inherit!(FParser<'_>, state, FState);
@@ -40,6 +45,7 @@ impl<'a> FParser<'a> {
             state,
             context,
             ptr_ty,
+            module: Mod::reserved_value(),
         }
     }
 
@@ -47,6 +53,8 @@ impl<'a> FParser<'a> {
         TParser::new(self.state, self.context)
             .parse(module)
             .map_err(|err| FError::new(FEKind::TypeError(err), Token::default()))?;
+
+        self.module = module;
 
         self.init_module(module);
         self.collect(module)?;
@@ -87,7 +95,7 @@ impl<'a> FParser<'a> {
 
             ..Default::default()
         };
-        let (shadow, id) = self.add_fun(fnu_ent);
+        let (shadow, id) = self.add_fun(module, fnu_ent);
         debug_assert!(shadow.is_none());
         let module_ent = &mut self.modules[module];
         module_ent.entry_point = PackedOption::from(id);
@@ -181,7 +189,7 @@ impl<'a> FParser<'a> {
                 let var = module_ent.add_temp_value(ty);
                 module_ent.push_block_arg(entry_point, var);
                 let var = if kind == AKind::FunArgument(true) {
-                    let carrier = module_ent.add_value(ty, true); 
+                    let carrier = module_ent.add_value(ty, true);
                     module_ent.add_var_decl(var, carrier, token, &mut body);
                     carrier
                 } else {
@@ -236,10 +244,9 @@ impl<'a> FParser<'a> {
     }
 
     fn finalize_fun(&mut self, fun: Fun, body: FunBody) {
-        self.state.funs[fun].body = body;
-        self.state.funs[fun].kind = FKind::Represented;
+        self.funs[fun].body = body;
+        self.funs[fun].kind = FKind::Represented;
         self.context.represented.push(fun);
-        self.context.used_funs.insert(fun);
     }
 
     fn gen_return(&mut self, fun: Fun, value: Option<Value>, token: Token, body: &mut FunBody) {
@@ -516,9 +523,9 @@ impl<'a> FParser<'a> {
         let target = self.expr(fun, target, body)?;
         let index = self.expr(fun, index, body)?;
         let args = &[target, index];
-        let span = if self.context.in_var_ref { 
+        let span = if self.context.in_var_ref {
             self.state.index_var_span
-        } else { 
+        } else {
             self.state.index_span
         };
         let result = self
@@ -558,7 +565,7 @@ impl<'a> FParser<'a> {
         let element_ty = element_ty.unwrap();
         let element_size = self.types[element_ty].size;
 
-        let ty = self.array_of(element_ty, length);
+        let ty = self.state.array_of(self.module, element_ty, length);
         let module_ent = &mut self.state.modules[module];
 
         let temp = module_ent.add_temp_value(ty);
@@ -580,7 +587,7 @@ impl<'a> FParser<'a> {
         let module_ent = &self.state.modules[module];
         let &AstEnt { sons, token, .. } = module_ent.load(ast);
         let value = module_ent.get(sons, 0);
-        
+
         let prev_in_var_ref = self.context.in_var_ref;
         let prev_in_assign = self.context.in_assign;
         self.context.in_assign = true;
@@ -589,10 +596,18 @@ impl<'a> FParser<'a> {
         self.context.in_assign = prev_in_assign;
         self.context.in_var_ref = prev_in_var_ref;
 
-        self.ref_expr_low(fun, value, token, mutable, body).map(|v| Some(v))
+        self.ref_expr_low(fun, value, token, mutable, body)
+            .map(|v| Some(v))
     }
 
-    fn ref_expr_low(&mut self, fun: Fun, value: Value, token: Token, mutable: bool, body: &mut FunBody) -> Result<Value> {
+    fn ref_expr_low(
+        &mut self,
+        fun: Fun,
+        value: Value,
+        token: Token,
+        mutable: bool,
+        body: &mut FunBody,
+    ) -> Result<Value> {
         let module = self.funs[fun].module;
         let module_ent = &self.state.modules[module];
         let ValueEnt {
@@ -600,7 +615,7 @@ impl<'a> FParser<'a> {
             mutable: prev_mutable,
             ..
         } = module_ent.values[value];
-        
+
         if !prev_mutable && mutable {
             return Err(FError::new(FEKind::MutableToImmutable, token));
         }
@@ -829,7 +844,8 @@ impl<'a> FParser<'a> {
         let mut then_filled = false;
         if let (Some(val), Some(_)) = (then_result, else_block) {
             let args = module_ent.add_values(&[val]);
-            jump_inst = Some(module_ent.add_valueless_inst(IKind::Jump(merge_block, args), token, body));
+            jump_inst =
+                Some(module_ent.add_valueless_inst(IKind::Jump(merge_block, args), token, body));
             let ty = module_ent.type_of_value(val);
             let value = module_ent.add_temp_value(ty);
             let args = module_ent.add_values(&[value]);
@@ -862,7 +878,8 @@ impl<'a> FParser<'a> {
             } else {
                 if body.current_block.is_some() {
                     if let Some(jump_inst) = jump_inst {
-                        module_ent.insts[jump_inst].kind = IKind::Jump(merge_block, EntityList::new());
+                        module_ent.insts[jump_inst].kind =
+                            IKind::Jump(merge_block, EntityList::new());
                         module_ent.set_block_args(merge_block, EntityList::new());
                     }
                     if result.is_some() {
@@ -923,7 +940,10 @@ impl<'a> FParser<'a> {
                         }
                     };
 
-                    (self.modules[fp_module].verify_args(&self.types, &types, fp.args), fp.ret)
+                    (
+                        self.modules[fp_module].verify_args(&self.types, &types, fp.args),
+                        fp.ret,
+                    )
                 };
 
                 if mismatched {
@@ -1071,7 +1091,7 @@ impl<'a> FParser<'a> {
             types[0] = ty;
         }
 
-        let (_, other_fun) = result
+        let other_fun = result
             .map_err(|(a, b)| FError::new(FEKind::AmbiguousFunction(a, b), token))?
             .ok_or_else(|| {
                 FError::new(
@@ -1097,14 +1117,12 @@ impl<'a> FParser<'a> {
                     (true, false) => {
                         types[0] = self.pointer_of(types[0], mutable);
                         self.create(other_fun, params, &types)?
-                    },
+                    }
                     (false, true) => {
                         types[0] = self.t_state.pointer_base(types[0]).unwrap();
                         self.create(other_fun, params, &types)?
-                    },
-                    (true, true) if mutable && !other_mutable => {
-                        None
-                    },
+                    }
+                    (true, true) if mutable && !other_mutable => None,
                     _ => self.create(other_fun, params, &types)?,
                 }
             } else {
@@ -1153,14 +1171,13 @@ impl<'a> FParser<'a> {
             let first_real_arg_ty = self.modules[module].type_of_value(values[0]);
 
             if first_real_arg_ty != first_arg_ty {
-                
                 if self.t_state.pointer_base(first_real_arg_ty) == Some(first_arg_ty) {
                     values[0] = self.deref_expr_low(fun, values[0], token, body)?;
                 } else if self.t_state.pointer_base(first_arg_ty) == Some(first_real_arg_ty) {
                     let mutable = self.pointer_mutability(first_arg_ty);
                     values[0] = self.ref_expr_low(fun, values[0], token, mutable, body)?;
-                } else { 
-                    // adjust mutability if '&var' instead of '&' is passed 
+                } else {
+                    // adjust mutability if '&var' instead of '&' is passed
                     let mutability_mismatch = matches!(
                         (
                             &self.types[first_real_arg_ty].kind,
@@ -1352,8 +1369,13 @@ impl<'a> FParser<'a> {
                 .find_item(module, id, target, &mut module_buffer)
                 .map_err(|(a, b)| FError::new(FEKind::AmbiguousFunction(a, b), ident))?
             {
-                Some((other_module, f)) => {
-                    let FunEnt { vis, sig, .. } = self.funs[f];
+                Some(f) => {
+                    let FunEnt {
+                        vis,
+                        sig,
+                        module: other_module,
+                        ..
+                    } = self.funs[f];
                     if !self.state.can_access(module, other_module, vis) {
                         return Err(FError::new(FEKind::VisibilityViolation, ident));
                     }
@@ -1361,7 +1383,7 @@ impl<'a> FParser<'a> {
                     // this makes it more likely we will reuse already instantiated
                     // pointers, it also means we don't have to reallocate signature
                     // to modules pool
-                    let ty = self.function_type_of(other_module, sig);
+                    let ty = self.state.function_type_of(self.module, other_module, sig);
                     let module_ent = &mut self.modules[module];
                     let value = module_ent.add_temp_value(ty);
                     module_ent.add_inst(IKind::FunPointer(f), value, ident, body);
@@ -1389,11 +1411,9 @@ impl<'a> FParser<'a> {
             .find_item(module, id, target, &mut module_buffer)
             .map_err(|(a, b)| FError::new(FEKind::AmbiguousGlobal(a, b), name))?;
 
-        let found = if let Some((other_module, found)) = global {
-            if !self
-                .state
-                .can_access(module, other_module, self.state.globals[found].vis)
-            {
+        let found = if let Some(found) = global {
+            let GlobalEnt { vis, module, .. } = self.globals[found];
+            if !self.state.can_access(module, module, vis) {
                 return Err(FError::new(FEKind::GlobalVisibilityViolation, name));
             }
             found
@@ -1445,7 +1465,9 @@ impl<'a> FParser<'a> {
                         TypeConst::Int(val) => (LTKind::Int(val, 0), repo.int),
                         TypeConst::Float(val) => (LTKind::Float(val, 64), repo.f64),
                         TypeConst::Char(val) => (LTKind::Char(val), repo.u32),
-                        TypeConst::String(val) => (LTKind::String(val), self.pointer_of(repo.u8, false)),
+                        TypeConst::String(val) => {
+                            (LTKind::String(val), self.pointer_of(repo.u8, false))
+                        }
                     };
 
                     let module_ent = &mut self.modules[module];
@@ -1771,12 +1793,10 @@ impl<'a> FParser<'a> {
             }
         }
         id = id.add(self.state.modules[module].id);
-        if let Some(&fun) = self.state.funs.index(id) {
-            if self.context.used_funs.contains(fun) {
-                self.modules[module].clear_types(&mut final_params);
-                return Ok(Some(fun));
-            } 
-            self.context.used_funs.insert(fun);
+        
+        if let Some(fun) = self.state.find_computed(self.module, id) {
+            self.modules[module].clear_types(&mut final_params);
+            return Ok(Some(fun));
         }
 
         if !scope.is_reserved_value() {
@@ -1815,7 +1835,7 @@ impl<'a> FParser<'a> {
             body: FunBody::default(),
         };
 
-        let (shadowed, id) = self.add_fun(new_fun_ent);
+        let (shadowed, id) = self.state.add_fun(self.module, new_fun_ent);
         debug_assert!(shadowed.is_none());
 
         self.context.unresolved.push(id);
@@ -1827,13 +1847,13 @@ impl<'a> FParser<'a> {
         let module_ent = &self.modules[module];
         let funs_len = module_ent.funs().len();
         let globals_len = module_ent.globals().len();
-        let mut scope_state = (Ast::reserved_value(), Ast::reserved_value(), ID(0), None);
+        let mut scope_state = (Ast::reserved_value(), Ast::reserved_value(), ID(0), None, Vis::None);
 
         for i in (0..funs_len).step_by(3) {
             let funs = self.modules[module].funs();
             let (ast, attrs, scope) = (funs[i], funs[i + 1], funs[i + 2]);
             self.parse_scope(module, scope, &mut scope_state)?;
-            self.collect_fun(module, ast, attrs, scope, scope_state.2, scope_state.1)?
+            self.collect_fun(module, ast, attrs, scope, scope_state.2, scope_state.1, scope_state.4)?
         }
 
         let main_fun_id = self.context.entry_point_data.id;
@@ -1844,7 +1864,7 @@ impl<'a> FParser<'a> {
             let globals = self.modules[module].globals();
             let (ast, attrs, scope) = (globals[i], globals[i + 1], globals[i + 2]);
             self.parse_scope(module, scope, &mut scope_state)?;
-            self.collect_global_var(module, ast, attrs, scope_state.2, &mut body)?
+            self.collect_global_var(module, ast, attrs, scope_state.2, &mut body, scope_state.4)?
         }
 
         if let Some((id, ty)) = scope_state.3 {
@@ -1865,7 +1885,7 @@ impl<'a> FParser<'a> {
         &mut self,
         module: Mod,
         ast: Ast,
-        (previous, generics, id, shadow): &mut (Ast, Ast, ID, Option<(ID, Option<Ty>)>),
+        (previous, generics, id, shadow, vis): &mut (Ast, Ast, ID, Option<(ID, Option<Ty>)>, Vis),
     ) -> Result {
         if ast == *previous {
             return Ok(());
@@ -1882,15 +1902,20 @@ impl<'a> FParser<'a> {
         }
 
         let module_ent = &self.modules[module];
-        let sons = module_ent.sons(ast);
+        let &AstEnt { sons, kind, .. } = module_ent.load(ast);
         let generic_ast = module_ent.get(sons, 0);
         let ty = module_ent.get(sons, 1);
-        let kind = module_ent.kind(ty);
+        let ty_kind = module_ent.kind(ty);
         let module_id = module_ent.id;
+
+        *vis = match kind {
+            AKind::Impl(vis) => vis,
+            _ => unreachable!(),
+        };
 
         *generics = generic_ast;
 
-        let ty = match kind {
+        let ty = match ty_kind {
             AKind::Ident | AKind::Instantiation if generic_ast.is_reserved_value() => {
                 self.parse_type(module, ty)?
             }
@@ -1917,6 +1942,7 @@ impl<'a> FParser<'a> {
         attrs: Ast,
         scope: ID,
         body: &mut FunBody,
+        vis: Vis,
     ) -> Result {
         let fun = self.context.entry_point_data.id;
         let module_ent = &self.modules[module];
@@ -1924,7 +1950,7 @@ impl<'a> FParser<'a> {
         let &AstEnt { kind, sons, .. } = module_ent.load(ast);
         let ast_len = module_ent.len(sons);
         let (vis, mutable) = match kind {
-            AKind::VarStatement(vis, mutable) => (vis, mutable),
+            AKind::VarStatement(a_vis, mutable) => (vis.join(a_vis), mutable),
             _ => unreachable!(),
         };
 
@@ -1995,12 +2021,13 @@ impl<'a> FParser<'a> {
         scope: Ast,
         scope_id: ID,
         generics: Ast,
+        vis: Vis,
     ) -> Result {
         let module_ent = &self.modules[module];
         let module_id = module_ent.id;
         let &AstEnt { kind, sons, .. } = module_ent.load(ast);
         let vis = match kind {
-            AKind::Fun(vis) => vis,
+            AKind::Fun(a_vis) => vis.join(a_vis),
             _ => unreachable!(),
         };
         let header = module_ent.get(sons, 0);
@@ -2137,7 +2164,7 @@ impl<'a> FParser<'a> {
 
             ..Default::default()
         };
-        let (shadowed, id) = self.add_fun(fun_ent);
+        let (shadowed, id) = self.add_fun(module, fun_ent);
         if let Some(shadowed) = shadowed {
             return Err(FError::new(
                 FEKind::Redefinition(shadowed.hint.clone()),
@@ -2345,7 +2372,9 @@ impl<'a> FParser<'a> {
                     &TKind::Array(element, size) => {
                         arg_buffer.push(GenericElement::Array(Some(ty)));
                         stack.push((element, false));
-                        let size = self.constant_of(TypeConst::Int(size as i64));
+                        let size = self
+                            .state
+                            .constant_of(self.module, TypeConst::Int(size as i64));
                         stack.push((size, false));
                     }
                     _ => {
@@ -2373,7 +2402,6 @@ impl<'a> FParser<'a> {
     fn parse_type(&mut self, module: Mod, ast: Ast) -> Result<Ty> {
         TParser::new(self.state, self.context)
             .parse_type(module, ast)
-            .map(|t| t.1)
             .map_err(|err| FError::new(FEKind::TypeError(err), Token::default()))
     }
 
@@ -2408,16 +2436,8 @@ impl<'a> FParser<'a> {
         }
     }
 
-    fn add_fun(&mut self, fun_ent: FunEnt) -> (Option<FunEnt>, Fun) {
-        let module = fun_ent.module;
-        self.add_fun_low(module, fun_ent)
-    }
-
-    fn add_fun_low(&mut self, module: Mod, fun_ent: FunEnt) -> (Option<FunEnt>, Fun) {
-        let id = fun_ent.id;
-        let (shadow, fun) = self.funs.insert(id, fun_ent);
-        self.modules[module].add_fun(fun);
-        (shadow, fun)
+    fn pointer_of(&mut self, ty: Ty, mutable: bool) -> Ty {
+        self.state.pointer_of(self.module, ty, mutable)
     }
 }
 
@@ -2778,9 +2798,9 @@ pub struct FunEnt {
     pub id: ID,
     pub module: Mod,
     pub hint: Token,
-    pub params: EntityList<Ty>,
+    pub params: EntityList<Ty>, // must drop
     pub base_fun: PackedOption<Fun>,
-    pub sig: Signature,
+    pub sig: Signature, // must drop
     pub body: FunBody,
     pub kind: FKind,
     pub name: Span,
@@ -2916,12 +2936,65 @@ pub struct FState {
     pub index_span: Span,
     pub index_var_span: Span,
     pub do_stacktrace: bool,
+    pub used: EntitySet<Fun>,
 
     pub pop_fun_hahs: ID,
     pub push_fun_hash: ID,
 }
 
 crate::inherit!(FState, t_state, TState);
+
+impl FState {
+    fn find_computed(&mut self, source_module: Mod, id: ID) -> Option<Fun> {
+        if let Some(&fun) = self.funs.index(id) {
+            if self.used.contains(fun) {
+                self.modules[source_module].add_fun(fun);
+                return Some(fun);
+            }
+        }
+
+        None
+    }
+
+    fn add_fun(&mut self, module: Mod, fun_ent: FunEnt) -> (Option<FunEnt>, Fun) {
+        let id = fun_ent.id;
+        let (mut shadow, fun) = self.funs.insert(id, fun_ent);
+        if !self.used.contains(fun) {
+            shadow = None
+        }
+        self.used.insert(fun);
+        self.modules[module].add_fun(fun);
+        (shadow, fun)
+    }
+
+    fn remove_fun(&mut self, fun: Fun) {
+        let id = self.funs[fun].id;
+        let mut ent = self.funs.remove(id).unwrap();
+        self.mt_state.modules[ent.module].clear_types(&mut ent.params);
+        self.mt_state.modules[ent.module].clear_types(&mut ent.sig.args);
+        if ent.kind == FKind::Generic {
+            self.generic_funs.remove(fun);
+        }
+    }
+}
+
+impl IncrementalData for FState {
+    fn prepare(&mut self) {
+        let used = std::mem::take(&mut self.used);
+        let mut to_remove = Vec::with_capacity(self.funs.len());
+        for (fun, _) in self.funs.iter() {
+            if !used.contains(fun) {
+                to_remove.push(fun);
+            }
+        }
+
+        for fun in to_remove {
+            self.remove_fun(fun);
+        }
+
+        self.t_state.prepare();
+    }
+}
 
 impl Default for FState {
     fn default() -> Self {
@@ -2932,8 +3005,9 @@ impl Default for FState {
             index_span: Span::default(),
             index_var_span: Span::default(),
             globals: Table::new(),
+            used: EntitySet::new(),
             do_stacktrace: false,
-            
+
             pop_fun_hahs: ID(0),
             push_fun_hash: ID(0),
         };
@@ -2977,13 +3051,14 @@ impl Default for FState {
                 id,
                 name,
                 vis: Vis::Public,
-                module: BUILTIN_MODULE,
+                module,
                 kind: FKind::Builtin,
                 sig,
 
                 ..Default::default()
             };
-            assert!(state.funs.insert(id, fun_ent).0.is_none());
+
+            assert!(state.add_fun(module, fun_ent).0.is_none());
         }
 
         for i in types {
@@ -3093,7 +3168,7 @@ pub struct FContext {
     pub in_assign: bool,
     pub in_var_ref: bool,
 
-    pub used_funs: EntitySet<Fun>,
+    
 
     pub unresolved_globals: Vec<GlobalValue>,
     pub resolved_globals: Vec<GlobalValue>,
@@ -3184,15 +3259,37 @@ impl std::fmt::Display for FunDisplay<'_> {
 pub fn test() {
     const PATH: &str = "src/functions/test_project";
 
-    let mut state = FState::default();
+    let now = std::time::Instant::now();
+
+    let (mut state, hint) = incr::load_data::<FState>(PATH, ID(0)).unwrap_or_default();
     let mut context = FContext::default();
 
     MTParser::new(&mut state, &mut context)
         .parse(PATH)
         .map_err(|e| panic!("\n{}", MTErrorDisplay::new(&state, &e)))
         .unwrap();
+    
+    for global in context.globals_to_remove.drain(..) {
+        let id = state.globals[global].id;
+        state.globals.remove(id);
+    }
 
-    for module in std::mem::take(&mut state.module_order).drain(..) {
+    let order = std::mem::take(&mut state.module_order);
+
+    // mark all unchanged module type dependencies as used
+    for &module in &order {
+        if state.modules[module].clean {
+            let module_ent = &state.t_state.mt_state.modules[module];
+            for &ty in module_ent.used_types() {
+                state.t_state.used.insert(ty);
+            }
+            for &fun in module_ent.used_functions() {
+                state.used.insert(fun);
+            }
+        }
+    }
+
+    for &module in &order {
         if state.modules[module].clean {
             continue;
         }
@@ -3203,7 +3300,7 @@ pub fn test() {
             .unwrap();
     }
 
-    for module in state.modules.iter_mut() {
-        module.clean = true;
-    }
+    incr::save_data(PATH, &mut state, ID(0), Some(hint)).unwrap();
+
+    println!("{:?}", now.elapsed().as_secs_f64());
 }
