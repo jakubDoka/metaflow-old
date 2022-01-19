@@ -1,5 +1,5 @@
 use std::ops::{Deref, DerefMut};
-
+use std::fmt::Write;
 use crate::ast::{AError, AErrorDisplay, AKind, AstEnt, Vis};
 use crate::entities::{
     Ast, Mod, Ty, 
@@ -18,7 +18,7 @@ use cranelift::codegen::ir::Signature as CrSignature;
 use cranelift::codegen::ir::{types::*, AbiParam, ArgumentPurpose};
 use cranelift::codegen::isa::TargetIsa;
 use cranelift::codegen::packed_option::PackedOption;
-use cranelift::entity::EntityList;
+use cranelift::entity::{EntityList, EntitySet};
 use cranelift::entity::{packed_option::ReservedValue, EntityRef};
 use quick_proc::{QuickSer, RealQuickSer};
 
@@ -113,7 +113,7 @@ impl<'a> TParser<'a> {
 
                 if align != Size::ZERO {
                     match kind {
-                        SKind::Struct => {
+                        SKind::Struct | SKind::Tuple => {
                             let calc = move |offset: Size| {
                                 let temp = Size::new(
                                     offset.s32 & (align.s32 - 1),
@@ -304,6 +304,7 @@ impl<'a> TParser<'a> {
             AKind::Array => self.array(module, ast, depth),
             AKind::Lit => self.constant(module, &token),
             AKind::FunHeader(..) => self.function_pointer(module, ast, depth),
+            AKind::Tuple => self.tuple(module, ast, depth),
             _ => unreachable!("{:?}", kind),
         }?;
 
@@ -312,6 +313,57 @@ impl<'a> TParser<'a> {
         }
 
         Ok((module, ty))
+    }
+
+    fn tuple(&mut self, module: Mod, ast: Ast, depth: usize) -> Result<(Mod, Ty)> {
+        let mut filed_name = String::with_capacity(2);
+        let mut fields = self.context.pool.get();
+        let module_ent = &self.modules[module];
+        let sons = module_ent.sons(ast);
+        let len = module_ent.len(sons);
+        let mut id = ID::new("--tuple--");
+        for i in 0..len {
+            let module_ent = &self.modules[module];
+            let ty = module_ent.get(sons, i);
+            let hint = *module_ent.token(ty);
+            let (_, ty) = self.ty(module, ty, depth)?;
+            id = id.add(self.types[ty].id);
+            writeln!(filed_name, "f{}", i).unwrap();
+            let field = SField {
+                embedded: false,
+                vis: Vis::Public,
+                id: ID::new(&filed_name),
+                offset: Size::ZERO,
+                ty,
+                hint,
+            };
+            fields.push(field);
+            filed_name.clear();
+        }
+
+        id = id.add(self.module_id(BUILTIN_MODULE));
+
+        if let Some(&ty) = self.types.index(id) {
+            return Ok((BUILTIN_MODULE, ty));
+        }
+
+        let s_ent = SType {
+            kind: SKind::Tuple,
+            fields: fields.clone(),
+        };
+
+        let ty_ent = TypeEnt {
+            id,
+            module,
+            vis: Vis::Public,
+            kind: TKind::Structure(s_ent),
+            
+            ..Default::default()
+        };
+
+        let ty = self.add_type(ty_ent);
+
+        todo!();
     }
 
     fn function_pointer(&mut self, module: Mod, ast: Ast, depth: usize) -> Result<(Mod, Ty)> {
@@ -742,6 +794,7 @@ pub struct TContext {
     pub constant_buffer: String,
     pub unresolved: Vec<(Ty, usize)>,
     pub resolved: Vec<Ty>,
+    pub used_types: EntitySet<Ty>,
 }
 
 crate::inherit!(TContext, mt_context, MTContext);

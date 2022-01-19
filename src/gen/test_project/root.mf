@@ -4,6 +4,7 @@ fun fine -> int:
   assert(1 + 1 == 2)
   assert((if 1 == 1: 1 else: 0) == 1)
   assert(fib(10) == fib_loop(10))
+  assert(sizeof::[(u16, u8, u8)]() == 3)
   
   test_case_1()
   test_case_2()
@@ -236,6 +237,11 @@ fun test_case_15:
 
 struct Weird:
   a, b, c: u8
+
+# Test to verify tuples are working
+fun test_case_16:
+  var a: (int, int, int) = (1, 2, 3)
+  assert(a.0 + a.1 + a.2 == 6)
 
 fun assert(cond: bool):
   builtin::assert(cond)

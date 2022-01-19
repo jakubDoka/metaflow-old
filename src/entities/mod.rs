@@ -20,6 +20,7 @@ crate::impl_entity!(Source);
 crate::impl_entity!(Manifest);
 crate::impl_entity!(Mod);
 crate::impl_entity!(Ty);
+crate::impl_entity!(Unused);
 
 #[derive(Debug, Clone, QuickDefault, Copy, RealQuickSer)]
 pub struct ValueEnt {
@@ -202,6 +203,7 @@ pub struct SField {
 pub enum SKind {
     Struct,
     Union,
+    Tuple,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, RealQuickSer)]

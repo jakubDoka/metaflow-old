@@ -259,8 +259,11 @@ expr =
   unary | 
   cast | 
   reference | 
-  dereference
+  dereference |
+  tuple |
+  '(' expr ')'
 
+tuple = '(' expr ',' [ expr { ',' expr } ] ')'
 if_expr = 
   'if' expr ':' : statement 
   { 'elif' expr ':' : statement } 
@@ -288,7 +291,8 @@ deref = '*' expr
 datatype = 
   ident [ '[' datatype { ',' datatype } ']' ] |
   'fun' [ '(' datatype { ',' datatype } ')' ] [ '->' datatype ] call_convention |
-  '&' [ 'var' ] datatype
+  '&' [ 'var' ] datatype |
+  '(' datatype ',' [ datatype { ',' datatype } ] ')'
 generics = '[' ident { ',' ident } ']'
 args = '(' { [ 'var' ] ident { ',' ident } ':' datatype } ')'
 vis = 'pub' | 'priv'
@@ -428,6 +432,7 @@ Reason to have two levels of ir is that compiler needs to analyze the source cod
     - [ ] ast based
     - [ ] ir based
 - [ ] user defined types
+  - [ ] tuples
   - [ ] default generic parameters
   - [x] struct
     - [x] generic
@@ -455,3 +460,4 @@ Reason to have two levels of ir is that compiler needs to analyze the source cod
   - [ ] web assembly
   - [ ] linux
   - [ ] mac 
+- [ ] CLI documentation

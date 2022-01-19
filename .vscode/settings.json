@@ -66,6 +66,7 @@
         "preopt",
         "probestack",
         "putchar",
+        "RAII",
         "realloc",
         "Reloc",
         "relocs",

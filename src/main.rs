@@ -4,8 +4,6 @@ use std::time::Instant;
 
 use gen::GErrorDisplay;
 
-//use gen::GErrorDisplay;
-
 pub mod ast;
 pub mod entities;
 pub mod functions;
@@ -17,7 +15,6 @@ pub mod testing;
 pub mod types;
 pub mod util;
 
-pub const FILE_EXTENSION: &str = ".pmt";
 pub const COMMIT_HASH: &str = env!("GIT_HASH");
 
 fn main() {

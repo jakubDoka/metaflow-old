@@ -26,7 +26,7 @@ use quick_proc::{QuickDefault, QuickSer, RealQuickSer};
 
 use std::ops::{Deref, DerefMut};
 
-use crate::entities::{BlockEnt, BUILTIN_MODULE, TKind, CrTypeWr, TypeEnt};
+use crate::entities::{BlockEnt, TKind, CrTypeWr, TypeEnt};
 use crate::{
     entities::{Fun, IKind, InstEnt, Mod, Ty, ValueEnt},
     functions::{FContext, FKind, FParser, FState, FunEnt, GlobalEnt},
@@ -81,46 +81,20 @@ impl<'a> Generator<'a> {
     }
 
     pub fn generate(&mut self, order: &[Mod]) -> Result {
+        let mut functions = self.context.pool.get();
+        let mut globals = self.context.pool.get();
         let mut declarations = std::mem::take(&mut self.state.bin_declarations);
         for &module in order {
             if self.modules[module].clean {
                 continue;
             }
             
-            // remove types
-            if module != BUILTIN_MODULE {
-                let mut types = std::mem::take(&mut self.modules[module].types);
-                for ty in types.drain(..) {
-                    let id = self.types[ty].id;
-                    self.types.remove(id);
-                }
-                self.modules[module].types = types;
-            }
-            
-            // remove functions
-            let mut funs = std::mem::take(&mut self.modules[module].functions);
-            for fun in funs.drain(..) {
-                let id = self.funs[fun].id;
-                self.funs.remove(id);
-                declarations.remove_function(self.compiled_funs[fun].id);
-            }
-            self.modules[module].functions = funs;
-    
-            // remove globals
-            let mut globals = std::mem::take(&mut self.modules[module].globals);
-            for global in globals.drain(..) {
-                let id = self.globals[global].id;
-                self.globals.remove(id);
-                declarations.remove_data(self.compiled_globals[global].id);
-            }
-            self.modules[module].globals = globals;
-
             // remove strings
-            let mut strings = std::mem::take(&mut self.modules[module].strings);
+            let mut strings = std::mem::take(&mut self.modules[module].anon_strings);
             for (id, _) in strings.drain(..) {
                 declarations.remove_data(id);
             }
-            self.modules[module].strings = strings;
+            self.modules[module].anon_strings = strings;
         }
 
         self.module.load_declarations(declarations);
@@ -128,18 +102,16 @@ impl<'a> Generator<'a> {
         for &module in order.iter() {
             let module_ent = &mut self.modules[module];
             if module_ent.clean {
-                let functions = std::mem::take(&mut module_ent.functions);
-                let globals = std::mem::take(&mut module_ent.globals);
-                let strings = std::mem::take(&mut module_ent.strings);
+                functions.extend_from_slice(&module_ent.used_functions());
+                globals.extend_from_slice(&module_ent.used_globals());
+                let strings = std::mem::take(&mut module_ent.anon_strings);
 
                 self.load_funs(&functions);
                 self.load_globals(&globals);
                 self.load_strings(&strings);
 
                 let module_ent = &mut self.modules[module];
-                module_ent.functions = functions;
-                module_ent.globals = globals;
-                module_ent.strings = strings;
+                module_ent.anon_strings = strings;
                 continue;
             } else {
                 module_ent.clean = true;
@@ -719,7 +691,7 @@ impl<'a> Generator<'a> {
                             };
                             let (data, new) = self.make_static_data(data, false, false);
                             if new { // we don't want duplicates
-                                self.modules[module].strings.push((data, string));
+                                self.modules[module].anon_strings.push((data, string));
                             }
                             let map_id = ID(data.as_u32() as u64);
                             let value = if let Some(&value) =

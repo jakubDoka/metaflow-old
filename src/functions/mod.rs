@@ -13,7 +13,7 @@ use crate::types::*;
 use cranelift::codegen::ir::types::I64;
 use cranelift::codegen::ir::{Block, GlobalValue, Type, Value, Inst};
 use cranelift::codegen::packed_option::{PackedOption, ReservedValue};
-use cranelift::entity::{EntityList, SparseMap, SparseMapValue, ListPool};
+use cranelift::entity::{EntityList, SparseMap, SparseMapValue, ListPool, EntitySet};
 use cranelift::module::Linkage;
 use quick_proc::{QuickDefault, QuickSer, RealQuickSer};
 
@@ -81,7 +81,6 @@ impl<'a> FParser<'a> {
             id,
             sig,
             module,
-            host: module,
             kind: FKind::Represented,
             untraced: true,
             inline: true,
@@ -240,6 +239,7 @@ impl<'a> FParser<'a> {
         self.state.funs[fun].body = body;
         self.state.funs[fun].kind = FKind::Represented;
         self.context.represented.push(fun);
+        self.context.used_funs.insert(fun);
     }
 
     fn gen_return(&mut self, fun: Fun, value: Option<Value>, token: Token, body: &mut FunBody) {
@@ -1009,11 +1009,7 @@ impl<'a> FParser<'a> {
         let mut module_buffer = self.context.pool.get();
         let mut values = self.context.pool.get();
         let mut types = self.context.pool.get();
-        let FunEnt {
-            module,
-            host,
-            ..
-        } = self.funs[fun];
+        let module = self.funs[fun].module;
         let module_ent = &self.modules[module];
         values.extend_from_slice(original_values);
         types.extend(values.iter().map(|&v| module_ent.type_of_value(v)));
@@ -1100,19 +1096,19 @@ impl<'a> FParser<'a> {
                 match (pointer, other_pointer) {
                     (true, false) => {
                         types[0] = self.pointer_of(types[0], mutable);
-                        self.create(host, other_fun, params, &types)?
+                        self.create(other_fun, params, &types)?
                     },
                     (false, true) => {
                         types[0] = self.t_state.pointer_base(types[0]).unwrap();
-                        self.create(host, other_fun, params, &types)?
+                        self.create(other_fun, params, &types)?
                     },
                     (true, true) if mutable && !other_mutable => {
                         None
                     },
-                    _ => self.create(host, other_fun, params, &types)?,
+                    _ => self.create(other_fun, params, &types)?,
                 }
             } else {
-                self.create(host, other_fun, params, &types)?
+                self.create(other_fun, params, &types)?
             }
             .ok_or_else(|| {
                 FError::new(FEKind::GenericMismatch(name.clone(), types.to_vec()), token)
@@ -1660,8 +1656,7 @@ impl<'a> FParser<'a> {
         Ok(Some(value))
     }
 
-    fn create(&mut self, host: Mod, fun: Fun, explicit_params: &[Ty], values: &[Ty]) -> Result<Option<Fun>> {
-        println!("=== {:?} {:?}", host, self.display(&self.funs[fun].name));
+    fn create(&mut self, fun: Fun, explicit_params: &[Ty], values: &[Ty]) -> Result<Option<Fun>> {
         let mut arg_buffer = self.context.pool.get();
         let mut stack = self.context.pool.get();
         let mut params = self.context.pool.get();
@@ -1777,8 +1772,11 @@ impl<'a> FParser<'a> {
         }
         id = id.add(self.state.modules[module].id);
         if let Some(&fun) = self.state.funs.index(id) {
-            self.modules[module].clear_types(&mut final_params);
-            return Ok(Some(fun));
+            if self.context.used_funs.contains(fun) {
+                self.modules[module].clear_types(&mut final_params);
+                return Ok(Some(fun));
+            } 
+            self.context.used_funs.insert(fun);
         }
 
         if !scope.is_reserved_value() {
@@ -1800,7 +1798,6 @@ impl<'a> FParser<'a> {
             vis,
             id,
             module,
-            host,
             hint,
             name,
             attrs,
@@ -1818,7 +1815,7 @@ impl<'a> FParser<'a> {
             body: FunBody::default(),
         };
 
-        let (shadowed, id) = self.add_fun_low(host, new_fun_ent);
+        let (shadowed, id) = self.add_fun(new_fun_ent);
         debug_assert!(shadowed.is_none());
 
         self.context.unresolved.push(id);
@@ -1981,7 +1978,7 @@ impl<'a> FParser<'a> {
 
                 self.state.globals[global] = g_ent;
 
-                self.modules[module].globals.push(global);
+                self.modules[module].add_global(global);
 
                 self.context.resolved_globals.push(global);
             }
@@ -2126,7 +2123,6 @@ impl<'a> FParser<'a> {
             vis,
             id,
             module,
-            host: module,
             hint,
             kind,
             name,
@@ -2678,8 +2674,8 @@ crate::def_displayer!(
             writeln!(
                 f,
                 "function argument types are '({})' but you provided '({})'",
-                sig.args
-                    .as_slice(&self.state.modules[module].type_slices)
+                self.state.modules[module]
+                    .type_slice(sig.args)
                     .iter()
                     .map(|&a| format!("{}", TypeDisplay::new(&self.state, a)))
                     .collect::<Vec<_>>().join(", "),
@@ -2694,9 +2690,11 @@ crate::def_displayer!(
             writeln!(
                 f,
                 "function pointer argument types are '({})' but you provided '({})'",
-                self.state.types[*ty].kind
-                    .fun_pointer()
-                    .args.as_slice(&self.state.modules[module].type_slices)
+                &self.state.modules[module].type_slice(
+                        self.state.types[*ty].kind
+                            .fun_pointer()
+                            .args
+                    )
                     .iter()
                     .map(|&a| format!("{}", TypeDisplay::new(&self.state, a)))
                     .collect::<Vec<_>>().join(", "),
@@ -2779,7 +2777,6 @@ pub enum DotInstr {
 pub struct FunEnt {
     pub id: ID,
     pub module: Mod,
-    pub host: Mod,
     pub hint: Token,
     pub params: EntityList<Ty>,
     pub base_fun: PackedOption<Fun>,
@@ -3095,6 +3092,8 @@ pub struct FContext {
 
     pub in_assign: bool,
     pub in_var_ref: bool,
+
+    pub used_funs: EntitySet<Fun>,
 
     pub unresolved_globals: Vec<GlobalValue>,
     pub resolved_globals: Vec<GlobalValue>,

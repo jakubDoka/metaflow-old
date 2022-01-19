@@ -787,11 +787,26 @@ impl<'a> AParser<'a> {
                 let mut token = self.token;
                 self.next()?;
                 let expr = self.expr()?;
-                self.expect_str(TKind::RPar, "expected ')'")?;
-                self.next()?;
+                let result = if self.token.kind == TKind::Comma {
+                    let mut ast = self.ast_ent(AKind::Tuple);
+                    self.push(&mut ast.sons, expr);
+                    self.next()?;
+                    self.list(
+                        &mut ast,
+                        TKind::None,
+                        TKind::Comma,
+                        TKind::RPar,
+                        Self::expr,
+                    )?;
+                    self.add(ast)
+                } else {
+                    self.expect_str(TKind::RPar, "expected ')'")?;
+                    self.next()?;
+                    expr
+                };
                 self.join_token(&mut token);
-                self.asts[expr].token = token;
-                expr
+                self.asts[result].token = token;
+                result
             }
             TKind::If => return self.if_expr(),
             TKind::For => return self.loop_expr(),
@@ -1176,6 +1191,10 @@ impl<'a> AParser<'a> {
         while self.token == separator {
             self.next()?;
             self.ignore_newlines()?;
+            // trailing colon allowed
+            if end != TKind::None && self.token == end {
+                break;
+            }
             let expr = parser(self)?;
             self.push(&mut ast.sons, expr);
         }
@@ -1312,7 +1331,6 @@ pub struct AState {
     is_type_expr: bool,
     level: usize,
     asts: PrimaryMap<Ast, AstEnt>,
-    #[default(ListPool::new())]
     cons: ListPool<Ast>,
 
     funs: EntityList<Ast>,
@@ -1581,6 +1599,7 @@ pub enum AKind {
     Call(bool), // true if dot syntax is used
     Index,
 
+    Tuple,
     Union(Vis),
     Struct(Vis),
     StructField(Vis, bool),

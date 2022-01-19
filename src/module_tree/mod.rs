@@ -12,7 +12,7 @@ use quick_proc::{QuickDefault, QuickSer, RealQuickSer};
 
 use crate::ast::{AContext, AError, AErrorDisplay, AMainState, AParser, AState, Dep, Vis};
 use crate::entities::{
-    BlockEnt, Fun, FunBody, IKind, InstEnt, Manifest, Mod, Source, Ty, ValueEnt, BUILTIN_MODULE, TypeEnt, TKind,
+    BlockEnt, Fun, FunBody, IKind, InstEnt, Manifest, Mod, Source, Ty, ValueEnt, BUILTIN_MODULE, TypeEnt, TKind, Unused,
 };
 use crate::incr;
 use crate::lexer::Token;
@@ -76,7 +76,7 @@ impl<'a> MTParser<'a> {
                 let dest: Mod = dest; // type inference failed
                 let nick = Option::unwrap_or(nickname, module.name).hash;
                 // we denote this to propagate changes later
-                module.dependant.push(dest);
+                module.add_dependant(dest);
                 self.modules[dest].dependency.push(DepHeader {
                     nick: MOD_SALT.add(nick),
                     module: module_id,
@@ -107,7 +107,7 @@ impl<'a> MTParser<'a> {
                     let manifest_id = self.modules[dep.module].manifest;
                     frontier.push((dep.in_code_path, dep.hint, manifest_id, None));
                     let module = dep.module;
-                    self.modules[module].dependant.push(module_id);
+                    self.modules[module].add_dependant(module_id);
                 }
                 continue;
             }
@@ -185,16 +185,15 @@ impl<'a> MTParser<'a> {
     }
 
     fn propagate_changes(&mut self, order: &[Mod]) {
-        // for now we just recompile all dependant modules no matter what
-        // TODO: figure out if change is really needed if possible
         for &module_id in order {
-            let module = &self.modules[module_id];
+            let module = &mut self.modules[module_id];
             if module.clean {
                 continue;
             }
-            let len = module.dependant.len();
+            module.clear();
+            let len = module.dependant().len();
             for i in 0..len {
-                let dep = self.modules[module_id].dependant[i];
+                let dep = self.modules[module_id].dependant()[i];
                 self.modules[dep].clean = false;
             }
         }
@@ -275,7 +274,6 @@ impl<'a> MTParser<'a> {
             module.dependency.clear();
             module.clean = false;
             module.seen = false;
-            module.clear();
             self.a_state_for(module.source, &mut module.a_state);
             self.modules[m] = module;
             m
@@ -492,7 +490,8 @@ impl<'a> MTParser<'a> {
     fn clean_incremental_data(&mut self) {
         for module in self.modules.iter_mut() {
             module.seen = false;
-            module.dependant.clear()
+
+            module.dependant.take().clear(module.slices.transmute_mut());
         }
 
         for manifest in self.manifests.iter_mut() {
@@ -674,32 +673,34 @@ pub struct MTContext {
 
 crate::inherit!(MTContext, a_context, AContext);
 
-#[derive(Debug, Clone, QuickDefault, QuickSer)]
+#[derive(Debug, Clone, Default, QuickSer)]
 pub struct ModEnt {
     pub id: ID,
     pub name: Span,
     pub dependency: Vec<DepHeader>,
-    pub dependant: Vec<Mod>,
+    pub dependant: EntityList<Mod>,
 
+    // Ast is stored here.
     pub a_state: AState,
 
-    #[default(Manifest::new(0))]
     pub manifest: Manifest,
 
-    pub functions: Vec<Fun>,
-    pub types: Vec<Ty>,
-    pub globals: Vec<GlobalValue>,
-    pub strings: Vec<(DataId, Span)>,
+    // Lists hold all items that either belong to this module,
+    // or are instantiated by this module. They can contain 
+    // duplicates, but this is expected behavior.
+    pub functions: EntityList<Fun>,
+    pub types: EntityList<Ty>,
+    pub globals: EntityList<GlobalValue>,
+
+    pub anon_strings: Vec<(DataId, Span)>,
 
     pub entry_point: PackedOption<Fun>,
 
     // this way we can quickly discard all used used ir elements
     // when we recompile module
-    pub value_slices: ListPool<Value>,
-    pub block_slices: ListPool<Block>,
-    pub inst_slices: ListPool<Inst>,
-    pub type_slices: ListPool<Ty>,
+    pub slices: ListPool<Unused>,
 
+    // This storage stores ir for all functions contained in module.
     pub values: PrimaryMap<Value, ValueEnt>,
     pub insts: PrimaryMap<Inst, InstEnt>,
     pub blocks: PrimaryMap<Block, BlockEnt>,
@@ -777,6 +778,18 @@ impl ModEnt {
         inst
     }
 
+    pub fn dependant(&self) -> &[Mod] {
+        self.dependant.as_slice(self.slices.transmute())
+    }
+
+    pub fn clear_dependant(&mut self) {
+        self.dependant.clear(self.slices.transmute_mut());
+    }
+
+    pub fn add_dependant(&mut self, module: Mod) {
+        self.dependant.push(module, self.slices.transmute_mut());
+    }
+
     pub fn add_temp_value(&mut self, ty: Ty) -> Value {
         self.add_value(ty, false)
     }
@@ -791,55 +804,63 @@ impl ModEnt {
     }
 
     pub fn add_values(&mut self, slice: &[Value]) -> EntityList<Value> {
-        EntityList::from_slice(slice, &mut self.value_slices)
+        EntityList::from_slice(slice, self.slices.transmute_mut())
     }
 
     pub fn values(&self, list: EntityList<Value>) -> &[Value] {
-        list.as_slice(&self.value_slices)
+        list.as_slice(self.slices.transmute())
     }
 
     pub fn add_type(&mut self, ty: Ty) {
-        self.types.push(ty);
+        self.types.push(ty, self.slices.transmute_mut());
     }
 
     pub fn add_global(&mut self, global: GlobalValue) {
-        self.globals.push(global);
+        self.globals.push(global, self.slices.transmute_mut());
     }
 
     pub fn add_fun(&mut self, fun: Fun) {
-        self.functions.push(fun);
+        self.functions.push(fun, self.slices.transmute_mut());
     }
 
     pub fn push_type(&mut self, list: &mut EntityList<Ty>, ty: Ty) {
-        list.push(ty, &mut self.type_slices);
+        list.push(ty, self.slices.transmute_mut());
     }
 
     pub fn add_type_slice(&mut self, slice: &[Ty]) -> EntityList<Ty> {
-        EntityList::from_slice(slice, &mut self.type_slices)
+        EntityList::from_slice(slice, self.slices.transmute_mut())
     }
 
     pub fn type_slice(&self, list: EntityList<Ty>) -> &[Ty] {
-        list.as_slice(&self.type_slices)
+        list.as_slice(self.slices.transmute())
     }
 
+    /// clear clears what needs to be cleared at module tree building level,
+    /// it leaves some fields untouched, as they will be used in higher code
     pub fn clear(&mut self) {
         self.entry_point = PackedOption::default();
-        self.type_slices.clear();
-        self.value_slices.clear();
-        self.block_slices.clear();
-        self.inst_slices.clear();
+        
+        // we need to get rid of all invalid entity lists
+        self.dependant.take();
+        self.functions.take();
+        self.types.take();
+        self.globals.take();
+
+        self.slices.clear();
+
+        // no longer needed nor valid
         self.values.clear();
         self.insts.clear();
         self.blocks.clear();
     }
 
     pub fn clear_type_slice(&mut self, params: &mut EntityList<Ty>) {
-        params.clear(&mut self.type_slices);
+        params.clear(self.slices.transmute_mut());
     }
 
     pub fn push_block_arg(&mut self, block: Block, arg: Value) {
         let block = &mut self.blocks[block];
-        block.args.push(arg, &mut self.value_slices);
+        block.args.push(arg, self.slices.transmute_mut());
     }
 
     pub fn set_block_args(&mut self, entry_block: Block, args: EntityList<Value>) {
@@ -872,7 +893,7 @@ impl ModEnt {
     pub fn last_arg_of_block(&self, entry_block: Block) -> Option<Value> {
         self.blocks[entry_block]
             .args
-            .as_slice(&self.value_slices)
+            .as_slice(self.slices.transmute())
             .last()
             .cloned()
     }
@@ -936,7 +957,7 @@ impl ModEnt {
     }
 
     pub fn clear_types(&mut self, target: &mut EntityList<Ty>) {
-        target.clear(&mut self.type_slices);
+        target.clear(self.slices.transmute_mut());
     }
 
     pub fn assign_global(&mut self, global: GlobalValue, value: Value, body: &mut FunBody) -> Ty {
@@ -953,7 +974,7 @@ impl ModEnt {
     }
 
     pub fn block_args(&self, block: Block) -> &[Value] {
-        self.blocks[block].args.as_slice(&self.value_slices)
+        self.blocks[block].args.as_slice(self.slices.transmute())
     }
 
     pub fn cast(&mut self, target: Value, ty: Ty, token: Token, body: &mut FunBody) -> Value {
@@ -986,6 +1007,18 @@ impl ModEnt {
         let value = self.add_temp_value(return_ty);
         self.add_inst(IKind::Call(fun, args), value, token, body);
         value
+    }
+
+    pub fn used_functions(&self) -> &[Fun] {
+        self.functions.as_slice(self.slices.transmute())
+    }
+
+    pub fn used_globals(&self) -> &[GlobalValue] {
+        self.globals.as_slice(self.slices.transmute())
+    }
+
+    pub fn used_types(&self) -> &[Ty] {
+        self.types.as_slice(self.slices.transmute())
     }
 }
 
