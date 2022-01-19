@@ -418,16 +418,16 @@ impl<'a> TParser<'a> {
         Ok(datatype)
     }
 
-    fn instance(&mut self, source_module: Mod, ast: Ast, depth: usize) -> Result<Ty> {
-        let module_ent = &self.modules[source_module];
+    fn instance(&mut self, module: Mod, ast: Ast, depth: usize) -> Result<Ty> {
+        let module_ent = &self.modules[module];
         let ident = module_ent.son(ast, 0);
         let &AstEnt { token, sons, kind } = module_ent.load(ident);
         let ty = match kind {
-            AKind::Ident => self.simple_type(source_module, None, ident, &token)?,
+            AKind::Ident => self.simple_type(module, None, ident, &token)?,
             AKind::Path => {
                 let module_name = module_ent.get(sons, 0);
                 let name = module_ent.get(sons, 1);
-                self.simple_type(source_module, Some(module_name), name, &token)?
+                self.simple_type(module, Some(module_name), name, &token)?
             }
             _ => unreachable!("{:?}", kind),
         };
@@ -437,7 +437,7 @@ impl<'a> TParser<'a> {
         } = self.types[ty];
 
         let mut params = EntityList::new();
-        let module_ent = &mut self.modules[source_module];
+        let module_ent = &mut self.modules[module];
         let sons = module_ent.sons(ast);
         let ast_len = module_ent.len(sons);
 
@@ -445,8 +445,8 @@ impl<'a> TParser<'a> {
 
         let mut id = TYPE_SALT.add(ty_id);
         for i in 1..ast_len {
-            let ty = self.modules[source_module].get(sons, i);
-            let ty = self.ty(source_module, ty, depth)?;
+            let ty = self.modules[module].get(sons, i);
+            let ty = self.ty(module, ty, depth)?;
             id = id.add(ty_id);
             self.modules[module].push_type(&mut params, ty);
         }
@@ -482,7 +482,7 @@ impl<'a> TParser<'a> {
             align: Size::ZERO,
         };
 
-        let ty = self.add_type(source_module, type_ent);
+        let ty = self.module.add_type(self.module, type_ent);
 
         self.context.unresolved.push((ty, depth));
 

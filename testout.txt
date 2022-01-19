@@ -2187,18 +2187,6 @@ Fun(None) "fun some_string -> &u8:\r\n  \"\r\nhello there\r\n  \"":
   None
  Group ":":
   Lit "\"\r\nhello there\r\n  \""
-Instantiation "Goof[Interface]":
- Ident "Goof"
- Ident "Interface"
-
-Instantiation "Option[T]":
- Ident "Option"
- Ident "T"
-
-Ident "bool"
-
-Ident "T"
-
 Ident "uint"
 
 FunHeader(Normal) "fun(uint)":
@@ -2243,3 +2231,4 @@ Ref(false) "&Focus":
 
 Ident "Gro"
 
+removing type "Goof"
