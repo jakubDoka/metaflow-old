@@ -1,6 +1,6 @@
 use std::ops::{Deref, DerefMut};
 use std::fmt::Write;
-use crate::ast::{AError, AErrorDisplay, AKind, AstEnt, Vis};
+use crate::ast::{AError, AErrorDisplay, AKind, AstEnt, Vis, AstDisplay};
 use crate::entities::{
     Ast, Mod, Ty, 
     BUILTIN_MODULE, TypeConst, Signature, 
@@ -18,7 +18,7 @@ use cranelift::codegen::ir::Signature as CrSignature;
 use cranelift::codegen::ir::{types::*, AbiParam, ArgumentPurpose};
 use cranelift::codegen::isa::TargetIsa;
 use cranelift::codegen::packed_option::PackedOption;
-use cranelift::entity::{EntityList, EntitySet, SecondaryMap};
+use cranelift::entity::{EntityList, EntitySet};
 use cranelift::entity::{packed_option::ReservedValue, EntityRef};
 use quick_proc::{QuickSer, RealQuickSer};
 
@@ -27,7 +27,7 @@ type Result<T = ()> = std::result::Result<T, TError>;
 pub const TYPE_SALT: ID = ID(0x9e3779b97f4a7c15);
 
 pub const VISIBILITY_MESSAGE: &str = concat!(
-    "removing 'priv' in case of different module but same package or adding",
+    "removing 'priv' in case of different module (but same package) or adding",
     " 'pub' in case of different package can help",
 );
 
@@ -210,7 +210,6 @@ impl<'a> TParser<'a> {
     ) -> Result {
         let mut fields = self.context.pool.get();
         let module_ent = &self.state.modules[module];
-        let source_module = self.source_modules[id];
         let module_id = module_ent.id;
         let params = self.state.types[id].params;
         let params_len = module_ent.type_slice(params).len();
@@ -252,7 +251,8 @@ impl<'a> TParser<'a> {
                     &AKind::StructField(vis, embedded) => (vis, embedded),
                     _ => unreachable!("{:?}", kind),
                 };
-                let ty = self.ty(source_module, type_ast, depth)?;
+                println!("{}", AstDisplay::new(self.state, module_ent, type_ast));
+                let ty = self.ty(module, type_ast, depth)?;
                 let hint = token;
                 let module_ent = &self.modules[module];
                 let field_ids = self.modules[module].slice(sons);
@@ -763,7 +763,6 @@ crate::inherit!(TContext, mt_context, MTContext);
 pub struct TState {
     pub builtin_repo: BuiltinRepo,
     pub types: Table<Ty, TypeEnt>,
-    pub source_modules: SecondaryMap<Ty, Mod>,
     pub used: EntitySet<Ty>,
 
     pub type_cycle_map: Vec<(bool, bool)>,
@@ -957,7 +956,6 @@ impl TState {
             shadow = None;
         }
 
-        self.source_modules[ty] = source_module;
         self.modules[source_module].add_type(ty);
         debug_assert!(shadow.is_none() || allow_shadow);
         (shadow, ty)
@@ -994,6 +992,7 @@ impl TState {
     fn remove_type(&mut self, ty: Ty) {
         let id = self.types[ty].id;
         let mut ent = self.types.remove(id).unwrap();
+        println!("removing type {:?}", id);
         self.modules[ent.module].clear_types(&mut ent.params);
     }
 }
@@ -1001,14 +1000,18 @@ impl TState {
 impl IncrementalData for TState {
     fn prepare(&mut self) {
         // remove all garbage (unused) types
-        let mut used = std::mem::take(&mut self.used);
-        used.invert();
-        for ty in used.keys() {
+        let used = std::mem::take(&mut self.used);
+        let mut to_remove = Vec::with_capacity(self.types.len());
+        for (ty, _) in self.types.iter() {
+            if !used.contains(ty) {
+                to_remove.push(ty);
+            }
+        }
+        for ty in to_remove {
             self.remove_type(ty);
         }
-
+ 
         self.type_cycle_map.clear();
-        self.source_modules.clear();
         self.mt_state.prepare();
     }
 }
@@ -1021,7 +1024,6 @@ impl Default for TState {
             types: Table::new(),
             mt_state: MTState::default(),
             type_cycle_map: Vec::new(),
-            source_modules: SecondaryMap::new(),
             used: EntitySet::new(),
         };
 

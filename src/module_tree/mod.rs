@@ -484,7 +484,7 @@ impl<'a> MTParser<'a> {
     }
 
     fn clean_incremental_data(&mut self) {
-        for module in self.modules.iter_mut() {
+        for (_, module) in self.modules.iter_mut() {
             module.dependant.take().clear(module.slices.transmute_mut());
         }
     }
@@ -655,6 +655,9 @@ impl Default for MTState {
 
 impl IncrementalData for MTState {
     fn prepare(&mut self) {
+        for (_, module) in self.modules.iter_mut() {
+            module.clean = true;
+        }
         self.module_order.clear();
     }
 }
@@ -1136,10 +1139,6 @@ pub fn test() {
         .parse(PATH)
         .map_err(|e| panic!("{}", MTErrorDisplay::new(&state, &e)))
         .unwrap();
-
-    for module in state.modules.iter_mut() {
-        module.clean = true;
-    }
 
     incr::save_data(PATH, &mut state, ID(0), Some(hint)).unwrap();
 }

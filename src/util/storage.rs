@@ -1,8 +1,8 @@
 use std::ops::{Index, IndexMut};
 
 use cranelift::{
-    codegen::entity::{EntityRef, PrimaryMap},
-    entity::SecondaryMap,
+    codegen::entity::EntityRef,
+    entity::{SecondaryMap, PoolMap},
 };
 use quick_proc::QuickSer;
 
@@ -303,31 +303,24 @@ impl<'a, V: Default> Iterator for MapValueMutIterator<'a, V> {
 }
 
 #[derive(Clone, Debug, QuickSer)]
-pub struct Table<I: EntityRef, T> {
+pub struct Table<I: EntityRef, T: Default> {
     map: Map<I>,
     ids: SecondaryMap<I, ID>,
-    data: PrimaryMap<I, T>,
-    free: Vec<I>,
+    data: PoolMap<I, T>,
 }
 
-impl<I: EntityRef + Default, T> Table<I, T> {
+impl<I: EntityRef + Default, T: Default> Table<I, T> {
     pub fn new() -> Self {
         Self {
             map: Map::new(),
             ids: SecondaryMap::new(),
-            data: PrimaryMap::new(),
-            free: Vec::new(),
+            data: PoolMap::new(),
         }
-    }
-
-    pub fn next_key(&self) -> I {
-        self.data.next_key()
     }
 
     pub fn clear(&mut self) {
         self.map.clear();
         self.data.clear();
-        self.free.clear();
     }
 
     pub fn add_hidden(&mut self, value: T) -> I {
@@ -340,12 +333,7 @@ impl<I: EntityRef + Default, T> Table<I, T> {
                 return (Some(std::mem::replace(&mut self.data[i], data)), i);
             }
         }
-        let i = if let Some(free) = self.free.pop() {
-            self.data[free] = data;
-            free
-        } else {
-            self.data.push(data)
-        };
+        let i = self.data.push(data);
         self.ids[i] = id;
         self.map.insert(id, i);
         (None, i)
@@ -357,12 +345,7 @@ impl<I: EntityRef + Default, T> Table<I, T> {
                 return i;
             }
         }
-        let i = if let Some(free) = self.free.pop() {
-            self.data[free] = data;
-            free
-        } else {
-            self.data.push(data)
-        };
+        let i = self.data.push(data);
         self.ids[i] = id;
         self.map.insert(id, i);
         i
@@ -372,12 +355,12 @@ impl<I: EntityRef + Default, T> Table<I, T> {
         self.map.get(id)
     }
 
-    pub fn iter<'a>(&'a self) -> impl Iterator<Item = &'a T> + 'a {
-        self.data.iter().map(|v| v.1)
+    pub fn iter<'a>(&'a self) -> impl Iterator<Item = (I, &'a T)> + 'a {
+        self.data.iter()
     }
 
-    pub fn iter_mut(&mut self) -> impl Iterator<Item = &mut T> {
-        self.data.iter_mut().map(|v| v.1)
+    pub fn iter_mut(&mut self) -> impl Iterator<Item = (I, &mut T)> {
+        self.data.iter_mut()
     }
 
     pub fn link(&mut self, id: ID, index: I) -> Option<I> {
@@ -410,7 +393,7 @@ impl<I: EntityRef + Default, T> Table<I, T> {
     }
 
     pub fn len(&self) -> usize {
-        self.data.len()
+        self.map.len()
     }
 
     
@@ -419,17 +402,15 @@ impl<I: EntityRef + Default, T> Table<I, T> {
 impl<I: EntityRef + Default, T: Default> Table<I, T> {
     pub fn remove(&mut self, id: ID) -> Option<T> {
         if let Some(&i) = self.map.get(id) {
-            let value = std::mem::take(&mut self.data[i]);
             self.map.remove(id);
-            self.free.push(i);
-            Some(value)
+            Some(self.data.remove(i))
         } else {
             None
         }
     }
 }
 
-impl<I: EntityRef, T> Index<I> for Table<I, T> {
+impl<I: EntityRef, T: Default> Index<I> for Table<I, T> {
     type Output = T;
 
     #[inline]
@@ -438,14 +419,14 @@ impl<I: EntityRef, T> Index<I> for Table<I, T> {
     }
 }
 
-impl<I: EntityRef, T> IndexMut<I> for Table<I, T> {
+impl<I: EntityRef, T: Default> IndexMut<I> for Table<I, T> {
     #[inline]
     fn index_mut(&mut self, id: I) -> &mut Self::Output {
         &mut self.data[id]
     }
 }
 
-impl<I: EntityRef + Default, T> Index<ID> for Table<I, T> {
+impl<I: EntityRef + Default, T: Default> Index<ID> for Table<I, T> {
     type Output = T;
 
     fn index(&self, id: ID) -> &Self::Output {
@@ -454,14 +435,14 @@ impl<I: EntityRef + Default, T> Index<ID> for Table<I, T> {
     }
 }
 
-impl<I: EntityRef + Default, T> IndexMut<ID> for Table<I, T> {
+impl<I: EntityRef + Default, T: Default> IndexMut<ID> for Table<I, T> {
     fn index_mut(&mut self, id: ID) -> &mut Self::Output {
         let i = *self.map.get(id).expect("invalid ID");
         &mut self.data[i]
     }
 }
 
-impl<I: EntityRef + Default, T> Default for Table<I, T> {
+impl<I: EntityRef + Default, T: Default> Default for Table<I, T> {
     fn default() -> Self {
         Self::new()
     }

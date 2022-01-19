@@ -1,3 +1,6 @@
 struct Option[T]:
   priv present: bool
   priv value: T
+
+struct Some:
+  priv value: int
