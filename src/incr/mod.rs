@@ -4,7 +4,7 @@ use quick_proc::QuickSer;
 
 use crate::util::sdbm::ID;
 
-pub fn load_data<T: QuickSer>(root_path: &str, arg_hash: ID) -> Option<(T, usize)> {
+pub fn load_data<T: IncrementalData>(root_path: &str, arg_hash: ID) -> Option<(T, usize)> {
     let mut path = PathBuf::new();
     path.push(root_path);
     path.push("meta");
@@ -26,12 +26,14 @@ pub fn load_data<T: QuickSer>(root_path: &str, arg_hash: ID) -> Option<(T, usize
     Some((data, progress))
 }
 
-pub fn save_data<T: QuickSer>(
+pub fn save_data<T: IncrementalData>(
     root_path: &str,
-    data: &T,
+    data: &mut T,
     arg_hash: ID,
     size_hint: Option<usize>,
 ) -> std::io::Result<()> {
+    data.prepare();
+
     let mut buffer = Vec::with_capacity(size_hint.unwrap_or(1024 * 1024));
 
     crate::COMMIT_HASH.to_string().ser(&mut buffer);
@@ -47,4 +49,8 @@ pub fn save_data<T: QuickSer>(
     std::fs::write(path, buffer)?;
 
     Ok(())
+}
+
+pub trait IncrementalData: QuickSer {
+    fn prepare(&mut self) {}
 }

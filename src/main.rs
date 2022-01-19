@@ -1,13 +1,13 @@
 #![feature(vec_into_raw_parts)]
 
-use std::time::Instant;
+//use std::time::Instant;
 
-use gen::GErrorDisplay;
+//use gen::GErrorDisplay;
 
 pub mod ast;
 pub mod entities;
-pub mod functions;
-pub mod gen;
+//pub mod functions;
+//pub mod gen;
 pub mod incr;
 pub mod lexer;
 pub mod module_tree;
@@ -26,7 +26,7 @@ fn main() {
 
 #[cfg(not(feature = "testing"))]
 fn run() {
-    let args = match util::cli::Arguments::new(std::env::args()) {
+    /*let args = match util::cli::Arguments::new(std::env::args()) {
         Ok(args) => args,
         Err(e) => {
             println!("{:?}", e);
@@ -48,7 +48,7 @@ fn run() {
             "Failed to compile:\n {}",
             GErrorDisplay::new(state.as_ref(), &err)
         ),
-    };
+    };*/
 }
 
 #[cfg(feature = "testing")]
@@ -58,6 +58,6 @@ fn test() {
     ast::test();
     module_tree::test();
     types::test();
-    functions::test();
-    gen::test();
+    //functions::test();
+    //gen::test();
 }

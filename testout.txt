@@ -1,0 +1,2189 @@
+Ok(Arguments { _filename: "file", hash: ID(0), flags: ["flag", "flag"], field_flags: [("flag", "value")], args: ["arg", "arg"] })
+Ok(Arguments { _filename: "file", hash: ID(0), flags: [], field_flags: [], args: ["string value"] })
+|> text_code.mf:2:1
+| var something = [1, 2, 3]
+| ^
+|> text_code.mf:2:4
+| var something = [1, 2, 3]
+| ^^^
+|> text_code.mf:2:14
+| var something = [1, 2, 3]
+|     ^^^^^^^^^
+|> text_code.mf:2:16
+| var something = [1, 2, 3]
+|               ^
+|> text_code.mf:2:18
+| var something = [1, 2, 3]
+|                 ^
+|> text_code.mf:2:19
+| var something = [1, 2, 3]
+|                  ^
+|> text_code.mf:2:20
+| var something = [1, 2, 3]
+|                   ^
+|> text_code.mf:2:22
+| var something = [1, 2, 3]
+|                     ^
+|> text_code.mf:2:23
+| var something = [1, 2, 3]
+|                      ^
+|> text_code.mf:2:25
+| var something = [1, 2, 3]
+|                        ^
+|> text_code.mf:2:26
+| var something = [1, 2, 3]
+|                         ^
+|> text_code.mf:3:1
+| let hello = "hello"
+| ^
+|> text_code.mf:3:4
+| let hello = "hello"
+| ^^^
+|> text_code.mf:3:10
+| let hello = "hello"
+|     ^^^^^
+|> text_code.mf:3:12
+| let hello = "hello"
+|           ^
+|> text_code.mf:3:20
+| let hello = "hello"
+|             ^^^^^^^
+|> text_code.mf:4:2
+| 
+| ^
+|> text_code.mf:5:1
+| fun pointed_function(a: Int, b: Int) -> int:
+| ^
+|> text_code.mf:5:4
+| fun pointed_function(a: Int, b: Int) -> int:
+| ^^^
+|> text_code.mf:5:21
+| fun pointed_function(a: Int, b: Int) -> int:
+|     ^^^^^^^^^^^^^^^^
+|> text_code.mf:5:22
+| fun pointed_function(a: Int, b: Int) -> int:
+|                     ^
+|> text_code.mf:5:23
+| fun pointed_function(a: Int, b: Int) -> int:
+|                      ^
+|> text_code.mf:5:24
+| fun pointed_function(a: Int, b: Int) -> int:
+|                       ^
+|> text_code.mf:5:28
+| fun pointed_function(a: Int, b: Int) -> int:
+|                         ^^^
+|> text_code.mf:5:29
+| fun pointed_function(a: Int, b: Int) -> int:
+|                            ^
+|> text_code.mf:5:31
+| fun pointed_function(a: Int, b: Int) -> int:
+|                              ^
+|> text_code.mf:5:32
+| fun pointed_function(a: Int, b: Int) -> int:
+|                               ^
+|> text_code.mf:5:36
+| fun pointed_function(a: Int, b: Int) -> int:
+|                                 ^^^
+|> text_code.mf:5:37
+| fun pointed_function(a: Int, b: Int) -> int:
+|                                    ^
+|> text_code.mf:5:40
+| fun pointed_function(a: Int, b: Int) -> int:
+|                                      ^^
+|> text_code.mf:5:44
+| fun pointed_function(a: Int, b: Int) -> int:
+|                                         ^^^
+|> text_code.mf:5:45
+| fun pointed_function(a: Int, b: Int) -> int:
+|                                            ^
+|> text_code.mf:6:3
+|   return a + b
+| ^^
+|> text_code.mf:6:9
+|   return a + b
+|   ^^^^^^
+|> text_code.mf:6:11
+|   return a + b
+|          ^
+|> text_code.mf:6:13
+|   return a + b
+|            ^
+|> text_code.mf:6:15
+|   return a + b
+|              ^
+|> text_code.mf:7:2
+| 
+| ^
+|> text_code.mf:8:1
+| ## doc comment
+| ^
+|> text_code.mf:8:16
+| ## doc comment
+| ^^^^^^^^^^^^^^
+|> text_code.mf:9:1
+| fun something -> fun(int, int) -> int:
+| ^
+|> text_code.mf:9:4
+| fun something -> fun(int, int) -> int:
+| ^^^
+|> text_code.mf:9:14
+| fun something -> fun(int, int) -> int:
+|     ^^^^^^^^^
+|> text_code.mf:9:17
+| fun something -> fun(int, int) -> int:
+|               ^^
+|> text_code.mf:9:21
+| fun something -> fun(int, int) -> int:
+|                  ^^^
+|> text_code.mf:9:22
+| fun something -> fun(int, int) -> int:
+|                     ^
+|> text_code.mf:9:25
+| fun something -> fun(int, int) -> int:
+|                      ^^^
+|> text_code.mf:9:26
+| fun something -> fun(int, int) -> int:
+|                         ^
+|> text_code.mf:9:30
+| fun something -> fun(int, int) -> int:
+|                           ^^^
+|> text_code.mf:9:31
+| fun something -> fun(int, int) -> int:
+|                              ^
+|> text_code.mf:9:34
+| fun something -> fun(int, int) -> int:
+|                                ^^
+|> text_code.mf:9:38
+| fun something -> fun(int, int) -> int:
+|                                   ^^^
+|> text_code.mf:9:39
+| fun something -> fun(int, int) -> int:
+|                                      ^
+|> text_code.mf:10:3
+|   # ignored comment
+| ^^
+|> text_code.mf:11:3
+|   return #[ even more ignored comment ]# pointed_function
+| ^^
+|> text_code.mf:11:9
+|   return #[ even more ignored comment ]# pointed_function
+|   ^^^^^^
+|> text_code.mf:11:58
+|   return #[ even more ignored comment ]# pointed_function
+|                                          ^^^^^^^^^^^^^^^^
+|> text_code.mf:12:2
+| 
+| ^
+|> text_code.mf:13:1
+| ##[
+| ^
+|> text_code.mf:15:3
+| ##[
+|   multiline doc comment
+| ]#
+| ^^^^^^^^^^^^^^^^^^^^^^^
+|> text_code.mf:16:1
+| struct Scope
+| ^
+|> text_code.mf:16:7
+| struct Scope
+| ^^^^^^
+|> text_code.mf:16:13
+| struct Scope
+|        ^^^^^
+|> text_code.mf:17:2
+| 
+| ^
+|> text_code.mf:18:1
+| impl Scope:
+| ^
+|> text_code.mf:18:5
+| impl Scope:
+| ^^^^
+|> text_code.mf:18:11
+| impl Scope:
+|      ^^^^^
+|> text_code.mf:18:12
+| impl Scope:
+|           ^
+|> text_code.mf:19:3
+|   fun new -> Self:
+| ^^
+|> text_code.mf:19:6
+|   fun new -> Self:
+|   ^^^
+|> text_code.mf:19:10
+|   fun new -> Self:
+|       ^^^
+|> text_code.mf:19:13
+|   fun new -> Self:
+|           ^^
+|> text_code.mf:19:18
+|   fun new -> Self:
+|              ^^^^
+|> text_code.mf:19:19
+|   fun new -> Self:
+|                  ^
+|> text_code.mf:20:5
+|     return
+| ^^^^
+|> text_code.mf:20:11
+|     return
+|     ^^^^^^
+|> text_code.mf:21:4
+|   
+| ^^^
+|> text_code.mf:22:3
+|   fun do_nothing(s: Self):
+| ^^
+|> text_code.mf:22:6
+|   fun do_nothing(s: Self):
+|   ^^^
+|> text_code.mf:22:17
+|   fun do_nothing(s: Self):
+|       ^^^^^^^^^^
+|> text_code.mf:22:18
+|   fun do_nothing(s: Self):
+|                 ^
+|> text_code.mf:22:19
+|   fun do_nothing(s: Self):
+|                  ^
+|> text_code.mf:22:20
+|   fun do_nothing(s: Self):
+|                   ^
+|> text_code.mf:22:25
+|   fun do_nothing(s: Self):
+|                     ^^^^
+|> text_code.mf:22:26
+|   fun do_nothing(s: Self):
+|                         ^
+|> text_code.mf:22:27
+|   fun do_nothing(s: Self):
+|                          ^
+|> text_code.mf:23:5
+|     pass
+| ^^^^
+|> text_code.mf:23:9
+|     pass
+|     ^^^^
+|> text_code.mf:24:2
+| 
+| ^
+|> text_code.mf:25:1
+| struct Template[T]
+| ^
+|> text_code.mf:25:7
+| struct Template[T]
+| ^^^^^^
+|> text_code.mf:25:16
+| struct Template[T]
+|        ^^^^^^^^
+|> text_code.mf:25:17
+| struct Template[T]
+|                ^
+|> text_code.mf:25:18
+| struct Template[T]
+|                 ^
+|> text_code.mf:25:19
+| struct Template[T]
+|                  ^
+|> text_code.mf:26:2
+| 
+| ^
+|> text_code.mf:27:1
+| impl[T] Template[T]:
+| ^
+|> text_code.mf:27:5
+| impl[T] Template[T]:
+| ^^^^
+|> text_code.mf:27:6
+| impl[T] Template[T]:
+|     ^
+|> text_code.mf:27:7
+| impl[T] Template[T]:
+|      ^
+|> text_code.mf:27:8
+| impl[T] Template[T]:
+|       ^
+|> text_code.mf:27:17
+| impl[T] Template[T]:
+|         ^^^^^^^^
+|> text_code.mf:27:18
+| impl[T] Template[T]:
+|                 ^
+|> text_code.mf:27:19
+| impl[T] Template[T]:
+|                  ^
+|> text_code.mf:27:20
+| impl[T] Template[T]:
+|                   ^
+|> text_code.mf:27:21
+| impl[T] Template[T]:
+|                    ^
+|> text_code.mf:28:3
+|   fun new -> Self:
+| ^^
+|> text_code.mf:28:6
+|   fun new -> Self:
+|   ^^^
+|> text_code.mf:28:10
+|   fun new -> Self:
+|       ^^^
+|> text_code.mf:28:13
+|   fun new -> Self:
+|           ^^
+|> text_code.mf:28:18
+|   fun new -> Self:
+|              ^^^^
+|> text_code.mf:28:19
+|   fun new -> Self:
+|                  ^
+|> text_code.mf:29:5
+|     return
+| ^^^^
+|> text_code.mf:29:11
+|     return
+|     ^^^^^^
+|> text_code.mf:30:4
+|   
+| ^^^
+|> text_code.mf:31:3
+|   fun do_nothing(s: Self, value: T) -> T:
+| ^^
+|> text_code.mf:31:6
+|   fun do_nothing(s: Self, value: T) -> T:
+|   ^^^
+|> text_code.mf:31:17
+|   fun do_nothing(s: Self, value: T) -> T:
+|       ^^^^^^^^^^
+|> text_code.mf:31:18
+|   fun do_nothing(s: Self, value: T) -> T:
+|                 ^
+|> text_code.mf:31:19
+|   fun do_nothing(s: Self, value: T) -> T:
+|                  ^
+|> text_code.mf:31:20
+|   fun do_nothing(s: Self, value: T) -> T:
+|                   ^
+|> text_code.mf:31:25
+|   fun do_nothing(s: Self, value: T) -> T:
+|                     ^^^^
+|> text_code.mf:31:26
+|   fun do_nothing(s: Self, value: T) -> T:
+|                         ^
+|> text_code.mf:31:32
+|   fun do_nothing(s: Self, value: T) -> T:
+|                           ^^^^^
+|> text_code.mf:31:33
+|   fun do_nothing(s: Self, value: T) -> T:
+|                                ^
+|> text_code.mf:31:35
+|   fun do_nothing(s: Self, value: T) -> T:
+|                                  ^
+|> text_code.mf:31:36
+|   fun do_nothing(s: Self, value: T) -> T:
+|                                   ^
+|> text_code.mf:31:39
+|   fun do_nothing(s: Self, value: T) -> T:
+|                                     ^^
+|> text_code.mf:31:41
+|   fun do_nothing(s: Self, value: T) -> T:
+|                                        ^
+|> text_code.mf:31:42
+|   fun do_nothing(s: Self, value: T) -> T:
+|                                         ^
+|> text_code.mf:32:5
+|     value
+| ^^^^
+|> text_code.mf:32:10
+|     value
+|     ^^^^^
+|> text_code.mf:33:2
+| 
+| ^
+|> text_code.mf:34:1
+| fun use_chain:
+| ^
+|> text_code.mf:34:4
+| fun use_chain:
+| ^^^
+|> text_code.mf:34:14
+| fun use_chain:
+|     ^^^^^^^^^
+|> text_code.mf:34:15
+| fun use_chain:
+|              ^
+|> text_code.mf:35:3
+|   module::Type::method::[param]()
+| ^^
+|> text_code.mf:35:9
+|   module::Type::method::[param]()
+|   ^^^^^^
+|> text_code.mf:35:11
+|   module::Type::method::[param]()
+|         ^^
+|> text_code.mf:35:15
+|   module::Type::method::[param]()
+|           ^^^^
+|> text_code.mf:35:17
+|   module::Type::method::[param]()
+|               ^^
+|> text_code.mf:35:23
+|   module::Type::method::[param]()
+|                 ^^^^^^
+|> text_code.mf:35:25
+|   module::Type::method::[param]()
+|                       ^^
+|> text_code.mf:35:26
+|   module::Type::method::[param]()
+|                         ^
+|> text_code.mf:35:31
+|   module::Type::method::[param]()
+|                          ^^^^^
+|> text_code.mf:35:32
+|   module::Type::method::[param]()
+|                               ^
+|> text_code.mf:35:33
+|   module::Type::method::[param]()
+|                                ^
+|> text_code.mf:35:34
+|   module::Type::method::[param]()
+|                                 ^
+|> text_code.mf:36:2
+| 
+| ^
+|> text_code.mf:37:1
+| fun flo: pass
+| ^
+|> text_code.mf:37:4
+| fun flo: pass
+| ^^^
+|> text_code.mf:37:8
+| fun flo: pass
+|     ^^^
+|> text_code.mf:37:9
+| fun flo: pass
+|        ^
+|> text_code.mf:37:14
+| fun flo: pass
+|          ^^^^
+|> text_code.mf:38:2
+| 
+| ^
+|> text_code.mf:39:1
+| fun foo(): pass
+| ^
+|> text_code.mf:39:4
+| fun foo(): pass
+| ^^^
+|> text_code.mf:39:8
+| fun foo(): pass
+|     ^^^
+|> text_code.mf:39:9
+| fun foo(): pass
+|        ^
+|> text_code.mf:39:10
+| fun foo(): pass
+|         ^
+|> text_code.mf:39:11
+| fun foo(): pass
+|          ^
+|> text_code.mf:39:16
+| fun foo(): pass
+|            ^^^^
+|> text_code.mf:40:2
+| 
+| ^
+|> text_code.mf:41:1
+| fun goo(a: i8, b: i8): pass
+| ^
+|> text_code.mf:41:4
+| fun goo(a: i8, b: i8): pass
+| ^^^
+|> text_code.mf:41:8
+| fun goo(a: i8, b: i8): pass
+|     ^^^
+|> text_code.mf:41:9
+| fun goo(a: i8, b: i8): pass
+|        ^
+|> text_code.mf:41:10
+| fun goo(a: i8, b: i8): pass
+|         ^
+|> text_code.mf:41:11
+| fun goo(a: i8, b: i8): pass
+|          ^
+|> text_code.mf:41:14
+| fun goo(a: i8, b: i8): pass
+|            ^^
+|> text_code.mf:41:15
+| fun goo(a: i8, b: i8): pass
+|              ^
+|> text_code.mf:41:17
+| fun goo(a: i8, b: i8): pass
+|                ^
+|> text_code.mf:41:18
+| fun goo(a: i8, b: i8): pass
+|                 ^
+|> text_code.mf:41:21
+| fun goo(a: i8, b: i8): pass
+|                   ^^
+|> text_code.mf:41:22
+| fun goo(a: i8, b: i8): pass
+|                     ^
+|> text_code.mf:41:23
+| fun goo(a: i8, b: i8): pass
+|                      ^
+|> text_code.mf:41:28
+| fun goo(a: i8, b: i8): pass
+|                        ^^^^
+|> text_code.mf:42:2
+| 
+| ^
+|> text_code.mf:43:1
+| fun loo:
+| ^
+|> text_code.mf:43:4
+| fun loo:
+| ^^^
+|> text_code.mf:43:8
+| fun loo:
+|     ^^^
+|> text_code.mf:43:9
+| fun loo:
+|        ^
+|> text_code.mf:44:3
+|   noo::loo::[i8]()
+| ^^
+|> text_code.mf:44:6
+|   noo::loo::[i8]()
+|   ^^^
+|> text_code.mf:44:8
+|   noo::loo::[i8]()
+|      ^^
+|> text_code.mf:44:11
+|   noo::loo::[i8]()
+|        ^^^
+|> text_code.mf:44:13
+|   noo::loo::[i8]()
+|           ^^
+|> text_code.mf:44:14
+|   noo::loo::[i8]()
+|             ^
+|> text_code.mf:44:16
+|   noo::loo::[i8]()
+|              ^^
+|> text_code.mf:44:17
+|   noo::loo::[i8]()
+|                ^
+|> text_code.mf:44:18
+|   noo::loo::[i8]()
+|                 ^
+|> text_code.mf:44:19
+|   noo::loo::[i8]()
+|                  ^
+|> text_code.mf:45:2
+| 
+| ^
+|> text_code.mf:46:3
+|   let array = [1, 2, 3]
+| ^^
+|> text_code.mf:46:6
+|   let array = [1, 2, 3]
+|   ^^^
+|> text_code.mf:46:12
+|   let array = [1, 2, 3]
+|       ^^^^^
+|> text_code.mf:46:14
+|   let array = [1, 2, 3]
+|             ^
+|> text_code.mf:46:16
+|   let array = [1, 2, 3]
+|               ^
+|> text_code.mf:46:17
+|   let array = [1, 2, 3]
+|                ^
+|> text_code.mf:46:18
+|   let array = [1, 2, 3]
+|                 ^
+|> text_code.mf:46:20
+|   let array = [1, 2, 3]
+|                   ^
+|> text_code.mf:46:21
+|   let array = [1, 2, 3]
+|                    ^
+|> text_code.mf:46:23
+|   let array = [1, 2, 3]
+|                      ^
+|> text_code.mf:46:24
+|   let array = [1, 2, 3]
+|                       ^
+|> text_code.mf:47:3
+|   array[0] = 3
+| ^^
+|> text_code.mf:47:8
+|   array[0] = 3
+|   ^^^^^
+|> text_code.mf:47:9
+|   array[0] = 3
+|        ^
+|> text_code.mf:47:10
+|   array[0] = 3
+|         ^
+|> text_code.mf:47:11
+|   array[0] = 3
+|          ^
+|> text_code.mf:47:13
+|   array[0] = 3
+|            ^
+|> text_code.mf:47:15
+|   array[0] = 3
+|              ^
+|> text_code.mf:48:3
+|   array[2] = always[1]
+| ^^
+|> text_code.mf:48:8
+|   array[2] = always[1]
+|   ^^^^^
+|> text_code.mf:48:9
+|   array[2] = always[1]
+|        ^
+|> text_code.mf:48:10
+|   array[2] = always[1]
+|         ^
+|> text_code.mf:48:11
+|   array[2] = always[1]
+|          ^
+|> text_code.mf:48:13
+|   array[2] = always[1]
+|            ^
+|> text_code.mf:48:20
+|   array[2] = always[1]
+|              ^^^^^^
+|> text_code.mf:48:21
+|   array[2] = always[1]
+|                    ^
+|> text_code.mf:48:22
+|   array[2] = always[1]
+|                     ^
+|> text_code.mf:48:23
+|   array[2] = always[1]
+|                      ^
+|> text_code.mf:49:3
+|   array[1] = 1
+| ^^
+|> text_code.mf:49:8
+|   array[1] = 1
+|   ^^^^^
+|> text_code.mf:49:9
+|   array[1] = 1
+|        ^
+|> text_code.mf:49:10
+|   array[1] = 1
+|         ^
+|> text_code.mf:49:11
+|   array[1] = 1
+|          ^
+|> text_code.mf:49:13
+|   array[1] = 1
+|            ^
+|> text_code.mf:49:15
+|   array[1] = 1
+|              ^
+|> text_code.mf:50:2
+| 
+| ^
+|> text_code.mf:51:3
+|   pass
+| ^^
+|> text_code.mf:51:7
+|   pass
+|   ^^^^
+|> text_code.mf:52:2
+| 
+| ^
+|> text_code.mf:53:1
+| fun main -> i64:
+| ^
+|> text_code.mf:53:4
+| fun main -> i64:
+| ^^^
+|> text_code.mf:53:9
+| fun main -> i64:
+|     ^^^^
+|> text_code.mf:53:12
+| fun main -> i64:
+|          ^^
+|> text_code.mf:53:16
+| fun main -> i64:
+|             ^^^
+|> text_code.mf:53:17
+| fun main -> i64:
+|                ^
+|> text_code.mf:54:3
+|   return 10 + 4 - 2 * 1 + 8
+| ^^
+|> text_code.mf:54:9
+|   return 10 + 4 - 2 * 1 + 8
+|   ^^^^^^
+|> text_code.mf:54:12
+|   return 10 + 4 - 2 * 1 + 8
+|          ^^
+|> text_code.mf:54:14
+|   return 10 + 4 - 2 * 1 + 8
+|             ^
+|> text_code.mf:54:16
+|   return 10 + 4 - 2 * 1 + 8
+|               ^
+|> text_code.mf:54:18
+|   return 10 + 4 - 2 * 1 + 8
+|                 ^
+|> text_code.mf:54:20
+|   return 10 + 4 - 2 * 1 + 8
+|                   ^
+|> text_code.mf:54:22
+|   return 10 + 4 - 2 * 1 + 8
+|                     ^
+|> text_code.mf:54:24
+|   return 10 + 4 - 2 * 1 + 8
+|                       ^
+|> text_code.mf:54:26
+|   return 10 + 4 - 2 * 1 + 8
+|                         ^
+|> text_code.mf:54:28
+|   return 10 + 4 - 2 * 1 + 8
+|                           ^
+|> text_code.mf:55:2
+| 
+| ^
+|> text_code.mf:56:1
+| fun operator_stress_test -> i64:
+| ^
+|> text_code.mf:56:4
+| fun operator_stress_test -> i64:
+| ^^^
+|> text_code.mf:56:25
+| fun operator_stress_test -> i64:
+|     ^^^^^^^^^^^^^^^^^^^^
+|> text_code.mf:56:28
+| fun operator_stress_test -> i64:
+|                          ^^
+|> text_code.mf:56:32
+| fun operator_stress_test -> i64:
+|                             ^^^
+|> text_code.mf:56:33
+| fun operator_stress_test -> i64:
+|                                ^
+|> text_code.mf:57:3
+|   return 10 + 2 * 1 - 9 | 4 & 1 ^ 2 >> 1 << 7 min 20 max 10
+| ^^
+|> text_code.mf:57:9
+|   return 10 + 2 * 1 - 9 | 4 & 1 ^ 2 >> 1 << 7 min 20 max 10
+|   ^^^^^^
+|> text_code.mf:57:12
+|   return 10 + 2 * 1 - 9 | 4 & 1 ^ 2 >> 1 << 7 min 20 max 10
+|          ^^
+|> text_code.mf:57:14
+|   return 10 + 2 * 1 - 9 | 4 & 1 ^ 2 >> 1 << 7 min 20 max 10
+|             ^
+|> text_code.mf:57:16
+|   return 10 + 2 * 1 - 9 | 4 & 1 ^ 2 >> 1 << 7 min 20 max 10
+|               ^
+|> text_code.mf:57:18
+|   return 10 + 2 * 1 - 9 | 4 & 1 ^ 2 >> 1 << 7 min 20 max 10
+|                 ^
+|> text_code.mf:57:20
+|   return 10 + 2 * 1 - 9 | 4 & 1 ^ 2 >> 1 << 7 min 20 max 10
+|                   ^
+|> text_code.mf:57:22
+|   return 10 + 2 * 1 - 9 | 4 & 1 ^ 2 >> 1 << 7 min 20 max 10
+|                     ^
+|> text_code.mf:57:24
+|   return 10 + 2 * 1 - 9 | 4 & 1 ^ 2 >> 1 << 7 min 20 max 10
+|                       ^
+|> text_code.mf:57:26
+|   return 10 + 2 * 1 - 9 | 4 & 1 ^ 2 >> 1 << 7 min 20 max 10
+|                         ^
+|> text_code.mf:57:28
+|   return 10 + 2 * 1 - 9 | 4 & 1 ^ 2 >> 1 << 7 min 20 max 10
+|                           ^
+|> text_code.mf:57:30
+|   return 10 + 2 * 1 - 9 | 4 & 1 ^ 2 >> 1 << 7 min 20 max 10
+|                             ^
+|> text_code.mf:57:32
+|   return 10 + 2 * 1 - 9 | 4 & 1 ^ 2 >> 1 << 7 min 20 max 10
+|                               ^
+|> text_code.mf:57:34
+|   return 10 + 2 * 1 - 9 | 4 & 1 ^ 2 >> 1 << 7 min 20 max 10
+|                                 ^
+|> text_code.mf:57:36
+|   return 10 + 2 * 1 - 9 | 4 & 1 ^ 2 >> 1 << 7 min 20 max 10
+|                                   ^
+|> text_code.mf:57:39
+|   return 10 + 2 * 1 - 9 | 4 & 1 ^ 2 >> 1 << 7 min 20 max 10
+|                                     ^^
+|> text_code.mf:57:41
+|   return 10 + 2 * 1 - 9 | 4 & 1 ^ 2 >> 1 << 7 min 20 max 10
+|                                        ^
+|> text_code.mf:57:44
+|   return 10 + 2 * 1 - 9 | 4 & 1 ^ 2 >> 1 << 7 min 20 max 10
+|                                          ^^
+|> text_code.mf:57:46
+|   return 10 + 2 * 1 - 9 | 4 & 1 ^ 2 >> 1 << 7 min 20 max 10
+|                                             ^
+|> text_code.mf:57:50
+|   return 10 + 2 * 1 - 9 | 4 & 1 ^ 2 >> 1 << 7 min 20 max 10
+|                                               ^^^
+|> text_code.mf:57:53
+|   return 10 + 2 * 1 - 9 | 4 & 1 ^ 2 >> 1 << 7 min 20 max 10
+|                                                   ^^
+|> text_code.mf:57:57
+|   return 10 + 2 * 1 - 9 | 4 & 1 ^ 2 >> 1 << 7 min 20 max 10
+|                                                      ^^^
+|> text_code.mf:57:60
+|   return 10 + 2 * 1 - 9 | 4 & 1 ^ 2 >> 1 << 7 min 20 max 10
+|                                                          ^^
+|> text_code.mf:58:2
+| 
+| ^
+|> text_code.mf:59:1
+| fun conditional -> i64:
+| ^
+|> text_code.mf:59:4
+| fun conditional -> i64:
+| ^^^
+|> text_code.mf:59:16
+| fun conditional -> i64:
+|     ^^^^^^^^^^^
+|> text_code.mf:59:19
+| fun conditional -> i64:
+|                 ^^
+|> text_code.mf:59:23
+| fun conditional -> i64:
+|                    ^^^
+|> text_code.mf:59:24
+| fun conditional -> i64:
+|                       ^
+|> text_code.mf:60:3
+|   if false:
+| ^^
+|> text_code.mf:60:5
+|   if false:
+|   ^^
+|> text_code.mf:60:11
+|   if false:
+|      ^^^^^
+|> text_code.mf:60:12
+|   if false:
+|           ^
+|> text_code.mf:61:5
+|     return 10
+| ^^^^
+|> text_code.mf:61:11
+|     return 10
+|     ^^^^^^
+|> text_code.mf:61:14
+|     return 10
+|            ^^
+|> text_code.mf:62:3
+|   elif true:
+| ^^
+|> text_code.mf:62:7
+|   elif true:
+|   ^^^^
+|> text_code.mf:62:12
+|   elif true:
+|        ^^^^
+|> text_code.mf:62:13
+|   elif true:
+|            ^
+|> text_code.mf:63:5
+|     return if true: 10 else: 20
+| ^^^^
+|> text_code.mf:63:11
+|     return if true: 10 else: 20
+|     ^^^^^^
+|> text_code.mf:63:14
+|     return if true: 10 else: 20
+|            ^^
+|> text_code.mf:63:19
+|     return if true: 10 else: 20
+|               ^^^^
+|> text_code.mf:63:20
+|     return if true: 10 else: 20
+|                   ^
+|> text_code.mf:63:23
+|     return if true: 10 else: 20
+|                     ^^
+|> text_code.mf:63:28
+|     return if true: 10 else: 20
+|                        ^^^^
+|> text_code.mf:63:29
+|     return if true: 10 else: 20
+|                            ^
+|> text_code.mf:63:32
+|     return if true: 10 else: 20
+|                              ^^
+|> text_code.mf:64:3
+|   else:
+| ^^
+|> text_code.mf:64:7
+|   else:
+|   ^^^^
+|> text_code.mf:64:8
+|   else:
+|       ^
+|> text_code.mf:65:5
+|     return 0
+| ^^^^
+|> text_code.mf:65:11
+|     return 0
+|     ^^^^^^
+|> text_code.mf:65:13
+|     return 0
+|            ^
+|> text_code.mf:66:2
+| 
+| ^
+|> text_code.mf:67:1
+| attr inline = always, call_conv = cold
+| ^
+|> text_code.mf:67:5
+| attr inline = always, call_conv = cold
+| ^^^^
+|> text_code.mf:67:12
+| attr inline = always, call_conv = cold
+|      ^^^^^^
+|> text_code.mf:67:14
+| attr inline = always, call_conv = cold
+|             ^
+|> text_code.mf:67:21
+| attr inline = always, call_conv = cold
+|               ^^^^^^
+|> text_code.mf:67:22
+| attr inline = always, call_conv = cold
+|                     ^
+|> text_code.mf:67:32
+| attr inline = always, call_conv = cold
+|                       ^^^^^^^^^
+|> text_code.mf:67:34
+| attr inline = always, call_conv = cold
+|                                 ^
+|> text_code.mf:67:39
+| attr inline = always, call_conv = cold
+|                                   ^^^^
+|> text_code.mf:68:1
+| fun inline_fn -> u32:
+| ^
+|> text_code.mf:68:4
+| fun inline_fn -> u32:
+| ^^^
+|> text_code.mf:68:14
+| fun inline_fn -> u32:
+|     ^^^^^^^^^
+|> text_code.mf:68:17
+| fun inline_fn -> u32:
+|               ^^
+|> text_code.mf:68:21
+| fun inline_fn -> u32:
+|                  ^^^
+|> text_code.mf:68:22
+| fun inline_fn -> u32:
+|                     ^
+|> text_code.mf:69:3
+|   return 10
+| ^^
+|> text_code.mf:69:9
+|   return 10
+|   ^^^^^^
+|> text_code.mf:69:12
+|   return 10
+|          ^^
+|> text_code.mf:70:2
+| 
+| ^
+|> text_code.mf:71:1
+| fun fib(v: i64) -> i64:
+| ^
+|> text_code.mf:71:4
+| fun fib(v: i64) -> i64:
+| ^^^
+|> text_code.mf:71:8
+| fun fib(v: i64) -> i64:
+|     ^^^
+|> text_code.mf:71:9
+| fun fib(v: i64) -> i64:
+|        ^
+|> text_code.mf:71:10
+| fun fib(v: i64) -> i64:
+|         ^
+|> text_code.mf:71:11
+| fun fib(v: i64) -> i64:
+|          ^
+|> text_code.mf:71:15
+| fun fib(v: i64) -> i64:
+|            ^^^
+|> text_code.mf:71:16
+| fun fib(v: i64) -> i64:
+|               ^
+|> text_code.mf:71:19
+| fun fib(v: i64) -> i64:
+|                 ^^
+|> text_code.mf:71:23
+| fun fib(v: i64) -> i64:
+|                    ^^^
+|> text_code.mf:71:24
+| fun fib(v: i64) -> i64:
+|                       ^
+|> text_code.mf:72:3
+|   return if v == 0 | v == 1:
+| ^^
+|> text_code.mf:72:9
+|   return if v == 0 | v == 1:
+|   ^^^^^^
+|> text_code.mf:72:12
+|   return if v == 0 | v == 1:
+|          ^^
+|> text_code.mf:72:14
+|   return if v == 0 | v == 1:
+|             ^
+|> text_code.mf:72:17
+|   return if v == 0 | v == 1:
+|               ^^
+|> text_code.mf:72:19
+|   return if v == 0 | v == 1:
+|                  ^
+|> text_code.mf:72:21
+|   return if v == 0 | v == 1:
+|                    ^
+|> text_code.mf:72:23
+|   return if v == 0 | v == 1:
+|                      ^
+|> text_code.mf:72:26
+|   return if v == 0 | v == 1:
+|                        ^^
+|> text_code.mf:72:28
+|   return if v == 0 | v == 1:
+|                           ^
+|> text_code.mf:72:29
+|   return if v == 0 | v == 1:
+|                            ^
+|> text_code.mf:73:5
+|     1
+| ^^^^
+|> text_code.mf:73:6
+|     1
+|     ^
+|> text_code.mf:74:3
+|   else:
+| ^^
+|> text_code.mf:74:7
+|   else:
+|   ^^^^
+|> text_code.mf:74:8
+|   else:
+|       ^
+|> text_code.mf:75:5
+|     fib(v - 1) + fib(v - 2)
+| ^^^^
+|> text_code.mf:75:8
+|     fib(v - 1) + fib(v - 2)
+|     ^^^
+|> text_code.mf:75:9
+|     fib(v - 1) + fib(v - 2)
+|        ^
+|> text_code.mf:75:10
+|     fib(v - 1) + fib(v - 2)
+|         ^
+|> text_code.mf:75:12
+|     fib(v - 1) + fib(v - 2)
+|           ^
+|> text_code.mf:75:14
+|     fib(v - 1) + fib(v - 2)
+|             ^
+|> text_code.mf:75:15
+|     fib(v - 1) + fib(v - 2)
+|              ^
+|> text_code.mf:75:17
+|     fib(v - 1) + fib(v - 2)
+|                ^
+|> text_code.mf:75:21
+|     fib(v - 1) + fib(v - 2)
+|                  ^^^
+|> text_code.mf:75:22
+|     fib(v - 1) + fib(v - 2)
+|                     ^
+|> text_code.mf:75:23
+|     fib(v - 1) + fib(v - 2)
+|                      ^
+|> text_code.mf:75:25
+|     fib(v - 1) + fib(v - 2)
+|                        ^
+|> text_code.mf:75:27
+|     fib(v - 1) + fib(v - 2)
+|                          ^
+|> text_code.mf:75:28
+|     fib(v - 1) + fib(v - 2)
+|                           ^
+|> text_code.mf:76:2
+| 
+| ^
+|> text_code.mf:77:1
+| fun fib_loop(v: i64) -> i64:
+| ^
+|> text_code.mf:77:4
+| fun fib_loop(v: i64) -> i64:
+| ^^^
+|> text_code.mf:77:13
+| fun fib_loop(v: i64) -> i64:
+|     ^^^^^^^^
+|> text_code.mf:77:14
+| fun fib_loop(v: i64) -> i64:
+|             ^
+|> text_code.mf:77:15
+| fun fib_loop(v: i64) -> i64:
+|              ^
+|> text_code.mf:77:16
+| fun fib_loop(v: i64) -> i64:
+|               ^
+|> text_code.mf:77:20
+| fun fib_loop(v: i64) -> i64:
+|                 ^^^
+|> text_code.mf:77:21
+| fun fib_loop(v: i64) -> i64:
+|                    ^
+|> text_code.mf:77:24
+| fun fib_loop(v: i64) -> i64:
+|                      ^^
+|> text_code.mf:77:28
+| fun fib_loop(v: i64) -> i64:
+|                         ^^^
+|> text_code.mf:77:29
+| fun fib_loop(v: i64) -> i64:
+|                            ^
+|> text_code.mf:78:3
+|   var a, b, c = 1
+| ^^
+|> text_code.mf:78:6
+|   var a, b, c = 1
+|   ^^^
+|> text_code.mf:78:8
+|   var a, b, c = 1
+|       ^
+|> text_code.mf:78:9
+|   var a, b, c = 1
+|        ^
+|> text_code.mf:78:11
+|   var a, b, c = 1
+|          ^
+|> text_code.mf:78:12
+|   var a, b, c = 1
+|           ^
+|> text_code.mf:78:14
+|   var a, b, c = 1
+|             ^
+|> text_code.mf:78:16
+|   var a, b, c = 1
+|               ^
+|> text_code.mf:78:18
+|   var a, b, c = 1
+|                 ^
+|> text_code.mf:79:3
+|   for'a:
+| ^^
+|> text_code.mf:79:6
+|   for'a:
+|   ^^^
+|> text_code.mf:79:8
+|   for'a:
+|      ^^
+|> text_code.mf:79:9
+|   for'a:
+|        ^
+|> text_code.mf:80:5
+|     c = a + b
+| ^^^^
+|> text_code.mf:80:6
+|     c = a + b
+|     ^
+|> text_code.mf:80:8
+|     c = a + b
+|       ^
+|> text_code.mf:80:10
+|     c = a + b
+|         ^
+|> text_code.mf:80:12
+|     c = a + b
+|           ^
+|> text_code.mf:80:14
+|     c = a + b
+|             ^
+|> text_code.mf:81:5
+|     a = b
+| ^^^^
+|> text_code.mf:81:6
+|     a = b
+|     ^
+|> text_code.mf:81:8
+|     a = b
+|       ^
+|> text_code.mf:81:10
+|     a = b
+|         ^
+|> text_code.mf:82:5
+|     b = c
+| ^^^^
+|> text_code.mf:82:6
+|     b = c
+|     ^
+|> text_code.mf:82:8
+|     b = c
+|       ^
+|> text_code.mf:82:10
+|     b = c
+|         ^
+|> text_code.mf:83:5
+|     v = v - 1
+| ^^^^
+|> text_code.mf:83:6
+|     v = v - 1
+|     ^
+|> text_code.mf:83:8
+|     v = v - 1
+|       ^
+|> text_code.mf:83:10
+|     v = v - 1
+|         ^
+|> text_code.mf:83:12
+|     v = v - 1
+|           ^
+|> text_code.mf:83:14
+|     v = v - 1
+|             ^
+|> text_code.mf:84:5
+|     if v == 0:
+| ^^^^
+|> text_code.mf:84:7
+|     if v == 0:
+|     ^^
+|> text_code.mf:84:9
+|     if v == 0:
+|        ^
+|> text_code.mf:84:12
+|     if v == 0:
+|          ^^
+|> text_code.mf:84:14
+|     if v == 0:
+|             ^
+|> text_code.mf:84:15
+|     if v == 0:
+|              ^
+|> text_code.mf:85:7
+|       break'a
+| ^^^^^^
+|> text_code.mf:85:12
+|       break'a
+|       ^^^^^
+|> text_code.mf:85:14
+|       break'a
+|            ^^
+|> text_code.mf:86:3
+|   return c
+| ^^
+|> text_code.mf:86:9
+|   return c
+|   ^^^^^^
+|> text_code.mf:86:11
+|   return c
+|          ^
+|> text_code.mf:87:2
+| 
+| ^
+|> text_code.mf:88:1
+| fun unary_operators(a: i64) -> i64:
+| ^
+|> text_code.mf:88:4
+| fun unary_operators(a: i64) -> i64:
+| ^^^
+|> text_code.mf:88:20
+| fun unary_operators(a: i64) -> i64:
+|     ^^^^^^^^^^^^^^^
+|> text_code.mf:88:21
+| fun unary_operators(a: i64) -> i64:
+|                    ^
+|> text_code.mf:88:22
+| fun unary_operators(a: i64) -> i64:
+|                     ^
+|> text_code.mf:88:23
+| fun unary_operators(a: i64) -> i64:
+|                      ^
+|> text_code.mf:88:27
+| fun unary_operators(a: i64) -> i64:
+|                        ^^^
+|> text_code.mf:88:28
+| fun unary_operators(a: i64) -> i64:
+|                           ^
+|> text_code.mf:88:31
+| fun unary_operators(a: i64) -> i64:
+|                             ^^
+|> text_code.mf:88:35
+| fun unary_operators(a: i64) -> i64:
+|                                ^^^
+|> text_code.mf:88:36
+| fun unary_operators(a: i64) -> i64:
+|                                   ^
+|> text_code.mf:89:3
+|   return -a + ~a + !a + ++a + --a
+| ^^
+|> text_code.mf:89:9
+|   return -a + ~a + !a + ++a + --a
+|   ^^^^^^
+|> text_code.mf:89:11
+|   return -a + ~a + !a + ++a + --a
+|          ^
+|> text_code.mf:89:12
+|   return -a + ~a + !a + ++a + --a
+|           ^
+|> text_code.mf:89:14
+|   return -a + ~a + !a + ++a + --a
+|             ^
+|> text_code.mf:89:16
+|   return -a + ~a + !a + ++a + --a
+|               ^
+|> text_code.mf:89:17
+|   return -a + ~a + !a + ++a + --a
+|                ^
+|> text_code.mf:89:19
+|   return -a + ~a + !a + ++a + --a
+|                  ^
+|> text_code.mf:89:21
+|   return -a + ~a + !a + ++a + --a
+|                    ^
+|> text_code.mf:89:22
+|   return -a + ~a + !a + ++a + --a
+|                     ^
+|> text_code.mf:89:24
+|   return -a + ~a + !a + ++a + --a
+|                       ^
+|> text_code.mf:89:27
+|   return -a + ~a + !a + ++a + --a
+|                         ^^
+|> text_code.mf:89:28
+|   return -a + ~a + !a + ++a + --a
+|                           ^
+|> text_code.mf:89:30
+|   return -a + ~a + !a + ++a + --a
+|                             ^
+|> text_code.mf:89:33
+|   return -a + ~a + !a + ++a + --a
+|                               ^^
+|> text_code.mf:89:34
+|   return -a + ~a + !a + ++a + --a
+|                                 ^
+|> text_code.mf:90:2
+| 
+| ^
+|> text_code.mf:91:1
+| struct Foo:
+| ^
+|> text_code.mf:91:7
+| struct Foo:
+| ^^^^^^
+|> text_code.mf:91:11
+| struct Foo:
+|        ^^^
+|> text_code.mf:91:12
+| struct Foo:
+|           ^
+|> text_code.mf:92:3
+|   a, b, c: int
+| ^^
+|> text_code.mf:92:4
+|   a, b, c: int
+|   ^
+|> text_code.mf:92:5
+|   a, b, c: int
+|    ^
+|> text_code.mf:92:7
+|   a, b, c: int
+|      ^
+|> text_code.mf:92:8
+|   a, b, c: int
+|       ^
+|> text_code.mf:92:10
+|   a, b, c: int
+|         ^
+|> text_code.mf:92:11
+|   a, b, c: int
+|          ^
+|> text_code.mf:92:15
+|   a, b, c: int
+|            ^^^
+|> text_code.mf:93:2
+| 
+| ^
+|> text_code.mf:94:1
+| struct Goo:
+| ^
+|> text_code.mf:94:7
+| struct Goo:
+| ^^^^^^
+|> text_code.mf:94:11
+| struct Goo:
+|        ^^^
+|> text_code.mf:94:12
+| struct Goo:
+|           ^
+|> text_code.mf:95:3
+|   embed foo: Foo
+| ^^
+|> text_code.mf:95:8
+|   embed foo: Foo
+|   ^^^^^
+|> text_code.mf:95:12
+|   embed foo: Foo
+|         ^^^
+|> text_code.mf:95:13
+|   embed foo: Foo
+|            ^
+|> text_code.mf:95:17
+|   embed foo: Foo
+|              ^^^
+|> text_code.mf:96:3
+|   gva: int
+| ^^
+|> text_code.mf:96:6
+|   gva: int
+|   ^^^
+|> text_code.mf:96:7
+|   gva: int
+|      ^
+|> text_code.mf:96:11
+|   gva: int
+|        ^^^
+|> text_code.mf:97:2
+| 
+| ^
+|> text_code.mf:98:1
+| fun strings -> i64:
+| ^
+|> text_code.mf:98:4
+| fun strings -> i64:
+| ^^^
+|> text_code.mf:98:12
+| fun strings -> i64:
+|     ^^^^^^^
+|> text_code.mf:98:15
+| fun strings -> i64:
+|             ^^
+|> text_code.mf:98:19
+| fun strings -> i64:
+|                ^^^
+|> text_code.mf:98:20
+| fun strings -> i64:
+|                   ^
+|> text_code.mf:99:3
+|   var hello = "hello"
+| ^^
+|> text_code.mf:99:6
+|   var hello = "hello"
+|   ^^^
+|> text_code.mf:99:12
+|   var hello = "hello"
+|       ^^^^^
+|> text_code.mf:99:14
+|   var hello = "hello"
+|             ^
+|> text_code.mf:99:22
+|   var hello = "hello"
+|               ^^^^^^^
+|> text_code.mf:100:3
+|   return 0
+| ^^
+|> text_code.mf:100:9
+|   return 0
+|   ^^^^^^
+|> text_code.mf:100:11
+|   return 0
+|          ^
+|> text_code.mf:101:2
+| 
+| ^
+|> text_code.mf:102:1
+| fun mutable_ref(a: &Foo):
+| ^
+|> text_code.mf:102:4
+| fun mutable_ref(a: &Foo):
+| ^^^
+|> text_code.mf:102:16
+| fun mutable_ref(a: &Foo):
+|     ^^^^^^^^^^^
+|> text_code.mf:102:17
+| fun mutable_ref(a: &Foo):
+|                ^
+|> text_code.mf:102:18
+| fun mutable_ref(a: &Foo):
+|                 ^
+|> text_code.mf:102:19
+| fun mutable_ref(a: &Foo):
+|                  ^
+|> text_code.mf:102:21
+| fun mutable_ref(a: &Foo):
+|                    ^
+|> text_code.mf:102:24
+| fun mutable_ref(a: &Foo):
+|                     ^^^
+|> text_code.mf:102:25
+| fun mutable_ref(a: &Foo):
+|                        ^
+|> text_code.mf:102:26
+| fun mutable_ref(a: &Foo):
+|                         ^
+|> text_code.mf:103:3
+|   a.a = 10
+| ^^
+|> text_code.mf:103:4
+|   a.a = 10
+|   ^
+|> text_code.mf:103:5
+|   a.a = 10
+|    ^
+|> text_code.mf:103:6
+|   a.a = 10
+|     ^
+|> text_code.mf:103:8
+|   a.a = 10
+|       ^
+|> text_code.mf:103:11
+|   a.a = 10
+|         ^^
+|> text_code.mf:104:3
+|   a.b = 20
+| ^^
+|> text_code.mf:104:4
+|   a.b = 20
+|   ^
+|> text_code.mf:104:5
+|   a.b = 20
+|    ^
+|> text_code.mf:104:6
+|   a.b = 20
+|     ^
+|> text_code.mf:104:8
+|   a.b = 20
+|       ^
+|> text_code.mf:104:11
+|   a.b = 20
+|         ^^
+|> text_code.mf:105:3
+|   a.c = 30
+| ^^
+|> text_code.mf:105:4
+|   a.c = 30
+|   ^
+|> text_code.mf:105:5
+|   a.c = 30
+|    ^
+|> text_code.mf:105:6
+|   a.c = 30
+|     ^
+|> text_code.mf:105:8
+|   a.c = 30
+|       ^
+|> text_code.mf:105:11
+|   a.c = 30
+|         ^^
+|> text_code.mf:106:2
+| 
+| ^
+|> text_code.mf:107:1
+| fun some_string -> &u8:
+| ^
+|> text_code.mf:107:4
+| fun some_string -> &u8:
+| ^^^
+|> text_code.mf:107:16
+| fun some_string -> &u8:
+|     ^^^^^^^^^^^
+|> text_code.mf:107:19
+| fun some_string -> &u8:
+|                 ^^
+|> text_code.mf:107:21
+| fun some_string -> &u8:
+|                    ^
+|> text_code.mf:107:23
+| fun some_string -> &u8:
+|                     ^^
+|> text_code.mf:107:24
+| fun some_string -> &u8:
+|                       ^
+|> text_code.mf:108:3
+|   "
+| ^^
+|> text_code.mf:110:4
+|   "
+| hello there
+|   "
+| ^^^^^^^^^^^
+===global===
+None
+None
+VarStatement(None, true) "var something = [1, 2, 3]":
+ VarAssign "something = [1, 2, 3]":
+  Group "something":
+   Ident "something"
+  None
+  Group "=":
+   Array "[":
+    Lit "1"
+    Lit "2"
+    Lit "3"
+===global===
+None
+None
+VarStatement(None, false) "let hello = \"hello\"":
+ VarAssign "hello = \"hello\"":
+  Group "hello":
+   Ident "hello"
+  None
+  Group "=":
+   Lit "\"hello\""
+===type===
+Group "":
+ Comment "##[\r\n  multiline doc comment\r\n]#"
+Struct(None) "struct":
+ Ident "Scope"
+ None
+===type===
+None
+Struct(None) "struct":
+ Instantiation "Template[T]":
+  Ident "Template"
+  Ident "T"
+ None
+===type===
+None
+Struct(None) "struct":
+ Ident "Foo"
+ Group ":":
+  StructField(None, false) "a, b, c: int":
+   Ident "a"
+   Ident "b"
+   Ident "c"
+   Ident "int"
+===type===
+None
+Struct(None) "struct":
+ Ident "Goo"
+ Group ":":
+  StructField(None, true) "foo: Foo":
+   Ident "foo"
+   Ident "Foo"
+  StructField(None, false) "gva: int":
+   Ident "gva"
+   Ident "int"
+===fun===
+None
+None
+Fun(None) "fun pointed_function(a: Int, b: Int) -> int:\r\n  return a + b":
+ FunHeader(Normal) "fun pointed_function(a: Int, b: Int) -> int":
+  Ident "pointed_function"
+  FunArgument(false) "a: Int":
+   Ident "a"
+   Ident "Int"
+  FunArgument(false) "b: Int":
+   Ident "b"
+   Ident "Int"
+  Ident "int"
+  None
+ Group ":":
+  ReturnStatement "return a + b":
+   BinaryOp "a + b":
+    Ident "+"
+    Ident "a"
+    Ident "b"
+===fun===
+None
+Group "":
+ Comment "## doc comment\r"
+Fun(None) "fun something -> fun(int, int) -> int:\r\n  # ignored comment\r\n  return #[ even more ignored comment ]# pointed_function":
+ FunHeader(Normal) "fun something -> fun(int, int) -> int":
+  Ident "something"
+  FunHeader(Normal) "fun(int, int) -> int":
+   None
+   Ident "int"
+   Ident "int"
+   Ident "int"
+   None
+  None
+ Group ":":
+  ReturnStatement "return #[ even more ignored comment ]# pointed_function":
+   Ident "pointed_function"
+===fun===
+Impl(None) "impl":
+ None
+ Ident "Scope"
+None
+Fun(None) "fun new -> Self:\r\n    return":
+ FunHeader(Normal) "fun new -> Self":
+  Ident "new"
+  Ident "Self"
+  None
+ Group ":":
+  ReturnStatement "return":
+   None
+===fun===
+Impl(None) "impl":
+ None
+ Ident "Scope"
+None
+Fun(None) "fun do_nothing(s: Self):\r\n    pass":
+ FunHeader(Normal) "fun do_nothing(s: Self)":
+  Ident "do_nothing"
+  FunArgument(false) "s: Self":
+   Ident "s"
+   Ident "Self"
+  None
+  None
+ Group ":":
+  Pass "pass"
+===fun===
+Impl(None) "impl":
+ Group "[":
+  Ident "T"
+ Instantiation "Template[T]":
+  Ident "Template"
+  Ident "T"
+None
+Fun(None) "fun new -> Self:\r\n    return":
+ FunHeader(Normal) "fun new -> Self":
+  Ident "new"
+  Ident "Self"
+  None
+ Group ":":
+  ReturnStatement "return":
+   None
+===fun===
+Impl(None) "impl":
+ Group "[":
+  Ident "T"
+ Instantiation "Template[T]":
+  Ident "Template"
+  Ident "T"
+None
+Fun(None) "fun do_nothing(s: Self, value: T) -> T:\r\n    value":
+ FunHeader(Normal) "fun do_nothing(s: Self, value: T) -> T":
+  Ident "do_nothing"
+  FunArgument(false) "s: Self":
+   Ident "s"
+   Ident "Self"
+  FunArgument(false) "value: T":
+   Ident "value"
+   Ident "T"
+  Ident "T"
+  None
+ Group ":":
+  Ident "value"
+===fun===
+None
+None
+Fun(None) "fun use_chain:\r\n  module::Type::method::[param]()":
+ FunHeader(Normal) "fun use_chain":
+  Ident "use_chain"
+  None
+  None
+ Group ":":
+  Call(false) "module::Type::method::[param]()":
+   Instantiation "module::Type::method::[param]":
+    Path "module::Type::method":
+     Ident "module"
+     Ident "Type"
+     Ident "method"
+    Ident "param"
+===fun===
+None
+None
+Fun(None) "fun flo: pass":
+ FunHeader(Normal) "fun flo":
+  Ident "flo"
+  None
+  None
+ Group ":":
+  Pass "pass"
+===fun===
+None
+None
+Fun(None) "fun foo(): pass":
+ FunHeader(Normal) "fun foo()":
+  Ident "foo"
+  None
+  None
+ Group ":":
+  Pass "pass"
+===fun===
+None
+None
+Fun(None) "fun goo(a: i8, b: i8): pass":
+ FunHeader(Normal) "fun goo(a: i8, b: i8)":
+  Ident "goo"
+  FunArgument(false) "a: i8":
+   Ident "a"
+   Ident "i8"
+  FunArgument(false) "b: i8":
+   Ident "b"
+   Ident "i8"
+  None
+  None
+ Group ":":
+  Pass "pass"
+===fun===
+None
+None
+Fun(None) "fun loo:\r\n  noo::loo::[i8]()\r\n\r\n  let array = [1, 2, 3]\r\n  array[0] = 3\r\n  array[2] = always[1]\r\n  array[1] = 1\r\n\r\n  pass":
+ FunHeader(Normal) "fun loo":
+  Ident "loo"
+  None
+  None
+ Group ":":
+  Call(false) "noo::loo::[i8]()":
+   Instantiation "noo::loo::[i8]":
+    Path "noo::loo":
+     Ident "noo"
+     Ident "loo"
+    Ident "i8"
+  VarStatement(None, false) "let array = [1, 2, 3]":
+   VarAssign "array = [1, 2, 3]":
+    Group "array":
+     Ident "array"
+    None
+    Group "=":
+     Array "[":
+      Lit "1"
+      Lit "2"
+      Lit "3"
+  BinaryOp "array[0] = 3":
+   Ident "="
+   Index "array[0]":
+    Ident "array"
+    Lit "0"
+   Lit "3"
+  BinaryOp "array[2] = always[1]":
+   Ident "="
+   Index "array[2]":
+    Ident "array"
+    Lit "2"
+   Index "always[1]":
+    Ident "always"
+    Lit "1"
+  BinaryOp "array[1] = 1":
+   Ident "="
+   Index "array[1]":
+    Ident "array"
+    Lit "1"
+   Lit "1"
+  Pass "pass"
+===fun===
+None
+None
+Fun(None) "fun main -> i64:\r\n  return 10 + 4 - 2 * 1 + 8":
+ FunHeader(Normal) "fun main -> i64":
+  Ident "main"
+  Ident "i64"
+  None
+ Group ":":
+  ReturnStatement "return 10 + 4 - 2 * 1 + 8":
+   BinaryOp "10 + 4 - 2 * 1 + 8":
+    Ident "-"
+    BinaryOp "10 + 4":
+     Ident "+"
+     Lit "10"
+     Lit "4"
+    BinaryOp "2 * 1 + 8":
+     Ident "+"
+     BinaryOp "2 * 1":
+      Ident "*"
+      Lit "2"
+      Lit "1"
+     Lit "8"
+===fun===
+None
+None
+Fun(None) "fun operator_stress_test -> i64:\r\n  return 10 + 2 * 1 - 9 | 4 & 1 ^ 2 >> 1 << 7 min 20 max 10":
+ FunHeader(Normal) "fun operator_stress_test -> i64":
+  Ident "operator_stress_test"
+  Ident "i64"
+  None
+ Group ":":
+  ReturnStatement "return 10 + 2 * 1 - 9 | 4 & 1 ^ 2 >> 1 << 7 min 20 max 10":
+   BinaryOp "10 + 2 * 1 - 9 | 4 & 1 ^ 2 >> 1 << 7 min 20 max 10":
+    Ident "+"
+    Lit "10"
+    BinaryOp "2 * 1 - 9 | 4 & 1 ^ 2 >> 1 << 7 min 20 max 10":
+     Ident "|"
+     BinaryOp "2 * 1 - 9":
+      Ident "-"
+      BinaryOp "2 * 1":
+       Ident "*"
+       Lit "2"
+       Lit "1"
+      Lit "9"
+     BinaryOp "4 & 1 ^ 2 >> 1 << 7 min 20 max 10":
+      Ident "^"
+      BinaryOp "4 & 1":
+       Ident "&"
+       Lit "4"
+       Lit "1"
+      BinaryOp "2 >> 1 << 7 min 20 max 10":
+       Ident "max"
+       BinaryOp "2 >> 1 << 7 min 20":
+        Ident "min"
+        BinaryOp "2 >> 1 << 7":
+         Ident "<<"
+         BinaryOp "2 >> 1":
+          Ident ">>"
+          Lit "2"
+          Lit "1"
+         Lit "7"
+        Lit "20"
+       Lit "10"
+===fun===
+None
+None
+Fun(None) "fun conditional -> i64:\r\n  if false:\r\n    return 10\r\n  elif true:\r\n    return if true: 10 else: 20\r\n  else:\r\n    return 0":
+ FunHeader(Normal) "fun conditional -> i64":
+  Ident "conditional"
+  Ident "i64"
+  None
+ Group ":":
+  IfExpr "if false:\r\n    return 10\r\n  elif true:\r\n    return if true: 10 else: 20\r\n  else:\r\n    return 0":
+   Lit "false"
+   Group ":":
+    ReturnStatement "return 10":
+     Lit "10"
+   Group "elif":
+    IfExpr "elif true:\r\n    return if true: 10 else: 20\r\n  else:\r\n    return 0":
+     Lit "true"
+     Group ":":
+      ReturnStatement "return if true: 10 else: 20":
+       IfExpr "if true: 10 else: 20":
+        Lit "true"
+        Group ":":
+         Lit "10"
+        Group ":":
+         Lit "20"
+     Group ":":
+      ReturnStatement "return 0":
+       Lit "0"
+===fun===
+None
+Group "":
+ AttributeAssign "inline = always":
+  Ident "inline"
+  Ident "always"
+ AttributeAssign "call_conv = cold":
+  Ident "call_conv"
+  Ident "cold"
+Fun(None) "fun inline_fn -> u32:\r\n  return 10":
+ FunHeader(Normal) "fun inline_fn -> u32":
+  Ident "inline_fn"
+  Ident "u32"
+  None
+ Group ":":
+  ReturnStatement "return 10":
+   Lit "10"
+===fun===
+None
+None
+Fun(None) "fun fib(v: i64) -> i64:\r\n  return if v == 0 | v == 1:\r\n    1\r\n  else:\r\n    fib(v - 1) + fib(v - 2)":
+ FunHeader(Normal) "fun fib(v: i64) -> i64":
+  Ident "fib"
+  FunArgument(false) "v: i64":
+   Ident "v"
+   Ident "i64"
+  Ident "i64"
+  None
+ Group ":":
+  ReturnStatement "return if v == 0 | v == 1:\r\n    1\r\n  else:\r\n    fib(v - 1) + fib(v - 2)":
+   IfExpr "if v == 0 | v == 1:\r\n    1\r\n  else:\r\n    fib(v - 1) + fib(v - 2)":
+    BinaryOp "v == 0 | v == 1":
+     Ident "|"
+     BinaryOp "v == 0":
+      Ident "=="
+      Ident "v"
+      Lit "0"
+     BinaryOp "v == 1":
+      Ident "=="
+      Ident "v"
+      Lit "1"
+    Group ":":
+     Lit "1"
+    Group ":":
+     BinaryOp "fib(v - 1) + fib(v - 2)":
+      Ident "+"
+      Call(false) "fib(v - 1)":
+       Ident "fib"
+       BinaryOp "v - 1":
+        Ident "-"
+        Ident "v"
+        Lit "1"
+      Call(false) "fib(v - 2)":
+       Ident "fib"
+       BinaryOp "v - 2":
+        Ident "-"
+        Ident "v"
+        Lit "2"
+===fun===
+None
+None
+Fun(None) "fun fib_loop(v: i64) -> i64:\r\n  var a, b, c = 1\r\n  for'a:\r\n    c = a + b\r\n    a = b\r\n    b = c\r\n    v = v - 1\r\n    if v == 0:\r\n      break'a\r\n  return c":
+ FunHeader(Normal) "fun fib_loop(v: i64) -> i64":
+  Ident "fib_loop"
+  FunArgument(false) "v: i64":
+   Ident "v"
+   Ident "i64"
+  Ident "i64"
+  None
+ Group ":":
+  VarStatement(None, true) "var a, b, c = 1":
+   VarAssign "a, b, c = 1":
+    Group "a":
+     Ident "a"
+     Ident "b"
+     Ident "c"
+    None
+    Group "=":
+     Lit "1"
+     Ident "a"
+     Ident "a"
+  Loop "for'a:\r\n    c = a + b\r\n    a = b\r\n    b = c\r\n    v = v - 1\r\n    if v == 0:\r\n      break'a":
+   Ident "'a"
+   Group ":":
+    BinaryOp "c = a + b":
+     Ident "="
+     Ident "c"
+     BinaryOp "a + b":
+      Ident "+"
+      Ident "a"
+      Ident "b"
+    BinaryOp "a = b":
+     Ident "="
+     Ident "a"
+     Ident "b"
+    BinaryOp "b = c":
+     Ident "="
+     Ident "b"
+     Ident "c"
+    BinaryOp "v = v - 1":
+     Ident "="
+     Ident "v"
+     BinaryOp "v - 1":
+      Ident "-"
+      Ident "v"
+      Lit "1"
+    IfExpr "if v == 0:\r\n      break'a":
+     BinaryOp "v == 0":
+      Ident "=="
+      Ident "v"
+      Lit "0"
+     Group ":":
+      Break "break'a":
+       Ident "'a"
+       None
+     None
+  ReturnStatement "return c":
+   Ident "c"
+===fun===
+None
+None
+Fun(None) "fun unary_operators(a: i64) -> i64:\r\n  return -a + ~a + !a + ++a + --a":
+ FunHeader(Normal) "fun unary_operators(a: i64) -> i64":
+  Ident "unary_operators"
+  FunArgument(false) "a: i64":
+   Ident "a"
+   Ident "i64"
+  Ident "i64"
+  None
+ Group ":":
+  ReturnStatement "return -a + ~a + !a + ++a + --a":
+   BinaryOp "-a + ~a + !a + ++a + --a":
+    Ident "+"
+    BinaryOp "-a + ~a + !a + ++a":
+     Ident "+"
+     BinaryOp "-a + ~a + !a":
+      Ident "+"
+      BinaryOp "-a + ~a":
+       Ident "+"
+       UnaryOp "-a":
+        Ident "-"
+        Ident "a"
+       UnaryOp "~a":
+        Ident "~"
+        Ident "a"
+      UnaryOp "!a":
+       Ident "!"
+       Ident "a"
+     UnaryOp "++a":
+      Ident "++"
+      Ident "a"
+    UnaryOp "--a":
+     Ident "--"
+     Ident "a"
+===fun===
+None
+None
+Fun(None) "fun strings -> i64:\r\n  var hello = \"hello\"\r\n  return 0":
+ FunHeader(Normal) "fun strings -> i64":
+  Ident "strings"
+  Ident "i64"
+  None
+ Group ":":
+  VarStatement(None, true) "var hello = \"hello\"":
+   VarAssign "hello = \"hello\"":
+    Group "hello":
+     Ident "hello"
+    None
+    Group "=":
+     Lit "\"hello\""
+  ReturnStatement "return 0":
+   Lit "0"
+===fun===
+None
+None
+Fun(None) "fun mutable_ref(a: &Foo):\r\n  a.a = 10\r\n  a.b = 20\r\n  a.c = 30":
+ FunHeader(Normal) "fun mutable_ref(a: &Foo)":
+  Ident "mutable_ref"
+  FunArgument(false) "a: &Foo":
+   Ident "a"
+   Ref(false) "&Foo":
+    Ident "Foo"
+  None
+  None
+ Group ":":
+  BinaryOp "a.a = 10":
+   Ident "="
+   DotExpr "a.a":
+    Ident "a"
+    Ident "a"
+   Lit "10"
+  BinaryOp "a.b = 20":
+   Ident "="
+   DotExpr "a.b":
+    Ident "a"
+    Ident "b"
+   Lit "20"
+  BinaryOp "a.c = 30":
+   Ident "="
+   DotExpr "a.c":
+    Ident "a"
+    Ident "c"
+   Lit "30"
+===fun===
+None
+None
+Fun(None) "fun some_string -> &u8:\r\n  \"\r\nhello there\r\n  \"":
+ FunHeader(Normal) "fun some_string -> &u8":
+  Ident "some_string"
+  Ref(false) "&u8":
+   Ident "u8"
+  None
+ Group ":":
+  Lit "\"\r\nhello there\r\n  \""

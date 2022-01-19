@@ -113,17 +113,15 @@ impl FunBody {
     }
 }
 
-#[derive(Debug, Clone, QuickSer, QuickDefault)]
+#[derive(Debug, Clone, QuickSer, Default)]
 pub struct TypeEnt {
     pub id: ID,
-    #[default(Mod::reserved_value())]
     pub module: Mod,
     pub vis: Vis,
     pub params: EntityList<Ty>,
     pub kind: TKind,
     pub name: Span,
     pub hint: Token,
-    #[default(Ast::reserved_value())]
     pub attrs: Ast,
     pub size: Size,
     pub align: Size,

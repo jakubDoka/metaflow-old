@@ -14,7 +14,7 @@ use crate::ast::{AContext, AError, AErrorDisplay, AMainState, AParser, AState, D
 use crate::entities::{
     BlockEnt, Fun, FunBody, IKind, InstEnt, Manifest, Mod, Source, Ty, ValueEnt, BUILTIN_MODULE, TypeEnt, TKind, Unused,
 };
-use crate::incr;
+use crate::incr::{self, IncrementalData};
 use crate::lexer::Token;
 use crate::lexer::{SourceEnt, Span, TokenDisplay};
 use crate::util::pool::Pool;
@@ -603,34 +603,6 @@ pub struct MTState {
 
 crate::inherit!(MTState, a_main_state, AMainState);
 
-impl Default for MTState {
-    fn default() -> Self {
-        let mut s = Self {
-            a_main_state: AMainState::default(),
-            manifests: Table::new(),
-            modules: Table::new(),
-            module_order: Vec::new(),
-        };
-
-        let source = SourceEnt {
-            name: "builtin.mf".to_string(),
-            content: include_str!("builtin.mf").to_string(),
-            ..Default::default()
-        };
-        let source = s.sources.push(source);
-
-        let mut builtin_module = ModEnt {
-            id: MOD_SALT.add(ID::new("builtin")),
-            ..Default::default()
-        };
-        s.a_state_for(source, &mut builtin_module.a_state);
-
-        s.modules.insert(builtin_module.id, builtin_module);
-
-        s
-    }
-}
-
 impl MTState {
     pub fn collect_scopes(&self, module: Mod, buffer: &mut Vec<(Mod, ID)>) {
         let module_ent = &self.modules[module];
@@ -661,6 +633,40 @@ impl MTState {
             ),
             (true, ..) | (_, true, Vis::None | Vis::Public) | (.., Vis::Public)
         )
+    }
+}
+
+impl Default for MTState {
+    fn default() -> Self {
+        let mut s = Self {
+            a_main_state: AMainState::default(),
+            manifests: Table::new(),
+            modules: Table::new(),
+            module_order: Vec::new(),
+        };
+
+        let source = SourceEnt {
+            name: "builtin.mf".to_string(),
+            content: include_str!("builtin.mf").to_string(),
+            ..Default::default()
+        };
+        let source = s.sources.push(source);
+
+        let mut builtin_module = ModEnt {
+            id: MOD_SALT.add(ID::new("builtin")),
+            ..Default::default()
+        };
+        s.a_state_for(source, &mut builtin_module.a_state);
+
+        s.modules.insert(builtin_module.id, builtin_module);
+
+        s
+    }
+}
+
+impl IncrementalData for MTState {
+    fn prepare(&mut self) {
+        self.module_order.clear();
     }
 }
 
@@ -1133,7 +1139,7 @@ pub enum MTEKind {
 pub fn test() {
     const PATH: &str = "src/module_tree/test_project";
 
-    let (mut state, hint) = incr::load_data(PATH, ID(0)).unwrap_or_default();
+    let (mut state, hint) = incr::load_data::<MTState>(PATH, ID(0)).unwrap_or_default();
     let mut context = MTContext::default();
 
     MTParser::new(&mut state, &mut context)
@@ -1145,5 +1151,5 @@ pub fn test() {
         module.clean = true;
     }
 
-    incr::save_data(PATH, &state, ID(0), Some(hint)).unwrap();
+    incr::save_data(PATH, &mut state, ID(0), Some(hint)).unwrap();
 }

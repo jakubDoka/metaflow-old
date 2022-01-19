@@ -100,11 +100,17 @@ impl<'a> Generator<'a> {
         self.module.load_declarations(declarations);
 
         for &module in order.iter() {
-            let module_ent = &mut self.modules[module];
+            let module_ent = &mut self.state.modules[module];
             if module_ent.clean {
-                functions.extend_from_slice(&module_ent.used_functions());
-                globals.extend_from_slice(&module_ent.used_globals());
+                functions.clear();
+                globals.clear();
+                functions.extend_from_slice(module_ent.used_functions());
+                globals.extend_from_slice(module_ent.used_globals());
                 let strings = std::mem::take(&mut module_ent.anon_strings);
+
+                for &ty in module_ent.used_types() {
+                    self.context.used_types.insert(ty);
+                }
 
                 self.load_funs(&functions);
                 self.load_globals(&globals);
@@ -197,6 +203,7 @@ impl<'a> Generator<'a> {
             }
 
             self.compiled_funs[fun_id] = data;
+            self.context.used_funs.insert(fun_id);
         }
     }
 
