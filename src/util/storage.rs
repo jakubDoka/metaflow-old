@@ -412,6 +412,8 @@ impl<I: EntityRef + Default, T> Table<I, T> {
     pub fn len(&self) -> usize {
         self.data.len()
     }
+
+    
 }
 
 impl<I: EntityRef + Default, T: Default> Table<I, T> {

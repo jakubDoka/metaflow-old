@@ -6,7 +6,7 @@ use std::time::SystemTime;
 use cranelift::codegen::ir::{Block, GlobalValue, Inst, Value};
 use cranelift::codegen::packed_option::PackedOption;
 use cranelift::entity::{packed_option::ReservedValue, EntityList, EntityRef};
-use cranelift::entity::{ListPool, PrimaryMap};
+use cranelift::entity::{ListPool, PrimaryMap, EntitySet};
 use cranelift::module::DataId;
 use quick_proc::{QuickDefault, QuickSer, RealQuickSer};
 
@@ -85,13 +85,10 @@ impl<'a> MTParser<'a> {
                 });
             }
 
-            let module = &mut self.modules[module_id];
-
-            if module.seen {
+            if self.context.seen_modules.contains(module_id) {
                 continue;
             }
-
-            module.seen = true;
+            self.context.seen_modules.insert(module_id);
 
             let module = &self.modules[module_id];
             if module.clean {
@@ -159,7 +156,7 @@ impl<'a> MTParser<'a> {
                 ..Default::default()
             });
 
-            module.seen = true;
+            self.context.seen_modules.insert(module_id);
             self.modules[module_id] = module;
         }
 
@@ -273,7 +270,6 @@ impl<'a> MTParser<'a> {
             self.sources[module.source] = source;
             module.dependency.clear();
             module.clean = false;
-            module.seen = false;
             self.a_state_for(module.source, &mut module.a_state);
             self.modules[m] = module;
             m
@@ -315,7 +311,7 @@ impl<'a> MTParser<'a> {
         let mut frontier = vec![(manifest_id, Token::default(), Option::<Dep>::None)];
 
         while let Some((manifest_id, token, import)) = frontier.pop() {
-            if self.manifests[manifest_id].seen {
+            if self.context.seen_manifests.contains(manifest_id) {
                 continue;
             }
             path_buffer.clear();
@@ -439,7 +435,7 @@ impl<'a> MTParser<'a> {
                 frontier.push((manifest, dependency.token, Some(dependency.clone())));
             }
 
-            self.manifests[manifest_id].seen = true;
+            self.context.seen_manifests.insert(manifest_id);
         }
 
         let mut stack = vec![];
@@ -489,13 +485,7 @@ impl<'a> MTParser<'a> {
 
     fn clean_incremental_data(&mut self) {
         for module in self.modules.iter_mut() {
-            module.seen = false;
-
             module.dependant.take().clear(module.slices.transmute_mut());
-        }
-
-        for manifest in self.manifests.iter_mut() {
-            manifest.seen = false;
         }
     }
 }
@@ -590,7 +580,6 @@ pub struct ManifestEnt {
     pub deps: Vec<(Dep, Manifest)>,
     #[default(Source::new(0))]
     pub source: Source,
-    pub seen: bool,
 }
 
 #[derive(Debug, Clone, QuickSer)]
@@ -672,6 +661,8 @@ impl IncrementalData for MTState {
 
 #[derive(Debug, Clone, Default)]
 pub struct MTContext {
+    pub seen_manifests: EntitySet<Manifest>,
+    pub seen_modules: EntitySet<Mod>,
     pub a_context: AContext,
     pub pool: Pool,
     pub lines_of_code: usize,
@@ -712,7 +703,6 @@ pub struct ModEnt {
     pub blocks: PrimaryMap<Block, BlockEnt>,
 
     pub clean: bool,
-    pub seen: bool,
 }
 
 crate::inherit!(ModEnt, a_state, AState);

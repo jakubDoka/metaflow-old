@@ -949,7 +949,14 @@ impl TState {
     }
 
     pub fn add_type_low(&mut self, source_module: Mod, ent: TypeEnt, allow_shadow: bool) -> (Option<TypeEnt>, Ty) {
-        let (shadow, ty) = self.types.insert(ent.id, ent);
+        let (mut shadow, ty) = self.types.insert(ent.id, ent);
+        
+        // this is the case where we but its actually
+        // a garbage from previous compilation
+        if !self.used.contains(ty) {
+            shadow = None;
+        }
+
         self.source_modules[ty] = source_module;
         self.modules[source_module].add_type(ty);
         debug_assert!(shadow.is_none() || allow_shadow);
@@ -983,13 +990,25 @@ impl TState {
             .cloned()
             .unwrap_or(ty)
     }
+
+    fn remove_type(&mut self, ty: Ty) {
+        let id = self.types[ty].id;
+        let mut ent = self.types.remove(id).unwrap();
+        self.modules[ent.module].clear_types(&mut ent.params);
+    }
 }
 
 impl IncrementalData for TState {
     fn prepare(&mut self) {
+        // remove all garbage (unused) types
+        let mut used = std::mem::take(&mut self.used);
+        used.invert();
+        for ty in used.keys() {
+            self.remove_type(ty);
+        }
+
         self.type_cycle_map.clear();
         self.source_modules.clear();
-        self.used.clear();
         self.mt_state.prepare();
     }
 }
@@ -1290,8 +1309,21 @@ pub fn test() {
         .parse(PATH)
         .map_err(|e| panic!("{}", MTErrorDisplay::new(&state, &e)))
         .unwrap();
+    
+    let module_order = std::mem::take(&mut state.module_order);
 
-    for module in std::mem::take(&mut state.module_order).drain(..) {
+    // mark all unchanged module type dependencies as used
+    for &module in &module_order {
+        if state.modules[module].clean {
+            let module_ent = &state.mt_state.modules[module];
+            for &ty in module_ent.used_types() {
+                state.used.insert(ty);
+            }
+        }
+    }
+
+    // recompile dirty modules
+    for &module in &module_order {
         if state.modules[module].clean {
             continue;
         }
@@ -1300,11 +1332,7 @@ pub fn test() {
             .parse(module)
             .map_err(|e| panic!("\n{}", TErrorDisplay::new(&mut state, &e)))
             .unwrap();
-    }
-
-    for module in state.modules.iter_mut() {
-        module.clean = true;
-    }
+    }    
 
     incr::save_data(PATH, &mut state, ID(0), Some(hint)).unwrap();
 }

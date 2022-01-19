@@ -52,5 +52,7 @@ pub fn save_data<T: IncrementalData>(
 }
 
 pub trait IncrementalData: QuickSer {
+    /// Prepare the data for serialization. Usually just clear 
+    /// unwanted data to save time and memory.
     fn prepare(&mut self) {}
 }
