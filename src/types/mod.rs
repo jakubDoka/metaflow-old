@@ -955,6 +955,7 @@ impl TState {
         if !self.used.contains(ty) {
             shadow = None;
         }
+        self.used.insert(ty);
 
         self.modules[source_module].add_type(ty);
         debug_assert!(shadow.is_none() || allow_shadow);
@@ -992,7 +993,7 @@ impl TState {
     fn remove_type(&mut self, ty: Ty) {
         let id = self.types[ty].id;
         let mut ent = self.types.remove(id).unwrap();
-        println!("removing type {:?}", id);
+        println!("removing type {:?}", self.display(&ent.name));
         self.modules[ent.module].clear_types(&mut ent.params);
     }
 }
@@ -1002,8 +1003,8 @@ impl IncrementalData for TState {
         // remove all garbage (unused) types
         let used = std::mem::take(&mut self.used);
         let mut to_remove = Vec::with_capacity(self.types.len());
-        for (ty, _) in self.types.iter() {
-            if !used.contains(ty) {
+        for (ty, ent) in self.types.iter() {
+            if !used.contains(ty) && !matches!(ent.kind, TKind::Builtin(_)) {
                 to_remove.push(ty);
             }
         }

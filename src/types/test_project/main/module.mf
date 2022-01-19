@@ -4,3 +4,6 @@ struct Option[T]:
 
 struct Some:
   priv value: int
+
+struct Goof[T]:
+  priv value: Option[T]

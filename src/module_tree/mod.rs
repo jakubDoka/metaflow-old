@@ -182,15 +182,16 @@ impl<'a> MTParser<'a> {
     }
 
     fn propagate_changes(&mut self, order: &[Mod]) {
+        let mut dependant = self.context.pool.get();
         for &module_id in order {
             let module = &mut self.modules[module_id];
             if module.clean {
                 continue;
             }
+            
+            dependant.extend_from_slice(module.dependant());
             module.clear();
-            let len = module.dependant().len();
-            for i in 0..len {
-                let dep = self.modules[module_id].dependant()[i];
+            for dep in dependant.drain(..) {
                 self.modules[dep].clean = false;
             }
         }
