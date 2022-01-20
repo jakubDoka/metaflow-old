@@ -1,5 +1,6 @@
 use cranelift::codegen::binemit::NullTrapSink;
 use cranelift::codegen::ir::AbiParam;
+use cranelift::entity::EntitySet;
 use cranelift::frontend::{FunctionBuilder, FunctionBuilderContext, Variable};
 use cranelift::module::{DataContext, DataId, FuncOrDataId, Linkage, Module, RelocRecord, ModuleDeclarations};
 use cranelift::object::ObjectModule;
@@ -25,7 +26,9 @@ use cranelift::{
 use quick_proc::{QuickDefault, QuickSer, RealQuickSer};
 
 use std::ops::{Deref, DerefMut};
-use crate::entities::{BlockEnt, TKind, CrTypeWr, TypeEnt};
+use crate::entities::{BlockEnt, TKind, CrTypeWr, TypeEnt, AnonString, AnonStringEnt};
+use crate::incr::IncrementalData;
+use crate::util::storage::Table;
 use crate::{
     entities::{Fun, IKind, InstEnt, Mod, Ty, ValueEnt},
     functions::{FContext, FKind, FParser, FState, FunEnt, GlobalEnt},
@@ -118,8 +121,6 @@ impl<'a> Generator<'a> {
                 let module_ent = &mut self.modules[module];
                 module_ent.anon_strings = strings;
                 continue;
-            } else {
-                module_ent.clean = true;
             }
 
             FParser::new(self.state, self.context, self.ptr_ty)
@@ -1437,6 +1438,8 @@ impl SdbmHash for &[u8] {
 #[derive(Default, QuickSer)]
 pub struct GState {
     pub f_state: FState,
+    pub anon_strings: Table<AnonString, AnonStringEnt>,
+    pub used_strings: EntitySet<AnonString>,
     pub compiled_funs: SecondaryMap<Fun, CFun>,
     pub compiled_globals: SecondaryMap<GlobalValue, CompiledGlobal>,
     pub jit_funs: SparseMap<Fun, JFun>,
@@ -1445,6 +1448,18 @@ pub struct GState {
 }
 
 crate::inherit!(GState, f_state, FState);
+
+impl GState {
+    pub fn cleanup(&mut self) {
+
+    }
+}
+
+impl IncrementalData for GState {
+    fn prepare(&mut self) {
+        self.mt_state.prepare();
+    }
+}
 
 #[derive(Debug, Clone, Copy, RealQuickSer)]
 pub struct CompiledGlobal {

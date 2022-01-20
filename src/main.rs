@@ -59,5 +59,5 @@ fn test() {
     module_tree::test();
     types::test();
     functions::test();
-    //gen::test();
+    gen::test();
 }

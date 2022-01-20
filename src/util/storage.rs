@@ -395,6 +395,22 @@ impl<I: EntityRef + Default, T: Default> Table<I, T> {
     pub fn len(&self) -> usize {
         self.data.len()
     }
+
+    pub fn is_valid(&self, k: I) -> bool {
+        self.data.is_valid(k)
+    }
+}
+
+impl<I: EntityRef + Default, T: Default + TableId> Table<I, T> {
+    pub fn remove_by_index(&mut self, index: I) -> T {
+        let value = self.data.remove(index);
+        self.map.remove(value.id());
+        value
+    }
+}
+
+pub trait TableId {
+    fn id(&self) -> ID;
 }
 
 impl<I: EntityRef + Default, T: Default> Table<I, T> {

@@ -241,7 +241,7 @@ struct Weird:
 # Test to verify tuples are working
 fun test_case_16:
   var a: (int, int, int) = (1, 2, 3)
-  assert(a.0 + a.1 + a.2 == 6)
+  assert(a.f0 + a.f1 + a.f2 == 6)
 
 fun assert(cond: bool):
   builtin::assert(cond)

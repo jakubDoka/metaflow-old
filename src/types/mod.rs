@@ -3,11 +3,11 @@ use crate::entities::{
     Ast, CallConv, CrTypeWr, Mod, SField, SKind, SType, Signature, TKind, Ty, TypeConst, TypeEnt,
     BUILTIN_MODULE,
 };
-use crate::incr::{self, IncrementalData};
+use crate::incr::IncrementalData;
 use crate::lexer::{TKind as LTKind, Token, TokenDisplay};
 use crate::module_tree::{MTContext, MTErrorDisplay, MTParser, MTState, TreeStorage};
 use crate::util::sdbm::ID;
-use crate::util::storage::Table;
+use crate::util::storage::{Table, TableId};
 use crate::util::Size;
 use cranelift::codegen::ir::types::Type;
 use cranelift::codegen::ir::Signature as CrSignature;
@@ -766,7 +766,6 @@ crate::inherit!(TContext, mt_context, MTContext);
 pub struct TState {
     pub builtin_repo: BuiltinRepo,
     pub types: Table<Ty, TypeEnt>,
-    pub used: EntitySet<Ty>,
 
     pub type_cycle_map: Vec<(bool, bool)>,
     pub mt_state: MTState,
@@ -938,10 +937,8 @@ impl TState {
 
     pub fn find_computed(&mut self, source_module: Mod, id: ID) -> Option<Ty> {
         if let Some(&ty) = self.types.index(id) {
-            if self.used.contains(ty) {
-                self.modules[source_module].add_type(ty);
-                return Some(ty);
-            }             
+            self.modules[source_module].add_type(ty);
+            return Some(ty);             
         }
 
         None
@@ -959,14 +956,7 @@ impl TState {
         ent: TypeEnt,
         allow_shadow: bool,
     ) -> (Option<TypeEnt>, Ty) {
-        let (mut shadow, ty) = self.types.insert(ent.id, ent);
-
-        // this is the case where we but its actually
-        // a garbage from previous compilation
-        if !self.used.contains(ty) {
-            shadow = None;
-        }
-        self.used.insert(ty);
+        let (shadow, ty) = self.types.insert(ent.id, ent);
 
         self.modules[source_module].add_type(ty);
         debug_assert!(shadow.is_none() || allow_shadow);
@@ -1000,28 +990,26 @@ impl TState {
             .cloned()
             .unwrap_or(ty)
     }
+}
 
-    fn remove_type(&mut self, ty: Ty) {
-        let id = self.types[ty].id;
-        let mut ent = self.types.remove(id).unwrap();
+impl GarbageTarget<Ty, TypeEnt> for TState {
+    fn state(&mut self) -> &mut Table<Ty, TypeEnt> {
+        &mut self.types 
+    }
+
+    fn remove(&mut self, _k: Ty, ent: &mut TypeEnt) -> bool {
+        if matches!(ent.kind, TKind::Builtin(..)) {
+            return false;
+        }
+
         self.modules[ent.module].clear_types(&mut ent.params);
+        
+        true
     }
 }
 
 impl IncrementalData for TState {
     fn prepare(&mut self) {
-        // remove all garbage (unused) types
-        let used = std::mem::take(&mut self.used);
-        let mut to_remove = Vec::with_capacity(self.types.len());
-        for (ty, ent) in self.types.iter() {
-            if !used.contains(ty) && !matches!(ent.kind, TKind::Builtin(_)) {
-                to_remove.push(ty);
-            }
-        }
-        for ty in to_remove {
-            self.remove_type(ty);
-        }
-
         self.type_cycle_map.clear();
         self.mt_state.prepare();
     }
@@ -1034,7 +1022,6 @@ impl Default for TState {
             types: Table::new(),
             mt_state: MTState::default(),
             type_cycle_map: Vec::new(),
-            used: EntitySet::new(),
         };
 
         s.builtin_repo = BuiltinRepo::new(&mut s);
@@ -1313,10 +1300,28 @@ pub fn call_conv_error(f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
     Ok(())
 }
 
+
+pub trait GarbageTarget<I: EntityRef + Default, T: Default + TableId> {
+    fn state(&mut self) -> &mut Table<I, T>;
+    fn remove(&mut self, k: I, ent: &mut T) -> bool;
+
+    fn remove_garbage(&mut self, set: &EntitySet<I>) {
+        let mut table = std::mem::take(self.state());
+
+        for k in (0..table.len()).map(|i| I::new(i)) {
+            if table.is_valid(k) && !set.contains(k) && self.remove(k, &mut table[k]) {
+                table.remove_by_index(k);
+            }
+        }
+
+        *self.state() = table;
+    }
+}
+
 pub fn test() {
     const PATH: &str = "src/types/test_project";
 
-    let (mut state, hint) = incr::load_data::<TState>(PATH, ID(0)).unwrap_or_default();
+    let (mut state, hint) = TState::load_data(PATH, ID(0)).unwrap_or_default();
     let mut context = TContext::default();
 
     MTParser::new(&mut state, &mut context)
@@ -1326,15 +1331,19 @@ pub fn test() {
 
     let module_order = std::mem::take(&mut state.module_order);
 
+    let mut used = EntitySet::with_capacity(state.types.len());
+
     // mark all unchanged module type dependencies as used
     for &module in &module_order {
         if state.modules[module].clean {
             let module_ent = &state.mt_state.modules[module];
             for &ty in module_ent.used_types() {
-                state.used.insert(ty);
+                used.insert(ty);
             }
         }
     }
+
+    state.remove_garbage(&used);
 
     // recompile dirty modules
     for &module in &module_order {
@@ -1348,5 +1357,5 @@ pub fn test() {
             .unwrap();
     }
 
-    incr::save_data(PATH, &mut state, ID(0), Some(hint)).unwrap();
+    state.save_data(PATH, ID(0), Some(hint)).unwrap();
 }

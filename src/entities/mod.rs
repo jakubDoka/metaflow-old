@@ -1,11 +1,11 @@
 use crate::{
     ast::Vis,
     lexer::{Span, TKind as LTKind, Token},
-    util::{sdbm::ID, Size},
+    util::{sdbm::ID, Size, storage::TableId},
 };
 use cranelift::{
     codegen::isa::{CallConv as CrCallConv, TargetIsa},
-    entity::packed_option::ReservedValue,
+    entity::packed_option::ReservedValue, module::DataId,
 };
 use cranelift::{
     codegen::{
@@ -24,11 +24,19 @@ crate::impl_entity!(Source);
 crate::impl_entity!(Manifest);
 crate::impl_entity!(Mod);
 crate::impl_entity!(Ty);
+crate::impl_entity!(AnonString);
 crate::impl_entity!(Unused);
 
-#[derive(Debug, Clone, QuickDefault, Copy, RealQuickSer)]
+#[derive(Debug, Clone, Copy, RealQuickSer, QuickDefault)]
+pub struct AnonStringEnt {
+    #[default(DataId::reserved_value())]
+    pub id: DataId,
+    pub module: Mod,
+    pub value: Span,
+}
+
+#[derive(Debug, Clone, Default, Copy, RealQuickSer)]
 pub struct ValueEnt {
-    #[default(Ty::reserved_value())]
     pub ty: Ty,
     pub inst: PackedOption<Inst>,
     pub offset: Size,
@@ -145,6 +153,12 @@ impl TypeEnt {
 
     pub fn on_stack(&self, ptr_ty: Type) -> bool {
         self.size.pick(ptr_ty == I32) > ptr_ty.bytes() as u32
+    }
+}
+
+impl TableId for TypeEnt {
+    fn id(&self) -> ID {
+        self.id
     }
 }
 

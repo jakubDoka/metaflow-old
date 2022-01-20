@@ -7,15 +7,14 @@ use cranelift::codegen::ir::{Block, GlobalValue, Inst, Value};
 use cranelift::codegen::packed_option::PackedOption;
 use cranelift::entity::{packed_option::ReservedValue, EntityList, EntityRef};
 use cranelift::entity::{EntitySet, ListPool, PrimaryMap};
-use cranelift::module::DataId;
 use quick_proc::{QuickDefault, QuickSer, RealQuickSer};
 
 use crate::ast::{AContext, AError, AErrorDisplay, AMainState, AParser, AState, Dep, Vis};
 use crate::entities::{
     BlockEnt, Fun, FunBody, IKind, InstEnt, Manifest, Mod, Source, TKind, Ty, TypeEnt, Unused,
-    ValueEnt, BUILTIN_MODULE,
+    ValueEnt, BUILTIN_MODULE, AnonString,
 };
-use crate::incr::{self, IncrementalData};
+use crate::incr::IncrementalData;
 use crate::lexer::Token;
 use crate::lexer::{SourceEnt, Span, TokenDisplay};
 use crate::util::pool::Pool;
@@ -253,6 +252,7 @@ impl<'a> MTParser<'a> {
         let content = std::fs::read_to_string(&path_buffer)
             .map_err(|err| MTError::new(MTEKind::FileReadError(path_buffer.clone(), err), token))?;
 
+        // stop if module is clean
         let last_module = if let Some(&module) = self.modules.index(id) {
             let source = self.modules[module].a_state.l_state.source;
             if modified == Some(self.sources[source].modified) {
@@ -271,6 +271,7 @@ impl<'a> MTParser<'a> {
             modified: modified.unwrap_or(SystemTime::now()),
         };
 
+        // we still reuse old allocations
         let module_id = if let Some(m) = last_module {
             let mut module = std::mem::take(&mut self.modules[m]);
             self.sources[module.source] = source;
@@ -320,6 +321,7 @@ impl<'a> MTParser<'a> {
             if self.context.seen_manifests.contains(manifest_id) {
                 continue;
             }
+
             path_buffer.clear();
             path_buffer.push(Path::new(self.manifests[manifest_id].base_path.as_str()));
 
@@ -700,8 +702,7 @@ pub struct ModEnt {
     pub functions: EntityList<Fun>,
     pub types: EntityList<Ty>,
     pub globals: EntityList<GlobalValue>,
-
-    pub anon_strings: Vec<(DataId, Span)>,
+    pub anon_strings: EntityList<AnonString>,
 
     pub entry_point: PackedOption<Fun>,
 
@@ -1148,7 +1149,7 @@ pub enum MTEKind {
 pub fn test() {
     const PATH: &str = "src/module_tree/test_project";
 
-    let (mut state, hint) = incr::load_data::<MTState>(PATH, ID(0)).unwrap_or_default();
+    let (mut state, hint) = MTState::load_data(PATH, ID(0)).unwrap_or_default();
     let mut context = MTContext::default();
 
     MTParser::new(&mut state, &mut context)
@@ -1156,5 +1157,5 @@ pub fn test() {
         .map_err(|e| panic!("{}", MTErrorDisplay::new(&state, &e)))
         .unwrap();
 
-    incr::save_data(PATH, &mut state, ID(0), Some(hint)).unwrap();
+    state.save_data(PATH, ID(0), Some(hint)).unwrap();
 }

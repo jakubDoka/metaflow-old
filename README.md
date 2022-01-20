@@ -413,6 +413,10 @@ Reason to have two levels of ir is that compiler needs to analyze the source cod
   - [x] booleans
   - [x] characters
   - [x] strings
+- [ ] loops
+  - [x] infinite
+  - [ ] while
+  - [ ] for
 - [x] math operations on builtin types
 - [x] pointer mutability
 - [x] global state

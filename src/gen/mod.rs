@@ -142,7 +142,7 @@ pub fn generate_obj_file(args: &Arguments) -> Result<(Vec<u8>, usize)> {
         return Err((Some(state), e));
     }
 
-    incr::save_data(&args[0], &state, args.hash(), Some(size_hint)).unwrap();
+    incr::save_data(&args[0], &mut state, args.hash(), Some(size_hint)).unwrap();
     
     Ok((module.finish().emit().unwrap(), context.lines_of_code))
 }

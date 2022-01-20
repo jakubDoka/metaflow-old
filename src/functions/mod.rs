@@ -9,9 +9,9 @@ use crate::incr::IncrementalData;
 use crate::lexer::TKind as LTKind;
 use crate::lexer::{Span, Token, TokenDisplay};
 use crate::module_tree::{MTErrorDisplay, MTParser};
-use crate::{types::*, incr};
+use crate::types::{TParser, TYPE_SALT, TypeDisplay, ItemSearch, TErrorDisplay, TError, TState, GarbageTarget, TContext};
 use crate::util::sdbm::ID;
-use crate::util::storage::Table;
+use crate::util::storage::{Table, TableId};
 use crate::util::Size;
 
 use cranelift::codegen::ir::types::I64;
@@ -2814,6 +2814,12 @@ pub struct FunEnt {
     pub inline: bool,
 }
 
+impl TableId for FunEnt {
+    fn id(&self) -> ID {
+        self.id
+    }
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, RealQuickSer)]
 pub enum FKind {
     Builtin,
@@ -2936,7 +2942,6 @@ pub struct FState {
     pub index_span: Span,
     pub index_var_span: Span,
     pub do_stacktrace: bool,
-    pub used: EntitySet<Fun>,
 
     pub pop_fun_hahs: ID,
     pub push_fun_hash: ID,
@@ -2947,10 +2952,8 @@ crate::inherit!(FState, t_state, TState);
 impl FState {
     fn find_computed(&mut self, source_module: Mod, id: ID) -> Option<Fun> {
         if let Some(&fun) = self.funs.index(id) {
-            if self.used.contains(fun) {
-                self.modules[source_module].add_fun(fun);
-                return Some(fun);
-            }
+            self.modules[source_module].add_fun(fun);
+            return Some(fun);
         }
 
         None
@@ -2958,40 +2961,34 @@ impl FState {
 
     fn add_fun(&mut self, module: Mod, fun_ent: FunEnt) -> (Option<FunEnt>, Fun) {
         let id = fun_ent.id;
-        let (mut shadow, fun) = self.funs.insert(id, fun_ent);
-        if !self.used.contains(fun) {
-            shadow = None
-        }
-        self.used.insert(fun);
+        let (shadow, fun) = self.funs.insert(id, fun_ent);
         self.modules[module].add_fun(fun);
         (shadow, fun)
     }
+}
 
-    fn remove_fun(&mut self, fun: Fun) {
-        let id = self.funs[fun].id;
-        let mut ent = self.funs.remove(id).unwrap();
+impl GarbageTarget<Fun, FunEnt> for FState {
+    fn state(&mut self) -> &mut Table<Fun, FunEnt> {
+        &mut self.funs
+    }
+
+    fn remove(&mut self, fun: Fun, ent: &mut FunEnt) -> bool {
+        if ent.kind == FKind::Builtin {
+            return false;
+        }
+
         self.mt_state.modules[ent.module].clear_types(&mut ent.params);
         self.mt_state.modules[ent.module].clear_types(&mut ent.sig.args);
         if ent.kind == FKind::Generic {
             self.generic_funs.remove(fun);
         }
+        
+        true
     }
 }
 
 impl IncrementalData for FState {
     fn prepare(&mut self) {
-        let used = std::mem::take(&mut self.used);
-        let mut to_remove = Vec::with_capacity(self.funs.len());
-        for (fun, _) in self.funs.iter() {
-            if !used.contains(fun) {
-                to_remove.push(fun);
-            }
-        }
-
-        for fun in to_remove {
-            self.remove_fun(fun);
-        }
-
         self.t_state.prepare();
     }
 }
@@ -3005,7 +3002,6 @@ impl Default for FState {
             index_span: Span::default(),
             index_var_span: Span::default(),
             globals: Table::new(),
-            used: EntitySet::new(),
             do_stacktrace: false,
 
             pop_fun_hahs: ID(0),
@@ -3259,9 +3255,7 @@ impl std::fmt::Display for FunDisplay<'_> {
 pub fn test() {
     const PATH: &str = "src/functions/test_project";
 
-    let now = std::time::Instant::now();
-
-    let (mut state, hint) = incr::load_data::<FState>(PATH, ID(0)).unwrap_or_default();
+    let (mut state, hint) = FState::load_data(PATH, ID(0)).unwrap_or_default();
     let mut context = FContext::default();
 
     MTParser::new(&mut state, &mut context)
@@ -3277,17 +3271,22 @@ pub fn test() {
     let order = std::mem::take(&mut state.module_order);
 
     // mark all unchanged module type dependencies as used
+    let mut used_types = EntitySet::with_capacity(state.types.len());
+    let mut used_funs = EntitySet::with_capacity(state.funs.len());
     for &module in &order {
         if state.modules[module].clean {
             let module_ent = &state.t_state.mt_state.modules[module];
             for &ty in module_ent.used_types() {
-                state.t_state.used.insert(ty);
+                used_types.insert(ty);
             }
             for &fun in module_ent.used_functions() {
-                state.used.insert(fun);
+                used_funs.insert(fun);
             }
         }
     }
+
+    state.t_state.remove_garbage(&used_types);
+    state.remove_garbage(&used_funs);
 
     for &module in &order {
         if state.modules[module].clean {
@@ -3300,7 +3299,5 @@ pub fn test() {
             .unwrap();
     }
 
-    incr::save_data(PATH, &mut state, ID(0), Some(hint)).unwrap();
-
-    println!("{:?}", now.elapsed().as_secs_f64());
+    state.save_data(PATH, ID(0), Some(hint)).unwrap();
 }
