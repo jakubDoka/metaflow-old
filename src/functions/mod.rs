@@ -9,7 +9,10 @@ use crate::incr::IncrementalData;
 use crate::lexer::TKind as LTKind;
 use crate::lexer::{Span, Token, TokenDisplay};
 use crate::module_tree::{MTErrorDisplay, MTParser};
-use crate::types::{TParser, TYPE_SALT, TypeDisplay, ItemSearch, TErrorDisplay, TError, TState, GarbageTarget, TContext};
+use crate::types::{
+    GarbageTarget, ItemSearch, TContext, TError, TErrorDisplay, TParser, TState, TypeDisplay,
+    TYPE_SALT,
+};
 use crate::util::sdbm::ID;
 use crate::util::storage::{Table, TableId};
 use crate::util::Size;
@@ -37,7 +40,7 @@ pub struct FParser<'a> {
     module: Mod,
 }
 
-crate::inherit!(FParser<'_>, state, FState);
+crate::inherit!(FParser<'a>, state, FState);
 
 impl<'a> FParser<'a> {
     pub fn new(state: &'a mut FState, context: &'a mut FContext, ptr_ty: Type) -> Self {
@@ -71,7 +74,7 @@ impl<'a> FParser<'a> {
         let mut body = self.funs[id].body;
         self.modules[module].add_return_stmt(Some(return_value), Token::default(), &mut body);
         self.funs[id].body = body;
-        self.context.represented.push(id);
+        //self.context.entry_points.push(id);
     }
 
     pub fn init_module(&mut self, module: Mod) {
@@ -246,7 +249,6 @@ impl<'a> FParser<'a> {
     fn finalize_fun(&mut self, fun: Fun, body: FunBody) {
         self.funs[fun].body = body;
         self.funs[fun].kind = FKind::Represented;
-        self.context.represented.push(fun);
     }
 
     fn gen_return(&mut self, fun: Fun, value: Option<Value>, token: Token, body: &mut FunBody) {
@@ -1235,6 +1237,8 @@ impl<'a> FParser<'a> {
             module_ent.add_valueless_inst(IKind::Call(other_fun, args), token, body);
         }
 
+        module_ent.add_dependant_function(other_fun, body);
+
         if do_stacktrace {
             self.gen_frame_pop(fun, token, body);
         }
@@ -1421,12 +1425,11 @@ impl<'a> FParser<'a> {
             return Ok(None);
         };
 
-        let ty = self.state.globals[found].ty;
-
-        let mutable = self.state.globals[found].mutable;
+        let GlobalEnt { ty, mutable, .. } = self.state.globals[found];
         let module_ent = &mut self.modules[module];
         let value = module_ent.add_value(ty, mutable);
         module_ent.add_inst(IKind::GlobalLoad(found), value, name, body);
+        module_ent.add_dependant_global(found, body);
 
         Ok(Some(value))
     }
@@ -1793,7 +1796,7 @@ impl<'a> FParser<'a> {
             }
         }
         id = id.add(self.state.modules[module].id);
-        
+
         if let Some(fun) = self.state.find_computed(self.module, id) {
             self.modules[module].clear_types(&mut final_params);
             return Ok(Some(fun));
@@ -1847,13 +1850,27 @@ impl<'a> FParser<'a> {
         let module_ent = &self.modules[module];
         let funs_len = module_ent.funs().len();
         let globals_len = module_ent.globals().len();
-        let mut scope_state = (Ast::reserved_value(), Ast::reserved_value(), ID(0), None, Vis::None);
+        let mut scope_state = (
+            Ast::reserved_value(),
+            Ast::reserved_value(),
+            ID(0),
+            None,
+            Vis::None,
+        );
 
         for i in (0..funs_len).step_by(3) {
             let funs = self.modules[module].funs();
             let (ast, attrs, scope) = (funs[i], funs[i + 1], funs[i + 2]);
             self.parse_scope(module, scope, &mut scope_state)?;
-            self.collect_fun(module, ast, attrs, scope, scope_state.2, scope_state.1, scope_state.4)?
+            self.collect_fun(
+                module,
+                ast,
+                attrs,
+                scope,
+                scope_state.2,
+                scope_state.1,
+                scope_state.4,
+            )?
         }
 
         let main_fun_id = self.context.entry_point_data.id;
@@ -2826,6 +2843,33 @@ pub enum FKind {
     Generic,
     Normal,
     Represented,
+    Compiled,
+    JitCompiled,
+    CompiledAndJitCompiled
+}
+
+impl FKind {
+    pub fn add(&mut self, other: Self) {
+        match (*self, other) {
+            (Self::Compiled, Self::JitCompiled) | 
+            (Self::JitCompiled, Self::Compiled) => *self = Self::CompiledAndJitCompiled,
+            _ =>  *self = other,
+        }
+    }
+
+    pub fn is_compiled(&self) -> bool {
+        match self {
+            Self::Compiled | Self::CompiledAndJitCompiled => true,
+            _ => false,
+        }
+    }
+
+    pub fn is_jit_compiled(&self) -> bool {
+        match self {
+            Self::JitCompiled | Self::CompiledAndJitCompiled => true,
+            _ => false,
+        }
+    }
 }
 
 impl Default for FKind {
@@ -2977,12 +3021,16 @@ impl GarbageTarget<Fun, FunEnt> for FState {
             return false;
         }
 
-        self.mt_state.modules[ent.module].clear_types(&mut ent.params);
-        self.mt_state.modules[ent.module].clear_types(&mut ent.sig.args);
+        let module_ent = &mut self.mt_state.modules[ent.module];
+
+        if module_ent.clean {
+            module_ent.clear_types(&mut ent.params);
+            module_ent.clear_types(&mut ent.sig.args);
+        }
         if ent.kind == FKind::Generic {
             self.generic_funs.remove(fun);
         }
-        
+
         true
     }
 }
@@ -3164,12 +3212,9 @@ pub struct FContext {
     pub in_assign: bool,
     pub in_var_ref: bool,
 
-    
-
     pub unresolved_globals: Vec<GlobalValue>,
     pub resolved_globals: Vec<GlobalValue>,
     pub unresolved: Vec<Fun>,
-    pub represented: Vec<Fun>,
     pub entry_points: Vec<Fun>,
 
     pub entry_point_data: MainFunData,
@@ -3253,16 +3298,20 @@ impl std::fmt::Display for FunDisplay<'_> {
 }
 
 pub fn test() {
+    panic!("{}", std::mem::size_of::<Span>());
+
     const PATH: &str = "src/functions/test_project";
 
+    let now = std::time::Instant::now();
     let (mut state, hint) = FState::load_data(PATH, ID(0)).unwrap_or_default();
     let mut context = FContext::default();
+    println!("{}", now.elapsed().as_secs_f32());
 
     MTParser::new(&mut state, &mut context)
         .parse(PATH)
         .map_err(|e| panic!("\n{}", MTErrorDisplay::new(&state, &e)))
         .unwrap();
-    
+
     for global in context.globals_to_remove.drain(..) {
         let id = state.globals[global].id;
         state.globals.remove(id);
@@ -3297,7 +3346,11 @@ pub fn test() {
             .parse(module)
             .map_err(|e| panic!("\n{}", FErrorDisplay::new(&mut state, &e)))
             .unwrap();
+        
+        
     }
-
+   
+    println!("{}", now.elapsed().as_secs_f32());
     state.save_data(PATH, ID(0), Some(hint)).unwrap();
+    println!("{}", now.elapsed().as_secs_f64());
 }

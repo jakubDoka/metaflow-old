@@ -43,6 +43,7 @@
         "funs",
         "gfuns",
         "gtypes",
+        "hashless",
         "iadd",
         "iconst",
         "imax",

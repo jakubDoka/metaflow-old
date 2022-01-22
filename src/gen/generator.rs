@@ -1,7 +1,8 @@
 use cranelift::codegen::binemit::NullTrapSink;
-use cranelift::codegen::ir::AbiParam;
+use cranelift::codegen::ir::{AbiParam, Function};
 use cranelift::entity::EntitySet;
 use cranelift::frontend::{FunctionBuilder, FunctionBuilderContext, Variable};
+use cranelift::jit::JITModule;
 use cranelift::module::{DataContext, DataId, FuncOrDataId, Linkage, Module, RelocRecord, ModuleDeclarations};
 use cranelift::object::ObjectModule;
 use cranelift::{
@@ -28,6 +29,7 @@ use quick_proc::{QuickDefault, QuickSer, RealQuickSer};
 use std::ops::{Deref, DerefMut};
 use crate::entities::{BlockEnt, TKind, CrTypeWr, TypeEnt, AnonString, AnonStringEnt};
 use crate::incr::IncrementalData;
+use crate::types::GarbageTarget;
 use crate::util::storage::Table;
 use crate::{
     entities::{Fun, IKind, InstEnt, Mod, Ty, ValueEnt},
@@ -47,8 +49,8 @@ type Result<T = ()> = std::result::Result<T, GError>;
 
 pub const STRING_SALT: u64 = 0xDEADBEEF; // just a random number
 
-pub struct Generator<'a> {
-    module: &'a mut ObjectModule,
+pub struct Generator<'a, M: Module> {
+    module: &'a mut M,
     state: &'a mut GState,
     context: &'a mut GContext,
     s32: bool,
@@ -56,11 +58,11 @@ pub struct Generator<'a> {
     ptr_ty: Type,
 }
 
-crate::inherit!(Generator<'_>, state, GState);
+crate::inherit!(Generator<'a, M: Module>, state, GState);
 
-impl<'a> Generator<'a> {
+impl<'a, M: Module> Generator<'a, M> {
     pub fn new(
-        module: &'a mut ObjectModule,
+        module: &'a mut M,
         state: &'a mut GState,
         context: &'a mut GContext,
         jit: bool,
@@ -110,13 +112,8 @@ impl<'a> Generator<'a> {
                 globals.extend_from_slice(module_ent.used_globals());
                 let strings = std::mem::take(&mut module_ent.anon_strings);
 
-                for &ty in module_ent.used_types() {
-                    self.context.used_types.insert(ty);
-                }
-
                 self.load_funs(&functions);
                 self.load_globals(&globals);
-                self.load_strings(&strings);
 
                 let module_ent = &mut self.modules[module];
                 module_ent.anon_strings = strings;
@@ -203,7 +200,6 @@ impl<'a> Generator<'a> {
             }
 
             self.compiled_funs[fun_id] = data;
-            self.context.used_funs.insert(fun_id);
         }
     }
 
@@ -393,7 +389,8 @@ impl<'a> Generator<'a> {
 
             if self.jit {
                 self.jit_funs.insert(JFun {
-                    id: fun_id,
+                    id,
+                    self_id: fun_id,
                     bin: CompiledData {
                         bytes,
                         relocs: unsafe { std::mem::transmute(reloc_sink.relocs.clone()) },
@@ -450,7 +447,7 @@ impl<'a> Generator<'a> {
                 ..
             } = self.modules[module].blocks[block];
             let inst = if raw_inst.is_some() {
-                let inst = raw_inst.unwrap();
+                let inst = raw_inst.unwrap();;
                 *raw_inst = None;
                 self.modules[module].insts[inst].next.unwrap()
             } else {
@@ -696,20 +693,9 @@ impl<'a> Generator<'a> {
                                     self.state.display(&string).as_bytes(),
                                 )
                             };
-                            let (data, new) = self.make_static_data(data, false, false);
-                            if new { // we don't want duplicates
-                                self.modules[module].anon_strings.push((data, string));
-                            }
-                            let map_id = ID(data.as_u32() as u64);
-                            let value = if let Some(&value) =
-                                self.context.imported_globals.get(map_id)
-                            {
-                                value
-                            } else {
-                                let value = self.module.declare_data_in_func(data, builder.func);
-                                self.context.imported_globals.insert(map_id, value);
-                                value
-                            };
+                            let data = self.make_static_data(data, false, false);
+                            self.add_anon_string(module, data, string);
+                            let value = self.declare_data_in_func(data, builder.func);
                             builder.ins().global_value(repr, value)
                         }
                         lit => todo!("{:?}", lit),
@@ -1410,12 +1396,36 @@ impl<'a> Generator<'a> {
         self.types[ty].to_cr_type(self.module.isa())
     }
 
-    pub fn make_static_data(&mut self, data: &[u8], mutable: bool, tls: bool) -> (DataId, bool) {
+    pub fn add_anon_string(&mut self, module: Mod, id: DataId, data: Span) {
+        if let Some(string) = self.anon_strings.get_mut(data.hash) {
+            if self.jit {
+                string.jit_id = Some(id).into();
+            } else {
+                string.id = Some(id).into();
+            }
+        }
+
+        let (id, jit_id) = if self.jit {
+            (id.into(), None.into())
+        } else {
+            (None.into(), Some(id).into())
+        };
+
+        let string = AnonStringEnt {
+            id,
+            jit_id,
+            data,
+        };
+
+        self.anon_strings.insert(data.hash, string);
+    }
+
+    pub fn make_static_data(&mut self, data: &[u8], mutable: bool, tls: bool) -> DataId {
         let id = data.sdbm_hash().wrapping_add(STRING_SALT);
         let mut name = String::new();
         write_radix(id, 36, &mut name);
         if let Some(FuncOrDataId::Data(data_id)) = self.module.get_name(&name) {
-            (data_id, false)
+            data_id
         } else {
             let data_id = self
                 .module
@@ -1424,7 +1434,20 @@ impl<'a> Generator<'a> {
             self.context.data_context.define(data.deref().to_owned().into_boxed_slice());
             self.module.define_data(data_id, &self.context.data_context).unwrap();
             self.context.data_context.clear();
-            (data_id, true)
+            data_id
+        }
+    }
+
+    pub fn declare_data_in_func(&mut self, data: DataId, fun: &mut Function) -> GlobalValue {
+        let map_id = ID(data.as_u32() as u64);
+        if let Some(&value) =
+            self.context.imported_globals.get(map_id)
+        {
+            value
+        } else {
+            let value = self.module.declare_data_in_func(data, fun);
+            self.context.imported_globals.insert(map_id, value);
+            value
         }
     }
 }
@@ -1449,9 +1472,45 @@ pub struct GState {
 
 crate::inherit!(GState, f_state, FState);
 
-impl GState {
-    pub fn cleanup(&mut self) {
+impl GarbageTarget<Fun, FunEnt> for GState {
+    fn state(&mut self) -> &mut Table<Fun, FunEnt> {
+        &mut self.f_state.funs
+    }
 
+    fn remove(&mut self, k: Fun, ent: &mut FunEnt) -> bool {
+        if !self.f_state.remove(k, ent) {
+            return false;
+        }
+
+        if ent.kind.is_compiled() {
+            let data = std::mem::take(&mut self.compiled_funs[k]);
+            self.bin_declarations.remove_function(data.id);
+        }
+
+        if ent.kind.is_jit_compiled() {
+            let data = self.jit_funs.remove(k).unwrap();
+            self.jit_declarations.remove_function(data.id);
+        } 
+
+        true
+    }
+}
+
+impl GarbageTarget<AnonString, AnonStringEnt> for GState {
+    fn state(&mut self) -> &mut Table<AnonString, AnonStringEnt> {
+        &mut self.anon_strings
+    }
+
+    fn remove(&mut self, k: AnonString, ent: &mut AnonStringEnt) -> bool {
+        if ent.id.is_some() {
+            self.bin_declarations.remove_data(ent.id.unwrap());
+        }
+
+        if ent.jit_id.is_some() {
+            self.jit_declarations.remove_data(ent.jit_id.unwrap());
+        }
+
+        true
     }
 }
 
@@ -1483,13 +1542,15 @@ pub struct CFun {
 
 #[derive(Debug, Clone, QuickDefault, QuickSer)]
 pub struct JFun {
-    pub id: Fun,
+    pub self_id: Fun,
+    #[default(FuncId::from_u32(0))]
+    pub id: FuncId,
     pub bin: CompiledData,
 }
 
 impl SparseMapValue<Fun> for JFun {
     fn key(&self) -> Fun {
-        self.id
+        self.self_id
     }
 }
 

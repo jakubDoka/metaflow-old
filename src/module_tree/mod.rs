@@ -11,8 +11,8 @@ use quick_proc::{QuickDefault, QuickSer, RealQuickSer};
 
 use crate::ast::{AContext, AError, AErrorDisplay, AMainState, AParser, AState, Dep, Vis};
 use crate::entities::{
-    BlockEnt, Fun, FunBody, IKind, InstEnt, Manifest, Mod, Source, TKind, Ty, TypeEnt, Unused,
-    ValueEnt, BUILTIN_MODULE, AnonString,
+    AnonString, BlockEnt, Fun, FunBody, IKind, InstEnt, Manifest, Mod, Source, TKind, Ty, TypeEnt,
+    Unused, ValueEnt, BUILTIN_MODULE,
 };
 use crate::incr::IncrementalData;
 use crate::lexer::Token;
@@ -34,7 +34,7 @@ pub struct MTParser<'a> {
     pub context: &'a mut MTContext,
 }
 
-crate::inherit!(MTParser<'_>, state, MTState);
+crate::inherit!(MTParser<'a>, state, MTState);
 
 impl<'a> MTParser<'a> {
     pub fn new(state: &'a mut MTState, context: &'a mut MTContext) -> Self {
@@ -248,7 +248,7 @@ impl<'a> MTParser<'a> {
             .map_err(|err| MTError::new(MTEKind::FileReadError(path_buffer.clone(), err), token))?
             .modified()
             .ok();
-        
+
         let content = std::fs::read_to_string(&path_buffer)
             .map_err(|err| MTError::new(MTEKind::FileReadError(path_buffer.clone(), err), token))?;
 
@@ -1035,6 +1035,18 @@ impl ModEnt {
 
     pub fn used_types(&self) -> &[Ty] {
         self.types.as_slice(self.slices.transmute())
+    }
+
+    pub fn used_strings(&self) -> &[AnonString] {
+        self.anon_strings.as_slice(self.slices.transmute())
+    }
+
+    pub fn add_dependant_function(&mut self, fun: Fun, body: &mut FunBody) {
+        body.dependant_functions.push(fun, self.slices.transmute_mut());
+    }
+
+    pub fn add_dependant_global(&mut self, global: GlobalValue, body: &mut FunBody) {
+        body.dependant_globals.push(global, self.slices.transmute_mut());
     }
 }
 

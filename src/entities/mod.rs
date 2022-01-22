@@ -1,11 +1,12 @@
 use crate::{
     ast::Vis,
     lexer::{Span, TKind as LTKind, Token},
-    util::{sdbm::ID, Size, storage::TableId},
+    util::{sdbm::ID, storage::TableId, Size},
 };
 use cranelift::{
     codegen::isa::{CallConv as CrCallConv, TargetIsa},
-    entity::packed_option::ReservedValue, module::DataId,
+    entity::packed_option::ReservedValue,
+    module::DataId,
 };
 use cranelift::{
     codegen::{
@@ -14,7 +15,7 @@ use cranelift::{
     },
     entity::EntityList,
 };
-use quick_proc::{QuickDefault, QuickEnumGets, QuickSer, RealQuickSer};
+use quick_proc::{QuickEnumGets, QuickSer, RealQuickSer};
 
 pub const BUILTIN_MODULE: Mod = Mod(0);
 
@@ -27,12 +28,18 @@ crate::impl_entity!(Ty);
 crate::impl_entity!(AnonString);
 crate::impl_entity!(Unused);
 
-#[derive(Debug, Clone, Copy, RealQuickSer, QuickDefault)]
+#[derive(Debug, Clone, Copy, RealQuickSer, Default)]
 pub struct AnonStringEnt {
-    #[default(DataId::reserved_value())]
-    pub id: DataId,
-    pub module: Mod,
-    pub value: Span,
+    pub jit_id: PackedOption<DataId>,
+    pub id: PackedOption<DataId>,
+    pub data: Span,
+    pub table_id: ID,
+}
+
+impl TableId for AnonStringEnt {
+    fn id(&self) -> ID {
+        self.table_id
+    }
 }
 
 #[derive(Debug, Clone, Default, Copy, RealQuickSer)]
@@ -110,8 +117,10 @@ pub struct BlockEnt {
     pub end: PackedOption<Inst>,
 }
 
-#[derive(Debug, QuickDefault, Clone, Copy, RealQuickSer)]
+#[derive(Debug, Default, Clone, Copy, RealQuickSer)]
 pub struct FunBody {
+    pub dependant_functions: EntityList<Fun>,
+    pub dependant_globals: EntityList<GlobalValue>,
     pub current_block: PackedOption<Block>,
     pub entry_block: PackedOption<Block>,
     pub last_block: PackedOption<Block>,

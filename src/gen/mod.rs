@@ -2,10 +2,10 @@ pub mod generator;
 
 use generator::*;
 
-use cranelift::codegen::{
+use cranelift::{codegen::{
     isa::{self, LookupError},
     settings::{self, Configurable, SetError},
-};
+}, entity::EntitySet};
 
 use cranelift::object::{ObjectBuilder, ObjectModule};
 use std::process::Command;
@@ -15,10 +15,10 @@ use crate::{
     functions::{FError, FErrorDisplay},
     lexer::{Token, TokenDisplay},
     module_tree::{MTError, MTErrorDisplay, MTParser},
-    util::cli::Arguments,
+    util::cli::Arguments, entities::{AnonString, Ty, Fun}, types::GarbageTarget,
 };
 
-use super::*;
+use crate::incr::IncrementalData; 
 
 type Result<T> = std::result::Result<T, (Option<GState>, GError)>;
 
@@ -125,8 +125,7 @@ pub fn generate_obj_file(args: &Arguments) -> Result<(Vec<u8>, usize)> {
 
     let mut module = ObjectModule::new(builder);
 
-    let (mut state, size_hint) =
-        incr::load_data::<GState>(&args[0], args.hash()).unwrap_or_default();
+    let (mut state, size_hint) = GState::load_data(&args[0], args.hash()).unwrap_or_default();
 
     state.do_stacktrace = stacktrace;
     let mut context = GContext::default();
@@ -137,13 +136,36 @@ pub fn generate_obj_file(args: &Arguments) -> Result<(Vec<u8>, usize)> {
 
     let order = std::mem::take(&mut state.module_order);
 
+    let mut used_strings = EntitySet::<AnonString>::with_capacity(state.anon_strings.len());
+    let mut used_functions = EntitySet::<Fun>::with_capacity(state.funs.len());
+    let mut used_types = EntitySet::<Ty>::with_capacity(state.types.len());
+
+    for &module in &order {
+        let module = &state.modules[module];
+        if module.clean {
+            for &fun in module.used_functions() {
+                used_functions.insert(fun);
+            }
+            for &ty in module.used_types() {
+                used_types.insert(ty);
+            }
+            for &string in module.used_strings() {
+                used_strings.insert(string);
+            }
+        }
+    }
+
+    state.remove_garbage(&used_strings);
+    state.remove_garbage(&used_functions);
+    state.t_state.remove_garbage(&used_types);
+
     if let Err(e) = Generator::new(&mut module, &mut state, &mut context, false)
         .generate(&order) {
         return Err((Some(state), e));
     }
 
-    incr::save_data(&args[0], &mut state, args.hash(), Some(size_hint)).unwrap();
-    
+    state.save_data(&args[0], args.hash(), Some(size_hint)).unwrap();
+
     Ok((module.finish().emit().unwrap(), context.lines_of_code))
 }
 

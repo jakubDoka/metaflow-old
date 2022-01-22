@@ -392,6 +392,13 @@ impl<I: EntityRef + Default, T: Default> Table<I, T> {
         self.map.get(id).map(|&i| &self.data[i])
     }
 
+    pub fn get_mut(&mut self, id: ID) -> Option<&mut T> {
+        if let Some(&id) = self.map.get(id) {
+            return Some(&mut self.data[id]);
+        }
+        None
+    }
+
     pub fn len(&self) -> usize {
         self.data.len()
     }

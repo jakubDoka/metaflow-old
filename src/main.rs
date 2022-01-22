@@ -6,13 +6,13 @@
 
 pub mod ast;
 pub mod entities;
-pub mod functions;
+//pub mod functions;
 //pub mod gen;
-pub mod incr;
+//pub mod incr;
 pub mod lexer;
-pub mod module_tree;
+//pub mod module_tree;
 pub mod testing;
-pub mod types;
+//pub mod types;
 pub mod util;
 
 pub const COMMIT_HASH: &str = env!("GIT_HASH");
@@ -56,8 +56,8 @@ fn test() {
     util::test();
     lexer::test();
     ast::test();
-    module_tree::test();
-    types::test();
-    functions::test();
-    gen::test();
+    //module_tree::test();
+    //types::test();
+    //functions::test();
+    //gen::test();
 }

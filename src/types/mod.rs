@@ -37,7 +37,7 @@ pub struct TParser<'a> {
     context: &'a mut TContext,
 }
 
-crate::inherit!(TParser<'_>, state, TState);
+crate::inherit!(TParser<'a>, state, TState);
 
 impl<'a> TParser<'a> {
     pub const MAX_TYPE_INSTANTIATION_DEPTH: usize = 1000;
@@ -308,7 +308,6 @@ impl<'a> TParser<'a> {
             return Err(TError::new(TEKind::VisibilityViolation, token));
         }
 
-
         Ok(ty)
     }
 
@@ -427,7 +426,6 @@ impl<'a> TParser<'a> {
             }
             _ => unreachable!("{:?}", kind),
         };
-        
 
         let TypeEnt {
             vis,
@@ -438,7 +436,6 @@ impl<'a> TParser<'a> {
             ..
         } = self.types[ty];
 
-        
         let mut params = EntityList::new();
         let module_ent = &mut self.modules[module];
         let sons = module_ent.sons(ast);
@@ -938,7 +935,7 @@ impl TState {
     pub fn find_computed(&mut self, source_module: Mod, id: ID) -> Option<Ty> {
         if let Some(&ty) = self.types.index(id) {
             self.modules[source_module].add_type(ty);
-            return Some(ty);             
+            return Some(ty);
         }
 
         None
@@ -994,7 +991,7 @@ impl TState {
 
 impl GarbageTarget<Ty, TypeEnt> for TState {
     fn state(&mut self) -> &mut Table<Ty, TypeEnt> {
-        &mut self.types 
+        &mut self.types
     }
 
     fn remove(&mut self, _k: Ty, ent: &mut TypeEnt) -> bool {
@@ -1002,8 +999,10 @@ impl GarbageTarget<Ty, TypeEnt> for TState {
             return false;
         }
 
-        self.modules[ent.module].clear_types(&mut ent.params);
-        
+        if self.modules[ent.module].clean {
+            self.modules[ent.module].clear_types(&mut ent.params);
+        }
+
         true
     }
 }
@@ -1300,7 +1299,10 @@ pub fn call_conv_error(f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
     Ok(())
 }
 
-
+/// Collects and removes all unwanted data based of set and destructor.
+/// If set does not contain the index, it is passed to the destructor, and if
+/// destructor returns true data is removed. The state is moved for duration
+/// of function so referring to other entities from state is impossible.
 pub trait GarbageTarget<I: EntityRef + Default, T: Default + TableId> {
     fn state(&mut self) -> &mut Table<I, T>;
     fn remove(&mut self, k: I, ent: &mut T) -> bool;

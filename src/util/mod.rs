@@ -7,8 +7,8 @@ pub mod storage;
 
 #[macro_export]
 macro_rules! inherit {
-    ($type:ty, $field:ident, $target:ty) => {
-        impl Deref for $type {
+    ($type:ident$(<$($lt:lifetime),* $(,)? $($t:ident:$bound:path),*>)?, $field:ident, $target:ty) => {
+        impl$(<$($lt,)* $($t: $bound),*>)? Deref for $type$(<$($lt,)* $($t),*>)? {
             type Target = $target;
 
             fn deref(&self) -> &Self::Target {
@@ -16,7 +16,7 @@ macro_rules! inherit {
             }
         }
 
-        impl DerefMut for $type {
+        impl$(<$($lt,)* $($t: $bound),*>)? DerefMut for $type$(<$($lt,)* $($t),*>)? {
             fn deref_mut(&mut self) -> &mut Self::Target {
                 &mut self.$field
             }

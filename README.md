@@ -465,3 +465,4 @@ Reason to have two levels of ir is that compiler needs to analyze the source cod
   - [ ] linux
   - [ ] mac 
 - [ ] CLI documentation
+- [ ] incremental compilation
