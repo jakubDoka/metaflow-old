@@ -1,3 +1,7 @@
+//! Module lexer defines lexing machinery. Structures are defined to not allocate
+//! memory on the heap and just prepare markers referring to source code. [`Token`]
+//! is designed to be as small as possible. Lexer it self is not meant to be stored
+//! but construct whenever token is needed.
 use quick_proc::{QuickDefault, QuickSer, RealQuickSer};
 
 use cranelift::entity::EntityRef;
@@ -7,13 +11,18 @@ use crate::{
     util::{sdbm::ID, storage::Map},
 };
 use cranelift::entity::PrimaryMap;
-use std::{
-    fmt::Debug,
-    time::SystemTime, ops::Range,
-};
+use std::{fmt::Debug, ops::Range, time::SystemTime};
 
 type Result<T = Token> = std::result::Result<T, LError>;
 
+/// Next token parses one token from `source` based of `state`.
+pub fn next_token(source: &str, state: &mut LState) -> Result {
+    Lexer::new(source, state).next()
+}
+
+/// Lexer modifies [`LState`] and yields token. If you want to peek,
+/// just pass clone of [`LState`] and discard it. Whitespace is ignored
+/// except for newlines and continuos whitespace that follows it.
 #[derive(Debug)]
 pub struct Lexer<'a> {
     source: &'a str,
@@ -21,13 +30,12 @@ pub struct Lexer<'a> {
 }
 
 impl<'a> Lexer<'a> {
+    /// Create lexer from source and state. No modifications to state are performed.
     pub fn new(source: &'a str, state: &'a mut LState) -> Self {
-        Lexer {
-            source,
-            state,
-        }
+        Lexer { source, state }
     }
 
+    /// Next parses next token, returning it and preparing state for next token.
     pub fn next(&mut self) -> Result {
         loop {
             let char = self.peek().unwrap_or('\0');
@@ -69,12 +77,7 @@ impl<'a> Lexer<'a> {
                 ']' => TKind::RBra,
                 '.' => TKind::Dot,
                 '\0' => TKind::Eof,
-                _ => {
-                    return Err(self.error(
-                        LEKind::UnknownCharacter,
-                        start..start + 1,
-                    ))
-                }
+                _ => return Err(self.error(LEKind::UnknownCharacter, start..start + 1)),
             };
 
             self.advance();
@@ -82,6 +85,11 @@ impl<'a> Lexer<'a> {
         }
     }
 
+    /// Parses identifier token, but can return keyword token or
+    /// even operator for some reserved words.
+    /// ```regex
+    /// \b[a-zA-Z_][a-zA-Z0-9_]+\b
+    /// ```
     fn ident(&mut self) -> Result<Token> {
         let start = self.progress();
         loop {
@@ -120,6 +128,10 @@ impl<'a> Lexer<'a> {
         Ok(self.token(kind, start))
     }
 
+    /// Parses operator token but can return keyword token.
+    /// ```regex
+    /// \b[+-*/%^=<>!&|?|:~]+\b
+    /// ```
     fn op(&mut self) -> Result<Token> {
         let start = self.progress();
         while self.peek().unwrap_or('\0').is_operator() {
@@ -134,6 +146,12 @@ impl<'a> Lexer<'a> {
         Ok(self.token(kind, start))
     }
 
+    /// Indent parses indent token, all of the characters of ident are
+    /// navigation and space characters. Indentation value of ' ' is 0.5 and
+    /// '\t' is 1 and sum is floored.
+    /// ```regex
+    /// \n[ \t]*
+    /// ```
     fn indent(&mut self) -> Result<Token> {
         let start = self.progress();
         self.advance();
@@ -157,6 +175,12 @@ impl<'a> Lexer<'a> {
         Ok(self.token(TKind::Indent(indentation / 2), start))
     }
 
+    /// Parses number token. Literals allow underscores,
+    /// hex and bin literals are also supported. After the
+    /// value, type can also be specified.
+    /// ```regex
+    /// ([0-9_]+([0-9_])?|0x[0-9a-fA-F_]+|0b[01_]+)((i|u|f)[0-9]{0, 2})?
+    /// ```
     fn number(&mut self) -> Result {
         let start = self.progress();
         let number = self.parse_number_err(10)?.0;
@@ -201,13 +225,19 @@ impl<'a> Lexer<'a> {
         Ok(self.token(kind, start))
     }
 
+    /// Calls [`Self::parse_number`] and maps None to error.
     fn parse_number_err(&mut self, base: u64) -> Result<(u64, u64)> {
         let start = self.progress();
-        self.parse_number(base).ok_or_else(|| {
-            self.error(LEKind::InvalidCharacter, start..self.progress())
-        })
+        self.parse_number(base)
+            .ok_or_else(|| self.error(LEKind::InvalidCharacter, start..self.progress()))
     }
 
+    /// Parses simple integer number with underscores. Second value is
+    /// exponent of the number, which is closes power of 10
+    /// smaller the first element.
+    /// ```regex
+    /// [0-9_]+
+    /// ```
     fn parse_number(&mut self, base: u64) -> Option<(u64, u64)> {
         let mut number = 0u64;
         let mut exponent = 1u64;
@@ -230,6 +260,11 @@ impl<'a> Lexer<'a> {
         }
     }
 
+    /// Parses character or label. Character can be escaped. `<char_escape>` refers
+    /// to [`Self::char_escape`].
+    /// ```regex
+    /// '(<char_escape>'|ident)
+    /// ```
     fn char_or_label(&mut self) -> Result {
         let start = self.progress();
         self.advance();
@@ -238,8 +273,8 @@ impl<'a> Lexer<'a> {
         let may_be_label = if current == '\\' {
             let start = self.progress();
             if self.char_escape().is_none() {
-                    let end = self.progress();
-                    return Err(self.error(LEKind::InvalidCharacter, start..end));
+                let end = self.progress();
+                return Err(self.error(LEKind::InvalidCharacter, start..end));
             }
             false
         } else {
@@ -250,10 +285,7 @@ impl<'a> Lexer<'a> {
         let next = self.peek().unwrap_or('\0');
 
         if !may_be_label && next != '\'' {
-            return Err(self.error(
-                LEKind::UnclosedCharacter,
-                start..self.progress(),
-            ));
+            return Err(self.error(LEKind::UnclosedCharacter, start..self.progress()));
         }
 
         let kind = if next == '\'' {
@@ -263,12 +295,14 @@ impl<'a> Lexer<'a> {
             while self.peek().unwrap_or('\0').is_alphanumeric() {
                 self.advance();
             }
-            
+
             TKind::Tag
         };
         Ok(self.token(kind, start))
     }
 
+    /// Parses comment token. As long as [`str::chars`] can iterate over the characters,
+    /// commend content is valid.
     fn comment(&mut self) -> Result {
         let start = self.progress();
         self.advance();
@@ -318,6 +352,10 @@ impl<'a> Lexer<'a> {
         Ok(self.token(TKind::Comment(is_doc), start))
     }
 
+    /// Parses the string literal, literal can be on multiple lines.
+    /// ```regex
+    /// "([^"]|<char_escape>)*"
+    /// ```
     fn string(&mut self) -> Result<Token> {
         let start = self.progress();
         self.advance();
@@ -330,10 +368,7 @@ impl<'a> Lexer<'a> {
                         Some(_) => (),
                         None => {
                             let end = self.progress();
-                            return Err(self.error(
-                                LEKind::InvalidCharacter,
-                                start..end,
-                            ));
+                            return Err(self.error(LEKind::InvalidCharacter, start..end));
                         }
                     }
                 }
@@ -345,10 +380,7 @@ impl<'a> Lexer<'a> {
                     self.advance().unwrap();
                 }
                 None => {
-                    return Err(self.error(
-                        LEKind::UnclosedString,
-                        start..self.progress(),
-                    ));
+                    return Err(self.error(LEKind::UnclosedString, start..self.progress()));
                 }
             }
         }
@@ -356,11 +388,14 @@ impl<'a> Lexer<'a> {
         Ok(self.token(TKind::String, start))
     }
 
+    /// Parses character whether it is escaped or not.
+    /// ```regex
+    /// ([^\\']|\\([ abefnrtv\\'"0]|[0-7]{3}|x[0-9a-fA-F]{2}|u[0-9a-fA-F]{4}|U[0-9a-fA-F]{8}))
     fn char_escape(&mut self) -> Option<char> {
         self.advance();
         let current = self.advance().unwrap_or('\0');
         Some(match current {
-            'a' | 'b' | 'e' | 'f' | 'n' | 'r' | 't' | 'v' | '\\' | '\'' | '"' | '0' => {
+            'a' | 'b' | 'e' | 'f' | 'n' | 'r' | 't' | 'v' | '\\' | '\'' | '"' | '0' | ' ' => {
                 match current {
                     'a' => '\x07',
                     'b' => '\x08',
@@ -371,6 +406,7 @@ impl<'a> Lexer<'a> {
                     'r' => '\r',
                     't' => '\t',
                     '0' => '\0',
+                    ' ' => ' ',
                     _ => current,
                 }
             }
@@ -399,15 +435,13 @@ impl<'a> Lexer<'a> {
         })
     }
 
-    pub fn peek(&self) -> Option<char> {
+    /// Peeks a character
+    fn peek(&self) -> Option<char> {
         self.source[self.progress()..].chars().next()
     }
 
-    pub fn peek_n(&self, n: usize) -> Option<char> {
-        self.source[self.progress()..].chars().nth(n)
-    }
-
-    pub fn advance(&mut self) -> Option<char> {
+    /// Advances the progress by one character and returns if any.
+    fn advance(&mut self) -> Option<char> {
         let char = self.peek();
 
         if let Some(ch) = char {
@@ -420,46 +454,57 @@ impl<'a> Lexer<'a> {
         char
     }
 
-    pub fn error(&self, kind: LEKind, range: Range<usize>) -> LError {
+    /// Error constructor utility.
+    fn error(&self, kind: LEKind, range: Range<usize>) -> LError {
         LError::new(kind, self.span(range), self.line_data())
     }
 
-    pub fn token(&self, kind: TKind, start: usize) -> Token {
+    /// Token constructor utility.
+    fn token(&self, kind: TKind, start: usize) -> Token {
         Token::new(kind, self.span(start..self.progress()), self.line_data())
     }
 
-    pub fn line_data(&self) -> LineData {
+    /// LineData constructor utility.
+    fn line_data(&self) -> LineData {
         self.state.line_data()
     }
 
-    pub fn span(&self, range: Range<usize>) -> Span {
+    /// Span constructor utility.
+    fn span(&self, range: Range<usize>) -> Span {
         Span::new(self.state.source, range)
     }
 
-    pub fn progress(&self) -> usize {
+    /// Progress getter.
+    fn progress(&self) -> usize {
         self.state.progress()
     }
 }
 
 impl IsOperator for char {
+    fn to_char(&self) -> char {
+        *self
+    }
+}
+
+/// Trait provides method to determinate wether something is a operator character.
+pub trait IsOperator {
+    fn to_char(&self) -> char;
+
+    /// Returns true if the character is an operator.
     fn is_operator(&self) -> bool {
         matches!(
-            self,
+            self.to_char(),
             '+' | '-' | '*' | '/' | '%' | '^' | '=' | '<' | '>' | '!' | '&' | '|' | '?' | ':' | '~'
         )
     }
 }
 
-pub trait IsOperator {
-    fn is_operator(&self) -> bool;
-}
-
 #[derive(Default, Debug, Clone, Copy, RealQuickSer)]
 pub struct LState {
     source: Source,
-    progress: usize,
-    line: usize,
-    last_n_line: usize,
+    progress: u32,
+    line: u32,
+    last_n_line: u32,
 }
 
 impl LState {
@@ -474,8 +519,8 @@ impl LState {
 
     pub fn line_data(&self) -> LineData {
         LineData::new(
-            self.line,
-            self.progress - self.last_n_line,
+            self.line as usize,
+            (self.progress - self.last_n_line) as usize,
         )
     }
 
@@ -484,7 +529,7 @@ impl LState {
     }
 
     pub fn progress(&self) -> usize {
-        self.progress
+        self.progress as usize
     }
 
     fn newline(&mut self) {
@@ -493,10 +538,12 @@ impl LState {
     }
 
     fn advance(&mut self, amount: usize) {
-        self.progress += amount;
+        self.progress += amount as u32;
     }
 }
 
+/// Struct manages builtin spans and sores file contents.
+/// Files are not serialized though and are should be cleared.
 #[derive(Debug, Clone, QuickSer)]
 pub struct LMainState {
     sources: PrimaryMap<Source, SourceEnt>,
@@ -505,6 +552,7 @@ pub struct LMainState {
 }
 
 impl LMainState {
+    /// Constructor allocate builtin source to push spans.
     pub fn new() -> Self {
         let mut sources = PrimaryMap::new();
         let builtin_source = sources.push(SourceEnt {
@@ -520,18 +568,24 @@ impl LMainState {
         }
     }
 
+    /// Adds source to state and returns the.
     pub fn add_source(&mut self, source: SourceEnt) -> Source {
         self.sources.push(source)
     }
 
+    /// Returns string that token points to.
     pub fn display_token(&self, token: Token) -> &str {
         self.display(token.span())
     }
 
+    /// Returns string that span points to.
     pub fn display(&self, span: Span) -> &str {
         &self.sources[span.source()].display(span.range())
     }
 
+    /// Allocates builtin span and returns the reference.
+    /// This method first looks for the span in the builtin
+    /// source and returns already allocated one if possible.
     pub fn builtin_span(&mut self, name: &str) -> Span {
         let hash = ID::new(name);
         let builtin = &mut self.sources[self.builtin_source].content;
@@ -547,13 +601,9 @@ impl LMainState {
         Span::new(self.builtin_source, range)
     }
 
-    pub fn lexer_for<'a>(&'a mut self, state: &'a mut LState) -> Lexer<'a> {
-        Lexer::new(
-            unsafe {
-                std::mem::transmute::<&str, &str>(self.sources[state.source].content.as_str())
-            },
-            state,
-        )
+    /// Calls [`next_token`], providing source string.
+    pub fn token<'a>(&'a mut self, state: &'a mut LState) -> Result<Token> {
+        next_token(self.sources[state.source].content.as_str(), state)
     }
 }
 
@@ -563,6 +613,8 @@ impl Default for LMainState {
     }
 }
 
+/// Struct stores file related data. This ensures no string allocations are done
+/// and all structures can refer to source with [`Span`].
 #[derive(Debug, Clone, QuickDefault, QuickSer)]
 pub struct SourceEnt {
     name: String,
@@ -572,40 +624,49 @@ pub struct SourceEnt {
 }
 
 impl SourceEnt {
-    pub fn new(name: String, content: String) -> Self {
+    /// Because of private fields.
+    pub fn new(name: String, content: String, modified: SystemTime) -> Self {
         SourceEnt {
             name,
             content,
-            modified: SystemTime::UNIX_EPOCH,
+            modified,
         }
     }
 
+    /// Updates the content and modified time.
     pub fn modify(&mut self, content: String, modified: SystemTime) {
         self.content = content;
         self.modified = modified;
     }
 
+    /// Updates the content.
     pub fn reload(&mut self, content: String) {
         self.content = content;
     }
 
+    /// Returns the name/path of/to file.
     pub fn name(&self) -> &str {
         &self.name
     }
 
+    /// Returns the content of the file.
     pub fn content(&self) -> &str {
         &self.content
     }
 
+    /// Slices into content with range.
     pub fn display(&self, range: Range<usize>) -> &str {
         &self.content[range]
     }
 
+    /// Returns the modified time of the file.
     pub fn modified(&self) -> SystemTime {
         self.modified
     }
 }
 
+/// Token is basic lex element that points to the sequence of source code.
+/// It preserves line information and span.
 #[derive(Debug, Clone, Copy, Default, RealQuickSer)]
 pub struct Token {
     kind: TKind,
@@ -614,52 +675,74 @@ pub struct Token {
 }
 
 impl Token {
+    /// Because of private fields.
     pub fn new(kind: TKind, span: Span, line_data: LineData) -> Self {
-        Token { kind, span, line_data }
+        Token {
+            kind,
+            span,
+            line_data,
+        }
     }
 
+    /// Returns kind of the token.
     pub fn kind(&self) -> TKind {
         self.kind
     }
 
+    /// Returns span of the token.
     pub fn span(&self) -> Span {
         self.span
     }
 
+    /// Returns the source this token is from.
     pub fn source(&self) -> Source {
         self.span.source()
     }
 
+    /// Returns range withing source code, this token points to.
     pub fn range(&self) -> Range<usize> {
         self.span.range()
     }
 
+    /// Returns length of the string token points to.
     pub fn len(&self) -> usize {
         self.span.len()
     }
 
+    /// Returns line_data of token
     pub fn line_data(&self) -> LineData {
         self.line_data
     }
 
+    /// Returns line token is on.
     pub fn line(&self) -> usize {
         self.line_data.line()
     }
 
+    /// returns column token is on.
     pub fn column(&self) -> usize {
         self.line_data.column()
     }
 
+    /// Joins two tokens by making union of their spans.
     pub fn join(&self, other: Token) -> Token {
         self.join_low(other, false)
     }
 
+    /// Joins two tokens by making union of their spans but not
+    /// including content of `other`.
     pub fn join_trimmed(&self, other: Token) -> Token {
         self.join_low(other, true)
     }
 
+    /// Joins two tokens by making union of their spans. If trim is true
+    /// then content of `other` is not included.
     fn join_low(&self, other: Token, trim: bool) -> Token {
-        Self::new(self.kind(), self.span().join(other.span(), trim), self.line_data())
+        Self::new(
+            self.kind(),
+            self.span().join(other.span(), trim),
+            self.line_data(),
+        )
     }
 }
 
@@ -682,6 +765,7 @@ impl PartialEq<TKind> for Token {
     }
 }
 
+/// Enum holds the kind of a token. It has size of 4 and it should stay that way.
 #[derive(Debug, Clone, Copy, PartialEq, RealQuickSer)]
 pub enum TKind {
     // keywords
@@ -725,8 +809,8 @@ pub enum TKind {
     Dot,
 
     // literals
-    // we do not store the numeric values of 
-    // literals to save space and keep align 
+    // we do not store the numeric values of
+    // literals to save space and keep align
     // as 2 and size at 4 bytes
     Int(u16),
     Uint(u16),
@@ -806,9 +890,10 @@ impl Default for TKind {
     }
 }
 
+/// TokenDisplay can pretty print tokens.
 pub struct TokenDisplay<'a> {
-    pub state: &'a LMainState,
-    pub token: &'a Token,
+    state: &'a LMainState,
+    token: &'a Token,
 }
 
 impl<'a> TokenDisplay<'a> {
@@ -829,10 +914,11 @@ impl std::fmt::Display for TokenDisplay<'_> {
             range.start += 1;
         }
 
-        writeln!(f, 
-            "|> {}:{}:{}", 
-            self.state.sources[self.token.span.source].name, 
-            self.token.line(), 
+        writeln!(
+            f,
+            "|> {}:{}:{}",
+            self.state.sources[self.token.span.source].name,
+            self.token.line(),
             self.token.column()
         )?;
 
@@ -904,26 +990,35 @@ crate::def_displayer!(
     }
 );
 
+/// Error returned by lexer.
 #[derive(Debug)]
 pub struct LError {
-    pub kind: LEKind,
-    pub token: Token,
+    kind: LEKind,
+    token: Token,
 }
 
 impl LError {
-    pub fn new(kind: LEKind, span: Span, line_data: LineData) -> Self {
+    /// Because of private fields. (keeping encapsulation)
+    fn new(kind: LEKind, span: Span, line_data: LineData) -> Self {
         Self {
             kind,
-            token: Token::new(
-                TKind::Error, 
-                span, 
-                line_data,
-            ),
+            token: Token::new(TKind::Error, span, line_data),
         }
+    }
+
+    /// Returns the kind of the error.
+    pub fn kind(&self) -> LEKind {
+        self.kind
+    }
+
+    /// Returns the token that caused the error.
+    pub fn token(&self) -> Token {
+        self.token
     }
 }
 
-#[derive(Debug)]
+/// Names of enum variants should be self explanatory
+#[derive(Debug, Clone, Copy)]
 pub enum LEKind {
     InvalidCharacter,
     UnknownCharacter,
@@ -931,6 +1026,7 @@ pub enum LEKind {
     UnclosedString,
 }
 
+/// Span points to a string inside a source file.
 #[derive(Debug, Clone, Copy, QuickDefault, PartialEq, Eq, RealQuickSer)]
 pub struct Span {
     #[default(Source::new(0))]
@@ -940,6 +1036,7 @@ pub struct Span {
 }
 
 impl Span {
+    /// Because of private fields.
     pub fn new(source: Source, range: Range<usize>) -> Self {
         Self {
             source,
@@ -948,6 +1045,7 @@ impl Span {
         }
     }
 
+    /// performs slicing operation on the span.
     pub fn slice(&self, range: Range<usize>) -> Span {
         Self {
             source: self.source,
@@ -971,6 +1069,7 @@ impl Span {
         self.start as usize..self.end as usize
     }
 
+    /// Creates union of two spans, if trim is true, content of `other` is not included.
     pub fn join(&self, span: Span, trim: bool) -> Span {
         debug_assert!(self.source == span.source);
         Self {
@@ -981,6 +1080,9 @@ impl Span {
     }
 }
 
+/// LineData holds information for the programmer. This could be calculated from the span, but
+/// it would take significant amount of time when working with large files and generating
+/// stack trace.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, RealQuickSer)]
 pub struct LineData {
     line: u32,
@@ -988,14 +1090,20 @@ pub struct LineData {
 }
 
 impl LineData {
+    /// Because of private fields.
     pub fn new(line: usize, column: usize) -> Self {
-        Self { line: line as u32, column: column as u32 }
+        Self {
+            line: line as u32,
+            column: column as u32,
+        }
     }
 
+    /// Returns line number.
     pub fn line(&self) -> usize {
         self.line as usize
     }
 
+    /// Returns column number.
     pub fn column(&self) -> usize {
         self.column as usize
     }
@@ -1012,7 +1120,7 @@ pub fn test() {
     let mut state = LState::new(source);
 
     loop {
-        let token = main_state.lexer_for(&mut state).next().unwrap();
+        let token = main_state.token(&mut state).unwrap();
         if token.kind == TKind::Eof {
             break;
         }

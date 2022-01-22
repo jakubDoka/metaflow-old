@@ -1,6 +1,9 @@
+//! Module ast handles the ast construction. The main entity [`Ast`] + [`AstEnt`]
+//! create a tree structure that tries to take as little space as possible. And even then,
+//! it provides tools to reorganize and drop no longer needed trees.
 use cranelift::{
     codegen::packed_option::ReservedValue,
-    entity::{EntityList, ListPool, PrimaryMap},
+    entity::{EntityList, ListPool, PrimaryMap, SecondaryMap},
 };
 use quick_proc::{QuickDefault, QuickSer, RealQuickSer};
 
@@ -12,26 +15,23 @@ use crate::{
 use std::{
     fmt::Write,
     ops::{Deref, DerefMut},
+    sync::atomic::{AtomicU64, Ordering}, time::SystemTime,
 };
 
 pub type Result<T = ()> = std::result::Result<T, AError>;
 
+///
 pub struct AParser<'a> {
-    main_state: &'a mut AMainState,
-    state: &'a mut AState,
+    main_state: &'a mut AState,
     context: &'a mut AContext,
 }
 
+crate::inherit!(AParser<'a>, context, AContext);
+
 impl<'a> AParser<'a> {
-    pub fn new(
-        main_state: &'a mut AMainState,
-        state: &'a mut AState,
-        context: &'a mut AContext,
-    ) -> Self {
-        context.clear();
+    pub fn new(main_state: &'a mut AState, context: &'a mut AContext) -> Self {
         Self {
             main_state,
-            state,
             context,
         }
     }
@@ -60,8 +60,9 @@ impl<'a> AParser<'a> {
                         return Err(self.unexpected_str("expected string literal"));
                     }
 
-
-                    manifest.attrs.push((name, self.token.span().slice(1..self.token.len() - 2)));
+                    manifest
+                        .attrs
+                        .push((name, self.token.span().slice(1..self.token.len() - 2)));
 
                     self.next()?;
                 }
@@ -151,7 +152,7 @@ impl<'a> AParser<'a> {
         };
 
         let path = if let TKind::String = self.token_kind() {
-            self.token.span().slice(1..self.token.len() - 2)        
+            self.token.span().slice(1..self.token.len() - 2)
         } else {
             return Err(self.unexpected_str("expected string literal as import path"));
         };
@@ -204,7 +205,6 @@ impl<'a> AParser<'a> {
             Ast::reserved_value()
         };
 
-
         let expr = self.type_expr()?;
         let sons = self.add_slice(&[generics, expr]);
         let token = token.join_trimmed(self.token);
@@ -231,8 +231,7 @@ impl<'a> AParser<'a> {
                 .current_attributes
                 .extend_from_slice(&self.context.attrib_stack);
             if !self.context.current_attributes.is_empty() {
-                let sons = self.state.add_slice(&self.context.current_attributes);
-                self.context.current_attributes.clear();
+                let sons = self.context.create_attribute_slice();
                 self.add(AstEnt::new(AKind::Group, sons, Token::default()))
             } else {
                 Ast::reserved_value()
@@ -261,21 +260,15 @@ impl<'a> AParser<'a> {
                     TKind::Enum => self.enum_declaration()?,
                     _ => unreachable!(),
                 };
-                self.state
-                    .types
-                    .extend([item, attributes], &mut self.state.cons);
+                self.add_type((item, attributes));
             }
             TKind::Fun => {
                 let item = self.fun()?;
-                self.state
-                    .funs
-                    .extend([item, attributes, impl_ast], &mut self.state.cons);
+                self.add_fun((item, attributes, impl_ast));
             }
             TKind::Var | TKind::Let => {
                 let item = self.var_statement(true)?;
-                self.state
-                    .globals
-                    .extend([item, attributes, impl_ast], &mut self.state.cons);
+                self.add_global((item, attributes, impl_ast));
             }
             TKind::Attr => {
                 self.attr()?;
@@ -312,7 +305,7 @@ impl<'a> AParser<'a> {
 
         let sons = self.add_slice(&[name, variants]);
         let token = token.join_trimmed(self.token);
-        
+
         Ok(self.add(AstEnt::new(AKind::Enum(vis), sons, token)))
     }
 
@@ -382,22 +375,7 @@ impl<'a> AParser<'a> {
             Self::attr_element,
         )?;
 
-        for &ast in self.state.slice(sons) {
-            let name = self.display(self.son_ent(ast, 0).token());
-            if name == "push" {
-                self.context
-                    .attrib_frames
-                    .push(self.context.attrib_stack.len());
-                for &ast in &self.state.slice(self.sons(ast))[1..] {
-                    self.context.attrib_stack.push(ast);
-                }
-            } else if name == "pop" {
-                let len = self.context.attrib_frames.pop().unwrap();
-                self.context.attrib_stack.truncate(len);
-            } else {
-                self.context.current_attributes.push(ast);
-            }
-        }
+        self.context.add_attributes(sons, self.main_state);
 
         Ok(())
     }
@@ -418,7 +396,7 @@ impl<'a> AParser<'a> {
                     Self::attr_element,
                 )?;
                 AKind::AttributeElement
-            },
+            }
             TKind::Op => {
                 if self.display(self.token) == "=" {
                     self.next()?;
@@ -459,7 +437,7 @@ impl<'a> AParser<'a> {
         let vis = if anonymous { Vis::None } else { self.vis()? };
 
         let mut sons = EntityList::new();
-        
+
         let previous = self.is_type_expr;
         self.is_type_expr = true;
         let is_op = self.token_kind() == TKind::Op;
@@ -482,7 +460,7 @@ impl<'a> AParser<'a> {
         let kind = if is_op {
             let arg_count = self.slice(sons)[1..]
                 .iter()
-                .fold(0, |acc, &i| acc + self.ast_len(i) - 1);
+                .fold(0, |acc, &i| acc + self.sons(i).len() - 1);
             match arg_count {
                 1 => OpKind::Unary,
                 2 => OpKind::Binary,
@@ -527,9 +505,15 @@ impl<'a> AParser<'a> {
         } else {
             false
         };
-        
+
         let mut sons = EntityList::new();
-        self.list(&mut sons, TKind::None, TKind::Comma, TKind::Colon, Self::ident)?;
+        self.list(
+            &mut sons,
+            TKind::None,
+            TKind::Comma,
+            TKind::Colon,
+            Self::ident,
+        )?;
 
         let expr = self.type_expr()?;
         self.push(&mut sons, expr);
@@ -555,7 +539,7 @@ impl<'a> AParser<'a> {
     fn var_statement(&mut self, top_level: bool) -> Result<Ast> {
         let token = self.token;
         let mutable = token.kind() == TKind::Var;
-        
+
         self.next()?;
 
         let vis = if top_level { self.vis()? } else { Vis::None };
@@ -610,9 +594,9 @@ impl<'a> AParser<'a> {
                     .take(ident_len - 1)
                     .for_each(|n| self.push(&mut values, n));
             } else if len != ident_len {
-                return Err(
-                    self.unexpected_str("expected one value per identifier or one value for all identifiers")
-                );
+                return Err(self.unexpected_str(
+                    "expected one value per identifier or one value for all identifiers",
+                ));
             }
             let token = token.join_trimmed(self.token);
             self.add(AstEnt::new(AKind::Group, values, token))
@@ -686,24 +670,19 @@ impl<'a> AParser<'a> {
             // this handles the '{op}=' sugar
             result = if pre == ASSIGN_PRECEDENCE
                 && op.len() != 1
-                && self
-                    .main_state
-                    .display(op.span())
-                    .chars()
-                    .last()
-                    .unwrap()
-                    == '='
+                && self.main_state.display(op.span()).chars().last().unwrap() == '='
             {
-                let op_token = Token::new(
-                    TKind::Op,
-                    op.span().slice(0..op.len() - 1),
-                    op.line_data(),
-                );
+                let op_token =
+                    Token::new(TKind::Op, op.span().slice(0..op.len() - 1), op.line_data());
                 let operator = self.add(AstEnt::sonless(AKind::Ident, op_token));
-                
-                let eq_token = Token::new(TKind::Op, op.span().slice(op.len() - 1..op.len()), token.line_data());
+
+                let eq_token = Token::new(
+                    TKind::Op,
+                    op.span().slice(op.len() - 1..op.len()),
+                    token.line_data(),
+                );
                 let eq = self.add(AstEnt::sonless(AKind::Ident, eq_token));
-                
+
                 let sons = self.add_slice(&[operator, result, next]);
                 let expr = self.add(AstEnt::new(AKind::Binary, sons, token));
 
@@ -739,14 +718,20 @@ impl<'a> AParser<'a> {
             | TKind::String => {
                 self.next()?;
                 self.add(AstEnt::sonless(AKind::Lit, token))
-            },
+            }
             TKind::LPar => {
                 self.next()?;
                 let expr = self.expr()?;
                 let result = if self.token_kind() == TKind::Comma {
                     let mut sons = self.add_slice(&[expr]);
                     self.next()?;
-                    self.list(&mut sons, TKind::None, TKind::Comma, TKind::RPar, Self::expr)?;
+                    self.list(
+                        &mut sons,
+                        TKind::None,
+                        TKind::Comma,
+                        TKind::RPar,
+                        Self::expr,
+                    )?;
                     let token = token.join_trimmed(self.token);
                     self.add(AstEnt::new(AKind::Tuple, sons, token))
                 } else {
@@ -816,11 +801,11 @@ impl<'a> AParser<'a> {
                         AstEnt::new(AKind::Dot, sons, token)
                     }
                     TKind::LPar => {
-                        let (kind, mut sons, _) = self.ent(ast).parts();
+                        let (kind, sons, _) = self.ent(ast).parts();
                         let (kind, mut sons) = if kind == AKind::Dot {
                             let slice = &[self.get(sons, 1), self.get(sons, 0)];
                             let new_sons = self.add_slice(slice);
-                            sons.clear(&mut self.cons);
+                            self.clear_slice(sons);
                             (AKind::Call(true), new_sons)
                         } else {
                             (AKind::Call(false), self.add_slice(&[ast]))
@@ -997,11 +982,7 @@ impl<'a> AParser<'a> {
                         let branch = self.if_expr()?;
                         let sons = self.add_slice(&[branch]);
                         let token = token.join_trimmed(self.token);
-                        self.add(AstEnt::new(
-                            AKind::Elif, 
-                            sons, 
-                            token,
-                        ))
+                        self.add(AstEnt::new(AKind::Elif, sons, token))
                     }
                     _ => Ast::reserved_value(),
                 }
@@ -1010,7 +991,6 @@ impl<'a> AParser<'a> {
         };
 
         let sons = self.add_slice(&[condition, then_block, else_block]);
-
 
         Ok(self.add(AstEnt::new(AKind::If, sons, token)))
     }
@@ -1053,7 +1033,7 @@ impl<'a> AParser<'a> {
         self.next()?;
         self.walk_block(|s| {
             let expr = parser(s)?;
-            s.state.push(&mut sons, expr);
+            s.push(&mut sons, expr);
             Ok(())
         })?;
         let token = token.join_trimmed(self.token);
@@ -1146,8 +1126,7 @@ impl<'a> AParser<'a> {
         let mut state = self.l_state.clone();
         let token = self
             .main_state
-            .lexer_for(&mut state)
-            .next()
+            .token(&mut state)
             .map_err(|err| AError::new(AEKind::LError(err), Token::default()))?;
         self.peeked = token;
         Ok(())
@@ -1156,8 +1135,7 @@ impl<'a> AParser<'a> {
     fn next(&mut self) -> Result {
         let token = self
             .main_state
-            .lexer_for(&mut self.state.l_state)
-            .next()
+            .token(&mut self.context.l_state)
             .map_err(|err| AError::new(AEKind::LError(err), Token::default()))?;
         self.token = token;
         Ok(())
@@ -1196,28 +1174,14 @@ impl<'a> AParser<'a> {
     }
 }
 
-impl<'a> Deref for AParser<'a> {
-    type Target = AState;
-
-    fn deref(&self) -> &Self::Target {
-        &self.state
-    }
-}
-
-impl<'a> DerefMut for AParser<'a> {
-    fn deref_mut(&mut self) -> &mut Self::Target {
-        &mut self.state
-    }
-}
-
 #[derive(Debug, Clone, QuickSer)]
-pub struct AMainState {
+pub struct AState {
     pub l_main_state: LMainState,
 }
 
-crate::inherit!(AMainState, l_main_state, LMainState);
+crate::inherit!(AState, l_main_state, LMainState);
 
-impl Default for AMainState {
+impl Default for AState {
     fn default() -> Self {
         Self {
             l_main_state: LMainState::default(),
@@ -1225,22 +1189,12 @@ impl Default for AMainState {
     }
 }
 
-impl AMainState {
-    pub fn a_state_for(&mut self, source: Source, target: &mut AState) {
+impl AState {
+    pub fn prepare_context(&mut self, source: Source, target: &mut AContext) {
         let mut l_state = LState::new(source);
-        let mut lexer = self.lexer_for(&mut l_state);
-        let token = lexer.next().unwrap();
+        let token = self.token(&mut l_state).unwrap();
 
-        target.l_state = l_state;
-        target.token = token;
-        target.peeked = token;
-        target.level = 0;
-        target.asts.clear();
-        target.cons.clear();
-
-        target.funs = EntityList::new();
-        target.types = EntityList::new();
-        target.globals = EntityList::new();
+        target.clear(l_state, token);
     }
 
     pub fn attr_of(&self, manifest: &Manifest, name: &str) -> Option<Span> {
@@ -1252,102 +1206,61 @@ impl AMainState {
     }
 }
 
-#[derive(Debug, Clone, QuickDefault, QuickSer)]
-pub struct AState {
-    pub l_state: LState,
-    peeked: Token,
-    pub token: Token,
-    is_type_expr: bool,
-    level: u16,
-    asts: PrimaryMap<Ast, AstEnt>,
-    cons: ListPool<Ast>,
+#[cfg(debug_assertions)]
+static COUNTER: AtomicU64 = AtomicU64::new(0);
 
-    funs: EntityList<Ast>,
-    types: EntityList<Ast>,
-    globals: EntityList<Ast>,
+#[cfg(debug_assertions)]
+#[derive(Debug, Default, Clone, Copy, RealQuickSer)]
+struct RelocSafety {
+    id: u64,
 }
 
-crate::inherit!(AState, l_state, LState);
-
-impl AState {
-    pub fn add(&mut self, ast_ent: AstEnt) -> Ast {
-        self.asts.push(ast_ent)
+#[cfg(debug_assertions)]
+impl RelocSafety {
+    fn new() -> Self {
+        Self {
+            id: 1 + COUNTER.fetch_add(1, Ordering::Relaxed),
+        }
     }
 
-    pub fn kind(&self, ast: Ast) -> AKind {
-        self.asts[ast].kind
+    fn check(&mut self, other: &mut Self) -> bool {
+        if self.id == 0 {
+            *self = *other;
+            return true;
+        }
+        self.id == other.id
     }
-    
-    pub fn sons(&self, ast: Ast) -> EntityList<Ast> {
-        self.asts[ast].sons
-    }
+}
 
-    pub fn token(&self, ast: Ast) -> Token {
-        self.asts[ast].token
-    }
+pub struct RelocContext {
+    mapping: SecondaryMap<Ast, Ast>,
+    frontier: Vec<Ast>,
+    temp_sons: Vec<Ast>,
+    #[cfg(debug_assertions)]
+    safety: RelocSafety,
+}
 
-    pub fn son(&self, ast: Ast, index: usize) -> Ast {
-        self.son_optional(ast, index).unwrap()
+impl RelocContext {
+    pub fn clear(&mut self) {
+        self.mapping.clear();
+        self.safety = RelocSafety::default();
     }
+}
 
-    pub fn son_ent(&self, ast: Ast, index: usize) -> &AstEnt {
-        &self.asts[self.son(ast, index)]
-    }
+/// AstData holds the ast trees. There are not headers or top of the tree.
+/// Other data-structures are only meant to read the data.
+#[derive(Debug, Clone, QuickDefault, QuickSer)]
+pub struct AstData {
+    entities: PrimaryMap<Ast, AstEnt>,
+    connections: ListPool<Ast>,
+    #[cfg(debug_assertions)]
+    #[default(RelocSafety::new())]
+    safety: RelocSafety,
+}
 
-    pub fn son_optional(&self, ast: Ast, index: usize) -> Option<Ast> {
-        self.sons(ast).get(index, &self.cons)
-    }
-
-    pub fn push(&mut self, target: &mut EntityList<Ast>, value: Ast) {
-        target.push(value, &mut self.cons);
-    }
-
-    pub fn slice(&self, sons: EntityList<Ast>) -> &[Ast] {
-        sons.as_slice(&self.cons)
-    }
-
-    pub fn len(&self, list: EntityList<Ast>) -> usize {
-        list.len(&self.cons)
-    }
-
-    pub fn ast_len(&self, ast: Ast) -> usize {
-        self.sons(ast).len(&self.cons)
-    }
-
-    pub fn is_empty(&self, ast: Ast) -> bool {
-        self.asts[ast].sons.is_empty()
-    }
-
-    pub fn son_len(&self, ast: Ast, index: usize) -> usize {
-        self.son_ent(ast, index).sons.len(&self.cons)
-    }
-
-    pub fn get(&self, sons: EntityList<Ast>, index: usize) -> Ast {
-        sons.get(index, &self.cons).unwrap()
-    }
-
-    pub fn ent(&self, ast: Ast) -> AstEnt {
-        self.asts[ast]
-    }
-
-    pub fn funs(&self) -> &[Ast] {
-        self.funs.as_slice(&self.cons)
-    }
-
-    pub fn types(&self) -> &[Ast] {
-        self.types.as_slice(&self.cons)
-    }
-
-    pub fn globals(&self) -> &[Ast] {
-        self.globals.as_slice(&self.cons)
-    }
-
-    pub fn get_ent(&self, sons: EntityList<Ast>, index: usize) -> &AstEnt {
-        &self.asts[self.get(sons, index)]
-    }
-
-    pub fn chain_son_ent(&self, ast: Ast, indexes: &[usize]) -> &AstEnt {
-        &self.asts[self.chain_son(ast, indexes)]
+impl AstData {
+    pub fn chain_son_ent(&self, ast: Ast, indexes: &[usize]) -> AstEnt {
+        self.ent(self.chain_son(ast, indexes))
     }
 
     pub fn chain_son(&self, mut ast: Ast, indexes: &[usize]) -> Ast {
@@ -1360,9 +1273,211 @@ impl AState {
         ast
     }
 
+    pub fn get(&self, sons: EntityList<Ast>, index: usize) -> Ast {
+        self.slice(sons)[index]
+    }
+
+    pub fn slice(&self, sons: EntityList<Ast>) -> &[Ast] {
+        sons.as_slice(&self.connections)
+    }
+
+    pub fn len(&self, list: EntityList<Ast>) -> usize {
+        list.len(&self.connections)
+    }
+
+    pub fn is_empty(&self, ast: Ast) -> bool {
+        self.sons(ast).is_empty()
+    }
+
+    pub fn son_len(&self, ast: Ast, index: usize) -> usize {
+        self.son_ent(ast, index).sons.len(&self.connections)
+    }
+
+    pub fn son_ent(&self, ast: Ast, index: usize) -> AstEnt {
+        self.ent(self.son(ast, index))
+    }
+
+    pub fn son(&self, ast: Ast, index: usize) -> Ast {
+        self.sons(ast)[index]
+    }
+
+    pub fn get_son(&self, ast: Ast, index: usize) -> Option<Ast> {
+        self.sons(ast).get(index).cloned()
+    }
+
+    /// Returns parts of the ast.
+    pub fn parts(&self, ast: Ast) -> (AKind, EntityList<Ast>, Token) {
+        self.ent(ast).parts()
+    }
+
+    /// Returns the kind of the ast.
+    pub fn kind(&self, ast: Ast) -> AKind {
+        self.ent(ast).kind()
+    }
+
+    /// Returns the token of the ast.
+    pub fn token(&self, ast: Ast) -> Token {
+        self.ent(ast).token()
+    }
+
+    /// Returns the span of the ast.
+    pub fn span(&self, ast: Ast) -> Span {
+        self.ent(ast).span()
+    }
+
+    /// Returns the sons of the ast.
+    pub fn sons(&self, ast: Ast) -> &[Ast] {
+        self.ent(ast).sons.as_slice(&self.connections)
+    }
+
+    /// Returns the ast.
+    pub fn ent(&self, ast: Ast) -> AstEnt {
+        self.entities[ast]
+    }
+
+    /// Relocates the ast tree from `source` to `self`.
+    /// When first transferring between the two, context has to be clear.
+    /// But clearing context after each relocation can create duplicate
+    /// trees. Don't worry, safety is asserted during the debug builds
+    /// at runtime.
+    pub fn relocate(&mut self, target: Ast, source: &Self, ctx: &mut RelocContext) -> Ast {
+        debug_assert!(ctx.safety.check(&mut self.safety));
+        debug_assert!(ctx.frontier.is_empty());
+
+        if !ctx.mapping[target].is_reserved_value() {
+            return ctx.mapping[target];
+        }
+
+        ctx.frontier.push(target);
+        ctx.mapping[target] = self.entities.push(AstEnt::default());
+        while let Some(target) = ctx.frontier.pop() {
+            let (kind, sons, token) = source.entities[target].parts();
+            let id = ctx.mapping[target];
+            ctx.temp_sons.clear();
+            ctx.temp_sons
+                .extend_from_slice(sons.as_slice(&source.connections));
+            for s in ctx.temp_sons.iter_mut() {
+                let alloc = self.entities.push(AstEnt::default());
+                ctx.mapping[*s] = alloc;
+                *s = alloc;
+            }
+            let sons = EntityList::from_slice(&ctx.temp_sons, &mut self.connections);
+            self.entities[id] = AstEnt::new(kind, sons, token);
+        }
+
+        ctx.mapping[target]
+    }
+
+    pub fn clear(&mut self) {
+        self.entities.clear();
+        self.connections.clear();
+    }
+}
+
+#[derive(Debug, Clone, QuickDefault, QuickSer)]
+pub struct AContext {
+    l_state: LState,
+    peeked: Token,
+    token: Token,
+    is_type_expr: bool,
+    level: u16,
+
+    data: AstData,
+
+    funs: Vec<(Ast, Ast, Ast)>,
+    types: Vec<(Ast, Ast)>,
+    globals: Vec<(Ast, Ast, Ast)>,
+
+    attrib_stack: Vec<Ast>,
+    attrib_frames: Vec<usize>,
+    current_attributes: Vec<Ast>,
+}
+
+crate::inherit!(AContext, data, AstData);
+
+impl AContext {
+    pub fn clear(&mut self, l_state: LState, token: Token) {
+        self.l_state = l_state;
+        self.token = token;
+        self.peeked = token;
+        self.level = 0;
+
+        self.data.clear();
+
+        self.funs.clear();
+        self.types.clear();
+        self.globals.clear();
+
+        self.attrib_stack.clear();
+        self.attrib_frames.clear();
+        self.current_attributes.clear();
+    }
+
+    pub fn add(&mut self, ast_ent: AstEnt) -> Ast {
+        self.data.entities.push(ast_ent)
+    }
+
+    pub fn push(&mut self, target: &mut EntityList<Ast>, value: Ast) {
+        target.push(value, &mut self.data.connections);
+    }
+
+    pub fn funs(&self) -> &[(Ast, Ast, Ast)] {
+        self.funs.as_slice()
+    }
+
+    pub fn types(&self) -> &[(Ast, Ast)] {
+        self.types.as_slice()
+    }
+
+    pub fn globals(&self) -> &[(Ast, Ast, Ast)] {
+        self.globals.as_slice()
+    }
+
+    pub fn add_fun(&mut self, fun: (Ast, Ast, Ast)) {
+        self.funs.push(fun);
+    }
+
+    pub fn add_global(&mut self, global: (Ast, Ast, Ast)) {
+        self.globals.push(global);
+    }
+
+    pub fn add_type(&mut self, ty: (Ast, Ast)) {
+        self.types.push(ty);
+    }
+
     pub fn add_slice(&mut self, slice: &[Ast]) -> EntityList<Ast> {
-        EntityList::from_slice(slice, &mut self.cons)
-    }    
+        EntityList::from_slice(slice, &mut self.data.connections)
+    }
+
+    fn clear_slice(&mut self, mut slice: EntityList<Ast>) {
+        slice.clear(&mut self.data.connections);
+    }
+
+    fn create_attribute_slice(&mut self) -> EntityList<Ast> {
+        let value = EntityList::from_slice(
+            self.current_attributes.as_slice(),
+            &mut self.data.connections,
+        );
+        self.current_attributes.clear();
+        value
+    }
+
+    fn add_attributes(&mut self, sons: EntityList<Ast>, main_state: &AState) {
+        for &ast in sons.as_slice(&self.data.connections) {
+            let name = main_state.display(self.son_ent(ast, 0).token().span());
+            if name == "push" {
+                self.attrib_frames.push(self.attrib_stack.len());
+                for &ast in &self.data.sons(ast)[1..] {
+                    self.attrib_stack.push(ast);
+                }
+            } else if name == "pop" {
+                let len = self.attrib_frames.pop().unwrap();
+                self.attrib_stack.truncate(len);
+            } else {
+                self.current_attributes.push(ast);
+            }
+        }
+    }
 }
 
 #[derive(Clone, Debug, Default)]
@@ -1428,69 +1543,54 @@ pub struct AstEnt {
 
 impl AstEnt {
     fn new(kind: AKind, sons: EntityList<Ast>, token: Token) -> Self {
+        Self { kind, sons, token }
+    }
+
+    fn sonless(kind: AKind, token: Token) -> AstEnt {
         Self {
             kind,
-            sons,
+            sons: EntityList::new(),
             token,
         }
     }
-    
-    fn sonless(kind: AKind, token: Token, ) -> AstEnt {
-        Self { kind, sons: EntityList::new(), token }
-    }
 
-    fn parts(&self) -> (AKind, EntityList<Ast>, Token) {
+    pub fn parts(&self) -> (AKind, EntityList<Ast>, Token) {
         (self.kind, self.sons, self.token)
     }
 
-    fn kind(&self) -> AKind {
+    pub fn kind(&self) -> AKind {
         self.kind
     }
 
-    fn sons(&self) -> EntityList<Ast> {
+    pub fn sons(&self) -> EntityList<Ast> {
         self.sons
     }
 
-    fn span(&self) -> Span {
+    pub fn span(&self) -> Span {
         self.token.span()
     }
 
-    fn token(&self) -> Token {
+    pub fn token(&self) -> Token {
         self.token
     }
 
-    fn len(&self) -> usize {
+    pub fn len(&self) -> usize {
         self.span().len()
     }
 
-    fn line_data(&self) -> LineData {
+    pub fn line_data(&self) -> LineData {
         self.token.line_data()
     }
 }
 
-#[derive(Debug, Clone, Default)]
-pub struct AContext {
-    attrib_stack: Vec<Ast>,
-    attrib_frames: Vec<usize>,
-    current_attributes: Vec<Ast>,
-}
-
-impl AContext {
-    fn clear(&mut self) {
-        self.attrib_stack.clear();
-        self.attrib_frames.clear();
-        self.current_attributes.clear();
-    }
-}
-
 pub struct AstDisplay<'a> {
-    main_state: &'a AMainState,
-    state: &'a AState,
+    main_state: &'a AState,
+    state: &'a AstData,
     ast: Ast,
 }
 
 impl<'a> AstDisplay<'a> {
-    pub fn new(main_state: &'a AMainState, state: &'a AState, ast: Ast) -> Self {
+    pub fn new(main_state: &'a AState, state: &'a AstData, ast: Ast) -> Self {
         Self {
             main_state,
             state,
@@ -1507,9 +1607,9 @@ impl<'a> AstDisplay<'a> {
         }
         let (kind, sons, token) = self.state.ent(ast).parts();
         write!(f, "{:?} {:?}", kind, self.main_state.display(token.span()))?;
-        if sons.len(&self.state.cons) > 0 {
+        if self.state.len(sons) > 0 {
             write!(f, ":\n")?;
-            for &child in sons.as_slice(&self.state.cons) {
+            for &child in self.state.slice(sons) {
                 self.log(child, level + 1, f)?;
             }
         } else {
@@ -1619,7 +1719,7 @@ pub enum OpKind {
 
 crate::def_displayer!(
     AErrorDisplay,
-    AMainState,
+    AState,
     AError,
     |self, f| {
         AEKind::LError(error) => {
@@ -1659,43 +1759,38 @@ impl Into<AError> for AEKind {
 }
 
 pub fn test() {
-    let mut a_main_state = AMainState::default();
+    
+    let mut a_main_state = AState::default();
     let source = SourceEnt::new(
         "text_code.mf".to_string(),
         crate::testing::TEST_CODE.to_string(),
+        SystemTime::UNIX_EPOCH,
     );
 
     let source = a_main_state.add_source(source);
     let mut context = AContext::default();
-    let mut a_state = AState::default();
 
-    a_main_state.a_state_for(source, &mut a_state);
-    let mut a_parser = AParser::new(&mut a_main_state, &mut a_state, &mut context);
+    a_main_state.prepare_context(source, &mut context);
+    let mut a_parser = AParser::new(&mut a_main_state, &mut context);
     a_parser.parse().unwrap();
 
-    for i in (0..a_state.globals.len(&a_state.cons)).step_by(3) {
-        if let [fun, attrs, header] = a_state.globals.as_slice(&a_state.cons)[i..i + 3] {
-            println!("===global===");
-            print!("{}", AstDisplay::new(&a_main_state, &a_state, header));
-            print!("{}", AstDisplay::new(&a_main_state, &a_state, attrs));
-            print!("{}", AstDisplay::new(&a_main_state, &a_state, fun));
-        }
+    for &(global, attrs, header) in context.globals() {
+        println!("===global===");
+        print!("{}", AstDisplay::new(&a_main_state, &context, header));
+        print!("{}", AstDisplay::new(&a_main_state, &context, attrs));
+        print!("{}", AstDisplay::new(&a_main_state, &context, global));
     }
 
-    for i in (0..a_state.types.len(&a_state.cons)).step_by(2) {
-        if let [fun, attrs] = a_state.types.as_slice(&a_state.cons)[i..i + 2] {
-            println!("===type===");
-            print!("{}", AstDisplay::new(&a_main_state, &a_state, attrs));
-            print!("{}", AstDisplay::new(&a_main_state, &a_state, fun));
-        }
+    for &(ty, attrs) in context.types() {
+        println!("===type===");
+        print!("{}", AstDisplay::new(&a_main_state, &context, attrs));
+        print!("{}", AstDisplay::new(&a_main_state, &context, ty));
     }
 
-    for i in (0..a_state.funs.len(&a_state.cons)).step_by(3) {
-        if let [fun, attrs, header] = a_state.funs.as_slice(&a_state.cons)[i..i + 3] {
-            println!("===fun===");
-            print!("{}", AstDisplay::new(&a_main_state, &a_state, header));
-            print!("{}", AstDisplay::new(&a_main_state, &a_state, attrs));
-            print!("{}", AstDisplay::new(&a_main_state, &a_state, fun));
-        }
-    }
+    for &(fun, attrs, header) in context.funs() {
+        println!("===fun===");
+        print!("{}", AstDisplay::new(&a_main_state, &context, header));
+        print!("{}", AstDisplay::new(&a_main_state, &context, attrs));
+        print!("{}", AstDisplay::new(&a_main_state, &context, fun));
+    }    
 }
