@@ -1,6 +1,5 @@
 use crate::{
-    ast::Vis,
-    lexer::{Span, TKind as LTKind, Token},
+    lexer::{token, Span, Token},
     util::{sdbm::ID, storage::TableId, Size},
 };
 use cranelift::{
@@ -19,14 +18,16 @@ use quick_proc::{QuickEnumGets, QuickSer, RealQuickSer};
 
 pub const BUILTIN_MODULE: Mod = Mod(0);
 
-crate::impl_entity!(Ast);
-crate::impl_entity!(Fun);
-crate::impl_entity!(Source);
-crate::impl_entity!(Manifest);
-crate::impl_entity!(Mod);
-crate::impl_entity!(Ty);
-crate::impl_entity!(AnonString);
-crate::impl_entity!(Unused);
+crate::impl_entity!(
+    Ast,
+    Fun,
+    Source,
+    Manifest,
+    Mod,
+    Ty,
+    AnonString,
+    Unused
+);
 
 #[derive(Debug, Clone, Copy, RealQuickSer, Default)]
 pub struct AnonStringEnt {
@@ -81,7 +82,7 @@ pub enum IKind {
     VarDecl(Value),
     Zeroed,
     Uninitialized,
-    Lit(LTKind),
+    Lit(token::Kind),
     Return(PackedOption<Value>),
     Assign(Value),
     Jump(Block, EntityList<Value>),
@@ -279,5 +280,53 @@ impl CallConv {
 impl Default for CallConv {
     fn default() -> Self {
         Self::Fast
+    }
+}
+
+pub fn call_conv_error(f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+    writeln!(
+        f,
+        "Invalid call convention, list of valid call conventions:"
+    )?;
+    for cc in [
+        "platform - picks call convention based of target platform",
+        "fast",
+        "cold",
+        "system_v",
+        "windows_fastcall",
+        "apple_aarch64",
+        "baldrdash_system_v",
+        "baldrdash_windows",
+        "baldrdash_2020",
+        "probestack",
+        "wasmtime_system_v",
+        "wasmtime_fastcall",
+        "wasmtime_apple_aarch64",
+    ] {
+        writeln!(f, "  {}", cc)?;
+    }
+    Ok(())
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, RealQuickSer)]
+pub enum Vis {
+    Public,
+    None,
+    Private,
+}
+
+impl Vis {
+    pub fn join(self, other: Self) -> Self {
+        match (self, other) {
+            (_, Vis::Public) | (Vis::Public, Vis::None) => Vis::Public,
+            (_, Vis::Private) | (Vis::Private, Vis::None) => Vis::Private,
+            _ => Vis::None,
+        }
+    }
+}
+
+impl Default for Vis {
+    fn default() -> Self {
+        Vis::Public
     }
 }

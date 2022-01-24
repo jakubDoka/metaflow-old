@@ -69,7 +69,7 @@ Cyclic dependencies caused by 'use' keyword are detected and reported as errors.
 
 #### Macro limitations
 
-There are just one simple limitation that allows for other nice features. Macro cannot be called from module where it is defined. That means compiler can disregard order of definitions. The order matters only on module level.
+Making order of compilation matter nowadays is kind of deprecated. In contradiction, we need it to make the metaprogramming features possible. To solve this issue, metaflow makes interesting use of `break` keyword. When you put a `break` at the top level, items after the `break` will be invisible to items before `break`, which allows compiler to fully analyze code in chunks. This allows you to define multiple macros that depend on each other in a single file, as if the order of definition mattered. On the other hand there are cases where you don't need this at all and actually want functions to have cyclic dependency. As long as there is no `break` in-between two items, they see each other. The break is useful because macro can access more complex information about input, otherwise it would only be able to access ast.  
 
 ## Documentation
 
@@ -143,7 +143,7 @@ The syntax is expressed with following syntax so that this section is not infini
 - `{}` - items inside can repeat or be absent
 - `[]` - items inside are optional
 - `''` - text between is a regex
-- `|` - open choice between left and right items until `()` or other '|' at same level
+- `|` - open choice between left and right items until `()` or other `|` at same level
 - `=` - assigns syntax rules to alias
 - `:` - item after can be written in indented block, block can have multiple lines
 - `#` - items after are commented out
@@ -151,10 +151,10 @@ The syntax is expressed with following syntax so that this section is not infini
 
 Now the explained example:
 
-```txt
+```py
 opinion = 'this is ' [ 'not ' ] 'good'
 # matches 'this is good' and 'this is not good'
-annoying_child = 'Dad! ' :( 'When will we arrive?' )
+parents = 'Dad! ' :( 'When will we arrive?' )
 # matches 'Dad! When will we arrive?' but also '
 #Dad!
 #  When will we arrive?
@@ -162,10 +162,10 @@ annoying_child = 'Dad! ' :( 'When will we arrive?' )
 #  When will we arrive?
 #  When will we arrive?
 #  When will we arrive?'
-swearing = 'Be quiet.' | 'Shut ' [ 'the '  ( 'hell' | '####' ) ] ' up!' 
+parents = 'Be quiet.' | 'Shut ' [ 'the '  ( 'hell' | '####' ) ] ' up!' 
 # matches 'shut the hell up' but also 'shut the #### up' and 'shut up'
 # or 'Be quiet.'
-travel = { annoying_child swearing }
+travel = { child parents }
 # here we combine second and third syntax and repeat it 
 # variable amount of times
 ```
@@ -177,6 +177,7 @@ module = [ use '\n' ] { item '\n' }
 use = 'use' :( [ ident ] string )
 item = 
   impl |
+  'break' |
   attr |
   doc_comment |
   function |
@@ -187,7 +188,12 @@ item =
 impl =
   'impl'
   [ vis ] [ generics ] datatype
-  ':' :( function | operator_override | global_var )
+  ':' :( 
+    function | 
+    operator_override | 
+    global_var |
+    'break' 
+  )
 attr = 
   'attr' attr_element { ',' attr_element }
 attr_element = 

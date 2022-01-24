@@ -1274,31 +1274,6 @@ pub enum TEKind {
     ExpectedIntConstant,
 }
 
-pub fn call_conv_error(f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-    writeln!(
-        f,
-        "Invalid call convention, list of valid call conventions:"
-    )?;
-    for cc in [
-        "platform - picks call convention based of target platform",
-        "fast",
-        "cold",
-        "system_v",
-        "windows_fastcall",
-        "apple_aarch64",
-        "baldrdash_system_v",
-        "baldrdash_windows",
-        "baldrdash_2020",
-        "probestack",
-        "wasmtime_system_v",
-        "wasmtime_fastcall",
-        "wasmtime_apple_aarch64",
-    ] {
-        writeln!(f, "  {}", cc)?;
-    }
-    Ok(())
-}
-
 /// Collects and removes all unwanted data based of set and destructor.
 /// If set does not contain the index, it is passed to the destructor, and if
 /// destructor returns true data is removed. The state is moved for duration

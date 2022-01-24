@@ -9,7 +9,7 @@ use cranelift::entity::{packed_option::ReservedValue, EntityList, EntityRef};
 use cranelift::entity::{EntitySet, ListPool, PrimaryMap};
 use quick_proc::{QuickDefault, QuickSer, RealQuickSer};
 
-use crate::ast::{AContext, AError, AErrorDisplay, AMainState, AParser, AState, Dep, Vis};
+use crate::ast::{AContext, AError, AErrorDisplay, AParser, AState, Dep, Vis, AstData};
 use crate::entities::{
     AnonString, BlockEnt, Fun, FunBody, IKind, InstEnt, Manifest, Mod, Source, TKind, Ty, TypeEnt,
     Unused, ValueEnt, BUILTIN_MODULE,
@@ -34,7 +34,7 @@ pub struct MTParser<'a> {
     pub context: &'a mut MTContext,
 }
 
-crate::inherit!(MTParser<'a>, state, MTState);
+crate::inherit!(MTParser<'a>, context, MTContext);
 
 impl<'a> MTParser<'a> {
     pub fn new(state: &'a mut MTState, context: &'a mut MTContext) -> Self {
@@ -44,14 +44,17 @@ impl<'a> MTParser<'a> {
     pub fn parse(&mut self, root: &str) -> Result {
         self.clean_incremental_data();
 
-        if !self.modules[BUILTIN_MODULE].clean {
+        let builtin = self.module(BUILTIN_MODULE);
+        if !builtin.clean {
+            let source = builtin.source();
+            self.state.prepare_context(source, self.context);
             AParser::new(
-                &mut self.state.a_main_state,
-                &mut self.state.modules[BUILTIN_MODULE].a_state,
+                &mut self.state,
                 self.context,
             )
             .parse()
             .map_err(|e| e.into())?;
+            self.module_mut(BUILTIN_MODULE).ast_data = self.context.take_ast_data();
         }
 
         let mut path_buffer = PathBuf::new();
@@ -60,8 +63,13 @@ impl<'a> MTParser<'a> {
 
         let root_manifest_id = Manifest::new(0);
 
-        let in_code_path = self.manifests[root_manifest_id].name;
-        let mut frontier = vec![(in_code_path, Token::default(), root_manifest_id, None)];
+        let in_code_path = self.manifest(root_manifest_id).name;
+        let mut frontier = vec![(
+            in_code_path, 
+            Token::default(), 
+            root_manifest_id, 
+            Option::<(Mod, Option<Span>)>::None
+        )];
 
         let module = Mod::new(1); // cause builtin module is 0
 
@@ -70,15 +78,14 @@ impl<'a> MTParser<'a> {
         while let Some((in_code_path, token, manifest_id, destination)) = frontier.pop() {
             let module_id = self.load_module(in_code_path, token, manifest_id, &mut path_buffer)?;
 
-            let module = &mut self.modules[module_id];
+            let module = self.module_mut(module_id);
 
             if let Some((dest, nickname)) = destination {
-                let dest: Mod = dest; // type inference failed
-                let nick = Option::unwrap_or(nickname, module.name).hash;
-                // we denote this to propagate changes later
                 module.add_dependant(dest);
-                self.modules[dest].dependency.push(DepHeader {
-                    nick: MOD_SALT.add(nick),
+                let nick = Option::unwrap_or(nickname, module.name);
+                let hash = ID::new(self.state.display(nick));
+                self.module_mut(dest).dependency.push(DepHeader {
+                    nick: MOD_SALT.add(hash),
                     module: module_id,
                     in_code_path,
                     hint: token,
@@ -90,32 +97,29 @@ impl<'a> MTParser<'a> {
             }
             self.context.seen_modules.insert(module_id);
 
-            let module = &self.modules[module_id];
+            let module = self.module(module_id);
             if module.clean {
                 // we still want to walk the tree to see some deeper changed files
                 let len = module.dependency.len();
                 for i in 0..len {
-                    let dep = &self.modules[module_id].dependency[i];
-                    // builtin module, we can ignore it since version marker
-                    // changes and that invalidates the incremental data
-                    if dep.in_code_path.hash == ID(0) {
+                    let dep = &self.module(module_id).dependency[i];
+                    if dep.module == BUILTIN_MODULE {
                         continue;
                     }
-                    let manifest_id = self.modules[dep.module].manifest;
+                    let manifest_id = self.module(dep.module).manifest;
                     frontier.push((dep.in_code_path, dep.hint, manifest_id, None));
                     let module = dep.module;
-                    self.modules[module].add_dependant(module_id);
+                    self.module_mut(module).add_dependant(module_id);
                 }
                 continue;
             }
 
             // at this point ti is safe to assume that modules ast state is restarted
-            let mut module = std::mem::take(&mut self.modules[module_id]);
+            let mut module = self.module(module_id).source();
+            self.state.prepare_context(module.source, self.context);
 
-            let mut parser = AParser::new(self.state, &mut module.a_state, self.context);
+            let mut parser = AParser::new(self.state, self.context);
             parser.take_imports(&mut imports).map_err(Into::into)?;
-            parser.parse().map_err(Into::into)?;
-            self.context.lines_of_code += module.line;
 
             for import in imports.drain(..) {
                 let path = self.display(&import.path);
@@ -254,7 +258,7 @@ impl<'a> MTParser<'a> {
 
         // stop if module is clean
         let last_module = if let Some(&module) = self.modules.index(id) {
-            let source = self.modules[module].a_state.l_state.source;
+            let source = self.modules[module].ast_data.l_state.source;
             if modified == Some(self.sources[source].modified) {
                 self.sources[source].content = content;
                 path_buffer.clear();
@@ -277,7 +281,7 @@ impl<'a> MTParser<'a> {
             self.sources[module.source] = source;
             module.dependency.clear();
             module.clean = false;
-            self.a_state_for(module.source, &mut module.a_state);
+            self.a_state_for(module.source, &mut module.ast_data);
             self.modules[m] = module;
             m
         } else {
@@ -289,7 +293,7 @@ impl<'a> MTParser<'a> {
                 ..Default::default()
             };
             module.source = self.sources.push(source);
-            self.a_state_for(module.source, &mut module.a_state);
+            self.a_state_for(module.source, &mut module.ast_data);
             let (shadowed, m) = self.modules.insert(id, module);
             debug_assert!(shadowed.is_none());
             m
@@ -492,9 +496,26 @@ impl<'a> MTParser<'a> {
     }
 
     fn clean_incremental_data(&mut self) {
-        for (_, module) in self.modules.iter_mut() {
+        for (_, module) in self.state.modules.iter_mut() {
             module.dependant.take().clear(module.slices.transmute_mut());
         }
+    }
+
+    fn manifest(&self, module: Manifest) -> &ManifestEnt {
+        &self.state.manifests[module]
+    }
+
+    fn manifest_mut(&mut self, module: Manifest) -> &mut ManifestEnt {
+        &mut self.state.manifests[module]
+    }
+
+
+    fn module(&self, module: Mod) -> &ModEnt {
+        &self.state.modules[module]
+    }
+
+    fn module_mut(&self, module: Mod) -> &ModEnt {
+        &self.state.modules[module]
     }
 }
 
@@ -591,13 +612,13 @@ pub struct ManifestEnt {
 
 #[derive(Debug, Clone, QuickSer)]
 pub struct MTState {
-    pub a_main_state: AMainState,
+    pub a_main_state: AState,
     pub manifests: Table<Manifest, ManifestEnt>,
     pub modules: Table<Mod, ModEnt>,
     pub module_order: Vec<Mod>,
 }
 
-crate::inherit!(MTState, a_main_state, AMainState);
+crate::inherit!(MTState, a_main_state, AState);
 
 impl MTState {
     pub fn collect_scopes(&self, module: Mod, buffer: &mut Vec<(Mod, ID)>) {
@@ -611,8 +632,8 @@ impl MTState {
         );
     }
 
-    pub fn find_dep(&self, inside: Mod, name: &Token) -> Option<Mod> {
-        let nick = MOD_SALT.add(name.span.hash);
+    pub fn find_dep(&self, inside: Mod, name: Token) -> Option<Mod> {
+        let nick = MOD_SALT.add(self.hash(name));
         self.modules[inside]
             .dependency
             .iter()
@@ -630,18 +651,23 @@ impl MTState {
             (true, ..) | (_, true, Vis::None | Vis::Public) | (.., Vis::Public)
         )
     }
+
+    fn hash(&self, name: Token) -> ID {
+        ID::new(self.display_token(name))
+    }
 }
 
 impl Default for MTState {
     fn default() -> Self {
         let mut s = Self {
-            a_main_state: AMainState::default(),
+            a_main_state: AState::default(),
             manifests: Table::new(),
             modules: Table::new(),
             module_order: Vec::new(),
         };
 
-        let source = SourceEnt {
+        todo!()
+        /*let source = SourceEnt {
             name: "builtin.mf".to_string(),
             content: include_str!("builtin.mf").to_string(),
             ..Default::default()
@@ -652,11 +678,11 @@ impl Default for MTState {
             id: MOD_SALT.add(ID::new("builtin")),
             ..Default::default()
         };
-        s.a_state_for(source, &mut builtin_module.a_state);
+        s.a_state_for(source, &mut builtin_module.ast_data);
 
         s.modules.insert(builtin_module.id, builtin_module);
-
         s
+        */
     }
 }
 
@@ -665,10 +691,8 @@ impl IncrementalData for MTState {
         for (_, module) in self.modules.iter_mut() {
             module.clean = true;
         }
-        for (_, source) in self.sources.iter_mut() {
-            source.content.clear();
-        }
         self.module_order.clear();
+        self.clear_sources();
     }
 }
 
@@ -679,7 +703,6 @@ pub struct MTContext {
     pub seen_modules: EntitySet<Mod>,
     pub a_context: AContext,
     pub pool: Pool,
-    pub lines_of_code: usize,
 }
 
 crate::inherit!(MTContext, a_context, AContext);
@@ -692,9 +715,10 @@ pub struct ModEnt {
     pub dependant: EntityList<Mod>,
 
     // Ast is stored here.
-    pub a_state: AState,
+    pub ast_data: AstData,
 
     pub manifest: Manifest,
+    pub source: Source,
 
     // Lists hold all items that either belong to this module,
     // or are instantiated by this module. They can contain
@@ -718,7 +742,7 @@ pub struct ModEnt {
     pub clean: bool,
 }
 
-crate::inherit!(ModEnt, a_state, AState);
+crate::inherit!(ModEnt, ast_data, AstData);
 
 impl ModEnt {
     pub fn new_block(&mut self, body: &mut FunBody) -> Block {
@@ -1048,6 +1072,10 @@ impl ModEnt {
     pub fn add_dependant_global(&mut self, global: GlobalValue, body: &mut FunBody) {
         body.dependant_globals.push(global, self.slices.transmute_mut());
     }
+
+    fn source(&self) -> Source {
+        self.ast_data.source()
+    }
 }
 
 #[derive(Debug, Clone, Copy, QuickDefault, RealQuickSer)]
@@ -1059,7 +1087,7 @@ pub struct DepHeader {
     pub module: Mod,
 }
 
-crate::def_displayer!(
+/*crate::def_displayer!(
     MTErrorDisplay,
     MTState,
     MTError,
@@ -1096,13 +1124,13 @@ crate::def_displayer!(
         MTEKind::CyclicDependency(cycle) => {
             writeln!(f, "cyclic module dependency detected:")?;
             for &id in cycle.iter() {
-                writeln!(f, "  {}", self.state.sources[self.state.modules[id].a_state.l_state.source].name)?;
+                writeln!(f, "  {}", self.state.sources[self.state.modules[id].ast_data.l_state.source].name)?;
             }
         },
         MTEKind::CyclicManifests(cycle) => {
             writeln!(f, "cyclic package dependency detected:")?;
             for &id in cycle.iter() {
-                writeln!(f, "  {}", self.state.display(&self.state.manifests[id].name))?;
+                writeln!(f, "  {}", self.state.display(self.state.manifests[id].name))?;
             }
         },
         MTEKind::MissingDependency(path) => {
@@ -1119,7 +1147,7 @@ crate::def_displayer!(
             writeln!(f, "failed to download dependency")?;
         },
     }
-);
+);*/
 
 #[derive(Debug)]
 pub struct MTError {
@@ -1159,7 +1187,7 @@ pub enum MTEKind {
 }
 
 pub fn test() {
-    const PATH: &str = "src/module_tree/test_project";
+    /*const PATH: &str = "src/module_tree/test_project";
 
     let (mut state, hint) = MTState::load_data(PATH, ID(0)).unwrap_or_default();
     let mut context = MTContext::default();
@@ -1170,4 +1198,6 @@ pub fn test() {
         .unwrap();
 
     state.save_data(PATH, ID(0), Some(hint)).unwrap();
+    */
 }
+

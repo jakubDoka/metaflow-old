@@ -1,4 +1,7 @@
+//! Crate metaflow is a compiler executable for metaflow language.
+
 #![feature(vec_into_raw_parts)]
+//#![warn(missing_docs)]
 
 //use std::time::Instant;
 
@@ -8,14 +11,14 @@ pub mod ast;
 pub mod entities;
 //pub mod functions;
 //pub mod gen;
-//pub mod incr;
+pub mod incr;
 pub mod lexer;
 //pub mod module_tree;
-pub mod testing;
 //pub mod types;
 pub mod util;
 
-pub const COMMIT_HASH: &str = env!("GIT_HASH");
+/// Crate version used for validating incremental data.
+pub const VERSION: &str = env!("CARGO_PKG_VERSION");
 
 fn main() {
     #[cfg(feature = "testing")]

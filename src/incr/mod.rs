@@ -4,16 +4,20 @@ use quick_proc::QuickSer;
 
 use crate::util::sdbm::ID;
 
+/// Incremental data adds loading and saving methods to the type. Data is also 
+/// compressed before saving on disc and decompressed before loading.
 pub trait IncrementalData: QuickSer {
     /// Prepare the data for serialization. Usually just clear
     /// unwanted data to save time and memory.
     fn prepare(&mut self) {}
 
-    fn load_data(root_path: &str, arg_hash: ID) -> Option<(Self, usize)> {
+    /// Loads data based of  `root_path` that is the path to the root of the project.
+    /// `hash` is to pick different save file based of for example command line arguments.
+    fn load_data(root_path: &str, hash: ID) -> Option<(Self, usize)> {
         let mut path = PathBuf::new();
         path.push(root_path);
         path.push("meta");
-        path.push(format!("{:x}.bin", arg_hash.0));
+        path.push(format!("{:x}.bin", hash.0));
         if !path.exists() {
             return None;
         }
@@ -28,7 +32,7 @@ pub trait IncrementalData: QuickSer {
 
         let mut progress = 0;
         let version = String::de_ser(&mut progress, &writer);
-        if version != crate::COMMIT_HASH {
+        if version != crate::VERSION {
             return None;
         }
 
@@ -37,6 +41,8 @@ pub trait IncrementalData: QuickSer {
         Some((data, progress))
     }
 
+    /// Aaves incremental data to disc. Location is determined as 
+    /// `root_path` / meta / `hash` .bin.
     fn save_data(
         &mut self,
         root_path: &str,
@@ -48,7 +54,7 @@ pub trait IncrementalData: QuickSer {
 
         let mut buffer = Vec::with_capacity(size_hint.unwrap_or(1024 * 1024));
 
-        crate::COMMIT_HASH.to_string().ser(&mut buffer);
+        crate::VERSION.to_string().ser(&mut buffer);
 
         self.ser(&mut buffer);
 
