@@ -5,9 +5,13 @@
 To setup compiler you have to have Git, Rust and Cargo installed so you can compile the project. Following commands are needed: 
 
 ```bat
-git clone --depth 1 https://github.com/jakubDoka/metaflow
-git submodule update --remote --recursive
-cargo build --release
+git clone --branch working --depth 1 https://github.com/jakubDoka/metaflow
+cd metaflow
+git submodule update --init --remote --recursive
+test @rem this is a .bat file that will run tests on compiler, if you cannot run .bat
+@rem or your system, you have to rewrite file into bash or whatever. Once you do this 
+@rem you can make a pull request to add it for future users.
+
 ```
 
 You will also need `cc` for linking the program. For me the path of `cc` is `C:\msys64\mingw64\bin\cc.exe` which beautifully shows what you have to install. Though you can link with any other linker by specifying `--linker <name>` flag `cc` is just default. 
