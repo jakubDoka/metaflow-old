@@ -69,7 +69,7 @@ Cyclic dependencies caused by 'use' keyword are detected and reported as errors.
 
 #### Macro limitations
 
-Making order of compilation matter nowadays is kind of deprecated. In contradiction, we need it to make the metaprogramming features possible. To solve this issue, metaflow makes interesting use of `break` keyword. When you put a `break` at the top level, items after the `break` will be invisible to items before `break`, which allows compiler to fully analyze code in chunks. This allows you to define multiple macros that depend on each other in a single file, as if the order of definition mattered. On the other hand there are cases where you don't need this at all and actually want functions to have cyclic dependency. As long as there is no `break` in-between two items, they see each other. The break is useful because macro can access more complex information about input, otherwise it would only be able to access ast.  
+Making order of compilation matter nowadays is kind of deprecated. In contradiction, we need it to make the metaprogramming features possible. To solve this issue, metaflow makes interesting use of `break` keyword. When you put a `break` at the top level, items after the `break` will be invisible to items before `break`, which allows compiler to fully analyze code in chunks. This allows you to define multiple macros that depend on each other in a single file, as if the order of definition mattered. On the other hand there are cases where you don't need this at all and actually want functions to have cyclic dependency. As long as there is no `break` in-between two items, within same file, they see each other. The break is useful because macro can access more complex information about input, otherwise it would only be able to access ast at most.
 
 ## Documentation
 
@@ -77,11 +77,27 @@ This section documents most of the properties of MetaFlow.
 
 ### Source organization
 
-Compiler considers files as separate modules. Whole project including project manifest is considered a Package. Packages can be imported in [manifest](#manifest). Cyclic dependencies either between packages or modules are not allowed.
+Compiler considers files as separate modules. Whole project including project manifest is considered a Package. Packages can be imported in [manifest](#manifest). Cyclic dependencies either between packages or modules are not allowed. Modules can be further segmented by `break` keyword.
 
 ### Definition order
 
-Order of definitions within module does not matter but general practice (i just copied) is writing declaration after use when possible for any code item. This does not include global 'var' and 'let', they should be on the top of the file right after 'use'. Mentioned 'use' keyword can be used only once per file and must be first. Other occurrences of 'use' will result in error.
+Order of definitions withing code segment does not matter. Code segment is delimited by `break` keyword. Example:
+
+```kotlin
+fun a: b()
+
+fun b: a()
+
+break
+
+fun c: 
+  a()
+  d() # error: function not defined in current scope
+
+break
+
+fun d: c()
+```
 
 ### Order of compilation
 
@@ -191,8 +207,7 @@ impl =
   ':' :( 
     function | 
     operator_override | 
-    global_var |
-    'break' 
+    global_var
   )
 attr = 
   'attr' attr_element { ',' attr_element }
@@ -472,3 +487,13 @@ Reason to have two levels of ir is that compiler needs to analyze the source cod
   - [ ] mac 
 - [ ] CLI documentation
 - [ ] incremental compilation
+
+## Contributing
+
+Any contribution is highly welcomed though things are still under the heavy rework. Some practices you should follow:
+
+- Keep encapsulation of structures. Each type has to have its own module and private fields. It is worth the bother! Simple getters are inlined on release build. Enums are exceptions as they are not designed for this.
+- Prioritize immutable state whe you are working with type that are cheap to copy.
+- Structures should implement `Copy` and `RealQuickSer` if they are saved as incremental data. The entity structures from cranelift_entity crate can be used to help with this.
+- Doc comments should be everywhere. (they are not yet but i will fix that)
+- Keep data-structures small and compact. This applies to entities with big population like `Token` (size: 24, align: 4) and `AstEnt` (size: 32, align: 4).

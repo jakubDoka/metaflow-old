@@ -2927,37 +2927,6 @@ pub struct Loop {
 }
 
 #[derive(Debug, Clone, Copy, RealQuickSer)]
-pub struct GlobalEnt {
-    pub id: ID,
-    pub vis: Vis,
-    pub mutable: bool,
-    pub module: Mod,
-    pub ty: Ty,
-    pub hint: Token,
-    pub ast: Ast,
-    pub attrs: Ast,
-    pub alias: Option<Span>,
-    pub linkage: Linkage,
-}
-
-impl Default for GlobalEnt {
-    fn default() -> Self {
-        Self {
-            id: ID(0),
-            vis: Vis::Public,
-            mutable: false,
-            module: Mod::reserved_value(),
-            ty: Ty::reserved_value(),
-            hint: Token::default(),
-            ast: Ast::reserved_value(),
-            attrs: Ast::reserved_value(),
-            alias: None,
-            linkage: Linkage::Export,
-        }
-    }
-}
-
-#[derive(Debug, Clone, Copy, RealQuickSer)]
 pub struct MainFunData {
     id: Fun,
     arg1: Value,

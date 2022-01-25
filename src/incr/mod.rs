@@ -1,3 +1,4 @@
+//! Module handles loading and saving of incremental data.
 use std::path::PathBuf;
 
 use quick_proc::QuickSer;
@@ -13,6 +14,9 @@ pub trait IncrementalData: QuickSer {
 
     /// Loads data based of  `root_path` that is the path to the root of the project.
     /// `hash` is to pick different save file based of for example command line arguments.
+    /// If anything went wrong with loading, None is returned. This does not mean that loading
+    /// cannot crash as change of data structure makes loading strategy useless. Thats why version
+    /// of compiler is looked up each time data is loaded.
     fn load_data(root_path: &str, hash: ID) -> Option<(Self, usize)> {
         let mut path = PathBuf::new();
         path.push(root_path);
@@ -41,8 +45,8 @@ pub trait IncrementalData: QuickSer {
         Some((data, progress))
     }
 
-    /// Aaves incremental data to disc. Location is determined as 
-    /// `root_path` / meta / `hash` .bin.
+    /// Saves incremental data to disc. Location is determined as 
+    /// `root_path` / meta / `hash` .bin. Data is compressed.
     fn save_data(
         &mut self,
         root_path: &str,

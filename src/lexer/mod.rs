@@ -4,13 +4,11 @@
 //! but construct whenever token is needed.
 use quick_proc::{QuickDefault, QuickSer, RealQuickSer};
 
-use cranelift::entity::EntityRef;
+use cranelift::entity::{EntityRef, PrimaryMap, packed_option::ReservedValue};
 
 use crate::{
-    entities::Source,
     util::{sdbm::ID, storage::Map},
 };
-use cranelift::entity::PrimaryMap;
 use std::{fmt::Debug, ops::Range, time::SystemTime};
 
 pub use line_data::LineData;
@@ -19,7 +17,7 @@ pub use token::{Token, TokenDisplay};
 pub use error::Error;
 pub use state::State;
 pub use sources::Sources;
-pub use source_ent::SourceEnt;
+pub use source::{Source, SourceEnt};
 
 type Result<T = Token> = std::result::Result<T, Error>;
 
@@ -633,7 +631,7 @@ mod sources {
 
         /// Frees the content of all sources. Should be called to 
         /// prepare sources for serialization.
-        pub fn clear_sources(&mut self) {
+        pub fn clear_source_content(&mut self) {
             for (_, source) in self.sources.iter_mut() {
                 source.clear();
             }
@@ -642,6 +640,14 @@ mod sources {
         /// Source getter.
         pub fn source(&self, source: Source) -> &SourceEnt {
             &self.sources[source]
+        }
+
+        pub fn source_mut(&mut self, source: Source) -> &mut SourceEnt {
+            &mut self.sources[source]
+        }
+
+        pub fn put_source(&mut self, source: Source, ent: SourceEnt) {
+            self.sources[source] = ent;
         }
     }
 
@@ -653,8 +659,11 @@ mod sources {
 }
 
 
-mod source_ent {
+mod source {
     use super::*;
+
+    crate::impl_entity!(Source);
+
 
     /// Struct stores file related data. This ensures no string allocations are done
     /// and all structures can refer to source with [`Span`].

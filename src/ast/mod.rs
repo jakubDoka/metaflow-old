@@ -8,12 +8,12 @@ use cranelift::{
 use quick_proc::{QuickDefault, QuickSer, RealQuickSer};
 
 use crate::{
-    entities::{Ast, Source, CallConv, Vis},
+    entities::{Ast, CallConv, Vis},
     lexer::{
         self, token, Token, 
         Sources, Span, 
         SourceEnt, 
-        LineData
+        LineData, Source,
     }, util::pool::PoolRef,
 };
 
@@ -22,8 +22,8 @@ use std::{
     sync::atomic::{AtomicU64, Ordering}, time::SystemTime,
 };
 
-pub use ast_ent::{AstEnt, AKind, AstDisplay, OpKind};
-pub use error::{Error, AEKind};
+pub use ast_ent::{AstEnt, Kind, AstDisplay, OpKind};
+pub use error::Error;
 pub use context::Context;
 pub use ast_data::{AstData, RelocContext};
 pub use state::State;
@@ -127,7 +127,7 @@ impl<'a> Parser<'a> {
                             };
 
                             deps.push(dependency);
-                            Ok(())
+                            Ok(false)
                         })?;
                     }
                     _ => {
@@ -166,7 +166,7 @@ impl<'a> Parser<'a> {
                 }
                 token::Kind::Use => {
                     self.next()?;
-                    self.walk_block(|s| s.import_line(imports))?;
+                    self.walk_block(|s| { s.import_line(imports)?; Ok(false) })?;
                 }
                 _ => break,
             }
@@ -207,18 +207,20 @@ impl<'a> Parser<'a> {
 
     /// Parses rest of the file. It expects state with which the 
     /// [`Self::parse_imports()`] was called.
-    pub fn parse(&mut self) -> Result {
+    pub fn parse(&mut self) -> Result<bool> {
         while self.state.current_kind() != token::Kind::Eof {
-            self.top_item(
+            if self.top_item(
                 Ast::reserved_value(),
                 concat!(
-                    "expected 'fun' | 'attr' | 'struct' | 'enum'",
+                    "expected 'break' | 'fun' | 'attr' | 'struct' | 'enum'",
                     " | 'union' | 'let' | 'var' | 'impl' | '##'",
                 ),
-            )?;
+            )? {
+                return Ok(true);
+            }
         }
 
-        Ok(())
+        Ok(false)
     }
 
     /// Parses impl block.
@@ -240,7 +242,7 @@ impl<'a> Parser<'a> {
             )?;
             let sons = self.data.add_slice(sons.as_slice());
             let token = token.join_trimmed(self.state.current());
-            self.data.add(AstEnt::new(AKind::Group, sons, token))
+            self.data.add(AstEnt::new(Kind::Group, sons, token))
         } else {
             Ast::reserved_value()
         };
@@ -248,7 +250,7 @@ impl<'a> Parser<'a> {
         let expr = self.type_expr()?;
         let sons = self.data.add_slice(&[generics, expr]);
         let token = token.join_trimmed(self.state.current());
-        let impl_ast = self.data.add(AstEnt::new(AKind::Impl(vis), sons, token));
+        let impl_ast = self.data.add(AstEnt::new(Kind::Impl(vis), sons, token));
 
         self.expect_str(token::Kind::Colon, "expected ':' after 'impl' type")?;
         self.next()?;
@@ -260,9 +262,14 @@ impl<'a> Parser<'a> {
     }
 
     /// Parses top item. `impl_ast` is added to each item if provided, `message` is what
-    /// gets displayed as error message if invalid item was encountered.
-    pub fn top_item(&mut self, impl_ast: Ast, message: &'static str) -> Result {
+    /// gets displayed as error message if invalid item was encountered. Returns true 
+    /// if `break` was found.
+    pub fn top_item(&mut self, impl_ast: Ast, message: &'static str) -> Result<bool> {
         let kind = self.state.current_kind();
+        if kind == token::Kind::Break {
+            self.next()?;
+            return Ok(true);
+        }
         let collect_attributes = matches!(
             kind,
             token::Kind::Union | token::Kind::Enum | token::Kind::Struct | token::Kind::Fun | token::Kind::Var | token::Kind::Let
@@ -272,7 +279,7 @@ impl<'a> Parser<'a> {
             let sons = self.ctx.create_attribute_slice(self.data);
             if !sons.is_empty() {
                 
-                self.data.add(AstEnt::new(AKind::Group, sons, Token::default()))
+                self.data.add(AstEnt::new(Kind::Group, sons, Token::default()))
             } else {
                 Ast::reserved_value()
             }
@@ -307,7 +314,7 @@ impl<'a> Parser<'a> {
                 self.attr()?;
             }
             token::Kind::Comment(_) => {
-                let ast = AstEnt::sonless(AKind::Comment, self.state.current());
+                let ast = AstEnt::sonless(Kind::Comment, self.state.current());
                 let ast = self.data.add(ast);
                 self.ctx.push_local_attribute(ast);
                 self.next()?;
@@ -319,7 +326,7 @@ impl<'a> Parser<'a> {
             _ => return Err(self.unexpected_str(message)),
         }
 
-        Ok(())
+        Ok(false)
     }
 
     /// Parses enum declaration.
@@ -340,7 +347,7 @@ impl<'a> Parser<'a> {
         let sons = self.data.add_slice(&[name, variants]);
         let token = token.join_trimmed(self.state.current());
 
-        Ok(self.data.add(AstEnt::new(AKind::Enum(vis), sons, token)))
+        Ok(self.data.add(AstEnt::new(Kind::Enum(vis), sons, token)))
     }
 
     /// Parses structure declaration, which can be either struct or union.
@@ -350,9 +357,9 @@ impl<'a> Parser<'a> {
 
         let vis = self.vis()?;
         let kind = if union {
-            AKind::Union(vis)
+            Kind::Union(vis)
         } else {
-            AKind::Struct(vis)
+            Kind::Struct(vis)
         };
 
         let expr = self.type_expr()?;
@@ -395,7 +402,7 @@ impl<'a> Parser<'a> {
         let sons = self.data.add_slice(sons.as_slice());
         let token = token.join_trimmed(self.state.current());
 
-        Ok(self.data.add(AstEnt::new(AKind::StructField(vis, embedded), sons, token)))
+        Ok(self.data.add(AstEnt::new(Kind::StructField(vis, embedded), sons, token)))
     }
 
     /// Parses an attribute.
@@ -432,7 +439,7 @@ impl<'a> Parser<'a> {
                     token::Kind::RPar,
                     Self::attr_element,
                 )?;
-                AKind::AttributeElement
+                Kind::AttributeElement
             }
             token::Kind::Op => {
                 if self.display(self.state.current()) == "=" {
@@ -441,9 +448,9 @@ impl<'a> Parser<'a> {
                 } else {
                     return Err(self.unexpected_str("expected '=' or '('"));
                 }
-                AKind::AttributeAssign
+                Kind::AttributeAssign
             }
-            _ => AKind::AttributeElement,
+            _ => Kind::AttributeElement,
         };
 
         let sons = self.data.add_slice(sons.as_slice());
@@ -464,7 +471,7 @@ impl<'a> Parser<'a> {
         let sons = self.data.add_slice(&[header, body]);
         let token = token.join_trimmed(self.state.current());
 
-        Ok(self.data.add(AstEnt::new(AKind::Fun, sons, token)))
+        Ok(self.data.add(AstEnt::new(Kind::Fun, sons, token)))
     }
 
     pub fn fun_header(&mut self, anonymous: bool) -> Result<Ast> {
@@ -502,7 +509,7 @@ impl<'a> Parser<'a> {
                 1 => OpKind::Unary,
                 2 => OpKind::Binary,
                 _ => return Err(Error::new(
-                    AEKind::UnexpectedToken(
+                    error::Kind::UnexpectedToken(
                         "operator functions can have either 1 or 2 arguments, (unary and binary)"
                             .to_string(),
                     ),
@@ -525,7 +532,7 @@ impl<'a> Parser<'a> {
             let ident = self.ident()?;
             let token = self.data.ent(ident).token();
             CallConv::from_str(self.display(token))
-                .ok_or_else(|| Error::new(AEKind::InvalidCallConv, token))?
+                .ok_or_else(|| Error::new(error::Kind::InvalidCallConv, token))?
         } else {
             CallConv::default()
         };
@@ -533,7 +540,7 @@ impl<'a> Parser<'a> {
         let sons = self.data.add_slice(sons.as_slice());
         let token = token.join_trimmed(self.state.current());
 
-        Ok(self.data.add(AstEnt::new(AKind::FunHeader(kind, vis, call_conv), sons, token)))
+        Ok(self.data.add(AstEnt::new(Kind::FunHeader(kind, vis, call_conv), sons, token)))
     }
 
     pub fn fun_argument(&mut self) -> Result<Ast> {
@@ -558,7 +565,7 @@ impl<'a> Parser<'a> {
         let sons = self.data.add_slice(sons.as_slice());
         let token = token.join_trimmed(self.state.current());
 
-        Ok(self.data.add(AstEnt::new(AKind::FunArgument(mutable), sons, token)))
+        Ok(self.data.add(AstEnt::new(Kind::FunArgument(mutable), sons, token)))
     }
 
     pub fn stmt_block(&mut self) -> Result<Ast> {
@@ -582,12 +589,12 @@ impl<'a> Parser<'a> {
         self.next()?;
 
         let vis = if top_level { self.vis()? } else { Vis::None };
-        let kind = AKind::VarStatement(vis, mutable);
+        let kind = Kind::VarStatement(vis, mutable);
         let mut sons = self.ctx.temp_vec();
 
         self.walk_block(|s| {
             sons.push(s.var_statement_line()?);
-            Ok(())
+            Ok(false)
         })?;
 
         let sons = self.data.add_slice(sons.as_slice());
@@ -637,7 +644,7 @@ impl<'a> Parser<'a> {
             }
             let values = self.data.add_slice(values.as_slice());
             let token = token.join_trimmed(self.state.current());
-            self.data.add(AstEnt::new(AKind::Group, values, token))
+            self.data.add(AstEnt::new(Kind::Group, values, token))
         } else {
             Ast::reserved_value()
         };
@@ -647,11 +654,11 @@ impl<'a> Parser<'a> {
         }
 
         let ident_group = self.data.add_slice(ident_group.as_slice());
-        let ident_group = self.data.add(AstEnt::new(AKind::Group, ident_group, token));
+        let ident_group = self.data.add(AstEnt::new(Kind::Group, ident_group, token));
         let sons = self.data.add_slice(&[ident_group, datatype, values]);
         let token = token.join_trimmed(self.state.current());
 
-        Ok(self.data.add(AstEnt::new(AKind::VarAssign, sons, token)))
+        Ok(self.data.add(AstEnt::new(Kind::VarAssign, sons, token)))
     }
 
     pub fn return_statement(&mut self) -> Result<Ast> {
@@ -666,7 +673,7 @@ impl<'a> Parser<'a> {
         let sons = self.data.add_slice(&[ret_val]);
         let token = token.join_trimmed(self.state.current());
 
-        Ok(self.data.add(AstEnt::new(AKind::Return, sons, token)))
+        Ok(self.data.add(AstEnt::new(Kind::Return, sons, token)))
     }
 
     pub fn type_expr(&mut self) -> Result<Ast> {
@@ -689,7 +696,7 @@ impl<'a> Parser<'a> {
         let mut result = previous;
         while self.state.current() == token::Kind::Op {
             let token = self.state.current();
-            let op = AstEnt::sonless(AKind::Ident, token);
+            let op = AstEnt::sonless(Kind::Ident, token);
             let pre = self.precedence(token);
 
             self.next()?;
@@ -714,24 +721,24 @@ impl<'a> Parser<'a> {
             {
                 let op_token =
                     Token::new(token::Kind::Op, op.span().slice(0..op.len() - 1), op.line_data());
-                let operator = self.data.add(AstEnt::sonless(AKind::Ident, op_token));
+                let operator = self.data.add(AstEnt::sonless(Kind::Ident, op_token));
 
                 let eq_token = Token::new(
                     token::Kind::Op,
                     op.span().slice(op.len() - 1..op.len()),
                     token.line_data(),
                 );
-                let eq = self.data.add(AstEnt::sonless(AKind::Ident, eq_token));
+                let eq = self.data.add(AstEnt::sonless(Kind::Ident, eq_token));
 
                 let sons = self.data.add_slice(&[operator, result, next]);
-                let expr = self.data.add(AstEnt::new(AKind::Binary, sons, token));
+                let expr = self.data.add(AstEnt::new(Kind::Binary, sons, token));
 
                 let sons = self.data.add_slice(&[eq, result, expr]);
-                self.data.add(AstEnt::new(AKind::Binary, sons, token))
+                self.data.add(AstEnt::new(Kind::Binary, sons, token))
             } else {
                 let op = self.data.add(op);
                 let sons = self.data.add_slice(&[op, result, next]);
-                self.data.add(AstEnt::new(AKind::Binary, sons, token))
+                self.data.add(AstEnt::new(Kind::Binary, sons, token))
             };
         }
 
@@ -757,7 +764,7 @@ impl<'a> Parser<'a> {
             | token::Kind::Float(..)
             | token::Kind::String => {
                 self.next()?;
-                self.data.add(AstEnt::sonless(AKind::Lit, token))
+                self.data.add(AstEnt::sonless(Kind::Lit, token))
             }
             token::Kind::LPar => {
                 self.next()?;
@@ -775,7 +782,7 @@ impl<'a> Parser<'a> {
                     )?;
                     let sons = self.data.add_slice(sons.as_slice());
                     let token = token.join_trimmed(self.state.current());
-                    self.data.add(AstEnt::new(AKind::Tuple, sons, token))
+                    self.data.add(AstEnt::new(Kind::Tuple, sons, token))
                 } else {
                     self.expect_str(token::Kind::RPar, "expected ')'")?;
                     self.next()?;
@@ -794,16 +801,16 @@ impl<'a> Parser<'a> {
                         if mutable {
                             self.next()?;
                         }
-                        AKind::Ref(mutable)
+                        Kind::Ref(mutable)
                     }
                     "*" => {
                         self.next()?;
-                        AKind::Deref
+                        Kind::Deref
                     }
                     _ => {
-                        sons.push(self.data.add(AstEnt::sonless(AKind::Ident, token)));
+                        sons.push(self.data.add(AstEnt::sonless(Kind::Ident, token)));
                         self.next()?;
-                        AKind::Ident
+                        Kind::Ident
                     }
                 };
                 let ast = self.simple_expr()?;
@@ -814,7 +821,7 @@ impl<'a> Parser<'a> {
             }
             token::Kind::Pass => {
                 self.next()?;
-                return Ok(self.data.add(AstEnt::sonless(AKind::Pass, token)));
+                return Ok(self.data.add(AstEnt::sonless(Kind::Pass, token)));
             }
             token::Kind::LBra => {
                 let mut sons = self.ctx.temp_vec();
@@ -827,7 +834,7 @@ impl<'a> Parser<'a> {
                 )?;
                 let sons = self.data.add_slice(sons.as_slice());
                 let token = token.join_trimmed(self.state.current());
-                return Ok(self.data.add(AstEnt::new(AKind::Array, sons, token)));
+                return Ok(self.data.add(AstEnt::new(Kind::Array, sons, token)));
             }
             token::Kind::Fun => return self.fun_header(true),
             _ => todo!("unmatched simple expr pattern {:?}", self.state.current()),
@@ -841,18 +848,18 @@ impl<'a> Parser<'a> {
                         let expr = self.simple_expr_low(true)?;
                         let sons = self.data.add_slice(&[ast, expr]);
                         let token = token.join_trimmed(self.state.current());
-                        AstEnt::new(AKind::Dot, sons, token)
+                        AstEnt::new(Kind::Dot, sons, token)
                     }
                     token::Kind::LPar => {
                         let (kind, sons, _) = self.data.ent(ast).parts();
                         let mut new_sons = self.ctx.temp_vec();
-                        let kind = if kind == AKind::Dot {
+                        let kind = if kind == Kind::Dot {
                             new_sons.push(self.data.get(sons, 1));
                             new_sons.push(self.data.get(sons, 0));
-                            AKind::Call(true)
+                            Kind::Call(true)
                         } else {
                             new_sons.push(ast);
-                            AKind::Call(false)
+                            Kind::Call(false)
                         };
 
                         self.list(
@@ -877,7 +884,7 @@ impl<'a> Parser<'a> {
 
                         let sons = self.data.add_slice(&[ast, expr]);
                         let token = token.join_trimmed(self.state.current());
-                        AstEnt::new(AKind::Index, sons, token)
+                        AstEnt::new(Kind::Index, sons, token)
                     }
 
                     _ => break,
@@ -898,7 +905,7 @@ impl<'a> Parser<'a> {
         let sons = self.data.add_slice(&[label]);
         let token = token.join_trimmed(self.state.current());
 
-        Ok(self.data.add(AstEnt::new(AKind::Continue, sons, token)))
+        Ok(self.data.add(AstEnt::new(Kind::Continue, sons, token)))
     }
 
     pub fn break_statement(&mut self) -> Result<Ast> {
@@ -915,7 +922,7 @@ impl<'a> Parser<'a> {
 
         let sons = self.data.add_slice(&[label, ret]);
         let token = token.join_trimmed(self.state.current());
-        Ok(self.data.add(AstEnt::new(AKind::Break, sons, token)))
+        Ok(self.data.add(AstEnt::new(Kind::Break, sons, token)))
     }
 
     pub fn loop_expr(&mut self) -> Result<Ast> {
@@ -928,14 +935,14 @@ impl<'a> Parser<'a> {
         let sons = self.data.add_slice(&[label, body]);
         let token = token.join_trimmed(self.state.current());
 
-        Ok(self.data.add(AstEnt::new(AKind::Loop, sons, token)))
+        Ok(self.data.add(AstEnt::new(Kind::Loop, sons, token)))
     }
 
     pub fn optional_tag(&mut self) -> Result<Ast> {
         Ok(if self.state.current() == token::Kind::Tag {
             let token = self.state.current();
             self.next()?;
-            self.data.add(AstEnt::sonless(AKind::Ident, token))
+            self.data.add(AstEnt::sonless(Kind::Ident, token))
         } else {
             Ast::reserved_value()
         })
@@ -956,7 +963,7 @@ impl<'a> Parser<'a> {
                 self.data.add_slice(&[ast, ident])
             };
             let token = token.join_trimmed(self.state.current());
-            ast = self.data.add(AstEnt::new(AKind::Path, sons, token));
+            ast = self.data.add(AstEnt::new(Kind::Path, sons, token));
         }
 
         let is_instantiation =
@@ -982,7 +989,7 @@ impl<'a> Parser<'a> {
 
             let sons = self.data.add_slice(sons.as_slice());
             let token = token.join_trimmed(self.state.current());
-            ast = self.data.add(AstEnt::new(AKind::Instantiation, sons, token));
+            ast = self.data.add(AstEnt::new(Kind::Instantiation, sons, token));
         }
 
         Ok(ast)
@@ -1005,7 +1012,7 @@ impl<'a> Parser<'a> {
                 let branch = self.if_expr()?;
                 let sons = self.data.add_slice(&[branch]);
                 let token = token.join_trimmed(self.state.current());
-                self.data.add(AstEnt::new(AKind::Elif, sons, token))
+                self.data.add(AstEnt::new(Kind::Elif, sons, token))
             }
             token::Kind::Indent(_) => {
                 match self.state.peeked_kind() {
@@ -1020,7 +1027,7 @@ impl<'a> Parser<'a> {
                         let branch = self.if_expr()?;
                         let sons = self.data.add_slice(&[branch]);
                         let token = token.join_trimmed(self.state.current());
-                        self.data.add(AstEnt::new(AKind::Elif, sons, token))
+                        self.data.add(AstEnt::new(Kind::Elif, sons, token))
                     }
                     _ => Ast::reserved_value(),
                 }
@@ -1030,14 +1037,14 @@ impl<'a> Parser<'a> {
 
         let sons = self.data.add_slice(&[condition, then_block, else_block]);
 
-        Ok(self.data.add(AstEnt::new(AKind::If, sons, token)))
+        Ok(self.data.add(AstEnt::new(Kind::If, sons, token)))
     }
 
     pub fn ident(&mut self) -> Result<Ast> {
         self.expect_str(token::Kind::Ident, "expected ident")?;
         let token = self.state.current();
         self.next()?;
-        Ok(self.data.add(AstEnt::sonless(AKind::Ident, token)))
+        Ok(self.data.add(AstEnt::sonless(Kind::Ident, token)))
     }
 
     pub fn vis(&mut self) -> Result<Vis> {
@@ -1054,7 +1061,7 @@ impl<'a> Parser<'a> {
         })
     }
 
-    pub fn walk_block<F: FnMut(&mut Self) -> Result>(&mut self, mut parser: F) -> Result {
+    pub fn walk_block<F: FnMut(&mut Self) -> Result<bool>>(&mut self, mut parser: F) -> Result<bool> {
         if let token::Kind::Indent(level) = self.state.current_kind() {
             if level > self.ctx.level() + 1 {
                 return Err(self.unexpected_str(
@@ -1063,12 +1070,17 @@ impl<'a> Parser<'a> {
             }
             self.ctx.push_level();
             while self.level_continues()? {
-                parser(self)?;
+                if parser(self)? {
+                    return Ok(true);
+                }
             }
         } else {
-            parser(self)?;
+            if parser(self)? {
+                return Ok(true);
+            }
         }
-        Ok(())
+
+        Ok(false)
     }
 
     pub fn block<F: FnMut(&mut Self) -> Result<Ast>>(&mut self, mut parser: F) -> Result<Ast> {
@@ -1079,11 +1091,11 @@ impl<'a> Parser<'a> {
         self.walk_block(|s| {
             let expr = parser(s)?;
             sons.push(expr);
-            Ok(())
+            Ok(false)
         })?;
         let sons = self.data.add_slice(sons.as_slice());
         let token = token.join_trimmed(self.state.current());
-        Ok(self.data.add(AstEnt::new(AKind::Group, sons, token)))
+        Ok(self.data.add(AstEnt::new(Kind::Group, sons, token)))
     }
 
     pub fn level_continues(&mut self) -> Result<bool> {
@@ -1188,7 +1200,7 @@ impl<'a> Parser<'a> {
     }
 
     pub fn unexpected(&self, message: String) -> Error {
-        Error::new(AEKind::UnexpectedToken(message), self.state.current())
+        Error::new(error::Kind::UnexpectedToken(message), self.state.current())
     }
 
     pub fn display(&self, token: Token) -> &str {
@@ -1310,12 +1322,12 @@ mod ast_data {
         }
     
         /// Returns parts of the ast.
-        pub fn parts(&self, ast: Ast) -> (AKind, EntityList<Ast>, Token) {
+        pub fn parts(&self, ast: Ast) -> (Kind, EntityList<Ast>, Token) {
             self.ent(ast).parts()
         }
     
         /// Returns the kind of the ast.
-        pub fn kind(&self, ast: Ast) -> AKind {
+        pub fn kind(&self, ast: Ast) -> Kind {
             self.ent(ast).kind()
         }
     
@@ -1464,7 +1476,7 @@ mod context {
             }
         }
 
-        pub fn temp_vec(&mut self) -> PoolRef<Ast> {
+        pub fn temp_vec<T>(&mut self) -> PoolRef<T> {
             self.pool.get()
         }
 
@@ -1561,7 +1573,7 @@ mod state {
 
         pub fn token_err(&mut self, sources: &Sources) -> Result<Token> {
             sources.token(&mut self.inner)
-                .map_err(|err| Error::new(AEKind::LError(err), Token::default()))
+                .map_err(|err| Error::new(error::Kind::LError(err), Token::default()))
         }
     }
 }
@@ -1703,17 +1715,17 @@ mod ast_ent {
 
     #[derive(Debug, Clone, Copy, Default, PartialEq, RealQuickSer)]
     pub struct AstEnt {
-        kind: AKind,
+        kind: Kind,
         sons: EntityList<Ast>,
         token: Token,
     }
     
     impl AstEnt {
-        pub fn new(kind: AKind, sons: EntityList<Ast>, token: Token) -> Self {
+        pub fn new(kind: Kind, sons: EntityList<Ast>, token: Token) -> Self {
             Self { kind, sons, token }
         }
     
-        pub fn sonless(kind: AKind, token: Token) -> AstEnt {
+        pub fn sonless(kind: Kind, token: Token) -> AstEnt {
             Self {
                 kind,
                 sons: EntityList::new(),
@@ -1721,11 +1733,11 @@ mod ast_ent {
             }
         }
     
-        pub fn parts(&self) -> (AKind, EntityList<Ast>, Token) {
+        pub fn parts(&self) -> (Kind, EntityList<Ast>, Token) {
             (self.kind, self.sons, self.token)
         }
     
-        pub fn kind(&self) -> AKind {
+        pub fn kind(&self) -> Kind {
             self.kind
         }
     
@@ -1794,7 +1806,7 @@ mod ast_ent {
     }
     
     #[derive(Debug, Clone, Copy, PartialEq, RealQuickSer)]
-    pub enum AKind {
+    pub enum Kind {
         UseStatement(bool),
     
         Path,
@@ -1848,9 +1860,9 @@ mod ast_ent {
         Lit,
     }
     
-    impl Default for AKind {
+    impl Default for Kind {
         fn default() -> Self {
-            AKind::Pass
+            Kind::Pass
         }
     }
     
@@ -1871,13 +1883,13 @@ mod error {
     impl ErrorDisplayState<Error> for Sources {
         fn fmt(&self, e: &Error, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
             match e.kind() {
-                AEKind::LError(error) => {
+                Kind::LError(error) => {
                     writeln!(f, "{}", ErrorDisplay::new(self, error))?;
                 },
-                AEKind::UnexpectedToken(message) => {
+                Kind::UnexpectedToken(message) => {
                     writeln!(f, "{}", message)?;
                 },
-                AEKind::InvalidCallConv => {
+                Kind::InvalidCallConv => {
                     crate::entities::call_conv_error(f)?;
                 },
             }
@@ -1892,16 +1904,16 @@ mod error {
 
     #[derive(Debug)]
     pub struct Error {
-        pub kind: AEKind,
+        pub kind: Kind,
         pub token: Token,
     }
     
     impl Error {
-        pub fn new(kind: AEKind, token: Token) -> Error {
+        pub fn new(kind: Kind, token: Token) -> Error {
             Error { kind, token }
         }
 
-        pub fn kind(&self) -> &AEKind {
+        pub fn kind(&self) -> &Kind {
             &self.kind
         }
     }
@@ -1913,13 +1925,13 @@ mod error {
     }
     
     #[derive(Debug)]
-    pub enum AEKind {
+    pub enum Kind {
         LError(lexer::Error),
         UnexpectedToken(String),
         InvalidCallConv,
     }
 
-    impl Into<Error> for AEKind {
+    impl Into<Error> for Kind {
         fn into(self) -> Error {
             Error {
                 kind: self,

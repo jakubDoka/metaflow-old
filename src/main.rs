@@ -13,7 +13,7 @@ pub mod entities;
 //pub mod gen;
 pub mod incr;
 pub mod lexer;
-//pub mod module_tree;
+pub mod module_tree;
 //pub mod types;
 pub mod util;
 
@@ -21,6 +21,7 @@ pub mod util;
 pub const VERSION: &str = env!("CARGO_PKG_VERSION");
 
 fn main() {
+    println!("{} {}", std::mem::size_of::<(bool, i64, bool)>(), std::mem::size_of::<(bool, i64, bool)>());
     #[cfg(feature = "testing")]
     test();
     #[cfg(not(feature = "testing"))]

@@ -5,7 +5,7 @@ use crate::{
 use cranelift::{
     codegen::isa::{CallConv as CrCallConv, TargetIsa},
     entity::packed_option::ReservedValue,
-    module::DataId,
+    module::{DataId, Linkage},
 };
 use cranelift::{
     codegen::{
@@ -21,7 +21,6 @@ pub const BUILTIN_MODULE: Mod = Mod(0);
 crate::impl_entity!(
     Ast,
     Fun,
-    Source,
     Manifest,
     Mod,
     Ty,
@@ -328,5 +327,25 @@ impl Vis {
 impl Default for Vis {
     fn default() -> Self {
         Vis::Public
+    }
+}
+
+#[derive(Debug, Clone, Default, Copy, RealQuickSer)]
+pub struct GlobalEnt {
+    pub id: ID,
+    pub vis: Vis,
+    pub mutable: bool,
+    pub module: Mod,
+    pub ty: Ty,
+    pub hint: Token,
+    pub ast: Ast,
+    pub attrs: Ast,
+    pub alias: Option<Span>,
+    pub linkage: Linkage,
+}
+
+impl TableId for GlobalEnt {
+    fn id(&self) -> ID {
+        self.id
     }
 }

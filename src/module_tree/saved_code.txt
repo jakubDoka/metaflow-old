@@ -1,0 +1,327 @@
+        pub fn new_block(&mut self, body: &mut FunBody) -> Block {
+            let block = self.blocks.push(Default::default());
+    
+            if body.entry_block.is_none() {
+                body.entry_block = PackedOption::from(block);
+                body.last_block = PackedOption::from(block);
+            } else {
+                let last = body.last_block.unwrap();
+                self.blocks[last].next = PackedOption::from(block);
+                self.blocks[block].prev = PackedOption::from(last);
+                body.last_block = PackedOption::from(block);
+            }
+    
+            block
+        }
+    
+        pub fn select_block(&mut self, block: Block, body: &mut FunBody) {
+            debug_assert!(body.current_block.is_none());
+            body.current_block = PackedOption::from(block);
+        }
+    
+        pub fn add_valueless_inst(&mut self, kind: IKind, token: Token, body: &mut FunBody) -> Inst {
+            self.add_inst_low(kind, Default::default(), token, body)
+        }
+    
+        pub fn add_inst(&mut self, kind: IKind, value: Value, hint: Token, body: &mut FunBody) -> Inst {
+            let inst = self.add_inst_low(kind, PackedOption::from(value), hint, body);
+            self.values[value].inst = PackedOption::from(inst);
+            inst
+        }
+    
+        fn add_inst_low(
+            &mut self,
+            kind: IKind,
+            value: PackedOption<Value>,
+            hint: Token,
+            body: &mut FunBody,
+        ) -> Inst {
+            let inst = self.insts.push(InstEnt {
+                kind,
+                value,
+                hint,
+    
+                ..Default::default()
+            });
+    
+            let last = body.current_block.unwrap();
+            let block = &mut self.blocks[last];
+    
+            if block.end.is_none() {
+                block.start = PackedOption::from(inst);
+                block.end = PackedOption::from(inst);
+            } else {
+                let last = block.end.unwrap();
+                self.insts[last].next = PackedOption::from(inst);
+                self.insts[inst].prev = PackedOption::from(last);
+                block.end = PackedOption::from(inst);
+            }
+    
+            if kind.is_closing() {
+                body.current_block = PackedOption::default();
+            }
+    
+            inst
+        }
+    
+        pub fn dependant(&self) -> &[Mod] {
+            self.dependant.as_slice(self.slices.transmute())
+        }
+    
+        pub fn clear_dependant(&mut self) {
+            self.dependant.clear(self.slices.transmute_mut());
+        }
+    
+        pub fn add_dependant(&mut self, module: Mod) {
+            self.dependant.push(module, self.slices.transmute_mut());
+        }
+    
+        pub fn add_temp_value(&mut self, ty: Ty) -> Value {
+            self.add_value(ty, false)
+        }
+    
+        pub fn add_value(&mut self, ty: Ty, mutable: bool) -> Value {
+            self.values.push(ValueEnt {
+                ty,
+                mutable,
+    
+                ..Default::default()
+            })
+        }
+    
+        pub fn add_values(&mut self, slice: &[Value]) -> EntityList<Value> {
+            EntityList::from_slice(slice, self.slices.transmute_mut())
+        }
+    
+        pub fn values(&self, list: EntityList<Value>) -> &[Value] {
+            list.as_slice(self.slices.transmute())
+        }
+    
+        pub fn add_type(&mut self, ty: Ty) {
+            self.types.push(ty, self.slices.transmute_mut());
+        }
+    
+        pub fn add_global(&mut self, global: GlobalValue) {
+            self.globals.push(global, self.slices.transmute_mut());
+        }
+    
+        pub fn add_fun(&mut self, fun: Fun) {
+            self.functions.push(fun, self.slices.transmute_mut());
+        }
+    
+        pub fn push_type(&mut self, list: &mut EntityList<Ty>, ty: Ty) {
+            list.push(ty, self.slices.transmute_mut());
+        }
+    
+        pub fn add_type_slice(&mut self, slice: &[Ty]) -> EntityList<Ty> {
+            EntityList::from_slice(slice, self.slices.transmute_mut())
+        }
+    
+        pub fn type_slice(&self, list: EntityList<Ty>) -> &[Ty] {
+            list.as_slice(self.slices.transmute())
+        }
+    
+        /// clear clears what needs to be cleared at module tree building level,
+        /// it leaves some fields untouched, as they will be used in higher code
+        pub fn clear(&mut self) {
+            self.entry_point = PackedOption::default();
+    
+            // we need to get rid of all invalid entity lists
+            self.dependant.take();
+            self.functions.take();
+            self.types.take();
+            self.globals.take();
+    
+            self.slices.clear();
+    
+            // no longer needed nor valid
+            self.values.clear();
+            self.insts.clear();
+            self.blocks.clear();
+        }
+    
+        pub fn clear_type_slice(&mut self, params: &mut EntityList<Ty>) {
+            params.clear(self.slices.transmute_mut());
+        }
+    
+        pub fn push_block_arg(&mut self, block: Block, arg: Value) {
+            let block = &mut self.blocks[block];
+            block.args.push(arg, self.slices.transmute_mut());
+        }
+    
+        pub fn set_block_args(&mut self, entry_block: Block, args: EntityList<Value>) {
+            self.blocks[entry_block].args = args;
+        }
+    
+        pub fn add_zero_value(&mut self, ty: Ty, body: &mut FunBody) -> Value {
+            let value = self.add_temp_value(ty);
+            self.add_inst(IKind::Zeroed, value, Token::default(), body);
+            value
+        }
+    
+        pub fn add_var_decl(&mut self, init: Value, carrier: Value, hint: Token, body: &mut FunBody) {
+            self.add_inst(IKind::VarDecl(init), carrier, hint, body);
+        }
+    
+        pub fn add_return_stmt(&mut self, value: Option<Value>, hint: Token, body: &mut FunBody) {
+            self.add_inst_low(
+                IKind::Return(value.map(PackedOption::from).unwrap_or_default()),
+                Default::default(),
+                hint,
+                body,
+            );
+        }
+    
+        pub fn type_of_value(&self, value: Value) -> Ty {
+            self.values[value].ty
+        }
+    
+        pub fn last_arg_of_block(&self, entry_block: Block) -> Option<Value> {
+            self.blocks[entry_block]
+                .args
+                .as_slice(self.slices.transmute())
+                .last()
+                .cloned()
+        }
+    
+        pub fn offset_value(
+            &mut self,
+            target: Value,
+            ty: Ty,
+            offset: Size,
+            token: Token,
+            body: &mut FunBody,
+        ) -> Value {
+            let mutable = self.is_mutable(target);
+            let result = self.values.push(ValueEnt {
+                ty,
+                mutable,
+                offset,
+    
+                ..Default::default()
+            });
+    
+            self.add_inst(IKind::Offset(target), result, token, body);
+    
+            result
+        }
+    
+        pub fn is_mutable(&self, target: Value) -> bool {
+            self.values[target].mutable
+        }
+    
+        pub fn assign(&mut self, target: Value, value: Value, token: Token, body: &mut FunBody) {
+            self.add_inst(IKind::Assign(target), value, token, body);
+        }
+    
+        pub fn reference(&mut self, ty: Ty, value: Value, token: Token, body: &mut FunBody) -> Value {
+            let result = self.add_value(ty, true);
+            self.add_inst(IKind::Ref(value), result, token, body);
+            result
+        }
+    
+        pub fn load_value_mut(&mut self, current: Value) -> &mut ValueEnt {
+            &mut self.values[current]
+        }
+    
+        pub fn inst_kind(&self, inst: Inst) -> IKind {
+            self.insts[inst].kind
+        }
+    
+        pub fn add_value_ent(&mut self, value_ent: ValueEnt) -> Value {
+            self.values.push(value_ent)
+        }
+    
+        pub fn verify_args(
+            &self,
+            types: &Table<Ty, TypeEnt>,
+            args: &[Ty],
+            sig_args: EntityList<Ty>,
+        ) -> bool {
+            let slice = self.type_slice(sig_args);
+            slice.len() != args.len()
+                || slice.iter().zip(args.iter()).any(|(&ty, &arg)| {
+                    arg != ty
+                        && !matches!(
+                            (&types[ty].kind, &types[arg].kind),
+                            (&TKind::Pointer(_, a), &TKind::Pointer(_, b)) if b && !a,
+                        )
+                })
+        }
+    
+        pub fn clear_types(&mut self, target: &mut EntityList<Ty>) {
+            target.clear(self.slices.transmute_mut());
+        }
+    
+        pub fn assign_global(&mut self, global: GlobalValue, value: Value, body: &mut FunBody) -> Ty {
+            let ty = self.type_of_value(value);
+            let loaded = self.add_value(ty, true);
+            self.add_inst(IKind::GlobalLoad(global), loaded, Token::default(), body);
+            self.assign(loaded, value, Token::default(), body);
+            ty
+        }
+    
+        pub fn copy_value(&mut self, value: Value) -> Value {
+            let value = self.values[value];
+            self.values.push(value)
+        }
+    
+        pub fn block_args(&self, block: Block) -> &[Value] {
+            self.blocks[block].args.as_slice(self.slices.transmute())
+        }
+    
+        pub fn cast(&mut self, target: Value, ty: Ty, token: Token, body: &mut FunBody) -> Value {
+            let mutable = self.is_mutable(target);
+            let value = self.add_value(ty, mutable);
+            self.add_inst(IKind::Cast(target), value, token, body);
+            value
+        }
+    
+        pub fn add_valueless_call(
+            &mut self,
+            fun: Fun,
+            args: &[Value],
+            token: Token,
+            body: &mut FunBody,
+        ) {
+            let args = self.add_values(args);
+            self.add_valueless_inst(IKind::Call(fun, args), token, body);
+        }
+    
+        pub fn add_call(
+            &mut self,
+            fun: Fun,
+            args: &[Value],
+            return_ty: Ty,
+            token: Token,
+            body: &mut FunBody,
+        ) -> Value {
+            let args = self.add_values(args);
+            let value = self.add_temp_value(return_ty);
+            self.add_inst(IKind::Call(fun, args), value, token, body);
+            value
+        }
+    
+        pub fn used_functions(&self) -> &[Fun] {
+            self.functions.as_slice(self.slices.transmute())
+        }
+    
+        pub fn used_globals(&self) -> &[GlobalValue] {
+            self.globals.as_slice(self.slices.transmute())
+        }
+    
+        pub fn used_types(&self) -> &[Ty] {
+            self.types.as_slice(self.slices.transmute())
+        }
+    
+        pub fn used_strings(&self) -> &[AnonString] {
+            self.anon_strings.as_slice(self.slices.transmute())
+        }
+    
+        pub fn add_dependant_function(&mut self, fun: Fun, body: &mut FunBody) {
+            body.dependant_functions.push(fun, self.slices.transmute_mut());
+        }
+    
+        pub fn add_dependant_global(&mut self, global: GlobalValue, body: &mut FunBody) {
+            body.dependant_globals.push(global, self.slices.transmute_mut());
+        }
