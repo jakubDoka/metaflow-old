@@ -1,0 +1,9 @@
+## doc comment
+fun something -> fun(int, int) -> int:
+  # ignored comment
+  return #[ even more ignored comment ]# pointed_function
+  
+##[
+  multiline doc comment
+]#
+struct Scope

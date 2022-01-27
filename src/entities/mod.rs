@@ -16,7 +16,7 @@ use cranelift::{
 };
 use quick_proc::{QuickEnumGets, QuickSer, RealQuickSer};
 
-pub const BUILTIN_MODULE: Mod = Mod(0);
+
 
 crate::impl_entity!(
     Ast,
@@ -229,105 +229,6 @@ pub enum SKind {
     Struct,
     Union,
     Tuple,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq, RealQuickSer)]
-pub enum CallConv {
-    Fast,
-    Cold,
-    SystemV,
-    WindowsFastcall,
-    AppleAarch64,
-    BaldrdashSystemV,
-    BaldrdashWindows,
-    Baldrdash2020,
-    Probestack,
-    WasmtimeSystemV,
-    WasmtimeFastcall,
-    WasmtimeAppleAarch64,
-    Platform,
-}
-
-impl CallConv {
-    pub fn from_str(s: &str) -> Option<Self> {
-        Some(match s {
-            "fast" => Self::Fast,
-            "cold" => Self::Cold,
-            "system_v" => Self::SystemV,
-            "windows_fastcall" => Self::WindowsFastcall,
-            "apple_aarch64" => Self::AppleAarch64,
-            "baldrdash_system_v" => Self::BaldrdashSystemV,
-            "baldrdash_windows" => Self::BaldrdashWindows,
-            "baldrdash_2020" => Self::Baldrdash2020,
-            "probestack" => Self::Probestack,
-            "wasmtime_system_v" => Self::WasmtimeSystemV,
-            "wasmtime_fastcall" => Self::WasmtimeFastcall,
-            "wasmtime_apple_aarch64" => Self::WasmtimeAppleAarch64,
-            "platform" => Self::Platform,
-            _ => return None,
-        })
-    }
-
-    pub fn to_cr_call_conv(&self, isa: &dyn TargetIsa) -> CrCallConv {
-        match self {
-            Self::Platform => isa.default_call_conv(),
-            _ => unsafe { std::mem::transmute(*self) },
-        }
-    }
-}
-
-impl Default for CallConv {
-    fn default() -> Self {
-        Self::Fast
-    }
-}
-
-pub fn call_conv_error(f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-    writeln!(
-        f,
-        "Invalid call convention, list of valid call conventions:"
-    )?;
-    for cc in [
-        "platform - picks call convention based of target platform",
-        "fast",
-        "cold",
-        "system_v",
-        "windows_fastcall",
-        "apple_aarch64",
-        "baldrdash_system_v",
-        "baldrdash_windows",
-        "baldrdash_2020",
-        "probestack",
-        "wasmtime_system_v",
-        "wasmtime_fastcall",
-        "wasmtime_apple_aarch64",
-    ] {
-        writeln!(f, "  {}", cc)?;
-    }
-    Ok(())
-}
-
-#[derive(Clone, Copy, Debug, PartialEq, Eq, RealQuickSer)]
-pub enum Vis {
-    Public,
-    None,
-    Private,
-}
-
-impl Vis {
-    pub fn join(self, other: Self) -> Self {
-        match (self, other) {
-            (_, Vis::Public) | (Vis::Public, Vis::None) => Vis::Public,
-            (_, Vis::Private) | (Vis::Private, Vis::None) => Vis::Private,
-            _ => Vis::None,
-        }
-    }
-}
-
-impl Default for Vis {
-    fn default() -> Self {
-        Vis::Public
-    }
 }
 
 #[derive(Debug, Clone, Default, Copy, RealQuickSer)]

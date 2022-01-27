@@ -339,18 +339,6 @@ impl<I: EntityRef + Default, T: Default> Table<I, T> {
         (None, i)
     }
 
-    pub fn index_or_insert(&mut self, id: ID, data: T) -> I {
-        if let Some(&i) = self.map.get(id) {
-            if id == self.ids[i] {
-                return i;
-            }
-        }
-        let i = self.data.push(data);
-        self.ids[i] = id;
-        self.map.insert(id, i);
-        i
-    }
-
     pub fn index(&self, id: ID) -> Option<&I> {
         self.map.get(id)
     }

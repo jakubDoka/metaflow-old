@@ -8,7 +8,7 @@
 //use gen::GErrorDisplay;
 
 pub mod ast;
-pub mod entities;
+//pub mod entities;
 //pub mod functions;
 //pub mod gen;
 pub mod incr;
@@ -60,7 +60,7 @@ fn test() {
     util::test();
     lexer::test();
     ast::test();
-    //module_tree::test();
+    module_tree::test();
     //types::test();
     //functions::test();
     //gen::test();

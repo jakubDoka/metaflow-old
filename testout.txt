@@ -1,5 +1,80 @@
+16 16
 Ok(Arguments { _filename: "file", hash: ID(0), flags: ["flag", "flag"], field_flags: [("flag", "value")], args: ["arg", "arg"] })
 Ok(Arguments { _filename: "file", hash: ID(0), flags: [], field_flags: [], args: ["string value"] })
+|> text_code.mf:1:15
+| ## doc comment
+| ^^^^^^^^^^^^^^
+|> text_code.mf:2:1
+| fun something -> fun(int, int) -> int:
+| ^
+|> text_code.mf:2:4
+| fun something -> fun(int, int) -> int:
+| ^^^
+|> text_code.mf:2:14
+| fun something -> fun(int, int) -> int:
+|     ^^^^^^^^^
+|> text_code.mf:2:17
+| fun something -> fun(int, int) -> int:
+|               ^^
+|> text_code.mf:2:21
+| fun something -> fun(int, int) -> int:
+|                  ^^^
+|> text_code.mf:2:22
+| fun something -> fun(int, int) -> int:
+|                     ^
+|> text_code.mf:2:25
+| fun something -> fun(int, int) -> int:
+|                      ^^^
+|> text_code.mf:2:26
+| fun something -> fun(int, int) -> int:
+|                         ^
+|> text_code.mf:2:30
+| fun something -> fun(int, int) -> int:
+|                           ^^^
+|> text_code.mf:2:31
+| fun something -> fun(int, int) -> int:
+|                              ^
+|> text_code.mf:2:34
+| fun something -> fun(int, int) -> int:
+|                                ^^
+|> text_code.mf:2:38
+| fun something -> fun(int, int) -> int:
+|                                   ^^^
+|> text_code.mf:2:39
+| fun something -> fun(int, int) -> int:
+|                                      ^
+|> text_code.mf:3:3
+|   # ignored comment
+| ^^
+|> text_code.mf:4:3
+|   return #[ even more ignored comment ]# pointed_function
+| ^^
+|> text_code.mf:4:9
+|   return #[ even more ignored comment ]# pointed_function
+|   ^^^^^^
+|> text_code.mf:4:58
+|   return #[ even more ignored comment ]# pointed_function
+|                                          ^^^^^^^^^^^^^^^^
+|> text_code.mf:5:4
+|   
+| ^^^
+|> text_code.mf:6:1
+| ##[
+| ^
+|> text_code.mf:8:3
+| ##[
+|   multiline doc comment
+| ]#
+| ^^^^^^^^^^^^^^^^^^^^^^^
+|> text_code.mf:9:1
+| struct Scope
+| ^
+|> text_code.mf:9:7
+| struct Scope
+| ^^^^^^
+|> text_code.mf:9:13
+| struct Scope
+|        ^^^^^
 ===global===
 None
 None

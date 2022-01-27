@@ -2,58 +2,45 @@
 //! create a tree structure that tries to take as little space as possible. And even then,
 //! it provides tools to reorganize and drop no longer needed trees.
 use cranelift::{
-    codegen::packed_option::ReservedValue,
+    codegen::{isa::CallConv as CrCallConv, packed_option::ReservedValue, isa::TargetIsa},
     entity::{EntityList, ListPool, PrimaryMap, SecondaryMap},
 };
 use quick_proc::{QuickDefault, QuickSer, RealQuickSer};
 
 use crate::{
-    entities::{Ast, CallConv, Vis},
     lexer::{
         self, token, Token, 
-        Sources, Span, 
+        Span, 
         SourceEnt, 
-        LineData, Source,
-    }, util::pool::PoolRef,
+        LineData, Source, DisplayError, ErrorDisplayState, ErrorDisplay,
+    }, util::{pool::{PoolRef, Pool}, sdbm::ID},
 };
 
 use std::{
     fmt::Write,
-    sync::atomic::{AtomicU64, Ordering}, time::SystemTime,
+    sync::atomic::{AtomicU64, Ordering}, ops::{Deref, DerefMut},
 };
-
-pub use ast_ent::{AstEnt, Kind, AstDisplay, OpKind};
-pub use error::Error;
-pub use context::Context;
-pub use ast_data::{AstData, RelocContext};
-pub use state::State;
-pub use dep::Dep;
-pub use import::Import;
-pub use manifest::Manifest;
 
 type Result<T = ()> = std::result::Result<T, Error>;
 
 /// Parses the tokens into ast tree. Result is stored in [`AstData`]
 /// and some temporary details are stored in context.
 pub struct Parser<'a> {
-    sources: &'a Sources,
+    ctx: &'a mut Ctx,
     state: &'a mut State,
-    data: &'a mut AstData,
-    ctx: &'a mut Context,
+    data: &'a mut Data,
 }
 
 impl<'a> Parser<'a> {
     /// Because of private fields.
     pub fn new(
-        sources: &'a Sources, 
         state: &'a mut State,
-        data: &'a mut AstData, 
-        ctx: &'a mut Context,
+        data: &'a mut Data, 
+        ctx: &'a mut Ctx,
     ) -> Self {
         Self {
-            sources,
-            state,
             ctx,
+            state,
             data,
         }
     }
@@ -84,11 +71,16 @@ impl<'a> Parser<'a> {
                         return Err(self.unexpected_str("expected string literal"));
                     }
 
-                    attrs.push((name, self.state.current().span().slice(1..self.state.current().len() - 2)));
-
+                    attrs.push((
+                        ID::new(self.ctx.display(name)),
+                        name,
+                        self.state.current().span()
+                            .slice(1..self.state.current().len() - 1),
+                    ));
+                    
                     self.next()?;
                 }
-                token::Kind::Colon => match self.sources.display(name) {
+                token::Kind::Colon => match self.ctx.display(name) {
                     "dependencies" => {
                         self.next()?;
                         self.walk_block(|s| {
@@ -101,11 +93,11 @@ impl<'a> Parser<'a> {
                             if s.state.current_kind() != token::Kind::String {
                                 return Err(s.unexpected_str("expected string literal as repository link with version or local path"));
                             }
-                            let path_and_version = s.state.current().span().slice(1..s.state.current().len() - 2);
+                            let path_and_version = s.state.current().span().slice(1..s.state.current().len() - 1);
                             s.next()?;
 
                             let (path_end, version_start) = s
-                                .sources
+                                .ctx
                                 .display(path_and_version)
                                 .find('@')
                                 .map(|i| (i, i + 1))
@@ -116,7 +108,7 @@ impl<'a> Parser<'a> {
 
                             let token = token.join(s.state.current());
 
-                            let external = s.sources.display(path).starts_with("github.com");
+                            let external = s.ctx.display(path).starts_with("github.com");
 
                             let dependency = Dep {
                                 external,
@@ -127,13 +119,14 @@ impl<'a> Parser<'a> {
                             };
 
                             deps.push(dependency);
+
                             Ok(false)
                         })?;
                     }
                     _ => {
                         return Err(self.unexpected(format!(
                             "unexpected item in manifest '{}'",
-                            self.sources.display(name)
+                            self.ctx.display(name)
                         )));
                     }
                 },
@@ -188,7 +181,7 @@ impl<'a> Parser<'a> {
         };
 
         let path = if let token::Kind::String = self.state.current_kind() {
-            self.state.current().span().slice(1..self.state.current().len() - 2)
+            self.state.current().span().slice(1..self.state.current().len() - 1)
         } else {
             return Err(self.unexpected_str("expected string literal as import path"));
         };
@@ -419,7 +412,7 @@ impl<'a> Parser<'a> {
             Self::attr_element,
         )?;
 
-        self.ctx.add_attributes(sons.as_slice(), self.sources, self.data);
+        self.ctx.add_attributes(sons.as_slice(), self.data);
 
         Ok(())
     }
@@ -462,7 +455,7 @@ impl<'a> Parser<'a> {
     pub fn fun(&mut self) -> Result<Ast> {
         let token = self.state.current();
         let header = self.fun_header(false)?;
-        let body = if self.state.current() == token::Kind::Colon && !self.ctx.is_type_expr() {
+        let body = if self.state.current() == token::Kind::Colon {
             self.stmt_block()?
         } else {
             Ast::reserved_value()
@@ -482,18 +475,18 @@ impl<'a> Parser<'a> {
 
         let mut sons = self.ctx.temp_vec();
 
-        let previous = self.ctx.is_type_expr();
-        self.ctx.set_is_type_expr(true);
+        let previous = self.state.is_type_expr;
+        self.state.is_type_expr = true;
         let is_op = self.state.current_kind() == token::Kind::Op;
         let ident = match self.state.current_kind() {
             token::Kind::Ident | token::Kind::Op if !anonymous => self.ident_expr()?,
             _ => Ast::reserved_value(),
         };
         sons.push(ident);
-        self.ctx.set_is_type_expr(previous);
+        self.state.is_type_expr = previous;
 
         if self.state.current() == token::Kind::LPar {
-            let parser = if self.ctx.is_type_expr() {
+            let parser = if self.state.is_type_expr {
                 Self::expr
             } else {
                 Self::fun_argument
@@ -677,12 +670,12 @@ impl<'a> Parser<'a> {
     }
 
     pub fn type_expr(&mut self) -> Result<Ast> {
-        let prev = self.ctx.is_type_expr();
-        self.ctx.set_is_type_expr(true);
+        let prev = self.state.is_type_expr;
+        self.state.is_type_expr = true;
 
         let result = self.simple_expr();
 
-        self.ctx.set_is_type_expr(prev);
+        self.state.is_type_expr = prev;
 
         result
     }
@@ -717,7 +710,7 @@ impl<'a> Parser<'a> {
             // this handles the '{op}=' sugar
             result = if pre == ASSIGN_PRECEDENCE
                 && op.len() != 1
-                && self.sources.display(op.span()).chars().last().unwrap() == '='
+                && self.ctx.display(op.span()).chars().last().unwrap() == '='
             {
                 let op_token =
                     Token::new(token::Kind::Op, op.span().slice(0..op.len() - 1), op.line_data());
@@ -746,7 +739,7 @@ impl<'a> Parser<'a> {
     }
 
     pub fn precedence(&self, token: Token) -> i64 {
-        precedence(self.sources.display_token(token))
+        precedence(self.ctx.display_token(token))
     }
 
     pub fn simple_expr(&mut self) -> Result<Ast> {
@@ -794,7 +787,7 @@ impl<'a> Parser<'a> {
             token::Kind::For => return self.loop_expr(),
             token::Kind::Op => {
                 let mut sons = self.ctx.temp_vec();
-                let kind = match self.sources.display(token.span()) {
+                let kind = match self.ctx.display(token.span()) {
                     "&" => {
                         self.next()?;
                         let mutable = self.state.current_kind() == token::Kind::Var;
@@ -840,7 +833,7 @@ impl<'a> Parser<'a> {
             _ => todo!("unmatched simple expr pattern {:?}", self.state.current()),
         };
 
-        if !nested && !self.ctx.is_type_expr() {
+        if !nested && !self.state.is_type_expr {
             loop {
                 let new_ast = match self.state.current_kind() {
                     token::Kind::Dot => {
@@ -967,7 +960,7 @@ impl<'a> Parser<'a> {
         }
 
         let is_instantiation =
-            self.ctx.is_type_expr() && self.state.current() == token::Kind::LBra || self.state.current() == token::Kind::DoubleColon;
+            self.state.is_type_expr && self.state.current() == token::Kind::LBra || self.state.current() == token::Kind::DoubleColon;
 
         if is_instantiation {
             if self.state.current() == token::Kind::DoubleColon {
@@ -1063,12 +1056,12 @@ impl<'a> Parser<'a> {
 
     pub fn walk_block<F: FnMut(&mut Self) -> Result<bool>>(&mut self, mut parser: F) -> Result<bool> {
         if let token::Kind::Indent(level) = self.state.current_kind() {
-            if level > self.ctx.level() + 1 {
+            if level > self.state.level + 1 {
                 return Err(self.unexpected_str(
                     "too deep indentation, one indentation level is equal 2 spaces or one tab",
                 ));
             }
-            self.ctx.push_level();
+            self.state.level += 1;
             while self.level_continues()? {
                 if parser(self)? {
                     return Ok(true);
@@ -1115,11 +1108,11 @@ impl<'a> Parser<'a> {
 
         match self.state.current_kind() {
             token::Kind::Indent(level) => {
-                if level == self.ctx.level() {
+                if level == self.state.level {
                     self.next()?;
                     Ok(true)
-                } else if level < self.ctx.level() {
-                    self.ctx.pop_level();
+                } else if level < self.state.level {
+                    self.state.level -= 1;
                     Ok(false)
                 } else {
                     return Err(self.unexpected_str("unexpected indentation dive"));
@@ -1180,7 +1173,7 @@ impl<'a> Parser<'a> {
     }
 
     pub fn next(&mut self) -> Result {
-        self.state.advance(self.sources)    
+        self.state.advance(self.ctx)    
     }
 
     pub fn expect_str(&self, kind: token::Kind, message: &str) -> Result {
@@ -1204,484 +1197,450 @@ impl<'a> Parser<'a> {
     }
 
     pub fn display(&self, token: Token) -> &str {
-        self.sources.display(token.span())
+        self.ctx.display(token.span())
     }
 }
 
-mod a_state {
-    use super::*;
-    
-    impl Sources {
-        pub fn attr_of(&self, manifest: &Manifest, name: &str) -> Option<Span> {
-            manifest
-                .attrs()
-                .iter()
-                .find(|(a_name, _)| self.display(*a_name) == name)
-                .map(|(_, value)| value.clone())
+#[cfg(debug_assertions)]
+static COUNTER: AtomicU64 = AtomicU64::new(0);
+
+#[cfg(debug_assertions)]
+#[derive(Debug, Default, Clone, Copy, RealQuickSer)]
+struct RelocSafety {
+    id: u64,
+}
+
+#[cfg(debug_assertions)]
+impl RelocSafety {
+    pub fn new() -> Self {
+        Self {
+            id: 1 + COUNTER.fetch_add(1, Ordering::Relaxed),
         }
+    }
+
+    pub fn check(&mut self, other: &mut Self) -> bool {
+        if self.id == 0 {
+            *self = *other;
+            return true;
+        }
+        self.id == other.id
     }
 }
 
-mod ast_data {
-    use super::*;
+pub struct RelocContext {
+    mapping: SecondaryMap<Ast, Ast>,
+    frontier: Vec<Ast>,
+    temp_sons: Vec<Ast>,
+    #[cfg(debug_assertions)]
+    safety: RelocSafety,
+}
 
-    #[cfg(debug_assertions)]
-    static COUNTER: AtomicU64 = AtomicU64::new(0);
-    
-    #[cfg(debug_assertions)]
-    #[derive(Debug, Default, Clone, Copy, RealQuickSer)]
-    struct RelocSafety {
-        id: u64,
-    }
-    
-    #[cfg(debug_assertions)]
-    impl RelocSafety {
-        pub fn new() -> Self {
-            Self {
-                id: 1 + COUNTER.fetch_add(1, Ordering::Relaxed),
-            }
-        }
-    
-        pub fn check(&mut self, other: &mut Self) -> bool {
-            if self.id == 0 {
-                *self = *other;
-                return true;
-            }
-            self.id == other.id
-        }
-    }
-    
-    pub struct RelocContext {
-        mapping: SecondaryMap<Ast, Ast>,
-        frontier: Vec<Ast>,
-        temp_sons: Vec<Ast>,
+impl RelocContext {
+    pub fn clear(&mut self) {
+        self.mapping.clear();
         #[cfg(debug_assertions)]
-        safety: RelocSafety,
-    }
-    
-    impl RelocContext {
-        pub fn clear(&mut self) {
-            self.mapping.clear();
-            #[cfg(debug_assertions)]
-            {
-                self.safety = RelocSafety::default();
-            }
+        {
+            self.safety = RelocSafety::default();
         }
     }
-    
-    /// AstData holds the ast trees. There are not headers or top of the tree.
-    /// Other data-structures are only meant to read the data.
-    #[derive(Debug, Clone, QuickDefault, QuickSer)]
-    pub struct AstData {
-        entities: PrimaryMap<Ast, AstEnt>,
-        connections: ListPool<Ast>,
+}
+
+/// AstData holds the ast trees. There are not headers or top of the tree.
+/// Other data-structures are only meant to read the data.
+#[derive(Debug, Clone, QuickDefault, QuickSer)]
+pub struct Data {
+    entities: PrimaryMap<Ast, AstEnt>,
+    connections: ListPool<Ast>,
+    #[cfg(debug_assertions)]
+    #[default(RelocSafety::new())]
+    safety: RelocSafety,
+}
+
+impl Data {
+    pub fn add(&mut self, ast_ent: AstEnt) -> Ast {
+        self.entities.push(ast_ent)
+    }
+
+    pub fn add_slice(&mut self, slice: &[Ast]) -> EntityList<Ast> {
+        EntityList::from_slice(slice, &mut self.connections)
+    }
+
+    pub fn get(&self, sons: EntityList<Ast>, index: usize) -> Ast {
+        self.slice(sons)[index]
+    }
+
+    pub fn slice(&self, sons: EntityList<Ast>) -> &[Ast] {
+        sons.as_slice(&self.connections)
+    }
+
+    pub fn len(&self, list: EntityList<Ast>) -> usize {
+        list.len(&self.connections)
+    }
+
+    pub fn is_empty(&self, ast: Ast) -> bool {
+        self.sons(ast).is_empty()
+    }
+
+    pub fn son_len(&self, ast: Ast, index: usize) -> usize {
+        self.son_ent(ast, index).sons().len(&self.connections)
+    }
+
+    pub fn son_ent(&self, ast: Ast, index: usize) -> AstEnt {
+        self.ent(self.son(ast, index))
+    }
+
+    pub fn son(&self, ast: Ast, index: usize) -> Ast {
+        self.sons(ast)[index]
+    }
+
+    pub fn get_son(&self, ast: Ast, index: usize) -> Option<Ast> {
+        self.sons(ast).get(index).cloned()
+    }
+
+    /// Returns parts of the ast.
+    pub fn parts(&self, ast: Ast) -> (Kind, EntityList<Ast>, Token) {
+        self.ent(ast).parts()
+    }
+
+    /// Returns the kind of the ast.
+    pub fn kind(&self, ast: Ast) -> Kind {
+        self.ent(ast).kind()
+    }
+
+    /// Returns the token of the ast.
+    pub fn token(&self, ast: Ast) -> Token {
+        self.ent(ast).token()
+    }
+
+    /// Returns the span of the ast.
+    pub fn span(&self, ast: Ast) -> Span {
+        self.ent(ast).span()
+    }
+
+    /// Returns the sons of the ast.
+    pub fn sons(&self, ast: Ast) -> &[Ast] {
+        self.ent(ast).sons().as_slice(&self.connections)
+    }
+
+    /// Returns the ast.
+    pub fn ent(&self, ast: Ast) -> AstEnt {
+        self.entities[ast]
+    }
+
+    /// Relocates the ast tree from `source` to `self`.
+    /// When first transferring between the two, context has to be clear.
+    /// But clearing context after each relocation can create duplicate
+    /// trees. Don't worry, safety is asserted during the debug builds
+    /// at runtime.
+    pub fn relocate(&mut self, target: Ast, source: &Self, ctx: &mut RelocContext) -> Ast {
         #[cfg(debug_assertions)]
-        #[default(RelocSafety::new())]
-        safety: RelocSafety,
+        {
+            assert!(ctx.safety.check(&mut self.safety));
+            assert!(ctx.frontier.is_empty());
+        }
+
+        if !ctx.mapping[target].is_reserved_value() {
+            return ctx.mapping[target];
+        }
+
+        ctx.frontier.push(target);
+        ctx.mapping[target] = self.entities.push(AstEnt::default());
+        while let Some(target) = ctx.frontier.pop() {
+            let (kind, sons, token) = source.entities[target].parts();
+            let id = ctx.mapping[target];
+            ctx.temp_sons.clear();
+            ctx.temp_sons
+                .extend_from_slice(sons.as_slice(&source.connections));
+            for s in ctx.temp_sons.iter_mut() {
+                let alloc = self.entities.push(AstEnt::default());
+                ctx.mapping[*s] = alloc;
+                *s = alloc;
+            }
+            let sons = EntityList::from_slice(&ctx.temp_sons, &mut self.connections);
+            self.entities[id] = AstEnt::new(kind, sons, token);
+        }
+
+        ctx.mapping[target]
     }
-    
-    impl AstData {
-        pub fn add(&mut self, ast_ent: AstEnt) -> Ast {
-            self.entities.push(ast_ent)
-        }
 
-        pub fn add_slice(&mut self, slice: &[Ast]) -> EntityList<Ast> {
-            EntityList::from_slice(slice, &mut self.connections)
-        }
+    pub fn clear(&mut self) {
+        self.entities.clear();
+        self.connections.clear();
+    }
+}
 
-        pub fn get(&self, sons: EntityList<Ast>, index: usize) -> Ast {
-            self.slice(sons)[index]
-        }
+#[derive(Debug, Clone, Default)]
+pub struct Ctx {
+    ctx: lexer::Ctx,
     
-        pub fn slice(&self, sons: EntityList<Ast>) -> &[Ast] {
-            sons.as_slice(&self.connections)
-        }
+    funs: Vec<(Ast, Ast, Ast)>,
+    types: Vec<(Ast, Ast)>,
+    globals: Vec<(Ast, Ast, Ast)>,
+
+    attrib_stack: Vec<Ast>,
+    attrib_frames: Vec<usize>,
+    current_attributes: Vec<Ast>,
+
+    pool: Pool,
+}
     
-        pub fn len(&self, list: EntityList<Ast>) -> usize {
-            list.len(&self.connections)
-        }
-    
-        pub fn is_empty(&self, ast: Ast) -> bool {
-            self.sons(ast).is_empty()
-        }
-    
-        pub fn son_len(&self, ast: Ast, index: usize) -> usize {
-            self.son_ent(ast, index).sons().len(&self.connections)
-        }
-    
-        pub fn son_ent(&self, ast: Ast, index: usize) -> AstEnt {
-            self.ent(self.son(ast, index))
-        }
-    
-        pub fn son(&self, ast: Ast, index: usize) -> Ast {
-            self.sons(ast)[index]
-        }
-    
-        pub fn get_son(&self, ast: Ast, index: usize) -> Option<Ast> {
-            self.sons(ast).get(index).cloned()
-        }
-    
-        /// Returns parts of the ast.
-        pub fn parts(&self, ast: Ast) -> (Kind, EntityList<Ast>, Token) {
-            self.ent(ast).parts()
-        }
-    
-        /// Returns the kind of the ast.
-        pub fn kind(&self, ast: Ast) -> Kind {
-            self.ent(ast).kind()
-        }
-    
-        /// Returns the token of the ast.
-        pub fn token(&self, ast: Ast) -> Token {
-            self.ent(ast).token()
-        }
-    
-        /// Returns the span of the ast.
-        pub fn span(&self, ast: Ast) -> Span {
-            self.ent(ast).span()
-        }
-    
-        /// Returns the sons of the ast.
-        pub fn sons(&self, ast: Ast) -> &[Ast] {
-            self.ent(ast).sons().as_slice(&self.connections)
-        }
-    
-        /// Returns the ast.
-        pub fn ent(&self, ast: Ast) -> AstEnt {
-            self.entities[ast]
-        }
-    
-        /// Relocates the ast tree from `source` to `self`.
-        /// When first transferring between the two, context has to be clear.
-        /// But clearing context after each relocation can create duplicate
-        /// trees. Don't worry, safety is asserted during the debug builds
-        /// at runtime.
-        pub fn relocate(&mut self, target: Ast, source: &Self, ctx: &mut RelocContext) -> Ast {
-            #[cfg(debug_assertions)]
-            {
-                assert!(ctx.safety.check(&mut self.safety));
-                assert!(ctx.frontier.is_empty());
-            }
-    
-            if !ctx.mapping[target].is_reserved_value() {
-                return ctx.mapping[target];
-            }
-    
-            ctx.frontier.push(target);
-            ctx.mapping[target] = self.entities.push(AstEnt::default());
-            while let Some(target) = ctx.frontier.pop() {
-                let (kind, sons, token) = source.entities[target].parts();
-                let id = ctx.mapping[target];
-                ctx.temp_sons.clear();
-                ctx.temp_sons
-                    .extend_from_slice(sons.as_slice(&source.connections));
-                for s in ctx.temp_sons.iter_mut() {
-                    let alloc = self.entities.push(AstEnt::default());
-                    ctx.mapping[*s] = alloc;
-                    *s = alloc;
+impl Ctx {
+    pub fn clear(&mut self) {
+        self.funs.clear();
+        self.types.clear();
+        self.globals.clear();
+
+        self.attrib_stack.clear();
+        self.attrib_frames.clear();
+        self.current_attributes.clear();
+    }
+
+    pub fn funs(&self) -> &[(Ast, Ast, Ast)] {
+        self.funs.as_slice()
+    }
+
+    pub fn types(&self) -> &[(Ast, Ast)] {
+        self.types.as_slice()
+    }
+
+    pub fn globals(&self) -> &[(Ast, Ast, Ast)] {
+        self.globals.as_slice()
+    }
+
+    pub fn add_fun(&mut self, fun: (Ast, Ast, Ast)) {
+        self.funs.push(fun);
+    }
+
+    pub fn add_global(&mut self, global: (Ast, Ast, Ast)) {
+        self.globals.push(global);
+    }
+
+    pub fn add_type(&mut self, ty: (Ast, Ast)) {
+        self.types.push(ty);
+    }
+
+    pub fn create_attribute_slice(&mut self, data: &mut Data) -> EntityList<Ast> {
+        self.current_attributes.extend_from_slice(&self.attrib_stack);
+        let value = data.add_slice(&self.current_attributes);
+        self.current_attributes.clear();
+        value
+    }
+
+    pub fn add_attributes(&mut self, sons: &[Ast], data: &Data) {
+        for &ast in sons {
+            let name = self.display(data.son_ent(ast, 0).span());
+            if name == "push" {
+                self.attrib_frames.push(self.attrib_stack.len());
+                for &ast in &data.sons(ast)[1..] {
+                    self.attrib_stack.push(ast);
                 }
-                let sons = EntityList::from_slice(&ctx.temp_sons, &mut self.connections);
-                self.entities[id] = AstEnt::new(kind, sons, token);
+            } else if name == "pop" {
+                let len = self.attrib_frames.pop().unwrap();
+                self.attrib_stack.truncate(len);
+            } else {
+                self.current_attributes.push(ast);
             }
-    
-            ctx.mapping[target]
         }
-    
-        pub fn clear(&mut self) {
-            self.entities.clear();
-            self.connections.clear();
-        }
+    }
+
+    pub fn temp_vec<T>(&mut self) -> PoolRef<T> {
+        self.pool.get()
+    }
+
+    pub fn push_local_attributes(&mut self) {
+        self
+            .attrib_frames
+            .push(self.attrib_stack.len());
+        self
+            .attrib_stack
+            .extend_from_slice(&self.current_attributes);
+    }
+
+    pub fn pop_attribute_frame(&mut self) {
+        self
+            .attrib_stack
+            .truncate(self.attrib_frames.pop().unwrap());
+    }
+
+    pub fn push_local_attribute(&mut self, ast: Ast) {
+        self.current_attributes.push(ast);
     }
 }
 
-mod context {
-    use crate::util::pool::Pool;
+impl Deref for Ctx {
+    type Target = lexer::Ctx;
 
-    use super::*;
-
-    #[derive(Debug, Clone, Default)]
-    pub struct Context {
-        is_type_expr: bool,
-        level: u16,
-        
-        funs: Vec<(Ast, Ast, Ast)>,
-        types: Vec<(Ast, Ast)>,
-        globals: Vec<(Ast, Ast, Ast)>,
-    
-        attrib_stack: Vec<Ast>,
-        attrib_frames: Vec<usize>,
-        current_attributes: Vec<Ast>,
-
-        pool: Pool,
-    }
-        
-    impl Context {
-        pub fn clear(&mut self) {
-            self.level = 0;
-    
-            self.funs.clear();
-            self.types.clear();
-            self.globals.clear();
-    
-            self.attrib_stack.clear();
-            self.attrib_frames.clear();
-            self.current_attributes.clear();
-        }
-    
-        pub fn funs(&self) -> &[(Ast, Ast, Ast)] {
-            self.funs.as_slice()
-        }
-    
-        pub fn types(&self) -> &[(Ast, Ast)] {
-            self.types.as_slice()
-        }
-    
-        pub fn globals(&self) -> &[(Ast, Ast, Ast)] {
-            self.globals.as_slice()
-        }
-    
-        pub fn add_fun(&mut self, fun: (Ast, Ast, Ast)) {
-            self.funs.push(fun);
-        }
-    
-        pub fn add_global(&mut self, global: (Ast, Ast, Ast)) {
-            self.globals.push(global);
-        }
-    
-        pub fn add_type(&mut self, ty: (Ast, Ast)) {
-            self.types.push(ty);
-        }
-    
-        pub fn create_attribute_slice(&mut self, data: &mut AstData) -> EntityList<Ast> {
-            self.current_attributes.extend_from_slice(&self.attrib_stack);
-            let value = data.add_slice(&self.current_attributes);
-            self.current_attributes.clear();
-            value
-        }
-    
-        pub fn add_attributes(&mut self, sons: &[Ast], state: &Sources, data: &AstData) {
-            for &ast in sons {
-                let name = state.display(data.son_ent(ast, 0).span());
-                if name == "push" {
-                    self.attrib_frames.push(self.attrib_stack.len());
-                    for &ast in &data.sons(ast)[1..] {
-                        self.attrib_stack.push(ast);
-                    }
-                } else if name == "pop" {
-                    let len = self.attrib_frames.pop().unwrap();
-                    self.attrib_stack.truncate(len);
-                } else {
-                    self.current_attributes.push(ast);
-                }
-            }
-        }
-
-        pub fn temp_vec<T>(&mut self) -> PoolRef<T> {
-            self.pool.get()
-        }
-
-        pub fn level(&self) -> u16 {
-            self.level
-        }
-
-        pub fn pop_level(&mut self) {
-            self.level -= 1;
-        }
-
-        pub fn push_level(&mut self) {
-            self.level += 1;
-        }
-
-        pub fn push_local_attributes(&mut self) {
-            self
-                .attrib_frames
-                .push(self.attrib_stack.len());
-            self
-                .attrib_stack
-                .extend_from_slice(&self.current_attributes);
-        }
-
-        pub fn pop_attribute_frame(&mut self) {
-            self
-                .attrib_stack
-                .truncate(self.attrib_frames.pop().unwrap());
-        }
-
-        pub fn push_local_attribute(&mut self, ast: Ast) {
-            self.current_attributes.push(ast);
-        }
-
-        pub fn is_type_expr(&self) -> bool {
-            self.is_type_expr
-        }
-
-        pub fn set_is_type_expr(&mut self, value: bool) {
-            self.is_type_expr = value;
-        }
+    fn deref(&self) -> &Self::Target {
+        &self.ctx
     }
 }
 
-mod state {
-    use super::*;
-
-    #[derive(Default, Clone, Copy, Debug)]
-    pub struct State {
-        current: Token,
-        peeked: Token,
-        inner: lexer::State,
-    }
-
-    impl State {
-        pub fn new(source: Source, sources: &Sources) -> Result<Self> {
-            let mut s = Self::default();
-
-            s.inner = lexer::State::new(source);
-
-            s.advance(sources)?;
-            s.advance(sources)?;
-
-            Ok(s)
-        }
-
-        pub fn current(&self) -> Token {
-            self.current
-        }
-
-        pub fn peeked(&self) -> Token {
-            self.peeked
-        }
-
-        pub fn current_kind(&self) -> token::Kind {
-            self.current.kind()
-        }
-
-        pub fn peeked_kind(&self) -> token::Kind {
-            self.peeked.kind()
-        }
-
-        pub fn advance(&mut self, sources: &Sources) -> Result {
-            self.current = self.peeked;
-            self.peeked = loop {
-                let token = self.token_err(sources)?;
-                if token.kind() == token::Kind::Comment(false) {
-                    continue;
-                }
-                break token;
-            };
-            Ok(())
-        }
-
-        pub fn token_err(&mut self, sources: &Sources) -> Result<Token> {
-            sources.token(&mut self.inner)
-                .map_err(|err| Error::new(error::Kind::LError(err), Token::default()))
-        }
+impl DerefMut for Ctx {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        &mut self.ctx
     }
 }
 
+#[derive(Default, Clone, Copy, Debug)]
+pub struct State {
+    current: Token,
+    peeked: Token,
+    is_type_expr: bool,
+    level: u16,
+    inner: lexer::State,
+}
 
-mod import {
-    use super::*;
+impl State {
+    pub fn new(source: Source, sources: &Ctx) -> Result<Self> {
+        let mut s = Self::default();
 
-    #[derive(Clone, Debug, Default)]
-    pub struct Import {
-        nickname: Option<Span>,
-        path: Span,
-        token: Token,
+        s.inner = lexer::State::new(source);
+
+        s.advance(sources)?;
+        s.advance(sources)?;
+
+        Ok(s)
     }
 
-    impl Import {
-        pub fn new(nickname: Option<Span>, path: Span, token: Token) -> Self {
-            Self {
-                nickname,
-                path,
-                token,
+    pub fn current(&self) -> Token {
+        self.current
+    }
+
+    pub fn peeked(&self) -> Token {
+        self.peeked
+    }
+
+    pub fn current_kind(&self) -> token::Kind {
+        self.current.kind()
+    }
+
+    pub fn peeked_kind(&self) -> token::Kind {
+        self.peeked.kind()
+    }
+
+    pub fn advance(&mut self, sources: &Ctx) -> Result {
+        self.current = self.peeked;
+        self.peeked = loop {
+            let token = self.token_err(sources)?;
+            if token.kind() == token::Kind::Comment(false) {
+                continue;
             }
-        }
+            break token;
+        };
+        Ok(())
+    }
 
-        pub fn token(&self) -> Token {
-            self.token
-        }
-
-        pub fn path(&self) -> Span {
-            self.path
-        }
-
-        pub fn nickname(&self) -> Option<Span> {
-            self.nickname
-        }
+    pub fn token_err(&mut self, sources: &Ctx) -> Result<Token> {
+        sources.token(&mut self.inner)
+            .map_err(|err| Error::new(error::Kind::LError(err), Token::default()))
     }
 }
 
-mod manifest {
-    use super::*;
+#[derive(Clone, Debug, Default)]
+pub struct Import {
+    nickname: Option<Span>,
+    path: Span,
+    token: Token,
+}
 
-    #[derive(Clone, Debug, Default)]
-    pub struct Manifest {
-        attrs: Vec<(Span, Span)>,
-        deps: Vec<Dep>,
+impl Import {
+    pub fn new(nickname: Option<Span>, path: Span, token: Token) -> Self {
+        Self {
+            nickname,
+            path,
+            token,
+        }
+    }
+
+    pub fn token(&self) -> Token {
+        self.token
+    }
+
+    pub fn path(&self) -> Span {
+        self.path
+    }
+
+    pub fn nickname(&self) -> Option<Span> {
+        self.nickname
+    }
+}
+
+#[derive(Clone, Debug, Default)]
+pub struct Manifest {
+    attrs: Vec<(ID, Span, Span)>,
+    deps: Vec<Dep>,
+}
+
+impl Manifest {
+    pub fn new(attrs: Vec<(ID, Span, Span)>, deps: Vec<Dep>) -> Self {
+        Self {
+            attrs,
+            deps,
+        }
+    }
+
+    pub fn attrs(&self) -> &[(ID, Span, Span)] {
+        self.attrs.as_slice()
+    }
+
+    pub fn find_attr(&self, id: ID) -> Option<Span> {
+        self.attrs.iter().find_map(|&(aid, _, span)| {
+            if aid == id {
+                Some(span)
+            } else {
+                None
+            }
+        })
+    }
+
+    pub fn deps(&self) -> &[Dep] {
+        self.deps.as_slice()
     }
     
-    impl Manifest {
-        pub fn new(attrs: Vec<(Span, Span)>, deps: Vec<Dep>) -> Self {
-            Self {
-                attrs,
-                deps,
-            }
-        }
-
-        pub fn attrs(&self) -> &[(Span, Span)] {
-            self.attrs.as_slice()
-        }
-        
-        pub fn clear(&mut self) {
-            self.attrs.clear();
-            self.deps.clear();
-        }
+    pub fn clear(&mut self) {
+        self.attrs.clear();
+        self.deps.clear();
     }
 }
 
-mod dep {
-    use super::*;
+#[derive(Clone, Debug, Copy, Default, RealQuickSer)]
+pub struct Dep {
+    path: Span,
+    name: Span,
+    version: Span,
+    external: bool,
+    token: Token,
+}
 
-    #[derive(Clone, Debug, Copy, Default, RealQuickSer)]
-    pub struct Dep {
-        pub path: Span,
-        pub name: Span,
-        pub version: Span,
-        pub external: bool,
-        pub token: Token,
+impl Dep {
+    pub fn new(path: Span, name: Span, version: Span, external: bool, token: Token) -> Self {
+        Self {
+            path,
+            name,
+            version,
+            external,
+            token,
+        }
     }
 
-    impl Dep {
-        pub fn new(path: Span, name: Span, version: Span, external: bool, token: Token) -> Self {
-            Self {
-                path,
-                name,
-                version,
-                external,
-                token,
-            }
-        }
+    pub fn token(&self) -> Token {
+        self.token
+    }
 
-        pub fn token(&self) -> Token {
-            self.token
-        }
+    pub fn path(&self) -> Span {
+        self.path
+    }
 
-        pub fn path(&self) -> Span {
-            self.path
-        }
+    pub fn name(&self) -> Span {
+        self.name
+    }
 
-        pub fn name(&self) -> Span {
-            self.name
-        }
+    pub fn version(&self) -> Span {
+        self.version
+    }
 
-        pub fn version(&self) -> Span {
-            self.version
-        }
-
-        pub fn external(&self) -> bool {
-            self.external
-        }
+    pub fn external(&self) -> bool {
+        self.external
     }
 }
 
@@ -1710,270 +1669,366 @@ fn precedence(op: &str) -> i64 {
     }
 }
 
-mod ast_ent {
-    use super::*;
+crate::impl_entity!(Ast);
 
-    #[derive(Debug, Clone, Copy, Default, PartialEq, RealQuickSer)]
-    pub struct AstEnt {
-        kind: Kind,
-        sons: EntityList<Ast>,
-        token: Token,
+
+#[derive(Debug, Clone, Copy, Default, PartialEq, RealQuickSer)]
+pub struct AstEnt {
+    kind: Kind,
+    sons: EntityList<Ast>,
+    token: Token,
+}
+
+impl AstEnt {
+    pub fn new(kind: Kind, sons: EntityList<Ast>, token: Token) -> Self {
+        Self { kind, sons, token }
     }
-    
-    impl AstEnt {
-        pub fn new(kind: Kind, sons: EntityList<Ast>, token: Token) -> Self {
-            Self { kind, sons, token }
-        }
-    
-        pub fn sonless(kind: Kind, token: Token) -> AstEnt {
-            Self {
-                kind,
-                sons: EntityList::new(),
-                token,
-            }
-        }
-    
-        pub fn parts(&self) -> (Kind, EntityList<Ast>, Token) {
-            (self.kind, self.sons, self.token)
-        }
-    
-        pub fn kind(&self) -> Kind {
-            self.kind
-        }
-    
-        pub fn sons(&self) -> EntityList<Ast> {
-            self.sons
-        }
-    
-        pub fn span(&self) -> Span {
-            self.token.span()
-        }
-    
-        pub fn token(&self) -> Token {
-            self.token
-        }
-    
-        pub fn len(&self) -> usize {
-            self.span().len()
-        }
-    
-        pub fn line_data(&self) -> LineData {
-            self.token.line_data()
+
+    pub fn sonless(kind: Kind, token: Token) -> AstEnt {
+        Self {
+            kind,
+            sons: EntityList::new(),
+            token,
         }
     }
-    
-    pub struct AstDisplay<'a> {
-        main_state: &'a Sources,
-        state: &'a AstData,
-        ast: Ast,
+
+    pub fn parts(&self) -> (Kind, EntityList<Ast>, Token) {
+        (self.kind, self.sons, self.token)
     }
-    
-    impl<'a> AstDisplay<'a> {
-        pub fn new(main_state: &'a Sources, state: &'a AstData, ast: Ast) -> Self {
-            Self {
-                main_state,
-                state,
-                ast,
-            }
-        }
-    
-        pub fn log(&self, ast: Ast, level: usize, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-            std::iter::repeat(())
-                .take(level)
-                .for_each(|_| f.write_char(' ').unwrap());
-            if ast == Ast::reserved_value() {
-                return writeln!(f, "None");
-            }
-            let (kind, sons, token) = self.state.ent(ast).parts();
-            write!(f, "{:?} {:?}", kind, self.main_state.display(token.span()))?;
-            if self.state.len(sons) > 0 {
-                write!(f, ":\n")?;
-                for &child in self.state.slice(sons) {
-                    self.log(child, level + 1, f)?;
-                }
-            } else {
-                write!(f, "\n")?;
-            }
-    
-            Ok(())
-        }
+
+    pub fn kind(&self) -> Kind {
+        self.kind
     }
-    
-    impl std::fmt::Display for AstDisplay<'_> {
-        fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-            self.log(self.ast, 0, f)
-        }
+
+    pub fn sons(&self) -> EntityList<Ast> {
+        self.sons
     }
-    
-    #[derive(Debug, Clone, Copy, PartialEq, RealQuickSer)]
-    pub enum Kind {
-        UseStatement(bool),
-    
-        Path,
-    
-        Comment,
-    
-        Fun,
-        Impl(Vis),
-        FunHeader(OpKind, Vis, CallConv),
-        FunArgument(bool),
-        Call(bool), // true if dot syntax is used
-        Index,
-    
-        Tuple,
-        Union(Vis),
-        Struct(Vis),
-        StructField(Vis, bool),
-    
-        Enum(Vis),
-    
-        Attribute,
-        AttributeElement,
-        AttributeAssign,
-    
-        VarStatement(Vis, bool),
-        VarAssign,
-    
-        Return,
-    
-        Binary,
-        Unary,
-        If,
-        Elif,
-        Else,
-        Dot,
-        Ref(bool), // true if mutable
-        Deref,
-        Array,
-        ExprColonExpr,
-    
-        Loop,
-        Break,
-        Continue,
-    
-        Pass,
-    
-        Group,
-    
-        Ident,
-        Instantiation,
-        Lit,
+
+    pub fn span(&self) -> Span {
+        self.token.span()
     }
-    
-    impl Default for Kind {
-        fn default() -> Self {
-            Kind::Pass
-        }
+
+    pub fn token(&self) -> Token {
+        self.token
     }
-    
-    #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-    pub enum OpKind {
-        Normal,
-        Unary,
-        Binary,
+
+    pub fn len(&self) -> usize {
+        self.span().len()
+    }
+
+    pub fn line_data(&self) -> LineData {
+        self.token.line_data()
     }
 }
 
+pub struct AstDisplay<'a> {
+    main_state: &'a Ctx,
+    state: &'a Data,
+    ast: Ast,
+}
+
+impl<'a> AstDisplay<'a> {
+    pub fn new(main_state: &'a Ctx, state: &'a Data, ast: Ast) -> Self {
+        Self {
+            main_state,
+            state,
+            ast,
+        }
+    }
+
+    pub fn log(&self, ast: Ast, level: usize, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        std::iter::repeat(())
+            .take(level)
+            .for_each(|_| f.write_char(' ').unwrap());
+        if ast == Ast::reserved_value() {
+            return writeln!(f, "None");
+        }
+        let (kind, sons, token) = self.state.ent(ast).parts();
+        write!(f, "{:?} {:?}", kind, self.main_state.display(token.span()))?;
+        if self.state.len(sons) > 0 {
+            write!(f, ":\n")?;
+            for &child in self.state.slice(sons) {
+                self.log(child, level + 1, f)?;
+            }
+        } else {
+            write!(f, "\n")?;
+        }
+
+        Ok(())
+    }
+}
+
+impl std::fmt::Display for AstDisplay<'_> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        self.log(self.ast, 0, f)
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, RealQuickSer)]
+pub enum Kind {
+    UseStatement(bool),
+
+    Path,
+
+    Comment,
+
+    Fun,
+    Impl(Vis),
+    FunHeader(OpKind, Vis, CallConv),
+    FunArgument(bool),
+    Call(bool), // true if dot syntax is used
+    Index,
+
+    Tuple,
+    Union(Vis),
+    Struct(Vis),
+    StructField(Vis, bool),
+
+    Enum(Vis),
+
+    Attribute,
+    AttributeElement,
+    AttributeAssign,
+
+    VarStatement(Vis, bool),
+    VarAssign,
+
+    Return,
+
+    Binary,
+    Unary,
+    If,
+    Elif,
+    Else,
+    Dot,
+    Ref(bool), // true if mutable
+    Deref,
+    Array,
+    ExprColonExpr,
+
+    Loop,
+    Break,
+    Continue,
+
+    Pass,
+
+    Group,
+
+    Ident,
+    Instantiation,
+    Lit,
+}
+
+impl Default for Kind {
+    fn default() -> Self {
+        Kind::Pass
+    }
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum OpKind {
+    Normal,
+    Unary,
+    Binary,
+}
+
+impl ErrorDisplayState<Error> for Ctx {
+    fn fmt(&self, e: &Error, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match e.kind() {
+            error::Kind::LError(error) => {
+                writeln!(f, "{}", ErrorDisplay::new(self.sources(), error))?;
+            },
+            error::Kind::UnexpectedToken(message) => {
+                writeln!(f, "{}", message)?;
+            },
+            error::Kind::InvalidCallConv => {
+                CallConv::error(f)?;
+            },
+        }
+
+        Ok(())
+    }
+
+    fn sources(&self) -> &lexer::Ctx {
+        self
+    }
+}
+
+#[derive(Debug)]
+pub struct Error {
+    pub kind: error::Kind,
+    pub token: Token,
+}
+
+impl Error {
+    pub fn new(kind: error::Kind, token: Token) -> Error {
+        Error { kind, token }
+    }
+
+    pub fn kind(&self) -> &error::Kind {
+        &self.kind
+    }
+}
+
+impl DisplayError for Error {
+    fn token(&self) -> Token {
+        self.token
+    }
+}
+
+impl Into<Error> for error::Kind {
+    fn into(self) -> Error {
+        Error {
+            kind: self,
+            token: Token::default(),
+        }
+    }
+}
 
 mod error {
-    use crate::lexer::{ErrorDisplayState, DisplayError, ErrorDisplay};
+    use crate::lexer;
 
-    use super::*;
-
-    impl ErrorDisplayState<Error> for Sources {
-        fn fmt(&self, e: &Error, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-            match e.kind() {
-                Kind::LError(error) => {
-                    writeln!(f, "{}", ErrorDisplay::new(self, error))?;
-                },
-                Kind::UnexpectedToken(message) => {
-                    writeln!(f, "{}", message)?;
-                },
-                Kind::InvalidCallConv => {
-                    crate::entities::call_conv_error(f)?;
-                },
-            }
-
-            Ok(())
-        }
-
-        fn sources(&self) -> &Sources {
-            self
-        }
-    }
-
-    #[derive(Debug)]
-    pub struct Error {
-        pub kind: Kind,
-        pub token: Token,
-    }
-    
-    impl Error {
-        pub fn new(kind: Kind, token: Token) -> Error {
-            Error { kind, token }
-        }
-
-        pub fn kind(&self) -> &Kind {
-            &self.kind
-        }
-    }
-
-    impl DisplayError for Error {
-        fn token(&self) -> Token {
-            self.token
-        }
-    }
-    
     #[derive(Debug)]
     pub enum Kind {
         LError(lexer::Error),
         UnexpectedToken(String),
         InvalidCallConv,
     }
+}
 
-    impl Into<Error> for Kind {
-        fn into(self) -> Error {
-            Error {
-                kind: self,
-                token: Token::default(),
-            }
+#[derive(Clone, Copy, Debug, PartialEq, Eq, RealQuickSer)]
+pub enum Vis {
+    Public,
+    None,
+    Private,
+}
+
+impl Vis {
+    pub fn join(self, other: Self) -> Self {
+        match (self, other) {
+            (_, Vis::Public) | (Vis::Public, Vis::None) => Vis::Public,
+            (_, Vis::Private) | (Vis::Private, Vis::None) => Vis::Private,
+            _ => Vis::None,
         }
     }
 }
 
+impl Default for Vis {
+    fn default() -> Self {
+        Vis::Public
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, RealQuickSer)]
+pub enum CallConv {
+    Fast,
+    Cold,
+    SystemV,
+    WindowsFastcall,
+    AppleAarch64,
+    BaldrdashSystemV,
+    BaldrdashWindows,
+    Baldrdash2020,
+    Probestack,
+    WasmtimeSystemV,
+    WasmtimeFastcall,
+    WasmtimeAppleAarch64,
+    Platform,
+}
+
+impl CallConv {
+    pub fn from_str(s: &str) -> Option<Self> {
+        Some(match s {
+            "fast" => Self::Fast,
+            "cold" => Self::Cold,
+            "system_v" => Self::SystemV,
+            "windows_fastcall" => Self::WindowsFastcall,
+            "apple_aarch64" => Self::AppleAarch64,
+            "baldrdash_system_v" => Self::BaldrdashSystemV,
+            "baldrdash_windows" => Self::BaldrdashWindows,
+            "baldrdash_2020" => Self::Baldrdash2020,
+            "probestack" => Self::Probestack,
+            "wasmtime_system_v" => Self::WasmtimeSystemV,
+            "wasmtime_fastcall" => Self::WasmtimeFastcall,
+            "wasmtime_apple_aarch64" => Self::WasmtimeAppleAarch64,
+            "platform" => Self::Platform,
+            _ => return None,
+        })
+    }
+
+    pub fn to_cr_call_conv(&self, isa: &dyn TargetIsa) -> CrCallConv {
+        match self {
+            Self::Platform => isa.default_call_conv(),
+            _ => unsafe { std::mem::transmute(*self) },
+        }
+    }
+
+    pub fn error(f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        writeln!(
+            f,
+            "Invalid call convention, list of valid call conventions:"
+        )?;
+        for cc in [
+            "platform - picks call convention based of target platform",
+            "fast",
+            "cold",
+            "system_v",
+            "windows_fastcall",
+            "apple_aarch64",
+            "baldrdash_system_v",
+            "baldrdash_windows",
+            "baldrdash_2020",
+            "probestack",
+            "wasmtime_system_v",
+            "wasmtime_fastcall",
+            "wasmtime_apple_aarch64",
+        ] {
+            writeln!(f, "  {}", cc)?;
+        }
+        Ok(())
+    }
+}
+
+impl Default for CallConv {
+    fn default() -> Self {
+        Self::Fast
+    }
+}
+
+
+
+
 pub fn test() {
-    let mut sources = Sources::default();
+    let mut ctx = Ctx::default();
     let source = SourceEnt::new(
         "text_code.mf".to_string(),
         include_str!("ast_test.mf").to_string(),
-        SystemTime::UNIX_EPOCH,
     );
 
-    let source = sources.add_source(source);
-    let mut context = Context::default();
-    let mut data = AstData::default();
-    let mut state = State::new(source, &sources).unwrap();
+    let source = ctx.add_source(source);
+    let mut data = Data::default();
+    let mut state = State::new(source, &ctx).unwrap();
 
-    let mut a_parser = Parser::new(&mut sources, &mut state, &mut data, &mut context);
+    let mut a_parser = Parser::new(&mut state, &mut data, &mut ctx);
     a_parser.parse().unwrap();
 
-    for &(global, attrs, header) in context.globals() {
+    for &(global, attrs, header) in ctx.globals() {
         println!("===global===");
-        print!("{}", AstDisplay::new(&sources, &data, header));
-        print!("{}", AstDisplay::new(&sources, &data, attrs));
-        print!("{}", AstDisplay::new(&sources, &data, global));
+        print!("{}", AstDisplay::new(&ctx, &data, header));
+        print!("{}", AstDisplay::new(&ctx, &data, attrs));
+        print!("{}", AstDisplay::new(&ctx, &data, global));
     }
 
-    for &(ty, attrs) in context.types() {
+    for &(ty, attrs) in ctx.types() {
         println!("===type===");
-        print!("{}", AstDisplay::new(&sources, &data, attrs));
-        print!("{}", AstDisplay::new(&sources, &data, ty));
+        print!("{}", AstDisplay::new(&ctx, &data, attrs));
+        print!("{}", AstDisplay::new(&ctx, &data, ty));
     }
 
-    for &(fun, attrs, header) in context.funs() {
+    for &(fun, attrs, header) in ctx.funs() {
         println!("===fun===");
-        print!("{}", AstDisplay::new(&sources, &data, header));
-        print!("{}", AstDisplay::new(&sources, &data, attrs));
-        print!("{}", AstDisplay::new(&sources, &data, fun));
+        print!("{}", AstDisplay::new(&ctx, &data, header));
+        print!("{}", AstDisplay::new(&ctx, &data, attrs));
+        print!("{}", AstDisplay::new(&ctx, &data, fun));
     }
 }

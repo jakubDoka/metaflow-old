@@ -1,179 +1,170 @@
+//! Module builds and stores the module tree and manifest tree.
+//! Dependency cycles are detected and modules are marked clean 
+//! if no changes were made to them.
+//! 
 use std::fmt::Debug;
 use std::path::{PathBuf, Path};
 use std::time::SystemTime;
 
+use __core::ops::{Deref, DerefMut};
 use cranelift::entity::*;
+use cranelift::entity::packed_option::ReservedValue;
 use quick_proc::*;
 
-
-use crate::util::pool::PoolRef;
-use crate::ast::{AstData, self};
-use crate::entities::*;
-use crate::incr::IncrementalData;
+use crate::ast::Vis;
+use crate::{ast, lexer};
 use crate::lexer::*;
 use crate::util::sdbm::ID;
 use crate::util::storage::*;
 
-pub use error:: {MTError, MTEKind};
-pub use modules::Modules;
-pub use mod_ent::ModEnt;
-pub use context::Context;
-pub use manifest_ent::ManifestEnt;
-pub use dep_header::Dep;
-pub use module_context::ModuleContext;
+type Result<T = ()> = std::result::Result<T, Error>;
 
-type Result<T = ()> = std::result::Result<T, MTError>;
-
+/// Root manifest is always the first manifest, constant removes ambiguity.
+pub const ROOT_MANIFEST: Manifest = Manifest(0);
+/// Builtin module is always the first module, constant removes ambiguity.
+pub const BUILTIN_MODULE: Mod = Mod(0);
+/// Root module is always the second module, constant removes ambiguity.
+pub const ROOT_MODULE: Mod = Mod(1);
+/// Environment variable under which compiler searches already downloaded dependencies.
 pub const CACHE_VAR: &str = "METAFLOW_CACHE";
+/// Mod salt is a random number that make module distinct from other 
+/// items even if the source of its hash is same.
 pub const MOD_SALT: ID = ID(0x64739273646);
+/// Source file extension.
 pub const SOURCE_EXT: &str = "mf";
+/// Manifest file extension.
 pub const MANIFEST_EXT: &str = "mfm";
 
-pub struct MTParser<'a> {
-    pub modules: &'a mut Modules,
-    pub context: &'a mut Context,
+/// Ctx embeds ast context and module tree.
+#[derive(Debug, Clone, Default)]
+pub struct Ctx {
+    ctx: ast::Ctx,
+    seen_manifests: EntitySet<Manifest>,
+    seen_modules: EntitySet<Mod>,
+    clean_modules: EntitySet<Mod>,
+    manifests: Table<Manifest, ManifestEnt>,
+    modules: Table<Mod, ModEnt>,
+    module_ctxs: SecondaryMap<Mod, ModCtx>,
 }
 
-impl<'a> MTParser<'a> {
-    pub fn new(modules: &'a mut Modules, context: &'a mut Context) -> Self {
-        Self { modules, context }
-    }
-
-    pub fn parse(&mut self, root: &str) -> Result<Vec<Mod>> {
-        self.clean_incremental_data();
-
+impl Ctx {
+    /// Loads all modules and manifests into tree. It returns the order 
+    /// in which modules should be processed.
+    pub fn compute_module_tree(&mut self, root: &str) -> Result<Vec<Mod>> {
+        if self.modules.len() == 0 {
+            self.load_builtin_module();
+        }
+        
         let mut path_buffer = PathBuf::new();
 
         self.load_manifests(root, &mut path_buffer)?;
 
-        let root_manifest_id = Manifest::new(0);
-
-        let in_code_path = self.manifest(root_manifest_id).name();
+        let in_code_path = self.manifests[ROOT_MANIFEST].name;
         let mut frontier = vec![(
             in_code_path, 
-            Token::default(), 
-            root_manifest_id, 
-            Option::<(Mod, Option<Span>)>::None
+            Token::default(),
+            Option::<(Option<Span>, Mod)>::None, 
+            ROOT_MANIFEST,
         )];
+        
+        // cleared each loop
+        let mut imports = self.temp_vec(); 
+        // dummy data, parser does not use it but
+        // references cannot be nil
+        let mut ast_data = ast::Data::default(); 
 
-        let module = Mod::new(1); // cause builtin module is 0
-
-        let mut imports = self.context.temp_vec();
-        let mut ast_data = AstData::default();
-
-        while let Some((in_code_path, token, manifest_id, destination)) = frontier.pop() {
+        // loop eliminates recursion
+        while let Some((in_code_path, token, from, manifest_id)) = frontier.pop() {
             let module = self.load_module(in_code_path, token, manifest_id, &mut path_buffer)?;
+            let ModCtx { name, source, manifest, .. } = self.module_ctxs[module];
+            let module_ent = std::mem::take(&mut self.modules[module]);
+            if let Some((nick, parent_module)) = from {
+                let nick = nick.unwrap_or(name);
+                let nick = self.hash_span(nick);
 
-            let module_ent = self.modules.take_module(module);
-
-            if let Some((dest, nickname)) = destination {
-                module_ent.add_use(dest);
-                let nick = nickname.unwrap_or(module_ent.name());
-                let hash = self.modules.hash_span(nick);
-                self.module_mut(dest).add_dep(Dep::new(
-                    MOD_SALT.add(hash),
-                    in_code_path,
-                    token,
-                    module,
-                ));
+                self.module_ctxs[module].used.push(parent_module);
+                self.module_ctxs[parent_module].deps.push((nick, module));
             }
 
-            if self.context.is_module_complete(module) {
-                self.modules.put_module(module, module_ent);
+
+            if self.seen_modules.contains(module) {
+                self.modules[module] = module_ent;
                 continue;
             }
 
-            if self.context.is_module_clean(module) {
-                // we still want to walk the tree to see some deeper changed files
-                let len = module_ent.deps().len();
-                for i in 0..len {
-                    let dep = module_ent.deps()[i];
-                    if dep.module() == BUILTIN_MODULE {
-                        continue;
-                    }
-                    let manifest_id = self.module(dep.module()).manifest();
-                    frontier.push((dep.in_code_path(), dep.hint(), manifest_id, None));
-                    module_ent.add_use(dep.module());
-                }
-                continue;
-            }
-
-            let mut ast_state = ast::State::new(module_ent.source(), self.modules.sources())
+            let mut ast_state = ast::State::new(source, &self.ctx)
                 .map_err(Into::into)?;
             
-
-            let mut parser = ast::Parser::new(self.modules.sources(), &mut ast_state, &mut ast_data, self.context.ast_mut());
+            let mut parser = ast::Parser::new(&mut ast_state, &mut ast_data, &mut self.ctx);
             parser.parse_imports(&mut imports).map_err(Into::into)?;
 
-            self.context.save_ast_state(module, ast_state);
-
             for import in imports.drain(..) {
-                let path = self.modules.display(import.path());
+                let path = self.display(import.path());
                 let head = Path::new(path)
                     .components()
                     .next()
-                    .unwrap()
+                    .ok_or_else(|| Error::new(error::Kind::MissingPathStem, import.token()))?
                     .as_os_str()
                     .to_str()
                     .unwrap();
                 let id = ID::new(head);
-                let manifest = &self.modules.manifest(module_ent.manifest());
+                let manifest_ent = &self.manifests[manifest];
                 // here we see that first segment of path sets manifest
-                let manifest = if id == self.modules.hash_span(manifest.name()) {
-                    module_ent.manifest()
-                } else {
+                let manifest = if id == self.hash_span(manifest_ent.name) {
                     manifest
-                        .deps()
-                        .iter()
-                        .find(|dep| dep.0.nick() == id)
-                        .map(|dep| dep.1)
-                        .ok_or_else(|| MTError::new(MTEKind::ImportNotFound, import.token()))?
+                } else {
+                    manifest_ent
+                        .find_dep(id)
+                        .ok_or_else(|| Error::new(error::Kind::ImportNotFound, import.token()))?
                         .clone()
                 };
 
                 frontier.push((
                     import.path(),
                     import.token(),
+                    Some((import.nickname(), module)),
                     manifest,
-                    Some((module, import.nickname())),
                 ));
             }
 
-            module_ent.add_dep(Dep::new(
+            self.module_ctxs[module].deps.push((
                 MOD_SALT.add(ID::new("builtin")),
-                Default::default(),
-                Default::default(),
                 BUILTIN_MODULE,
             ));
+            self.module_ctxs[module].ast_state = ast_state;
 
-            self.context.is_module_complete(module);
-            self.modules.put_module(module, module_ent);
+            self.seen_modules.insert(module);
+            self.modules[module] = module_ent;
         }
 
-        let order = self.modules.create_order(module)
-            .map_err(|err| MTError::new(
-                MTEKind::CyclicDependency(err),
+        let order = self.create_order(ROOT_MODULE)
+            .map_err(|err| Error::new(
+                error::Kind::CyclicDependency(err),
                 Token::default(),
             ))?;
 
         Ok(order)
     }
 
-    fn load_module(
+    /// Loads the module and returns reference. `in_code_path` should point to 
+    /// content of string defining import in 'use' statement. `token` is used for 
+    /// error display. `manifest` is the is of manifest of project that contains 
+    /// it. `path_buffer` should be empty and will remain empty after call.
+    pub fn load_module(
         &mut self,
         in_code_path: Span,
         token: Token,
-        manifest_id: Manifest,
+        manifest: Manifest,
         path_buffer: &mut PathBuf,
     ) -> Result<Mod> {
-        let manifest = self.manifest(manifest_id);
+        let manifest_ent = &self.manifests[manifest];
         // in case this is dependency or command line argument is not '.'
-        path_buffer.push(Path::new(manifest.base_path()));
-        path_buffer.push(Path::new(self.modules.display(manifest.root_path())));
-        let manifest_name = self.modules.display(manifest.name());
+        path_buffer.push(Path::new(self.display(manifest_ent.base_path)));
+        path_buffer.push(Path::new(self.display(manifest_ent.root_path)));
+        let manifest_name = self.display(manifest_ent.name);
         path_buffer.push(Path::new(manifest_name));
 
-        let root = self.modules.display(in_code_path);
+        let root = self.display(in_code_path);
 
         let module_path = Path::new(root);
 
@@ -202,202 +193,168 @@ impl<'a> MTParser<'a> {
         let id = MOD_SALT.add(ID::new(path_buffer.to_str().unwrap()));
 
         let modified = std::fs::metadata(&path_buffer)
-            .map_err(|err| MTError::new(MTEKind::FileReadError(path_buffer.clone(), err), token))?
+            .map_err(|err| Error::new(error::Kind::FileReadError(path_buffer.clone(), err), token))?
             .modified()
             .ok();
 
-        let mut content = std::fs::read_to_string(&path_buffer)
-            .map_err(|err| MTError::new(MTEKind::FileReadError(path_buffer.clone(), err), token))?;
-
-        // stop if module is clean
-        let saved_module = self.modules.module_index(id); 
-        if let Some(module) = saved_module {
-            match self.modules.is_unchanged(modified, module, content) {
-                Some(c) => content = c,
-                None => {
-                    path_buffer.clear();
-                    return Ok(module);
-                }
-            }
-        }
-
-        let source = SourceEnt {
-            name: path_buffer.to_str().unwrap().to_string(),
+        let content = std::fs::read_to_string(&path_buffer)
+            .map_err(|err| Error::new(error::Kind::FileReadError(path_buffer.clone(), err), token))?;
+        let source = SourceEnt::new(
+            path_buffer.to_str().unwrap().to_string(),
             content,
-            modified: modified.unwrap_or(SystemTime::now()),
-        };
-
-        // we still reuse old allocations
-        let module = if let Some(module) = saved_module {
-            let mut module_ent = self.module_mut(module);
-            self.modules.put_source(module_ent.source(), source);
-            module_ent.clear_deps();
-            self.context.mark_module_dirty(module);
-            module
-        } else {
-            let mut module = ModEnt {
-                id,
-                name,
-                manifest: manifest_id,
-
-                ..Default::default()
-            };
-            module.source = self.sources.push(source);
-            self.a_state_for(module.source, &mut module.ast_data);
-            let (shadowed, m) = self.modules.insert(id, module);
-            debug_assert!(shadowed.is_none());
-            m
-        };
+        );
+        let source = self.add_source(source);
 
         path_buffer.clear();
+
+        // stop if module is clean
+        let saved_module = self.modules.index(id).cloned(); 
+        let module = if let Some(module) = saved_module {
+            let module_ent = &mut self.modules[module];
+            module_ent.id = id;
+            if Some(module_ent.modified) != modified {
+                // if we cant get the modification time juts use unique 
+                // time so module gets always refreshed
+                module_ent.modified = modified.unwrap_or(SystemTime::now());
+                self.clean_modules.remove(module);
+            }
+
+            module
+        } else {
+            let module = ModEnt {
+                id,
+                ..Default::default()
+            };
+            let (shadowed, module) = self.modules.insert(id, module);
+            debug_assert!(shadowed.is_none());        
+            module
+        };
+        
+        self.module_ctxs[module] = ModCtx {
+            name,
+            source,
+            manifest,
+
+            ..Default::default()
+        };
 
         Ok(module)
     }
 
-    fn load_manifests(&mut self, base_path: &str, path_buffer: &mut PathBuf) -> Result {
+    /// Loads and builds manifest tree. `base_path` should point to directory with manifest.
+    /// `path_buffer` should be empty and will remain empty after call.
+    pub fn load_manifests(&mut self, base_path: &str, path_buffer: &mut PathBuf) -> Result {
         let cache_root = std::env::var(CACHE_VAR)
-            .map_err(|_| MTError::new(MTEKind::MissingCache, Token::default()))?;
+            .map_err(|_| Error::new(error::Kind::MissingCache, Token::default()))?;
 
         let id = ID::new(base_path);
 
-        let manifest_id = self.manifests.index_or_insert(
-            id,
-            ManifestEnt {
+        let manifest_id = if let Some(&manifest) = self.manifests.index(id) {
+            manifest
+        } else {
+            self.manifests.insert(id, ManifestEnt {
                 id,
-                base_path: base_path.to_string(),
+                base_path: self.ctx.builtin_span(base_path),
                 ..ManifestEnt::default()
-            },
-        );
+            }).1
+        };
 
-        let mut frontier = vec![(manifest_id, Token::default(), Option::<Dep>::None)];
-
-        while let Some((manifest_id, token, import)) = frontier.pop() {
-            if self.context.seen_manifests.contains(manifest_id) {
+        let mut frontier = vec![(manifest_id, ast::Dep::default())];
+        let mut data = ast::Data::default();
+        while let Some((manifest_id, import)) = frontier.pop() {
+            if self.seen_manifests.contains(manifest_id) {
                 continue;
             }
 
+            let manifest_base_path = self.display(self.manifests[manifest_id].base_path);
             path_buffer.clear();
-            path_buffer.push(Path::new(self.manifests[manifest_id].base_path.as_str()));
+            path_buffer.push(Path::new(manifest_base_path));
 
-            if let Some(import) = import {
-                if !path_buffer.exists() {
-                    if import.external {
-                        self.download(import, manifest_id)?;
-                    } else {
-                        return Err(MTError::new(
-                            MTEKind::MissingDependency(path_buffer.clone()),
-                            token,
-                        ));
-                    }
+            if !path_buffer.exists() {
+                if import.external() {
+                    self.download(import, manifest_base_path)?;
+                } else {
+                    return Err(Error::new(
+                        error::Kind::MissingDependency(path_buffer.clone()),
+                        import.token(),
+                    ));
                 }
             }
 
             path_buffer.push(Path::new("project"));
             path_buffer.set_extension(MANIFEST_EXT);
 
-            let modified = std::fs::metadata(&path_buffer)
-                .map_err(|err| {
-                    MTError::new(MTEKind::FileReadError(path_buffer.clone(), err), token)
-                })?
-                .modified()
-                .ok();
-
-            let id = ID::new(path_buffer.to_str().unwrap());
-
-            let last_source = if let Some(&manifest) = self.manifests.index(id) {
-                let source = self.manifests[manifest].source;
-                if modified == Some(self.sources[source].modified) {
-                    frontier.extend(
-                        self.manifests[manifest]
-                            .deps
-                            .iter()
-                            .map(|(dep, manifest)| (*manifest, dep.token, Some(dep.clone()))),
-                    );
-                    continue;
-                }
-                Some(source)
-            } else {
-                None
-            };
-
             let content = std::fs::read_to_string(&path_buffer).map_err(|err| {
-                MTError::new(MTEKind::ManifestReadError(path_buffer.clone(), err), token)
+                Error::new(error::Kind::ManifestReadError(path_buffer.clone(), err), import.token())
             })?;
 
-            let source = SourceEnt {
-                name: path_buffer.to_str().unwrap().to_string(),
+            let source = SourceEnt::new(
+                path_buffer.to_str().unwrap().to_string(),
                 content,
-                modified: modified.unwrap_or(SystemTime::now()),
-            };
+            );
 
-            let source = if let Some(last_source) = last_source {
-                self.sources[last_source] = source;
-                last_source
-            } else {
-                self.sources.push(source)
-            };
+            let source = self.add_source(source);
             self.manifests[manifest_id].source = source;
 
-            let mut state = ast::State::default();
-            self.a_state_for(source, &mut state);
-            let manifest = AParser::new(self.modules, &mut state, self.context)
+            let mut state = ast::State::new(source, &self.ctx).map_err(Into::into)?;
+            let manifest = ast::Parser::new(&mut state, &mut data, self)
                 .parse_manifest()
                 .map_err(Into::into)?;
 
-            let root_file_span = self
-                .modules
-                .attr_of(&manifest, "root")
+            let root_file_span = manifest.find_attr(ID::new("root"))
                 .unwrap_or_else(|| self.builtin_span("main.mf"));
-            let root_file = self.display(&root_file_span);
+            let root_file = self.display(root_file_span);
 
             let parent_len = Path::new(root_file).parent().unwrap().as_os_str().len();
 
             let name_len = Path::new(root_file)
                 .file_stem()
-                .ok_or_else(|| MTError::new(MTEKind::MissingPathStem, token))?
+                .ok_or_else(|| Error::new(error::Kind::MissingPathStem, import.token()))?
                 .len();
             let whole_len = Path::new(root_file).file_name().unwrap().len();
 
             let len = root_file_span.len();
-            let name =
-                self.slice_span(&root_file_span, len - whole_len, len - whole_len + name_len);
-            let root_path = self.slice_span(&root_file_span, 0, parent_len);
+            let name = root_file_span.slice(len - whole_len..len - whole_len + name_len);
+            let root_path = root_file_span.slice(0..parent_len);
 
             let manifest_ent = &mut self.manifests[manifest_id];
             manifest_ent.name = name;
             manifest_ent.root_path = root_path;
 
-            for dependency in &manifest.deps {
+            for dep in manifest.deps() {
                 path_buffer.clear();
-                let dependency_path = self.display(&dependency.path);
-                if dependency.external {
+                let dep_path = self.display(dep.path());
+                if dep.external() {
                     path_buffer.push(Path::new(&cache_root));
-                    path_buffer.push(Path::new(dependency_path));
-                    path_buffer.push(Path::new(self.display(&dependency.version)));
+                    path_buffer.push(Path::new(dep_path));
+                    path_buffer.push(Path::new(self.display(dep.version())));
                 } else {
                     path_buffer.push(Path::new(base_path));
-                    path_buffer.push(Path::new(dependency_path));
+                    path_buffer.push(Path::new(dep_path));
                 }
 
                 let id = ID::new(path_buffer.to_str().unwrap());
 
-                let manifest = self.manifests.index_or_insert(
-                    id,
-                    ManifestEnt {
-                        id,
-                        base_path: path_buffer.to_str().unwrap().to_string(),
+                let manifest = if let Some(&manifest) = self.manifests.index(id) {
+                    manifest
+                } else {
+                    self.manifests.insert(id, ManifestEnt {
+                        base_path: self.ctx.builtin_span(
+                            path_buffer.to_str().unwrap()
+                        ),
                         ..ManifestEnt::default()
-                    },
-                );
+                    }).1
+                };
 
+                let id = self.hash_span(dep.name());
                 self.manifests[manifest_id]
                     .deps
-                    .push((dependency.clone(), manifest));
+                    .push((id, manifest));
 
-                frontier.push((manifest, dependency.token, Some(dependency.clone())));
+                frontier.push((manifest, dep.clone()));
             }
 
-            self.context.seen_manifests.insert(manifest_id);
+            self.seen_manifests.insert(manifest_id);
         }
 
         let mut stack = vec![];
@@ -407,8 +364,8 @@ impl<'a> MTParser<'a> {
             self.manifests
                 .detect_cycles(Manifest::new(0), &mut stack, &mut map, None)
         {
-            return Err(MTError::new(
-                MTEKind::CyclicManifests(cycle),
+            return Err(Error::new(
+                error::Kind::CyclicManifests(cycle),
                 Token::default(),
             ));
         }
@@ -418,12 +375,12 @@ impl<'a> MTParser<'a> {
         Ok(())
     }
 
-    pub fn download(&mut self, dep: Dep, manifest: Manifest) -> Result {
-        let base_path = &self.manifests[manifest].base_path;
+    /// Downloads the dependency pointed by `dep`. `destination` is 
+    /// path to directory where files should be located.
+    pub fn download(&self, dep: ast::Dep, destination: &str) -> Result {
+        std::fs::create_dir_all(destination).unwrap();
 
-        std::fs::create_dir_all(base_path).unwrap();
-
-        let link = format!("https://{}", self.display(&dep.path));
+        let link = format!("https://{}", self.display(dep.path()));
 
         let code = std::process::Command::new("git")
             .args(&[
@@ -431,54 +388,343 @@ impl<'a> MTParser<'a> {
                 "--depth",
                 "1",
                 "--branch",
-                self.display(&dep.version),
+                self.display(dep.version()),
                 &link,
-                base_path,
+                destination,
             ])
             .status()
-            .map_err(|err| MTError::new(MTEKind::DownloadError(err), dep.token))?;
+            .map_err(|err| Error::new(error::Kind::DownloadError(err), dep.token()))?;
 
         if !code.success() {
-            return Err(MTError::new(MTEKind::DownloadFailed, dep.token));
+            return Err(Error::new(error::Kind::DownloadFailed, dep.token()));
         }
 
         Ok(())
     }
 
-    fn clean_incremental_data(&mut self) {
-        for (_, module) in self.modules.modules.iter_mut() {
-            module.dependant.take().clear(module.slices.transmute_mut());
+    /// Returns whether accessing item inside `target` with `vis` from `accessor`  
+    pub fn can_access(&self, accessor: Mod, target: Mod, vis: Vis) -> bool {
+        matches!(
+            (
+                accessor == target,
+                self.module_ctxs[accessor].manifest == self.module_ctxs[target].manifest,
+                vis
+            ),
+            (true, ..) | (_, true, Vis::None | Vis::Public) | (.., Vis::Public)
+        )
+    }
+
+    /// Computes hash of span content.
+    pub fn hash_span(&self, span: Span) -> ID {
+        ID::new(self.display(span))
+    }
+
+    /// Computes hash fo token content.
+    pub fn hash_token(&self, token: Token) -> ID {
+        ID::new(self.display_token(token))
+    }
+
+    /// Creates a module order fro given root. It returns the sequence 
+    /// of modules creating cycle as error.
+    pub fn create_order(&self, root: Mod) -> std::result::Result<Vec<Mod>, Vec<Mod>> {
+        let mut ordering = Vec::with_capacity(self.modules.len());
+        let mut stack = Vec::with_capacity(self.modules.len());
+        let mut lookup = vec![(false, false); self.modules.len()];
+        
+        if let Some(cycle) = self.detect_cycles(root, &mut stack, &mut lookup, Some(&mut ordering)) {
+            return Err(cycle);
         }
+
+        return Ok(ordering);
     }
 
-    fn manifest(&self, module: Manifest) -> &ManifestEnt {
-        &self.modules.manifests[module]
+    /// Collects scopes of a module.
+    pub fn collect_scopes(&self, module: Mod, buffer: &mut Vec<Mod>) {
+        let module_ent = &self.module_ctxs[module];
+        buffer.push(module);
+        buffer.extend(
+            module_ent
+                .deps
+                .iter()
+                .map(|dep| dep.1),
+        );
     }
 
-    fn manifest_mut(&mut self, module: Manifest) -> &mut ManifestEnt {
-        &mut self.modules.manifests[module]
+    /// Finds dependency of module by token containing name.
+    pub fn find_dep(&self, inside: Mod, name: Token) -> Option<Mod> {
+        let nick = MOD_SALT.add(self.hash_token(name));
+        self.module_ctxs[inside].find_dep(nick)
     }
 
-
-    fn module(&self, module: Mod) -> &ModEnt {
-        &self.modules.modules[module]
-    }
-
-    fn module_mut(&self, module: Mod) -> &ModEnt {
-        &self.modules.modules[module]
+    /// Loads a builtin module. Source code is included with macro.
+    pub fn load_builtin_module(&mut self) {
+        let content = include_str!("builtin.mf").to_string();
+        let name = "builtin.mf".to_string();
+        let source = SourceEnt::new(name, content);
+        let source = self.add_source(source);
+        let module = ModEnt {
+            id: ID::new("builtin"),
+            modified: SystemTime::now(),
+            ast: ast::Data::default(),
+        };
+        let (shadow, module) = self.modules.insert(module.id, module);
+        debug_assert!(shadow.is_none());
+        self.module_ctxs[module].ast_state = ast::State::new(source, &self.ctx).unwrap();
     }
 }
 
+type ManifestDep = (ID, Manifest);
 
+///
+#[derive(Debug, Clone, Default, QuickSer)]
+pub struct ManifestEnt {
+    id: ID,
+    base_path: Span,
+    name: Span,
+    root_path: Span,
+    deps: Vec<ManifestDep>,
+    source: Source,
+}
 
+impl ManifestEnt {
+    /// Finds dependant manifest by hash of its alias.
+    pub fn find_dep(&self, id: ID) -> Option<Manifest> {
+        self.deps.iter().find_map(|dep| if dep.0 == id {
+            Some(dep.1.clone())
+        } else {
+            None
+        })
+    }
+}
+
+impl TableId for ManifestEnt {
+    fn id(&self) -> ID {
+        self.id
+    }
+}
+
+impl TreeStorage<Manifest> for Table<Manifest, ManifestEnt> {
+    fn node_dep(&self, id: Manifest, idx: usize) -> Manifest {
+        self[id].deps[idx].1
+    }
+
+    fn node_len(&self, id: Manifest) -> usize {
+        self[id].deps.len()
+    }
+
+    fn len(&self) -> usize {
+        Table::len(self)
+    }
+}
+
+impl ErrorDisplayState<Error> for Ctx {
+    fn fmt(&self, e: &Error, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match e.kind() {
+            error::Kind::InvalidPathEncoding => {
+                writeln!(f, "invalid path encoding")?;
+            },
+            error::Kind::MissingPathStem => {
+                writeln!(f, "root attribute of the manifest if missing path stem (simply is not pointing to file)")?;
+            },
+            error::Kind::MissingCache => {
+                writeln!(f, "missing dependency cache, the environment variable 'METAFLOW_CACHE' has to be set")?;
+            },
+            error::Kind::ImportNotFound => {
+                writeln!(
+                    f,
+                    "root of module import not found inside manifest, nor it is root of current project"
+                )?;
+            },
+            error::Kind::FileReadError(path, error) => {
+                writeln!(f, "error reading module '{}', this may be due to invalid project structure, original error: {}", path.as_os_str().to_str().unwrap(), error)?;
+            },
+            error::Kind::ManifestReadError(path, error) => {
+                writeln!(
+                    f,
+                    "error reading manifest '{}', original error: {}",
+                    path.as_os_str().to_str().unwrap(),
+                    error
+                )?;
+            },
+            error::Kind::AError(error) => {
+                writeln!(f, "{}", ErrorDisplay::new(self.deref(), error))?;
+            },
+            error::Kind::CyclicDependency(cycle) => {
+                writeln!(f, "cyclic module dependency detected:")?;
+                for &id in cycle.iter() {
+                    writeln!(f, "  {}", self.source(self.module_ctxs[id].source).name())?;
+                }
+            },
+            error::Kind::CyclicManifests(cycle) => {
+                writeln!(f, "cyclic package dependency detected:")?;
+                for &id in cycle.iter() {
+                    writeln!(f, "  {}", self.display(self.manifests[id].name))?;
+                }
+            },
+            error::Kind::MissingDependency(path) => {
+                writeln!(
+                    f,
+                    "missing dependency '{}'",
+                    path.as_os_str().to_str().unwrap()
+                )?;
+            },
+            error::Kind::DownloadError(error) => {
+                writeln!(f, "error downloading dependency, original error: {}", error)?;
+            },
+            error::Kind::DownloadFailed => {
+                writeln!(f, "failed to download dependency")?;
+            },
+        }
+
+        Ok(())
+    }
+
+    fn sources(&self) -> &lexer::Ctx {
+        self.ctx.sources()
+    }
+}
+
+impl Deref for Ctx {
+    type Target = ast::Ctx;
+
+    fn deref(&self) -> &Self::Target {
+        &self.ctx
+    }
+}
+
+impl DerefMut for Ctx {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        &mut self.ctx
+    }
+}
+
+/// Struct contains data that should not be serialized with Module.
+#[derive(Debug, Clone, Default)]
+pub struct ModCtx {
+    name: Span,
+    source: Source,
+    manifest: Manifest,
+    
+    ast_state: ast::State,
+    deps: Vec<(ID, Mod)>,
+    used: Vec<Mod>,
+}
+
+impl ModCtx {
+    /// Finds module dependency by hash of its alias.
+    pub fn find_dep(&self, id: ID) -> Option<Mod> {
+        self.deps.iter().find_map(|dep| if dep.0 == id {
+            Some(dep.1)
+        } else {
+            None
+        })
+    }
+}
+
+impl TreeStorage<Mod> for Ctx {
+    fn node_dep(&self, id: Mod, idx: usize) -> Mod {
+        self.module_ctxs[id].deps[idx].1
+    }
+
+    fn node_len(&self, id: Mod) -> usize {
+        self.module_ctxs[id].deps.len()
+    }
+
+    fn len(&self) -> usize {
+        self.modules.len()
+    }
+}
+
+crate::impl_entity!(Mod, Manifest);
+
+///
+#[derive(Debug, Clone, QuickDefault, QuickSer)]
+pub struct ModEnt {
+    id: ID,
+    #[default(SystemTime::UNIX_EPOCH)]
+    modified: SystemTime,
+    ast: ast::Data,
+}
+
+impl TableId for ModEnt {
+    fn id(&self) -> ID {
+        self.id
+    }
+}
+
+/// Error create upon module building failure.
+#[derive(Debug)]
+pub struct Error {
+    kind: error::Kind,
+    token: Token,
+}
+
+impl Error {
+    /// Creates new error.
+    pub fn new(kind: error::Kind, token: Token) -> Self {
+        Self { kind, token }
+    }
+
+    /// Returns error kind.
+    pub fn kind(&self) -> &error::Kind {
+        &self.kind
+    }
+}
+
+impl Into<Error> for ast::Error {
+    fn into(self) -> Error {
+        Error {
+            kind: error::Kind::AError(self),
+            token: Token::default(),
+        }
+    }
+}
+
+impl DisplayError for Error {
+    fn token(&self) -> Token {
+        self.token
+    }
+}
+
+mod error {
+    use super::*;
+    
+    #[derive(Debug)]
+    pub enum Kind {
+        InvalidPathEncoding,
+        MissingPathStem,
+        MissingCache,
+        ImportNotFound,
+        FileReadError(PathBuf, std::io::Error),
+        ManifestReadError(PathBuf, std::io::Error),
+        AError(ast::Error),
+        CyclicDependency(Vec<Mod>),
+        CyclicManifests(Vec<Manifest>),
+        MissingDependency(PathBuf),
+        DownloadError(std::io::Error),
+        DownloadFailed,
+    }
+}
+
+/// Tree storage generalizes tree cycle detection.
 pub trait TreeStorage<I: EntityRef + 'static + Debug>
 where
     Self: Sized,
 {
+    /// Returns dependency of node at given index.
     fn node_dep(&self, id: I, idx: usize) -> I;
+
+    /// Returns number of dependencies of node.
     fn node_len(&self, id: I) -> usize;
+
+    /// Returns number of nodes.
     fn len(&self) -> usize;
 
+    /// Returns none if no cycles found, otherwise returns sequence 
+    /// of nodes creating the cycle. `stack` should be empty, lookup 
+    /// has to be as long as the number of nodes. Optionally, ordering 
+    /// can be passed to create order in which no children is preceding 
+    /// its parents.
     fn detect_cycles(
         &self,
         root: I,
@@ -524,545 +770,13 @@ where
     }
 }
 
-mod manifest_ent {
-    use crate::util::storage::TableId;
-
-    use super::*;
-
-    #[derive(Debug, Clone, Default, QuickSer)]
-    pub struct ManifestEnt {
-        id: ID,
-        base_path: String,
-        name: Span,
-        root_path: Span,
-        deps: Vec<(Dep, Manifest)>,
-        source: Source,
-    }
-
-    impl ManifestEnt {
-        pub fn new(
-            id: ID,
-            base_path: &str,
-            name: Span,
-            root_path: Span,
-            deps: Vec<(Dep, Manifest)>,
-            source: Source,
-        ) -> Self {
-            Self {
-                id,
-                base_path: base_path.to_string(),
-                name,
-                root_path,
-                deps,
-                source,
-            }
-        }
-        
-        pub fn base_path(&self) -> &str {
-            &self.base_path
-        }
-
-        pub fn name(&self) -> Span {
-            self.name
-        }
-
-        pub fn root_path(&self) -> Span {
-            self.root_path
-        }
-
-        pub fn deps(&self) -> &[(Dep, Manifest)] {
-            &self.deps
-        }
-
-        pub fn source(&self) -> Source {
-            self.source
-        }
-    }
-
-    impl TableId for ManifestEnt {
-        fn id(&self) -> ID {
-            self.id
-        }
-    }
-
-    impl TreeStorage<Manifest> for Table<Manifest, ManifestEnt> {
-        fn node_dep(&self, id: Manifest, idx: usize) -> Manifest {
-            self[id].deps[idx].1
-        }
-    
-        fn node_len(&self, id: Manifest) -> usize {
-            self[id].deps.len()
-        }
-    
-        fn len(&self) -> usize {
-            Table::len(self)
-        }
-    }
-}
-
-
-mod modules {
-    use super::*;
-
-    #[derive(Debug, Clone, QuickSer)]
-    pub struct Modules {
-        pub sources: Sources,
-        pub manifests: Table<Manifest, ManifestEnt>,
-        pub modules: Table<Mod, ModEnt>,
-    }
-    
-    
-    impl Modules {
-        pub fn collect_scopes(&self, module: Mod, buffer: &mut Vec<(Mod, ID)>) {
-            let module_ent = &self.modules[module];
-            buffer.push((module, module_ent.id()));
-            buffer.extend(
-                module_ent
-                    .deps()
-                    .iter()
-                    .map(|dep| (dep.module(), self.modules[dep.module()].id())),
-            );
-        }
-    
-        pub fn find_dep(&self, inside: Mod, name: Token) -> Option<Mod> {
-            let nick = MOD_SALT.add(self.hash_token(name));
-            self.modules[inside]
-                .deps()
-                .iter()
-                .find(|dep| dep.nick() == nick)
-                .map(|dep| dep.module())
-        }
-    
-        pub fn can_access(&self, from: Mod, to: Mod, vis: Vis) -> bool {
-            matches!(
-                (
-                    from == to,
-                    self.modules[from].manifest() == self.modules[to].manifest(),
-                    vis
-                ),
-                (true, ..) | (_, true, Vis::None | Vis::Public) | (.., Vis::Public)
-            )
-        }
-
-        pub fn module(&self, module: Mod) -> &ModEnt {
-            &self.modules[module]
-        }
-
-        pub fn module_mut(&mut self, module: Mod) -> &mut ModEnt {
-            &mut self.modules[module]
-        }
-
-        pub fn manifest(&self, module: Manifest) -> &ManifestEnt {
-            &self.manifests[module]
-        }
-    
-        pub fn hash_span(&self, span: Span) -> ID {
-            ID::new(self.sources.display(span))
-        }
-
-        pub fn hash_token(&self, token: Token) -> ID {
-            ID::new(self.sources.display_token(token))
-        }
-
-        pub fn take_module(&mut self, module: Mod) -> ModEnt {
-            std::mem::take(&mut self.modules[module])
-        }
-
-        pub fn put_module(&mut self, module: Mod, module_ent: ModEnt) {
-            self.modules[module] = module_ent;
-        }
-
-        pub(crate) fn display(&self, path: Span) -> &str {
-            self.sources.display(path)
-        }
-
-        pub fn detect_cycles(
-            &self, 
-            root: Mod, 
-            stack: &mut Vec<(Mod, usize)>, 
-            lookup: &mut [(bool, bool)], 
-            ordering: Option<&mut Vec<Mod>>
-        ) -> Option<Vec<Mod>> {
-            self.modules.detect_cycles(root, stack, lookup, ordering)
-        }
-
-        pub fn create_order(&self, root: Mod) -> std::result::Result<Vec<Mod>, Vec<Mod>> {
-            let mut ordering = Vec::with_capacity(self.modules.len());
-            let mut stack = Vec::with_capacity(self.modules.len());
-            let mut lookup = vec![(false, false); self.modules.len()];
-            
-            if let Some(cycle) = self.modules.detect_cycles(root, &mut stack, &mut lookup, Some(&mut ordering)) {
-                return Err(cycle);
-            }
-
-            return Ok(ordering);
-        }
-
-        pub fn sources(&self) -> &Sources {
-            &self.sources
-        }
-
-        pub fn module_index(&self, id: ID) -> Option<Mod> {
-            self.modules.index(id).cloned()
-        }
-
-        pub fn is_unchanged(&self, modified: Option<SystemTime>, module: Mod, content: String) -> Option<String> {
-            let source = self.modules[module].source();
-            let source_ent = self.sources.source_mut(source);
-            if modified == Some(source_ent.modified()) {
-                source_ent.reload(content);
-                None
-            } else {
-                Some(content)
-            }
-        }
-
-        pub fn put_source(&mut self, source: Source, ent: SourceEnt) {
-            self.sources.put_source(source, ent); 
-        }
-    }
-
-    impl Default for Modules {
-        fn default() -> Self {
-            let mut s = Self {
-                sources: Sources::default(),
-                manifests: Table::new(),
-                modules: Table::new(),
-            };
-    
-            todo!()
-            /*let source = SourceEnt {
-                name: "builtin.mf".to_string(),
-                content: include_str!("builtin.mf").to_string(),
-                ..Default::default()
-            };
-            let source = s.sources.push(source);
-    
-            let mut builtin_module = ModEnt {
-                id: MOD_SALT.add(ID::new("builtin")),
-                ..Default::default()
-            };
-            s.a_state_for(source, &mut builtin_module.ast_data);
-    
-            s.modules.insert(builtin_module.id, builtin_module);
-            s
-            */
-        }
-    }
-    
-    impl IncrementalData for Modules {
-        fn prepare(&mut self) {            
-            self.sources.clear_source_content();
-        }
-    }
-
-    impl ErrorDisplayState<MTError> for Modules {
-        fn fmt(&self, e: &MTError, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-            match e.kind() {
-                MTEKind::InvalidPathEncoding => {
-                    writeln!(f, "invalid path encoding")?;
-                },
-                MTEKind::MissingPathStem => {
-                    writeln!(f, "root attribute of the manifest if missing path stem (simply is not pointing to file)")?;
-                },
-                MTEKind::MissingCache => {
-                    writeln!(f, "missing dependency cache, the environment variable 'METAFLOW_CACHE' has to be set")?;
-                },
-                MTEKind::ImportNotFound => {
-                    writeln!(
-                        f,
-                        "root of import not found inside manifest, nor it is root of current project"
-                    )?;
-                },
-                MTEKind::FileReadError(path, error) => {
-                    writeln!(f, "error reading module '{}', this may be due to invalid project structure, original error: {}", path.as_os_str().to_str().unwrap(), error)?;
-                },
-                MTEKind::ManifestReadError(path, error) => {
-                    writeln!(
-                        f,
-                        "error reading manifest '{}', original error: {}",
-                        path.as_os_str().to_str().unwrap(),
-                        error
-                    )?;
-                },
-                MTEKind::AError(error) => {
-                    writeln!(f, "{}", ErrorDisplay::new(self, error))?;
-                },
-                MTEKind::CyclicDependency(cycle) => {
-                    writeln!(f, "cyclic module dependency detected:")?;
-                    for &id in cycle.iter() {
-                        writeln!(f, "  {}", self.sources.source(self.modules[id].source()).name())?;
-                    }
-                },
-                MTEKind::CyclicManifests(cycle) => {
-                    writeln!(f, "cyclic package dependency detected:")?;
-                    for &id in cycle.iter() {
-                        writeln!(f, "  {}", self.sources.display(self.manifests[id].name()))?;
-                    }
-                },
-                MTEKind::MissingDependency(path) => {
-                    writeln!(
-                        f,
-                        "missing dependency '{}'",
-                        path.as_os_str().to_str().unwrap()
-                    )?;
-                },
-                MTEKind::DownloadError(error) => {
-                    writeln!(f, "error downloading dependency, original error: {}", error)?;
-                },
-                MTEKind::DownloadFailed => {
-                    writeln!(f, "failed to download dependency")?;
-                },
-            }
-
-            Ok(())
-        }
-
-        fn sources(&self) -> &Sources {
-            &self.sources
-        }
-    }
-
-    impl ErrorDisplayState<ast::Error> for Modules {
-        fn fmt(&self, e: &ast::Error, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-            ErrorDisplayState::fmt(&self.sources, e, f)
-        }
-
-        fn sources(&self) -> &Sources {
-            &self.sources
-        }
-    }
-}
-
-mod module_context {
-    use super::*;
-
-    pub struct ModuleContext {
-        deps: Vec<(ID, Mod)>,
-        used: Vec<Mod>,
-    }
-}
-
-mod context {
-    use super::*;
-
-    #[derive(Debug, Clone, Default)]
-    pub struct Context {
-        ast: ast::Context,
-        seen_manifests: EntitySet<Manifest>,
-        seen_modules: EntitySet<Mod>,
-        clean_modules: EntitySet<Mod>,
-        modules: SecondaryMap<Mod, ModuleContext>,
-    }
-
-    impl Context {
-        pub fn prepare(&mut self, initial_module_count: usize) {
-            self.seen_manifests.resize(initial_module_count);
-            self.seen_modules.resize(initial_module_count);
-            self.clean_modules.resize(initial_module_count);
-            self.clean_modules.fill(); // Initially all modules from incremental data are clean.
-            self.modules.resize(initial_module_count);
-        }
-
-        pub fn temp_vec<T>(&mut self) -> PoolRef<T> {
-            self.ast.temp_vec()
-        }
-
-        pub fn is_manifest_complete(&self, manifest: Manifest) -> bool {
-            self.seen_manifests.contains(manifest)
-        }
-
-        pub fn is_module_complete(&mut self, module: Mod) -> bool {
-            !self.seen_modules.insert(module)
-        }
-
-        pub fn ast_mut(&mut self) -> &mut ast::Context {
-            &mut self.ast
-        }
-
-        pub fn save_ast_state(&mut self, module: Mod, ast_state: ast::State) {
-            self.a_states[module] = ast_state;
-        }
-
-        pub fn is_module_clean(&self, module: Mod) -> bool {
-            self.clean_modules.contains(module)
-        }
-
-        pub fn mark_module_dirty(&self, module: Mod) {
-            self.clean_modules.remove(module);    
-        }
-    }
-}
-
-mod mod_ent {
-    use super::*;
-
-    #[derive(Debug, Clone, Default, QuickSer)]
-    pub struct ModEnt {
-        id: ID,
-        name: Span,
-        source: Source,
-        manifest: Manifest,
-        
-        ast: AstData,
-    }
-        
-    impl ModEnt {
-        pub fn source(&self) -> Source {
-            self.source
-        }
-
-        pub fn deps(&self) -> &[Dep] {
-            &self.deps
-        }
-
-        pub fn manifest(&self) -> Manifest {
-            self.manifest
-        }
-
-        
-        pub fn name(&self) -> Span {
-            self.name
-        }
-
-        pub fn add_dep(&self, dep_header: Dep) {
-            self.deps.push(dep_header);
-        }
-
-        pub fn add_use(&self, dest: Mod) {
-            self.uses.push(dest);
-        }
-
-        pub fn clear_deps(&mut self) {
-            self.deps.clear();
-        }
-    }
-
-    impl TableId for ModEnt {
-        fn id(&self) -> ID {
-            self.id
-        }
-    }
-
-    impl TreeStorage<Mod> for Table<Mod, ModEnt> {
-        fn node_dep(&self, id: Mod, idx: usize) -> Mod {
-            self[id].deps[idx].module()
-        }
-    
-        fn node_len(&self, id: Mod) -> usize {
-            self[id].deps.len()
-        }
-    
-        fn len(&self) -> usize {
-            Table::len(self)
-        }
-    }
-}
-
-mod dep_header {
-    use super::*;
-
-    #[derive(Debug, Clone, Copy, Default, RealQuickSer)]
-    pub struct Dep {
-        nick: ID,
-        in_code_path: Span,
-        hint: Token,
-        module: Mod,
-    }
-
-    impl Dep {
-        pub fn new(nick: ID, in_code_path: Span, hint: Token, module: Mod) -> Dep {
-            Dep {
-                nick,
-                in_code_path,
-                hint,
-                module,
-            }
-        }
-
-        pub fn nick(&self) -> ID {
-            self.nick
-        }
-
-        pub fn in_code_path(&self) -> Span {
-            self.in_code_path
-        }
-
-        pub fn hint(&self) -> Token {
-            self.hint
-        }
-
-        pub fn module(&self) -> Mod {
-            self.module
-        }
-    }
-}
-
-mod error {
-    use crate::lexer::DisplayError;
-
-    use super::*;
-    
-    #[derive(Debug)]
-    pub struct MTError {
-        pub kind: MTEKind,
-        pub token: Token,
-    }
-    
-    impl MTError {
-        pub fn new(kind: MTEKind, token: Token) -> Self {
-            Self { kind, token }
-        }
-
-        pub fn kind(&self) -> &MTEKind {
-            &self.kind
-        }
-    }
-    
-    impl Into<MTError> for ast::Error {
-        fn into(self) -> MTError {
-            MTError {
-                kind: MTEKind::AError(self),
-                token: Token::default(),
-            }
-        }
-    }
-
-    impl DisplayError for MTError {
-        fn token(&self) -> Token {
-            self.token
-        }
-    }
-    
-    #[derive(Debug)]
-    pub enum MTEKind {
-        InvalidPathEncoding,
-        MissingPathStem,
-        MissingCache,
-        ImportNotFound,
-        FileReadError(PathBuf, std::io::Error),
-        ManifestReadError(PathBuf, std::io::Error),
-        AError(ast::Error),
-        CyclicDependency(Vec<Mod>),
-        CyclicManifests(Vec<Manifest>),
-        MissingDependency(PathBuf),
-        DownloadError(std::io::Error),
-        DownloadFailed,
-    }
-}
-
-
+/// Module test.
 pub fn test() {
-    /*const PATH: &str = "src/module_tree/test_project";
+    const PATH: &str = "src/module_tree/test_project";
+    
+    let mut context = Ctx::default();
 
-    let (mut state, hint) = Modules::load_data(PATH, ID(0)).unwrap_or_default();
-    let mut context = Context::default();
-
-    MTParser::new(&mut state, &mut context)
-        .parse(PATH)
-        .map_err(|e| panic!("{}", MTErrorDisplay::new(&state, &e)))
+    context.compute_module_tree(PATH)
+        .map_err(|e| panic!("{}", ErrorDisplay::new(&context, &e)))
         .unwrap();
-
-    state.save_data(PATH, ID(0), Some(hint)).unwrap();
-    */
 }

@@ -9,17 +9,15 @@ use cranelift::entity::{EntityRef, PrimaryMap, packed_option::ReservedValue};
 use crate::{
     util::{sdbm::ID, storage::Map},
 };
-use std::{fmt::Debug, ops::Range, time::SystemTime};
+use std::{fmt::Debug, ops::Range};
 
-pub use line_data::LineData;
-pub use span::Span;
-pub use token::{Token, TokenDisplay};
-pub use error::Error;
-pub use state::State;
-pub use sources::Sources;
-pub use source::{Source, SourceEnt};
+pub use token::Display;
 
 type Result<T = Token> = std::result::Result<T, Error>;
+
+/// Builtin source contains spans produced by compiler and does not
+/// originate from user defined source files.
+pub const BUILTIN_SOURCE: Source = Source(0);
 
 /// Next token parses one token from `source` based of `state`.
 pub fn next_token(source: &str, state: &mut State) -> Result {
@@ -506,337 +504,295 @@ pub trait IsOperator {
     }
 }
 
-mod state {
-    use super::*;
+/// State holds the current progress of the lexer. It is small 
+/// and fast to copy.
+#[derive(Default, Debug, Clone, Copy, RealQuickSer)]
+pub struct State {
+    source: Source,
+    progress: u32,
+    line: u32,
+    last_n_line: u32,
+}
 
-    /// State holds the current progress of the lexer. It is small 
-    /// and fast to copy.
-    #[derive(Default, Debug, Clone, Copy, RealQuickSer)]
-    pub struct State {
-        source: Source,
-        progress: u32,
-        line: u32,
-        last_n_line: u32,
+impl State {
+    /// Creates a new state with source.
+    pub fn new(source: Source) -> Self {
+        Self {
+            source,
+            progress: 0,
+            line: 1,
+            last_n_line: 0,
+        }
     }
-    
-    impl State {
-        /// Creates a new state with source.
-        pub fn new(source: Source) -> Self {
-            Self {
-                source,
-                progress: 0,
-                line: 1,
-                last_n_line: 0,
-            }
+
+    /// Returns line data corresponding to current position.
+    pub fn line_data(&self) -> LineData {
+        LineData::new(
+            self.line as usize,
+            (self.progress - self.last_n_line) as usize,
+        )
+    }
+
+    /// Source getter.
+    pub fn source(&self) -> Source {
+        self.source
+    }
+
+    /// Progress getter.
+    pub fn progress(&self) -> usize {
+        self.progress as usize
+    }
+
+    /// Notifies the state that a newline has been encountered.
+    pub fn newline(&mut self) {
+        self.line += 1;
+        self.last_n_line = self.progress;
+    }
+
+    /// Advances the progress by the given amount.
+    pub fn advance(&mut self, amount: usize) {
+        self.progress += amount as u32;
+    }
+}
+
+/// Struct manages builtin spans and sores file contents.
+/// Files are not serialized though and are should be cleared.
+#[derive(Debug, Clone, QuickSer)]
+pub struct Ctx {
+    sources: PrimaryMap<Source, SourceEnt>,
+    builtin_source: Source,
+    builtin_spans: Map<(u32, u32)>,
+}
+
+impl Ctx {
+    /// Constructor allocate builtin source to push spans.
+    pub fn new() -> Self {
+        let mut sources = PrimaryMap::new();
+        let builtin_source = sources.push(SourceEnt::new(
+            String::from("builtin_spans.mf"),
+            String::new(),
+        ));
+
+        Ctx {
+            sources,
+            builtin_source,
+            builtin_spans: Map::new(),
         }
-    
-        /// Returns line data corresponding to current position.
-        pub fn line_data(&self) -> LineData {
-            LineData::new(
-                self.line as usize,
-                (self.progress - self.last_n_line) as usize,
-            )
+    }
+
+    /// Adds source to state and returns the.
+    pub fn add_source(&mut self, source: SourceEnt) -> Source {
+        self.sources.push(source)
+    }
+
+    /// Returns string that token points to.
+    pub fn display_token(&self, token: Token) -> &str {
+        self.display(token.span())
+    }
+
+    /// Returns string that span points to.
+    pub fn display(&self, span: Span) -> &str {
+        &self.sources[span.source()].display(span.range())
+    }
+
+    /// Allocates builtin span and returns the reference.
+    /// This method first looks for the span in the builtin
+    /// source and returns already allocated one if possible.
+    pub fn builtin_span(&mut self, name: &str) -> Span {
+        let hash = ID::new(name);
+        let builtin = &mut self.sources[self.builtin_source];
+        let range = if let Some(&range) = self.builtin_spans.get(hash) {
+            range.0 as usize..range.1 as usize
+        } else {
+            let start = builtin.size();
+            builtin.push(name);
+            let end = builtin.size();
+            self.builtin_spans.insert(hash, (start as u32, end as u32));
+            start..end
+        };
+        Span::new(self.builtin_source, range)
+    }
+
+    /// Calls [`next_token`], providing source string.
+    pub fn token<'a>(&'a self, state: &'a mut State) -> Result<Token> {
+        next_token(self.sources[state.source()].content(), state)
+    }
+
+    /// Frees the content of all sources. Should be called to 
+    /// prepare sources for serialization.
+    pub fn clear_source_content(&mut self) {
+        for (_, source) in self.sources.iter_mut() {
+            source.clear();
         }
-    
-        /// Source getter.
-        pub fn source(&self) -> Source {
-            self.source
+    }
+
+    /// Source getter.
+    pub fn source(&self, source: Source) -> &SourceEnt {
+        &self.sources[source]
+    }
+}
+
+impl Default for Ctx {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+crate::impl_entity!(Source);
+
+/// Struct stores file related data. This ensures no string allocations are done
+/// and all structures can refer to source with [`Span`].
+#[derive(Debug, Clone, QuickDefault, QuickSer)]
+pub struct SourceEnt {
+    name: String,
+    content: String,
+}
+
+impl SourceEnt {
+    /// Because of private fields.
+    pub fn new(name: String, content: String) -> Self {
+        SourceEnt {
+            name,
+            content,
         }
-    
-        /// Progress getter.
-        pub fn progress(&self) -> usize {
-            self.progress as usize
-        }
-    
-        /// Notifies the state that a newline has been encountered.
-        pub fn newline(&mut self) {
-            self.line += 1;
-            self.last_n_line = self.progress;
-        }
-    
-        /// Advances the progress by the given amount.
-        pub fn advance(&mut self, amount: usize) {
-            self.progress += amount as u32;
-        }
+    }
+
+    /// Returns the name/path of/to file.
+    pub fn name(&self) -> &str {
+        &self.name
+    }
+
+    /// Returns the content of the file.
+    pub fn content(&self) -> &str {
+        &self.content
+    }
+
+    /// Slices into content with range.
+    pub fn display(&self, range: Range<usize>) -> &str {
+        &self.content[range]
+    }
+
+    /// Pushes string to the end of content. Used for builtin source.
+    pub fn push(&mut self, str: &str) {
+        self.content.push_str(str);
+    }
+
+    /// Returns the size of content.
+    pub fn size(&self) -> usize {
+        self.content.len()
+    }
+
+    /// Clears the content.
+    pub fn clear(&mut self) {
+        self.content.clear()
     }
 }
 
 
-mod sources {
-    use super::*;
-    
-    /// Struct manages builtin spans and sores file contents.
-    /// Files are not serialized though and are should be cleared.
-    #[derive(Debug, Clone, QuickSer)]
-    pub struct Sources {
-        sources: PrimaryMap<Source, SourceEnt>,
-        builtin_source: Source,
-        builtin_spans: Map<(u32, u32)>,
-    }
+/// Token is basic lex element that points to the sequence of source code.
+/// It preserves line information and span.
+#[derive(Debug, Clone, Copy, Default, RealQuickSer)]
+pub struct Token {
+    kind: token::Kind,
+    span: Span,
+    line_data: LineData,
+}
 
-    impl Sources {
-        /// Constructor allocate builtin source to push spans.
-        pub fn new() -> Self {
-            let mut sources = PrimaryMap::new();
-            let builtin_source = sources.push(SourceEnt::new(
-                String::from("builtin_spans.mf"),
-                String::new(),
-                SystemTime::UNIX_EPOCH,
-            ));
-
-            Sources {
-                sources,
-                builtin_source,
-                builtin_spans: Map::new(),
-            }
-        }
-
-        /// Adds source to state and returns the.
-        pub fn add_source(&mut self, source: SourceEnt) -> Source {
-            self.sources.push(source)
-        }
-
-        /// Returns string that token points to.
-        pub fn display_token(&self, token: Token) -> &str {
-            self.display(token.span())
-        }
-
-        /// Returns string that span points to.
-        pub fn display(&self, span: Span) -> &str {
-            &self.sources[span.source()].display(span.range())
-        }
-
-        /// Allocates builtin span and returns the reference.
-        /// This method first looks for the span in the builtin
-        /// source and returns already allocated one if possible.
-        pub fn builtin_span(&mut self, name: &str) -> Span {
-            let hash = ID::new(name);
-            let builtin = &mut self.sources[self.builtin_source];
-            let range = if let Some(&range) = self.builtin_spans.get(hash) {
-                range.0 as usize..range.1 as usize
-            } else {
-                let start = builtin.size();
-                builtin.push(name);
-                let end = builtin.size();
-                self.builtin_spans.insert(hash, (start as u32, end as u32));
-                start..end
-            };
-            Span::new(self.builtin_source, range)
-        }
-
-        /// Calls [`next_token`], providing source string.
-        pub fn token<'a>(&'a self, state: &'a mut State) -> Result<Token> {
-            next_token(self.sources[state.source()].content(), state)
-        }
-
-        /// Frees the content of all sources. Should be called to 
-        /// prepare sources for serialization.
-        pub fn clear_source_content(&mut self) {
-            for (_, source) in self.sources.iter_mut() {
-                source.clear();
-            }
-        }
-
-        /// Source getter.
-        pub fn source(&self, source: Source) -> &SourceEnt {
-            &self.sources[source]
-        }
-
-        pub fn source_mut(&mut self, source: Source) -> &mut SourceEnt {
-            &mut self.sources[source]
-        }
-
-        pub fn put_source(&mut self, source: Source, ent: SourceEnt) {
-            self.sources[source] = ent;
+impl Token {
+    /// Because of private fields.
+    pub fn new(kind: token::Kind, span: Span, line_data: LineData) -> Self {
+        Token {
+            kind,
+            span,
+            line_data,
         }
     }
 
-    impl Default for Sources {
-        fn default() -> Self {
-            Self::new()
-        }
+    /// Returns kind of the token.
+    pub fn kind(&self) -> token::Kind {
+        self.kind
+    }
+
+    /// Returns span of the token.
+    pub fn span(&self) -> Span {
+        self.span
+    }
+
+    /// Returns the source this token is from.
+    pub fn source(&self) -> Source {
+        self.span.source()
+    }
+
+    /// Returns range withing source code, this token points to.
+    pub fn range(&self) -> Range<usize> {
+        self.span.range()
+    }
+
+    /// Returns length of the string token points to.
+    pub fn len(&self) -> usize {
+        self.span.len()
+    }
+
+    /// Returns line_data of token
+    pub fn line_data(&self) -> LineData {
+        self.line_data
+    }
+
+    /// Returns line token is on.
+    pub fn line(&self) -> usize {
+        self.line_data.line()
+    }
+
+    /// returns column token is on.
+    pub fn column(&self) -> usize {
+        self.line_data.column()
+    }
+
+    /// Joins two tokens by making union of their spans.
+    pub fn join(&self, other: Token) -> Token {
+        self.join_low(other, false)
+    }
+
+    /// Joins two tokens by making union of their spans but not
+    /// including content of `other`.
+    pub fn join_trimmed(&self, other: Token) -> Token {
+        self.join_low(other, true)
+    }
+
+    /// Joins two tokens by making union of their spans. If trim is true
+    /// then content of `other` is not included.
+    fn join_low(&self, other: Token, trim: bool) -> Token {
+        Self::new(
+            self.kind(),
+            self.span().join(other.span(), trim),
+            self.line_data(),
+        )
     }
 }
 
-
-mod source {
-    use super::*;
-
-    crate::impl_entity!(Source);
-
-
-    /// Struct stores file related data. This ensures no string allocations are done
-    /// and all structures can refer to source with [`Span`].
-    #[derive(Debug, Clone, QuickDefault, QuickSer)]
-    pub struct SourceEnt {
-        name: String,
-        content: String,
-        #[default(SystemTime::UNIX_EPOCH)]
-        modified: SystemTime,
+impl std::fmt::Display for Token {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{} {:?}", self.kind, self.span)?;
+        Ok(())
     }
+}
     
-    impl SourceEnt {
-        /// Because of private fields.
-        pub fn new(name: String, content: String, modified: SystemTime) -> Self {
-            SourceEnt {
-                name,
-                content,
-                modified,
-            }
-        }
-    
-        /// Updates the content and modified time.
-        pub fn modify(&mut self, content: String, modified: SystemTime) {
-            self.content = content;
-            self.modified = modified;
-        }
-    
-        /// Updates the content.
-        pub fn reload(&mut self, content: String) {
-            self.content = content;
-        }
-    
-        /// Returns the name/path of/to file.
-        pub fn name(&self) -> &str {
-            &self.name
-        }
-    
-        /// Returns the content of the file.
-        pub fn content(&self) -> &str {
-            &self.content
-        }
-    
-        /// Slices into content with range.
-        pub fn display(&self, range: Range<usize>) -> &str {
-            &self.content[range]
-        }
-    
-        /// Returns the modified time of the file.
-        pub fn modified(&self) -> SystemTime {
-            self.modified
-        }
-
-        /// Pushes string to the end of content. Used for builtin source.
-        pub fn push(&mut self, str: &str) {
-            self.content.push_str(str);
-        }
-
-        /// Returns the size of content.
-        pub fn size(&self) -> usize {
-            self.content.len()
-        }
-
-        /// Clears the content.
-        pub fn clear(&mut self) {
-            self.content.clear()
-        }
+impl PartialEq<Token> for Token {
+    fn eq(&self, other: &Token) -> bool {
+        self.kind == other.kind && self.span == other.span
     }
 }
 
-/// Module provides namespace for token kind.
+impl PartialEq<token::Kind> for Token {
+    fn eq(&self, other: &token::Kind) -> bool {
+        self.kind == *other
+    }
+}
+
+/// Namespace for token kind.
 pub mod token {
     use super::*;
 
-    /// Token is basic lex element that points to the sequence of source code.
-    /// It preserves line information and span.
-    #[derive(Debug, Clone, Copy, Default, RealQuickSer)]
-    pub struct Token {
-        kind: token::Kind,
-        span: Span,
-        line_data: LineData,
-    }
-    
-    impl Token {
-        /// Because of private fields.
-        pub fn new(kind: token::Kind, span: Span, line_data: LineData) -> Self {
-            Token {
-                kind,
-                span,
-                line_data,
-            }
-        }
-    
-        /// Returns kind of the token.
-        pub fn kind(&self) -> token::Kind {
-            self.kind
-        }
-    
-        /// Returns span of the token.
-        pub fn span(&self) -> Span {
-            self.span
-        }
-    
-        /// Returns the source this token is from.
-        pub fn source(&self) -> Source {
-            self.span.source()
-        }
-    
-        /// Returns range withing source code, this token points to.
-        pub fn range(&self) -> Range<usize> {
-            self.span.range()
-        }
-    
-        /// Returns length of the string token points to.
-        pub fn len(&self) -> usize {
-            self.span.len()
-        }
-    
-        /// Returns line_data of token
-        pub fn line_data(&self) -> LineData {
-            self.line_data
-        }
-    
-        /// Returns line token is on.
-        pub fn line(&self) -> usize {
-            self.line_data.line()
-        }
-    
-        /// returns column token is on.
-        pub fn column(&self) -> usize {
-            self.line_data.column()
-        }
-    
-        /// Joins two tokens by making union of their spans.
-        pub fn join(&self, other: Token) -> Token {
-            self.join_low(other, false)
-        }
-    
-        /// Joins two tokens by making union of their spans but not
-        /// including content of `other`.
-        pub fn join_trimmed(&self, other: Token) -> Token {
-            self.join_low(other, true)
-        }
-    
-        /// Joins two tokens by making union of their spans. If trim is true
-        /// then content of `other` is not included.
-        fn join_low(&self, other: Token, trim: bool) -> Token {
-            Self::new(
-                self.kind(),
-                self.span().join(other.span(), trim),
-                self.line_data(),
-            )
-        }
-    }
-    
-    impl std::fmt::Display for Token {
-        fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-            write!(f, "{} {:?}", self.kind, self.span)?;
-            Ok(())
-        }
-    }
-    
-    impl PartialEq<Token> for Token {
-        fn eq(&self, other: &Token) -> bool {
-            self.kind == other.kind && self.span == other.span
-        }
-    }
-    
-    impl PartialEq<token::Kind> for Token {
-        fn eq(&self, other: &token::Kind) -> bool {
-            self.kind == *other
-        }
-    }
-    
     /// Enum holds the kind of a token. It has size of 4 and it should stay that way.
     #[derive(Debug, Clone, Copy, PartialEq, RealQuickSer)]
     pub enum Kind {
@@ -944,81 +900,81 @@ pub mod token {
         None,
     }
     
-    impl std::fmt::Display for token::Kind {
+    impl std::fmt::Display for Kind {
         fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
             f.write_str(match *self {
-                token::Kind::Priv => "'priv'",
-                token::Kind::Pub => "'pub'",
-                token::Kind::Use => "'use'",
-                token::Kind::Fun => "'fun'",
-                token::Kind::Attr => "'attr'",
-                token::Kind::Pass => "'pass'",
-                token::Kind::Return => "'return'",
-                token::Kind::If => "'if'",
-                token::Kind::Elif => "'elif'",
-                token::Kind::Else => "'else'",
-                token::Kind::Var => "'var'",
-                token::Kind::Let => "'let'",
-                token::Kind::For => "'for'",
-                token::Kind::Break => "'break'",
-                token::Kind::Continue => "'continue'",
-                token::Kind::Struct => "'struct'",
-                token::Kind::Embed => "'embed'",
-                token::Kind::Tag => "'label'",
-                token::Kind::Impl => "'impl'",
-                token::Kind::Enum => "'enum'",
-                token::Kind::Union => "'ident'",
+                Self::Priv => "'priv'",
+                Self::Pub => "'pub'",
+                Self::Use => "'use'",
+                Self::Fun => "'fun'",
+                Self::Attr => "'attr'",
+                Self::Pass => "'pass'",
+                Self::Return => "'return'",
+                Self::If => "'if'",
+                Self::Elif => "'elif'",
+                Self::Else => "'else'",
+                Self::Var => "'var'",
+                Self::Let => "'let'",
+                Self::For => "'for'",
+                Self::Break => "'break'",
+                Self::Continue => "'continue'",
+                Self::Struct => "'struct'",
+                Self::Embed => "'embed'",
+                Self::Tag => "'label'",
+                Self::Impl => "'impl'",
+                Self::Enum => "'enum'",
+                Self::Union => "'ident'",
     
-                token::Kind::Ident => "ident",
-                token::Kind::Op => "operator",
-                token::Kind::LPar => "'('",
-                token::Kind::RPar => "')'",
-                token::Kind::LCurly => "'{'",
-                token::Kind::RCurly => "'}'",
-                token::Kind::LBra => "'['",
-                token::Kind::RBra => "']'",
-                token::Kind::Colon => "':'",
-                token::Kind::DoubleColon => "'::'",
-                token::Kind::Comma => "','",
-                token::Kind::RArrow => "'->'",
-                token::Kind::Dot => "'.'",
-                token::Kind::Indent(_) => "indentation",
-                token::Kind::Comment(_) => "comment",
-                token::Kind::Int(..) => "integer",
-                token::Kind::Uint(..) => "unsigned integer",
-                token::Kind::Float(..) => "float",
-                token::Kind::Bool(_) => "boolean",
-                token::Kind::Char => "character",
-                token::Kind::String => "string",
-                token::Kind::Eof => "end of file",
-                token::Kind::None => "nothing",
-                token::Kind::Error => "error",
+                Self::Ident => "ident",
+                Self::Op => "operator",
+                Self::LPar => "'('",
+                Self::RPar => "')'",
+                Self::LCurly => "'{'",
+                Self::RCurly => "'}'",
+                Self::LBra => "'['",
+                Self::RBra => "']'",
+                Self::Colon => "':'",
+                Self::DoubleColon => "'::'",
+                Self::Comma => "','",
+                Self::RArrow => "'->'",
+                Self::Dot => "'.'",
+                Self::Indent(_) => "indentation",
+                Self::Comment(_) => "comment",
+                Self::Int(..) => "integer",
+                Self::Uint(..) => "unsigned integer",
+                Self::Float(..) => "float",
+                Self::Bool(_) => "boolean",
+                Self::Char => "character",
+                Self::String => "string",
+                Self::Eof => "end of file",
+                Self::None => "nothing",
+                Self::Error => "error",
             })
         }
     }
     
-    impl Default for token::Kind {
+    impl Default for Kind {
         fn default() -> Self {
-            token::Kind::None
+            Self::None
         }
     }
     
     /// TokenDisplay can pretty print tokens.
-    pub struct TokenDisplay<'a> {
-        state: &'a Sources,
+    pub struct Display<'a> {
+        state: &'a Ctx,
         token: &'a Token,
     }
     
-    impl<'a> TokenDisplay<'a> {
+    impl<'a> Display<'a> {
         /// Because of private fields.
-        pub fn new(state: &'a Sources, token: &'a Token) -> Self {
-            TokenDisplay { state, token }
+        pub fn new(state: &'a Ctx, token: &'a Token) -> Self {
+            Display { state, token }
         }
     }
     
-    impl std::fmt::Display for TokenDisplay<'_> {
+    impl std::fmt::Display for Display<'_> {
         fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-            if self.token.kind() == token::Kind::None {
+            if self.token.kind() == Kind::None {
                 return Ok(());
             }
     
@@ -1052,7 +1008,7 @@ pub mod token {
             let mut max = 0;
             let mut min = range.start - start;
     
-            if let token::Kind::Indent(_) = self.token.kind {
+            if let Kind::Indent(_) = self.token.kind {
                 max = range.end - start - 1 * (range.end - start != 0) as usize;
             } else {
                 let mut i = min;
@@ -1085,69 +1041,65 @@ pub mod token {
     }
 }
 
-
-/// Module offers name space for [`Kind`].
-pub mod error {
-    use super::*;
-
-    impl ErrorDisplayState<Error> for Sources {
-        fn fmt(&self, e: &Error, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-            match e.kind() {
-                Kind::InvalidCharacter => {
-                    write!(f, "invalid character literal")?;
-                },
-                Kind::UnknownCharacter => {
-                    write!(f, "lexer does not recognize this character")?;
-                },
-                Kind::UnclosedCharacter => {
-                    writeln!(f, "unclosed character literal")?;
-                },
-                Kind::UnclosedString => {
-                    writeln!(f, "unclosed string literal")?;
-                },
-            }
-
-            Ok(())
+impl ErrorDisplayState<Error> for Ctx {
+    fn fmt(&self, e: &Error, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match e.kind() {
+            error::Kind::InvalidCharacter => {
+                write!(f, "invalid character literal")?;
+            },
+            error::Kind::UnknownCharacter => {
+                write!(f, "lexer does not recognize this character")?;
+            },
+            error::Kind::UnclosedCharacter => {
+                writeln!(f, "unclosed character literal")?;
+            },
+            error::Kind::UnclosedString => {
+                writeln!(f, "unclosed string literal")?;
+            },
         }
 
-        fn sources(&self) -> &Sources {
-            self
+        Ok(())
+    }
+
+    fn sources(&self) -> &Ctx {
+        self
+    }
+}
+
+/// Error returned by lexer.
+#[derive(Debug)]
+pub struct Error {
+    kind: error::Kind,
+    token: Token,
+}
+
+impl Error {
+    /// Because of private fields. (keeping encapsulation)
+    pub fn new(kind: error::Kind, span: Span, line_data: LineData) -> Self {
+        Self {
+            kind,
+            token: Token::new(token::Kind::Error, span, line_data),
         }
     }
 
-    /// Error returned by lexer.
-    #[derive(Debug)]
-    pub struct Error {
-        kind: Kind,
-        token: Token,
+    /// Returns the kind of the error.
+    pub fn kind(&self) -> error::Kind {
+        self.kind
     }
 
-    impl Error {
-        /// Because of private fields. (keeping encapsulation)
-        pub fn new(kind: Kind, span: Span, line_data: LineData) -> Self {
-            Self {
-                kind,
-                token: Token::new(token::Kind::Error, span, line_data),
-            }
-        }
-
-        /// Returns the kind of the error.
-        pub fn kind(&self) -> Kind {
-            self.kind
-        }
-
-        /// Returns the token that caused the error.
-        pub fn token(&self) -> Token {
-            self.token
-        }
+    /// Returns the token that caused the error.
+    pub fn token(&self) -> Token {
+        self.token
     }
+}
 
-    impl DisplayError for Error {
-        fn token(&self) -> Token {
-            self.token
-        }
+impl DisplayError for Error {
+    fn token(&self) -> Token {
+        self.token
     }
+}
 
+mod error {
     /// Kind of error that was encountered.
     #[derive(Debug, Clone, Copy)]
     pub enum Kind {
@@ -1163,94 +1115,86 @@ pub mod error {
 }
 
 
-mod span {
-    use super::*;
+/// Span points to a string inside a source file.
+#[derive(Debug, Clone, Copy, QuickDefault, PartialEq, Eq, RealQuickSer)]
+pub struct Span {
+    #[default(Source::new(0))]
+    source: Source,
+    start: u32,
+    end: u32,
+}
 
-    /// Span points to a string inside a source file.
-    #[derive(Debug, Clone, Copy, QuickDefault, PartialEq, Eq, RealQuickSer)]
-    pub struct Span {
-        #[default(Source::new(0))]
-        source: Source,
-        start: u32,
-        end: u32,
+impl Span {
+    /// Because of private fields.
+    pub fn new(source: Source, range: Range<usize>) -> Self {
+        Self {
+            source,
+            start: range.start as u32,
+            end: range.end as u32,
+        }
     }
-    
-    impl Span {
-        /// Because of private fields.
-        pub fn new(source: Source, range: Range<usize>) -> Self {
-            Self {
-                source,
-                start: range.start as u32,
-                end: range.end as u32,
-            }
+
+    /// performs slicing operation on the span.
+    pub fn slice(&self, range: Range<usize>) -> Span {
+        Self {
+            source: self.source,
+            start: range.start as u32 + self.start,
+            end: range.end as u32 + self.start,
         }
-    
-        /// performs slicing operation on the span.
-        pub fn slice(&self, range: Range<usize>) -> Span {
-            Self {
-                source: self.source,
-                start: range.start as u32 + self.start,
-                end: range.end as u32 + self.start,
-            }
-        }
-    
-        /// Returns source from where this span is.
-        pub fn source(&self) -> Source {
-            self.source
-        }
-    
-        /// Returns length of string the span points to.
-        pub fn len(&self) -> usize {
-            (self.end - self.start) as usize
-        }
-    
-        /// Returns range of string the span points to.
-        pub fn range(&self) -> Range<usize> {
-            self.start as usize..self.end as usize
-        }
-    
-        /// Creates union of two spans, if trim is true, content of `other` is not included.
-        pub fn join(&self, span: Span, trim: bool) -> Span {
-            debug_assert!(self.source == span.source);
-            Self {
-                source: self.source,
-                start: self.start.min(span.start),
-                end: self.end.max(if trim { span.start } else { span.end }),
-            }
+    }
+
+    /// Returns source from where this span is.
+    pub fn source(&self) -> Source {
+        self.source
+    }
+
+    /// Returns length of string the span points to.
+    pub fn len(&self) -> usize {
+        (self.end - self.start) as usize
+    }
+
+    /// Returns range of string the span points to.
+    pub fn range(&self) -> Range<usize> {
+        self.start as usize..self.end as usize
+    }
+
+    /// Creates union of two spans, if trim is true, content of `other` is not included.
+    pub fn join(&self, span: Span, trim: bool) -> Span {
+        debug_assert!(self.source == span.source);
+        Self {
+            source: self.source,
+            start: self.start.min(span.start),
+            end: self.end.max(if trim { span.start } else { span.end }),
         }
     }
 }
 
-mod line_data {
-    use quick_proc::RealQuickSer;
+/// LineData holds information for the programmer. This could be calculated from the span, but
+/// it would take significant amount of time when working with large files and generating
+/// stack trace.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, RealQuickSer)]
+pub struct LineData {
+    line: u32,
+    column: u32,
+}
 
-    /// LineData holds information for the programmer. This could be calculated from the span, but
-    /// it would take significant amount of time when working with large files and generating
-    /// stack trace.
-    #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, RealQuickSer)]
-    pub struct LineData {
-        line: u32,
-        column: u32,
+impl LineData {
+    /// Because of private fields.
+    pub fn new(line: usize, column: usize) -> Self {
+        Self {
+            line: line as u32,
+            column: column as u32,
+        }
     }
 
-    impl LineData {
-        /// Because of private fields.
-        pub fn new(line: usize, column: usize) -> Self {
-            Self {
-                line: line as u32,
-                column: column as u32,
-            }
-        }
+    /// Returns line number.
+    pub fn line(&self) -> usize {
+        self.line as usize
+    }
 
-        /// Returns line number.
-        pub fn line(&self) -> usize {
-            self.line as usize
-        }
-
-        /// Returns column number.
-        pub fn column(&self) -> usize {
-            self.column as usize
-        }
+    /// Returns column number.
+    pub fn column(&self) -> usize {
+        self.column as usize
     }
 }
 
@@ -1275,7 +1219,7 @@ impl<'a, E: DisplayError, S: ErrorDisplayState<E>> std::fmt::Display for ErrorDi
         let token = self.error.token();
 
         if token.kind() != token::Kind::None {
-            write!(f, "{}", TokenDisplay::new(self.state.sources(), &token))?;
+            writeln!(f, "{}", Display::new(self.state.sources(), &token))?;
         }
 
         self.state.fmt(self.error, f)
@@ -1287,7 +1231,7 @@ pub trait ErrorDisplayState<E: DisplayError> {
     /// Additional display after error token.
     fn fmt(&self, e: &E, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result;
     /// Sources provide data for displaying error token.
-    fn sources(&self) -> &Sources;
+    fn sources(&self) -> &Ctx;
 }
 
 /// Any error ctaht can ne displayed.
@@ -1298,11 +1242,10 @@ pub trait DisplayError {
 
 /// Module test.
 pub fn test() {
-    let mut main_state = Sources::new();
+    let mut main_state = Ctx::new();
     let source_ent = SourceEnt::new(
         "text_code.mf".to_string(),
         include_str!("lexer_test.mf").to_string(),
-        SystemTime::UNIX_EPOCH,
     );
     let source = main_state.add_source(source_ent);
     let mut state = State::new(source);
@@ -1312,6 +1255,6 @@ pub fn test() {
         if token.kind() == token::Kind::Eof {
             break;
         }
-        println!("{}", TokenDisplay::new(&main_state, &token));
+        println!("{}", Display::new(&main_state, &token));
     }
 }
