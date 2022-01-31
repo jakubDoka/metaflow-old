@@ -6,7 +6,7 @@ pub mod pool;
 pub mod sdbm;
 pub mod storage;
 
-/// Size defines any size or offset inside generated code. 
+/// Size defines any size or offset inside generated code.
 /// It takes track of both 32 and 64 bit pointer width and allows
 /// picking the final value. This is useful when we don't know which
 /// or even both sizes has to be used.
@@ -62,6 +62,14 @@ impl Size {
             self.s64
         }
     }
+
+    pub fn s64(&self) -> u32 {
+        self.s64
+    }
+
+    pub fn s32(&self) -> u32 {
+        self.s32
+    }
 }
 
 /// Writes the `number` with given `radix` to `buffer`.
@@ -88,13 +96,13 @@ macro_rules! impl_entity {
         $(
             #[derive(Clone, Copy, Debug, PartialEq, Eq, RealQuickSer)]
             pub struct $name(u32);
-    
+
             impl Default for $name {
                 fn default() -> Self {
                     Self::reserved_value()
                 }
             }
-    
+
             cranelift::entity::entity_impl!($name);
         )*
     };

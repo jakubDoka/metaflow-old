@@ -2,6 +2,8 @@ use "main/module"
 
 struct Bogus
 
+break
+
 struct Focus:
   a, b, c: Bogus
   priv f: &Focus

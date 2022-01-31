@@ -2,23 +2,26 @@
 //! create a tree structure that tries to take as little space as possible. And even then,
 //! it provides tools to reorganize and drop no longer needed trees.
 use cranelift::{
-    codegen::{isa::CallConv as CrCallConv, packed_option::ReservedValue, isa::TargetIsa},
+    codegen::{isa::CallConv as CrCallConv, isa::TargetIsa, packed_option::ReservedValue},
     entity::{EntityList, ListPool, PrimaryMap, SecondaryMap},
 };
 use quick_proc::{QuickDefault, QuickSer, RealQuickSer};
 
 use crate::{
     lexer::{
-        self, token, Token, 
-        Span, 
-        SourceEnt, 
-        LineData, Source, DisplayError, ErrorDisplayState, ErrorDisplay,
-    }, util::{pool::{PoolRef, Pool}, sdbm::ID},
+        self, token, DisplayError, ErrorDisplay, ErrorDisplayState, LineData, Source, SourceEnt,
+        Span, Token,
+    },
+    util::{
+        pool::{Pool, PoolRef},
+        sdbm::ID,
+    },
 };
 
 use std::{
     fmt::Write,
-    sync::atomic::{AtomicU64, Ordering}, ops::{Deref, DerefMut},
+    ops::{Deref, DerefMut},
+    sync::atomic::{AtomicU64, Ordering},
 };
 
 type Result<T = ()> = std::result::Result<T, Error>;
@@ -33,16 +36,9 @@ pub struct Parser<'a> {
 
 impl<'a> Parser<'a> {
     /// Because of private fields.
-    pub fn new(
-        state: &'a mut State,
-        data: &'a mut Data, 
-        ctx: &'a mut Ctx,
-    ) -> Self {
-        Self {
-            ctx,
-            state,
-            data,
-        }
+    pub fn new(state: &'a mut State, data: &'a mut Data, ctx: &'a mut Ctx) -> Self {
+        ctx.clear_after_break();
+        Self { ctx, state, data }
     }
 
     /// Parses the manifest, assuming state is pointing to manifest source.
@@ -74,10 +70,12 @@ impl<'a> Parser<'a> {
                     attrs.push((
                         ID::new(self.ctx.display(name)),
                         name,
-                        self.state.current().span()
+                        self.state
+                            .current()
+                            .span()
                             .slice(1..self.state.current().len() - 1),
                     ));
-                    
+
                     self.next()?;
                 }
                 token::Kind::Colon => match self.ctx.display(name) {
@@ -141,7 +139,7 @@ impl<'a> Parser<'a> {
         Ok(Manifest::new(attrs, deps))
     }
 
-    /// Parses juts import statement from the file. 
+    /// Parses juts import statement from the file.
     /// It can optionally return module doc tokens.
     pub fn parse_imports(&mut self, imports: &mut Vec<Import>) -> Result<Vec<Token>> {
         debug_assert!(imports.is_empty());
@@ -159,7 +157,10 @@ impl<'a> Parser<'a> {
                 }
                 token::Kind::Use => {
                     self.next()?;
-                    self.walk_block(|s| { s.import_line(imports)?; Ok(false) })?;
+                    self.walk_block(|s| {
+                        s.import_line(imports)?;
+                        Ok(false)
+                    })?;
                 }
                 _ => break,
             }
@@ -181,7 +182,10 @@ impl<'a> Parser<'a> {
         };
 
         let path = if let token::Kind::String = self.state.current_kind() {
-            self.state.current().span().slice(1..self.state.current().len() - 1)
+            self.state
+                .current()
+                .span()
+                .slice(1..self.state.current().len() - 1)
         } else {
             return Err(self.unexpected_str("expected string literal as import path"));
         };
@@ -189,16 +193,12 @@ impl<'a> Parser<'a> {
         self.next()?;
         let token = token.join_trimmed(self.state.current());
 
-        imports.push(Import::new(
-            nickname,
-            path,
-            token,
-        ));
+        imports.push(Import::new(nickname, path, token));
 
         Ok(())
     }
 
-    /// Parses rest of the file. It expects state with which the 
+    /// Parses rest of the file. It expects state with which the
     /// [`Self::parse_imports()`] was called.
     pub fn parse(&mut self) -> Result<bool> {
         while self.state.current_kind() != token::Kind::Eof {
@@ -255,7 +255,7 @@ impl<'a> Parser<'a> {
     }
 
     /// Parses top item. `impl_ast` is added to each item if provided, `message` is what
-    /// gets displayed as error message if invalid item was encountered. Returns true 
+    /// gets displayed as error message if invalid item was encountered. Returns true
     /// if `break` was found.
     pub fn top_item(&mut self, impl_ast: Ast, message: &'static str) -> Result<bool> {
         let kind = self.state.current_kind();
@@ -265,14 +265,19 @@ impl<'a> Parser<'a> {
         }
         let collect_attributes = matches!(
             kind,
-            token::Kind::Union | token::Kind::Enum | token::Kind::Struct | token::Kind::Fun | token::Kind::Var | token::Kind::Let
+            token::Kind::Union
+                | token::Kind::Enum
+                | token::Kind::Struct
+                | token::Kind::Fun
+                | token::Kind::Var
+                | token::Kind::Let
         );
 
         let attributes = if collect_attributes {
             let sons = self.ctx.create_attribute_slice(self.data);
             if !sons.is_empty() {
-                
-                self.data.add(AstEnt::new(Kind::Group, sons, Token::default()))
+                self.data
+                    .add(AstEnt::new(Kind::Group, sons, Token::default()))
             } else {
                 Ast::reserved_value()
             }
@@ -286,7 +291,9 @@ impl<'a> Parser<'a> {
                 self.impl_block()?;
                 self.ctx.pop_attribute_frame();
             }
-            token::Kind::Struct | token::Kind::Union | token::Kind::Enum if impl_ast == Ast::reserved_value() => {
+            token::Kind::Struct | token::Kind::Union | token::Kind::Enum
+                if impl_ast == Ast::reserved_value() =>
+            {
                 let item = match kind {
                     token::Kind::Struct => self.structure_declaration(false)?,
                     token::Kind::Union => self.structure_declaration(true)?,
@@ -395,7 +402,9 @@ impl<'a> Parser<'a> {
         let sons = self.data.add_slice(sons.as_slice());
         let token = token.join_trimmed(self.state.current());
 
-        Ok(self.data.add(AstEnt::new(Kind::StructField(vis, embedded), sons, token)))
+        Ok(self
+            .data
+            .add(AstEnt::new(Kind::StructField(vis, embedded), sons, token)))
     }
 
     /// Parses an attribute.
@@ -491,7 +500,13 @@ impl<'a> Parser<'a> {
             } else {
                 Self::fun_argument
             };
-            self.list(&mut sons, token::Kind::LPar, token::Kind::Comma, token::Kind::RPar, parser)?;
+            self.list(
+                &mut sons,
+                token::Kind::LPar,
+                token::Kind::Comma,
+                token::Kind::RPar,
+                parser,
+            )?;
         }
 
         let kind = if is_op {
@@ -533,7 +548,11 @@ impl<'a> Parser<'a> {
         let sons = self.data.add_slice(sons.as_slice());
         let token = token.join_trimmed(self.state.current());
 
-        Ok(self.data.add(AstEnt::new(Kind::FunHeader(kind, vis, call_conv), sons, token)))
+        Ok(self.data.add(AstEnt::new(
+            Kind::FunHeader(kind, vis, call_conv),
+            sons,
+            token,
+        )))
     }
 
     pub fn fun_argument(&mut self) -> Result<Ast> {
@@ -558,7 +577,9 @@ impl<'a> Parser<'a> {
         let sons = self.data.add_slice(sons.as_slice());
         let token = token.join_trimmed(self.state.current());
 
-        Ok(self.data.add(AstEnt::new(Kind::FunArgument(mutable), sons, token)))
+        Ok(self
+            .data
+            .add(AstEnt::new(Kind::FunArgument(mutable), sons, token)))
     }
 
     pub fn stmt_block(&mut self) -> Result<Ast> {
@@ -705,15 +726,22 @@ impl<'a> Parser<'a> {
                 }
             }
 
-            let token = self.data.ent(previous).token().join(self.data.ent(next).token());
+            let token = self
+                .data
+                .ent(previous)
+                .token()
+                .join(self.data.ent(next).token());
 
             // this handles the '{op}=' sugar
             result = if pre == ASSIGN_PRECEDENCE
                 && op.len() != 1
                 && self.ctx.display(op.span()).chars().last().unwrap() == '='
             {
-                let op_token =
-                    Token::new(token::Kind::Op, op.span().slice(0..op.len() - 1), op.line_data());
+                let op_token = Token::new(
+                    token::Kind::Op,
+                    op.span().slice(0..op.len() - 1),
+                    op.line_data(),
+                );
                 let operator = self.data.add(AstEnt::sonless(Kind::Ident, op_token));
 
                 let eq_token = Token::new(
@@ -945,10 +973,14 @@ impl<'a> Parser<'a> {
         let token = self.state.current();
         let mut ast = self.ident()?;
 
-        if self.state.current() == token::Kind::DoubleColon && self.state.peeked() == token::Kind::Ident {
+        if self.state.current() == token::Kind::DoubleColon
+            && self.state.peeked() == token::Kind::Ident
+        {
             self.next()?;
             let ident = self.ident()?;
-            let sons = if self.state.current() == token::Kind::DoubleColon && self.state.peeked() == token::Kind::Ident {
+            let sons = if self.state.current() == token::Kind::DoubleColon
+                && self.state.peeked() == token::Kind::Ident
+            {
                 self.next()?;
                 let last_ident = self.ident()?;
                 self.data.add_slice(&[ast, ident, last_ident])
@@ -959,8 +991,8 @@ impl<'a> Parser<'a> {
             ast = self.data.add(AstEnt::new(Kind::Path, sons, token));
         }
 
-        let is_instantiation =
-            self.state.is_type_expr && self.state.current() == token::Kind::LBra || self.state.current() == token::Kind::DoubleColon;
+        let is_instantiation = self.state.is_type_expr && self.state.current() == token::Kind::LBra
+            || self.state.current() == token::Kind::DoubleColon;
 
         if is_instantiation {
             if self.state.current() == token::Kind::DoubleColon {
@@ -988,7 +1020,6 @@ impl<'a> Parser<'a> {
         Ok(ast)
     }
 
-    
     pub fn if_expr(&mut self) -> Result<Ast> {
         let token = self.state.current();
         self.next()?;
@@ -1007,24 +1038,22 @@ impl<'a> Parser<'a> {
                 let token = token.join_trimmed(self.state.current());
                 self.data.add(AstEnt::new(Kind::Elif, sons, token))
             }
-            token::Kind::Indent(_) => {
-                match self.state.peeked_kind() {
-                    token::Kind::Else => {
-                        self.next()?;
-                        self.next()?;
-                        self.stmt_block()?
-                    }
-                    token::Kind::Elif => {
-                        self.next()?;
-                        let token = self.state.current();
-                        let branch = self.if_expr()?;
-                        let sons = self.data.add_slice(&[branch]);
-                        let token = token.join_trimmed(self.state.current());
-                        self.data.add(AstEnt::new(Kind::Elif, sons, token))
-                    }
-                    _ => Ast::reserved_value(),
+            token::Kind::Indent(_) => match self.state.peeked_kind() {
+                token::Kind::Else => {
+                    self.next()?;
+                    self.next()?;
+                    self.stmt_block()?
                 }
-            }
+                token::Kind::Elif => {
+                    self.next()?;
+                    let token = self.state.current();
+                    let branch = self.if_expr()?;
+                    let sons = self.data.add_slice(&[branch]);
+                    let token = token.join_trimmed(self.state.current());
+                    self.data.add(AstEnt::new(Kind::Elif, sons, token))
+                }
+                _ => Ast::reserved_value(),
+            },
             _ => Ast::reserved_value(),
         };
 
@@ -1054,7 +1083,10 @@ impl<'a> Parser<'a> {
         })
     }
 
-    pub fn walk_block<F: FnMut(&mut Self) -> Result<bool>>(&mut self, mut parser: F) -> Result<bool> {
+    pub fn walk_block<F: FnMut(&mut Self) -> Result<bool>>(
+        &mut self,
+        mut parser: F,
+    ) -> Result<bool> {
         if let token::Kind::Indent(level) = self.state.current_kind() {
             if level > self.state.level + 1 {
                 return Err(self.unexpected_str(
@@ -1092,7 +1124,10 @@ impl<'a> Parser<'a> {
     }
 
     pub fn level_continues(&mut self) -> Result<bool> {
-        if !matches!(self.state.current_kind(), token::Kind::Indent(_) | token::Kind::Eof) {
+        if !matches!(
+            self.state.current_kind(),
+            token::Kind::Indent(_) | token::Kind::Eof
+        ) {
             return Err(self.unexpected_str("expected indentation"));
         }
 
@@ -1173,7 +1208,7 @@ impl<'a> Parser<'a> {
     }
 
     pub fn next(&mut self) -> Result {
-        self.state.advance(self.ctx)    
+        self.state.advance(self.ctx)
     }
 
     pub fn expect_str(&self, kind: token::Kind, message: &str) -> Result {
@@ -1367,12 +1402,16 @@ impl Data {
         self.entities.clear();
         self.connections.clear();
     }
+
+    pub fn get_ent(&self, sons: EntityList<Ast>, arg: usize) -> AstEnt {
+        self.entities[self.get(sons, arg)]
+    }
 }
 
 #[derive(Debug, Clone, Default)]
 pub struct Ctx {
     ctx: lexer::Ctx,
-    
+
     funs: Vec<(Ast, Ast, Ast)>,
     types: Vec<(Ast, Ast)>,
     globals: Vec<(Ast, Ast, Ast)>,
@@ -1383,13 +1422,15 @@ pub struct Ctx {
 
     pool: Pool,
 }
-    
+
 impl Ctx {
-    pub fn clear(&mut self) {
+    pub fn clear_after_break(&mut self) {
         self.funs.clear();
         self.types.clear();
         self.globals.clear();
+    }
 
+    pub fn clear_after_module(&mut self) {
         self.attrib_stack.clear();
         self.attrib_frames.clear();
         self.current_attributes.clear();
@@ -1399,8 +1440,10 @@ impl Ctx {
         self.funs.as_slice()
     }
 
-    pub fn types(&self) -> &[(Ast, Ast)] {
-        self.types.as_slice()
+    pub fn types(&mut self) -> PoolRef<(Ast, Ast)> {
+        let mut temp = self.temp_vec();
+        temp.append(&mut self.types);
+        temp
     }
 
     pub fn globals(&self) -> &[(Ast, Ast, Ast)] {
@@ -1420,7 +1463,8 @@ impl Ctx {
     }
 
     pub fn create_attribute_slice(&mut self, data: &mut Data) -> EntityList<Ast> {
-        self.current_attributes.extend_from_slice(&self.attrib_stack);
+        self.current_attributes
+            .extend_from_slice(&self.attrib_stack);
         let value = data.add_slice(&self.current_attributes);
         self.current_attributes.clear();
         value
@@ -1448,17 +1492,13 @@ impl Ctx {
     }
 
     pub fn push_local_attributes(&mut self) {
-        self
-            .attrib_frames
-            .push(self.attrib_stack.len());
-        self
-            .attrib_stack
+        self.attrib_frames.push(self.attrib_stack.len());
+        self.attrib_stack
             .extend_from_slice(&self.current_attributes);
     }
 
     pub fn pop_attribute_frame(&mut self) {
-        self
-            .attrib_stack
+        self.attrib_stack
             .truncate(self.attrib_frames.pop().unwrap());
     }
 
@@ -1531,7 +1571,8 @@ impl State {
     }
 
     pub fn token_err(&mut self, sources: &Ctx) -> Result<Token> {
-        sources.token(&mut self.inner)
+        sources
+            .token(&mut self.inner)
             .map_err(|err| Error::new(error::Kind::LError(err), Token::default()))
     }
 }
@@ -1573,10 +1614,7 @@ pub struct Manifest {
 
 impl Manifest {
     pub fn new(attrs: Vec<(ID, Span, Span)>, deps: Vec<Dep>) -> Self {
-        Self {
-            attrs,
-            deps,
-        }
+        Self { attrs, deps }
     }
 
     pub fn attrs(&self) -> &[(ID, Span, Span)] {
@@ -1584,19 +1622,15 @@ impl Manifest {
     }
 
     pub fn find_attr(&self, id: ID) -> Option<Span> {
-        self.attrs.iter().find_map(|&(aid, _, span)| {
-            if aid == id {
-                Some(span)
-            } else {
-                None
-            }
-        })
+        self.attrs
+            .iter()
+            .find_map(|&(aid, _, span)| if aid == id { Some(span) } else { None })
     }
 
     pub fn deps(&self) -> &[Dep] {
         self.deps.as_slice()
     }
-    
+
     pub fn clear(&mut self) {
         self.attrs.clear();
         self.deps.clear();
@@ -1670,7 +1704,6 @@ fn precedence(op: &str) -> i64 {
 }
 
 crate::impl_entity!(Ast);
-
 
 #[derive(Debug, Clone, Copy, Default, PartialEq, RealQuickSer)]
 pub struct AstEnt {
@@ -1837,13 +1870,13 @@ impl ErrorDisplayState<Error> for Ctx {
         match e.kind() {
             error::Kind::LError(error) => {
                 writeln!(f, "{}", ErrorDisplay::new(self.sources(), error))?;
-            },
+            }
             error::Kind::UnexpectedToken(message) => {
                 writeln!(f, "{}", message)?;
-            },
+            }
             error::Kind::InvalidCallConv => {
                 CallConv::error(f)?;
-            },
+            }
         }
 
         Ok(())
@@ -1995,9 +2028,6 @@ impl Default for CallConv {
     }
 }
 
-
-
-
 pub fn test() {
     let mut ctx = Ctx::default();
     let source = SourceEnt::new(
@@ -2019,7 +2049,7 @@ pub fn test() {
         print!("{}", AstDisplay::new(&ctx, &data, global));
     }
 
-    for &(ty, attrs) in ctx.types() {
+    for &(ty, attrs) in ctx.types().as_slice() {
         println!("===type===");
         print!("{}", AstDisplay::new(&ctx, &data, attrs));
         print!("{}", AstDisplay::new(&ctx, &data, ty));

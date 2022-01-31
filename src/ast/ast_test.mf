@@ -1,5 +1,5 @@
 
-var something = [1, 2, 3]
+var something: [int, 1 * 2] = [1, 2, 3]
 let hello = "hello"
 
 fun pointed_function(a: Int, b: Int) -> int:

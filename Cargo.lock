@@ -79,6 +79,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "cranelift-interpreter"
+version = "0.79.0"
+dependencies = [
+ "cranelift-codegen",
+ "cranelift-entity",
+ "log",
+ "smallvec",
+ "thiserror",
+]
+
+[[package]]
 name = "cranelift-jit"
 version = "0.79.0"
 dependencies = [
@@ -213,6 +224,7 @@ dependencies = [
  "cranelift-codegen",
  "cranelift-entity",
  "cranelift-frontend",
+ "cranelift-interpreter",
  "cranelift-jit",
  "cranelift-module",
  "cranelift-native",
@@ -313,6 +325,26 @@ name = "target-lexicon"
 version = "0.12.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "d9bffcddbc2458fa3e6058414599e3c838a022abae82e5c67b4f7f80298d5bff"
+
+[[package]]
+name = "thiserror"
+version = "1.0.30"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "854babe52e4df1653706b98fcfc05843010039b406875930a70e4d9644e5c417"
+dependencies = [
+ "thiserror-impl",
+]
+
+[[package]]
+name = "thiserror-impl"
+version = "1.0.30"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "aa32fd3f627f367fe16f893e2597ae3c05020f8bba2666a4e6ea73d377e5714b"
+dependencies = [
+ "proc-macro2",
+ "quote",
+ "syn",
+]
 
 [[package]]
 name = "traits"

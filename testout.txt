@@ -1,4 +1,4 @@
-16 16
+768
 Ok(Arguments { _filename: "file", hash: ID(0), flags: ["flag", "flag"], field_flags: [("flag", "value")], args: ["arg", "arg"] })
 Ok(Arguments { _filename: "file", hash: ID(0), flags: [], field_flags: [], args: ["string value"] })
 |> text_code.mf:1:15
@@ -78,11 +78,16 @@ Ok(Arguments { _filename: "file", hash: ID(0), flags: [], field_flags: [], args:
 ===global===
 None
 None
-VarStatement(None, true) "var something = [1, 2, 3]\r":
- VarAssign "something = [1, 2, 3]\r":
-  Group "something ":
+VarStatement(None, true) "var something: [int, 1 * 2] = [1, 2, 3]\r":
+ VarAssign "something: [int, 1 * 2] = [1, 2, 3]\r":
+  Group "something":
    Ident "something"
-  None
+  Array "[int, 1 * 2] ":
+   Ident "int"
+   Binary "1 * 2":
+    Ident "*"
+    Lit "1"
+    Lit "2"
   Group "= [1, 2, 3]\r":
    Array "[1, 2, 3]\r":
     Lit "1"

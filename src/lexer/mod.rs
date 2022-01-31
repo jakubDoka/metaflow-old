@@ -4,11 +4,9 @@
 //! but construct whenever token is needed.
 use quick_proc::{QuickDefault, QuickSer, RealQuickSer};
 
-use cranelift::entity::{EntityRef, PrimaryMap, packed_option::ReservedValue};
+use cranelift::entity::{packed_option::ReservedValue, EntityRef, PrimaryMap};
 
-use crate::{
-    util::{sdbm::ID, storage::Map},
-};
+use crate::util::{sdbm::ID, storage::Map};
 use std::{fmt::Debug, ops::Range};
 
 pub use token::Display;
@@ -18,10 +16,11 @@ type Result<T = Token> = std::result::Result<T, Error>;
 /// Builtin source contains spans produced by compiler and does not
 /// originate from user defined source files.
 pub const BUILTIN_SOURCE: Source = Source(0);
+pub const POINTER_WIDTH_MARKER: u8 = 100;
 
 /// Next token parses one token from `source` based of `state`.
 pub fn next_token(source: &str, state: &mut State) -> Result {
-    Lexer::new(source, state).next()
+    Lexer::new(source, state).advance()
 }
 
 /// Lexer modifies [`LState`] and yields token. If you want to peek,
@@ -40,8 +39,9 @@ impl<'a> Lexer<'a> {
     }
 
     /// Next parses next token, returning it and preparing state for next token.
-    pub fn next(&mut self) -> Result {
+    pub fn advance(&mut self) -> Result {
         loop {
+            let start = self.progress();
             let char = self.peek().unwrap_or('\0');
             if char.is_alphabetic() || char == '_' {
                 return self.ident();
@@ -50,21 +50,36 @@ impl<'a> Lexer<'a> {
                 return self.op();
             }
             if char.is_numeric() {
-                return self.number();
+                return self
+                    .number()
+                    .map(|value| {
+                        let kind = match value {
+                            Number::Int(_, base) => token::Kind::Int(base),
+                            Number::Uint(_, base) => token::Kind::Uint(base),
+                            Number::Float(_, base) => token::Kind::Float(base),
+                        };
+                        self.token(kind, start)
+                    })
+                    .ok_or_else(|| {
+                        self.error(error::Kind::InvalidCharacter, start..self.progress())
+                    });
             }
-
-            let start = self.progress();
 
             let kind = match char {
                 '\n' => return self.indent(),
                 ' ' | '\r' | '\t' => {
                     while matches!(self.peek(), Some(' ' | '\t' | '\r')) {
-                        self.advance();
+                        self.next();
                     }
                     continue;
                 }
                 '\'' => return self.char_or_tag(),
-                '"' => return self.string(),
+                '"' => {
+                    return match self.string(None) {
+                        Some(err) => return Err(self.error(err, start..self.progress())),
+                        None => Ok(self.token(token::Kind::String, start)),
+                    }
+                }
                 '#' => {
                     let comment = self.comment()?;
                     if comment.kind() == token::Kind::Comment(false) {
@@ -84,7 +99,7 @@ impl<'a> Lexer<'a> {
                 _ => return Err(self.error(error::Kind::UnknownCharacter, start..start + 1)),
             };
 
-            self.advance();
+            self.next();
             return Ok(self.token(kind, start));
         }
     }
@@ -101,7 +116,7 @@ impl<'a> Lexer<'a> {
             if !char.is_alphanumeric() && char != '_' {
                 break;
             }
-            self.advance();
+            self.next();
         }
         let kind = match &self.source[start..self.progress()] {
             "priv" => token::Kind::Priv,
@@ -139,7 +154,7 @@ impl<'a> Lexer<'a> {
     fn op(&mut self) -> Result<Token> {
         let start = self.progress();
         while self.peek().unwrap_or('\0').is_operator() {
-            self.advance();
+            self.next();
         }
         let kind = match &self.source[start..self.progress()] {
             ":" => token::Kind::Colon,
@@ -158,110 +173,25 @@ impl<'a> Lexer<'a> {
     /// ```
     fn indent(&mut self) -> Result<Token> {
         let start = self.progress();
-        self.advance();
+        self.next();
         let mut indentation = 0;
         loop {
             match self.peek() {
                 Some(' ') => {
-                    self.advance();
+                    self.next();
                     indentation += 1;
                 }
                 Some('\t') => {
-                    self.advance();
+                    self.next();
                     indentation += 2;
                 }
                 Some('\r') => {
-                    self.advance();
+                    self.next();
                 }
                 _ => break,
             }
         }
         Ok(self.token(token::Kind::Indent(indentation / 2), start))
-    }
-
-    /// Parses number token. Literals allow underscores,
-    /// hex and bin literals are also supported. After the
-    /// value, type can also be specified.
-    /// ```regex
-    /// ([0-9_]+([0-9_])?|0x[0-9a-fA-F_]+|0b[01_]+)((i|u|f)[0-9]{0, 2})?
-    /// ```
-    fn number(&mut self) -> Result {
-        let start = self.progress();
-        let number = self.parse_number_err(10)?.0;
-        let (fraction, _, is_float) = match self.peek() {
-            Some('.') => {
-                self.advance();
-                let (f, e) = self.parse_number_err(10)?;
-                (f, e, true)
-            }
-            Some('x') if number == 0 => {
-                self.advance();
-                self.parse_number_err(16)?;
-                (0, 0, false)
-            }
-            Some('b') if number == 0 => {
-                self.advance();
-                self.parse_number_err(2)?;
-                (0, 0, false)
-            }
-            _ => (0, 0, false),
-        };
-        let next_char = self.peek().unwrap_or('\0');
-        let kind = match next_char {
-            'i' | 'u' | 'f' => {
-                self.advance();
-                let base = self.parse_number_err(10)?.0 as u16;
-                match next_char {
-                    'i' => token::Kind::Int(base),
-                    'u' => token::Kind::Uint(base),
-                    'f' => token::Kind::Float(base),
-                    _ => unreachable!(),
-                }
-            }
-            _ => {
-                if fraction == 0 && !is_float {
-                    token::Kind::Int(0)
-                } else {
-                    token::Kind::Float(64)
-                }
-            }
-        };
-        Ok(self.token(kind, start))
-    }
-
-    /// Calls [`Self::parse_number`] and maps None to error.
-    fn parse_number_err(&mut self, base: u64) -> Result<(u64, u64)> {
-        let start = self.progress();
-        self.parse_number(base)
-            .ok_or_else(|| self.error(error::Kind::InvalidCharacter, start..self.progress()))
-    }
-
-    /// Parses simple integer number with underscores. Second value is
-    /// exponent of the number, which is closes power of 10
-    /// smaller the first element.
-    /// ```regex
-    /// [0-9_]+
-    /// ```
-    fn parse_number(&mut self, base: u64) -> Option<(u64, u64)> {
-        let mut number = 0u64;
-        let mut exponent = 1u64;
-        let base32 = base as u32;
-        loop {
-            let ch = self.peek().unwrap_or('\0');
-            if ch == '_' {
-                self.advance();
-                continue;
-            }
-
-            let char = self.peek().map(|d| d.to_digit(base32)).flatten();
-            if char.is_none() {
-                return Some((number, exponent));
-            }
-            self.advance();
-
-            number = number * base + char.unwrap() as u64;
-            exponent *= base;
-        }
     }
 
     /// Parses character or label. Character can be escaped. `<char_escape>` refers
@@ -271,7 +201,7 @@ impl<'a> Lexer<'a> {
     /// ```
     fn char_or_tag(&mut self) -> Result {
         let start = self.progress();
-        self.advance();
+        self.next();
         let current = self.peek().unwrap_or('\0');
 
         let may_be_label = if current == '\\' {
@@ -282,7 +212,7 @@ impl<'a> Lexer<'a> {
             }
             false
         } else {
-            self.advance();
+            self.next();
             true
         };
 
@@ -293,11 +223,11 @@ impl<'a> Lexer<'a> {
         }
 
         let kind = if next == '\'' {
-            self.advance();
+            self.next();
             token::Kind::Char
         } else {
             while self.peek().unwrap_or('\0').is_alphanumeric() {
-                self.advance();
+                self.next();
             }
 
             token::Kind::Tag
@@ -309,10 +239,10 @@ impl<'a> Lexer<'a> {
     /// commend content is valid.
     fn comment(&mut self) -> Result {
         let start = self.progress();
-        self.advance();
+        self.next();
         let is_doc = self.peek() == Some('#');
         if is_doc {
-            self.advance();
+            self.next();
         }
 
         if self.peek() == Some('[') {
@@ -320,9 +250,9 @@ impl<'a> Lexer<'a> {
             loop {
                 match self.peek() {
                     Some(']') => {
-                        self.advance();
+                        self.next();
                         if self.peek() == Some('#') {
-                            self.advance();
+                            self.next();
                             if depth == 0 {
                                 break;
                             }
@@ -330,14 +260,14 @@ impl<'a> Lexer<'a> {
                         }
                     }
                     Some('#') => {
-                        self.advance();
+                        self.next();
                         if self.peek() == Some('[') {
-                            self.advance();
+                            self.next();
                             depth += 1;
                         }
                     }
                     Some(_) => {
-                        self.advance();
+                        self.next();
                     }
                     None => break,
                 }
@@ -347,115 +277,13 @@ impl<'a> Lexer<'a> {
                 match self.peek() {
                     Some('\n') | None => break,
                     Some(_) => {
-                        self.advance();
+                        self.next();
                     }
                 }
             }
         }
 
         Ok(self.token(token::Kind::Comment(is_doc), start))
-    }
-
-    /// Parses the string literal, literal can be on multiple lines.
-    /// ```regex
-    /// "([^"]|<char_escape>)*"
-    /// ```
-    fn string(&mut self) -> Result<Token> {
-        let start = self.progress();
-        self.advance();
-
-        loop {
-            match self.peek() {
-                Some('\\') => {
-                    let start = self.progress();
-                    match self.char_escape() {
-                        Some(_) => (),
-                        None => {
-                            let end = self.progress();
-                            return Err(self.error(error::Kind::InvalidCharacter, start..end));
-                        }
-                    }
-                }
-                Some('"') => {
-                    self.advance();
-                    break;
-                }
-                Some(_) => {
-                    self.advance().unwrap();
-                }
-                None => {
-                    return Err(self.error(error::Kind::UnclosedString, start..self.progress()));
-                }
-            }
-        }
-
-        Ok(self.token(token::Kind::String, start))
-    }
-
-    /// Parses character whether it is escaped or not.
-    /// ```regex
-    /// ([^\\']|\\([ abefnrtv\\'"0]|[0-7]{3}|x[0-9a-fA-F]{2}|u[0-9a-fA-F]{4}|U[0-9a-fA-F]{8}))
-    fn char_escape(&mut self) -> Option<char> {
-        self.advance();
-        let current = self.advance().unwrap_or('\0');
-        Some(match current {
-            'a' | 'b' | 'e' | 'f' | 'n' | 'r' | 't' | 'v' | '\\' | '\'' | '"' | '0' | ' ' => {
-                match current {
-                    'a' => '\x07',
-                    'b' => '\x08',
-                    'e' => '\x1b',
-                    'f' => '\x0c',
-                    'v' => '\x0b',
-                    'n' => '\n',
-                    'r' => '\r',
-                    't' => '\t',
-                    '0' => '\0',
-                    ' ' => ' ',
-                    _ => current,
-                }
-            }
-            '0'..='7' => {
-                let mut res = 0u8 + current as u8 - '0' as u8;
-                for _ in 0..2 {
-                    res = res * 8 + self.advance()?.to_digit(8)? as u8;
-                }
-                res as char
-            }
-            'x' | 'u' | 'U' => {
-                let len = match current {
-                    'x' => 2,
-                    'u' => 4,
-                    'U' => 8,
-                    _ => unreachable!(),
-                };
-
-                let mut res = 0u32;
-                for _ in 0..len {
-                    res = res * 16 + self.advance()?.to_digit(16)?;
-                }
-                return char::from_u32(res);
-            }
-            _ => return None,
-        })
-    }
-
-    /// Peeks a character
-    fn peek(&self) -> Option<char> {
-        self.source[self.progress()..].chars().next()
-    }
-
-    /// Advances the progress by one character and returns if any.
-    fn advance(&mut self) -> Option<char> {
-        let char = self.peek();
-
-        if let Some(ch) = char {
-            if ch == '\n' {
-                self.state.newline();
-            }
-            self.state.advance(ch.len_utf8());
-        }
-
-        char
     }
 
     /// Error constructor utility.
@@ -484,6 +312,25 @@ impl<'a> Lexer<'a> {
     }
 }
 
+impl LexerBase for Lexer<'_> {
+    fn peek(&self) -> Option<char> {
+        Iterator::next(&mut self.source[self.progress()..].chars())
+    }
+
+    fn next(&mut self) -> Option<char> {
+        let char = self.peek();
+
+        if let Some(ch) = char {
+            if ch == '\n' {
+                self.state.newline();
+            }
+            self.state.advance(ch.len_utf8());
+        }
+
+        char
+    }
+}
+
 impl IsOperator for char {
     fn to_char(&self) -> char {
         *self
@@ -504,7 +351,7 @@ pub trait IsOperator {
     }
 }
 
-/// State holds the current progress of the lexer. It is small 
+/// State holds the current progress of the lexer. It is small
 /// and fast to copy.
 #[derive(Default, Debug, Clone, Copy, RealQuickSer)]
 pub struct State {
@@ -618,7 +465,7 @@ impl Ctx {
         next_token(self.sources[state.source()].content(), state)
     }
 
-    /// Frees the content of all sources. Should be called to 
+    /// Frees the content of all sources. Should be called to
     /// prepare sources for serialization.
     pub fn clear_source_content(&mut self) {
         for (_, source) in self.sources.iter_mut() {
@@ -638,6 +485,204 @@ impl Default for Ctx {
     }
 }
 
+/// Represents numeric literal with its value and number of bits.
+pub enum Number {
+    /// Integer literal.
+    Int(i64, u8),
+    /// Unsigned integer literal.
+    Uint(u64, u8),
+    /// Floating point literal.
+    Float(f64, u8),
+}
+
+
+
+/// Lexer provides generic parsing algorithms for some token literals.
+pub trait LexerBase {
+    /// Advance by one character and return next one.
+    fn next(&mut self) -> Option<char>;
+    /// Return same character ans peek, but do not advance.
+    fn peek(&self) -> Option<char>;
+
+    /// Parses the string literal, literal can be on multiple lines.
+    /// The `"` is expected as first character.
+    /// ```regex
+    /// "([^"]|<char_escape>)*"
+    /// ```
+    fn string(&mut self, mut buffer: Option<&mut String>) -> Option<error::Kind> {
+        self.next();
+
+        loop {
+            match self.peek() {
+                Some('\\') => {
+                    let char = match self.char_escape() {
+                        Some(c) => c,
+                        None => return Some(error::Kind::InvalidCharacter),
+                    };
+                    if let Some(buf) = buffer {
+                        buf.push(char);
+                        buffer = Some(buf);
+                    }
+                }
+                Some('"') => {
+                    self.next();
+                    return None;
+                }
+                Some(_) => {
+                    let char = self.next().unwrap();
+                    if let Some(buf) = buffer {
+                        buf.push(char);
+                        buffer = Some(buf);
+                    }
+                }
+                None => {
+                    return Some(error::Kind::UnclosedString);
+                }
+            }
+        }
+    }
+
+    /// Gets value of valid character.
+    fn character(&mut self) -> char {
+        self.next();
+        match self.peek() {
+            Some('\\') => {
+                self.next();
+                self.char_escape().unwrap()
+            }
+            Some(c) => {
+                self.next();
+                c
+            }
+            None => unreachable!(),
+        }
+    }
+
+    /// Parses character whether it is escaped or not.
+    /// ```regex
+    /// ([^\\']|\\([ abefnrtv\\'"0]|[0-7]{3}|x[0-9a-fA-F]{2}|u[0-9a-fA-F]{4}|U[0-9a-fA-F]{8}))
+    fn char_escape(&mut self) -> Option<char> {
+        self.next();
+        let current = self.next().unwrap_or('\0');
+        Some(match current {
+            'a' | 'b' | 'e' | 'f' | 'n' | 'r' | 't' | 'v' | '\\' | '\'' | '"' | '0' | ' ' => {
+                match current {
+                    'a' => '\x07',
+                    'b' => '\x08',
+                    'e' => '\x1b',
+                    'f' => '\x0c',
+                    'v' => '\x0b',
+                    'n' => '\n',
+                    'r' => '\r',
+                    't' => '\t',
+                    '0' => '\0',
+                    ' ' => ' ',
+                    _ => current,
+                }
+            }
+            '0'..='7' => {
+                let mut res = 0u8 + current as u8 - '0' as u8;
+                for _ in 0..2 {
+                    res = res * 8 + self.next()?.to_digit(8)? as u8;
+                }
+                res as char
+            }
+            'x' | 'u' | 'U' => {
+                let len = match current {
+                    'x' => 2,
+                    'u' => 4,
+                    'U' => 8,
+                    _ => unreachable!(),
+                };
+
+                let mut res = 0u32;
+                for _ in 0..len {
+                    res = res * 16 + self.next()?.to_digit(16)?;
+                }
+                return char::from_u32(res);
+            }
+            _ => return None,
+        })
+    }
+
+    /// Parses number token. Literals allow underscores,
+    /// hex and bin literals are also supported. After the
+    /// value, type can also be specified.
+    /// ```regex
+    /// ([0-9_]+([0-9_])?|0x[0-9a-fA-F_]+|0b[01_]+)((i|u|f)[0-9]{0, 2})?
+    /// ```
+    fn number(&mut self) -> Option<Number> {
+        let mut number = self.parse_number(10)?.0;
+        let (fraction, exponent, is_float) = match self.peek() {
+            Some('.') => {
+                self.next();
+                let (f, e) = self.parse_number(10)?;
+                (f, e, true)
+            }
+            Some('x') if number == 0 => {
+                self.next();
+                number = self.parse_number(16)?.0;
+                (0, 0, false)
+            }
+            Some('b') if number == 0 => {
+                self.next();
+                number = self.parse_number(2)?.0;
+                (0, 0, false)
+            }
+            _ => (0, 0, false),
+        };
+        let next_char = self.peek().unwrap_or('\0');
+        Some(match next_char {
+            'i' | 'u' | 'f' => {
+                self.next();
+                let base = self.parse_number(10)?.0 as u8;
+                let base = if base == 0 { POINTER_WIDTH_MARKER } else { base };
+                match next_char {
+                    'i' => Number::Int(number as i64, base),
+                    'u' => Number::Uint(number, base),
+                    'f' => Number::Float(number as f64 + (fraction as f64 / exponent as f64), base),
+                    _ => unreachable!(),
+                }
+            }
+            _ => {
+                if fraction == 0 && !is_float {
+                    Number::Int(number as i64, POINTER_WIDTH_MARKER)
+                } else {
+                    Number::Float(number as f64 + (fraction as f64 / exponent as f64), POINTER_WIDTH_MARKER)
+                }
+            }
+        })
+    }
+
+    /// Parses simple integer number with underscores. Second value is
+    /// exponent of the number, which is closes power of 10
+    /// smaller the first element.
+    /// ```regex
+    /// [0-9_]+
+    /// ```
+    fn parse_number(&mut self, base: u64) -> Option<(u64, u64)> {
+        let mut number = 0u64;
+        let mut exponent = 1u64;
+        let base32 = base as u32;
+        loop {
+            let ch = self.peek().unwrap_or('\0');
+            if ch == '_' {
+                self.next();
+                continue;
+            }
+
+            let char = self.peek().map(|d| d.to_digit(base32)).flatten();
+            if char.is_none() {
+                return Some((number, exponent));
+            }
+            self.next();
+
+            number = number * base + char.unwrap() as u64;
+            exponent *= base;
+        }
+    }
+}
+
 crate::impl_entity!(Source);
 
 /// Struct stores file related data. This ensures no string allocations are done
@@ -651,10 +696,7 @@ pub struct SourceEnt {
 impl SourceEnt {
     /// Because of private fields.
     pub fn new(name: String, content: String) -> Self {
-        SourceEnt {
-            name,
-            content,
-        }
+        SourceEnt { name, content }
     }
 
     /// Returns the name/path of/to file.
@@ -687,7 +729,6 @@ impl SourceEnt {
         self.content.clear()
     }
 }
-
 
 /// Token is basic lex element that points to the sequence of source code.
 /// It preserves line information and span.
@@ -776,7 +817,7 @@ impl std::fmt::Display for Token {
         Ok(())
     }
 }
-    
+
 impl PartialEq<Token> for Token {
     fn eq(&self, other: &Token) -> bool {
         self.kind == other.kind && self.span == other.span
@@ -800,28 +841,28 @@ pub mod token {
         Pub,
         /// Keyword 'priv' indicates file private items.
         Priv,
-        /// Keyword 'use' indicates dependant modules as 
+        /// Keyword 'use' indicates dependant modules as
         /// a first statement in the file.
         Use,
-        /// Keyword 'fun' indicates start of function 
+        /// Keyword 'fun' indicates start of function
         /// definition or function pointer type.
         Fun,
         /// Keyword 'attr' indicates attribute definition.
         Attr,
-        /// Keyword 'pass' does nothing but makes 
+        /// Keyword 'pass' does nothing but makes
         /// defining empty block possible.
         Pass,
         /// Keyword 'return' indicates return statement.
         Return,
         /// Keyword 'if' indicates if statement.
         If,
-        /// Keyword 'elif' indicates chained branch 
+        /// Keyword 'elif' indicates chained branch
         /// of if statement.
         Elif,
-        /// Keyword 'else' indicates optional else 
+        /// Keyword 'else' indicates optional else
         /// branch of if statement.
         Else,
-        /// Keyword 'var' indicates mutable variable, 
+        /// Keyword 'var' indicates mutable variable,
         /// global state or pointer
         Var,
         /// Keyword 'let' indicates immutable variable
@@ -843,14 +884,14 @@ pub mod token {
         Enum,
         /// Keyword 'union' indicates union declaration.
         Union,
-    
+
         /// Anything matching [`Lexer::char_or_tag()`] regex.
         Tag,
         /// Anything matching [`Lexer::ident()`] regex.
         Ident,
         /// Anything matching [`Lexer::op()`] regex.
         Op,
-    
+
         /// '('
         LPar,
         /// ')'
@@ -873,25 +914,25 @@ pub mod token {
         RArrow,
         /// '.'
         Dot,
-    
+
         /// integer literal
-        Int(u16),
+        Int(u8),
         /// unsigned integer literal
-        Uint(u16),
+        Uint(u8),
         /// float literal
-        Float(u16),
+        Float(u8),
         /// boolean literal
         Bool(bool),
         /// character literal
         Char,
         /// string literal
         String,
-    
+
         /// Comment can be Documentation comment (true) or juts ignored comment (false).
         Comment(bool),
         /// Everything that matches [`Lexer::indent()`] regex.
-        Indent(u16),        
-    
+        Indent(u16),
+
         /// End of file.
         Eof,
         /// Some Error.
@@ -899,7 +940,7 @@ pub mod token {
         /// Indicates default value. Used to check if token is present.
         None,
     }
-    
+
     impl std::fmt::Display for Kind {
         fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
             f.write_str(match *self {
@@ -924,7 +965,7 @@ pub mod token {
                 Self::Impl => "'impl'",
                 Self::Enum => "'enum'",
                 Self::Union => "'ident'",
-    
+
                 Self::Ident => "ident",
                 Self::Op => "operator",
                 Self::LPar => "'('",
@@ -952,38 +993,38 @@ pub mod token {
             })
         }
     }
-    
+
     impl Default for Kind {
         fn default() -> Self {
             Self::None
         }
     }
-    
+
     /// TokenDisplay can pretty print tokens.
     pub struct Display<'a> {
         state: &'a Ctx,
         token: &'a Token,
     }
-    
+
     impl<'a> Display<'a> {
         /// Because of private fields.
         pub fn new(state: &'a Ctx, token: &'a Token) -> Self {
             Display { state, token }
         }
     }
-    
+
     impl std::fmt::Display for Display<'_> {
         fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
             if self.token.kind() == Kind::None {
                 return Ok(());
             }
-    
-            let mut range = self.token  .range();
+
+            let mut range = self.token.range();
             let string = &self.state.source(self.token.source()).content();
             if string[range.start..range.end].starts_with("\n") {
                 range.start += 1;
             }
-    
+
             writeln!(
                 f,
                 "|> {}:{}:{}",
@@ -991,7 +1032,7 @@ pub mod token {
                 self.token.line(),
                 self.token.column()
             )?;
-    
+
             let end = string[range.end..]
                 .find('\n')
                 .map(|i| i + range.end)
@@ -1000,14 +1041,14 @@ pub mod token {
                 .rfind('\n')
                 .map(|i| i + 1)
                 .unwrap_or(0);
-    
+
             for i in string[start..end].split('\n') {
                 writeln!(f, "| {}", i)?;
             }
-    
+
             let mut max = 0;
             let mut min = range.start - start;
-    
+
             if let Kind::Indent(_) = self.token.kind {
                 max = range.end - start - 1 * (range.end - start != 0) as usize;
             } else {
@@ -1021,13 +1062,13 @@ pub mod token {
                             continue;
                         }
                     }
-    
+
                     max = i.max(max);
                     min = i.min(min);
                     i += 1;
                 }
             }
-    
+
             write!(f, "| ")?;
             for _ in 0..min {
                 write!(f, " ")?;
@@ -1035,7 +1076,7 @@ pub mod token {
             for _ in min..=max {
                 write!(f, "^")?;
             }
-    
+
             Ok(())
         }
     }
@@ -1046,16 +1087,16 @@ impl ErrorDisplayState<Error> for Ctx {
         match e.kind() {
             error::Kind::InvalidCharacter => {
                 write!(f, "invalid character literal")?;
-            },
+            }
             error::Kind::UnknownCharacter => {
                 write!(f, "lexer does not recognize this character")?;
-            },
+            }
             error::Kind::UnclosedCharacter => {
                 writeln!(f, "unclosed character literal")?;
-            },
+            }
             error::Kind::UnclosedString => {
                 writeln!(f, "unclosed string literal")?;
-            },
+            }
         }
 
         Ok(())
@@ -1113,7 +1154,6 @@ mod error {
         UnclosedString,
     }
 }
-
 
 /// Span points to a string inside a source file.
 #[derive(Debug, Clone, Copy, QuickDefault, PartialEq, Eq, RealQuickSer)]
@@ -1207,10 +1247,7 @@ pub struct ErrorDisplay<'a, E: DisplayError, S: ErrorDisplayState<E>> {
 impl<'a, E: DisplayError, S: ErrorDisplayState<E>> ErrorDisplay<'a, E, S> {
     /// Because of private fields.
     pub fn new(state: &'a S, error: &'a E) -> Self {
-        Self {
-            state,
-            error,
-        }
+        Self { state, error }
     }
 }
 

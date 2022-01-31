@@ -3,6 +3,8 @@
 #![feature(vec_into_raw_parts)]
 //#![warn(missing_docs)]
 
+use cranelift::codegen::ir::Function;
+
 //use std::time::Instant;
 
 //use gen::GErrorDisplay;
@@ -13,15 +15,15 @@ pub mod ast;
 //pub mod gen;
 pub mod incr;
 pub mod lexer;
-pub mod module_tree;
-//pub mod types;
+pub mod modules;
+pub mod types;
 pub mod util;
 
 /// Crate version used for validating incremental data.
 pub const VERSION: &str = env!("CARGO_PKG_VERSION");
 
 fn main() {
-    println!("{} {}", std::mem::size_of::<(bool, i64, bool)>(), std::mem::size_of::<(bool, i64, bool)>());
+    println!("{}", std::mem::size_of::<Function>());
     #[cfg(feature = "testing")]
     test();
     #[cfg(not(feature = "testing"))]
@@ -60,7 +62,7 @@ fn test() {
     util::test();
     lexer::test();
     ast::test();
-    module_tree::test();
+    modules::test();
     //types::test();
     //functions::test();
     //gen::test();

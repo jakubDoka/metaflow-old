@@ -1,13 +1,11 @@
-use crate::ast::{AError, AErrorDisplay, AKind, AstEnt, Vis};
-use crate::entities::{
-    Ast, CallConv, CrTypeWr, Mod, SField, SKind, SType, Signature, TKind, Ty, TypeConst, TypeEnt,
-    BUILTIN_MODULE,
+//! Module defines a type parser. It transforms types into a Tree that can be later traversed
+//! when generating code.
+use crate::ast::{self, Ast, CallConv, Vis};
+use crate::lexer::{
+    self, token, DisplayError, ErrorDisplay, ErrorDisplayState, LexerBase, LineData, Span, Token,
 };
-use crate::incr::IncrementalData;
-use crate::lexer::{TKind as LTKind, Token, TokenDisplay};
-use crate::module_tree::{MTContext, MTErrorDisplay, MTParser, MTState, TreeStorage};
+use crate::modules::{self, Mod, TreeStorage, BUILTIN_MODULE, ScopeManager, Item};
 use crate::util::sdbm::ID;
-use crate::util::storage::{Table, TableId};
 use crate::util::Size;
 use cranelift::codegen::ir::types::Type;
 use cranelift::codegen::ir::Signature as CrSignature;
@@ -15,42 +13,50 @@ use cranelift::codegen::ir::{types::*, AbiParam, ArgumentPurpose};
 use cranelift::codegen::isa::TargetIsa;
 use cranelift::codegen::packed_option::PackedOption;
 use cranelift::entity::{packed_option::ReservedValue, EntityRef};
-use cranelift::entity::{EntityList, EntitySet};
-use quick_proc::{QuickSer, RealQuickSer};
+use cranelift::entity::{EntityList, ListPool, PoolMap, PrimaryMap};
+use quick_proc::{QuickEnumGets, QuickSer, RealQuickSer};
 use std::fmt::Write;
 use std::ops::{Deref, DerefMut};
+use std::str::Chars;
 
-type Result<T = ()> = std::result::Result<T, TError>;
+type Result<T = ()> = std::result::Result<T, Error>;
 
-pub const TYPE_SALT: ID = ID(0x9e3779b97f4a7c15);
-
+/// This message is used in multiple places, thus the constant.
 pub const VISIBILITY_MESSAGE: &str = concat!(
     "removing 'priv' in case of different module (but same package) or adding",
     " 'pub' in case of different package can help",
 );
 
-pub static mut POINTER_TYPE: Type = INVALID;
+/// There is a limit to how deep compiler is willing to instantiate a type.
+/// Otherwise, user could encounter weird compiler freezes.
+pub const MAX_TYPE_INSTANTIATION_DEPTH: usize = 1000;
 
-pub struct TParser<'a> {
+/// Another extension that handles type parsing on parsed ast. Its important to note
+#[derive(Debug, Clone, Default)]
+pub struct Ctx {
+    ctx: modules::Ctx,
+    unresolved: Vec<(Ty, usize)>,
+    resolved: Vec<Ty>,
+
     module: Mod,
-    state: &'a mut TState,
-    context: &'a mut TContext,
+
+    enum_slices: ListPool<EnumVariant>,
+    enum_variants: PrimaryMap<EnumVariant, EnumVariantEnt>,
+    constants: PoolMap<Const, ConstEnt>,
+    constant_slices: ListPool<Const>,
+    types: PoolMap<Ty, TyEnt>,
+    type_slices: ListPool<Ty>,
+    fields: PoolMap<Field, FieldEnt>,
+    field_slices: ListPool<Field>,
+    type_cycle_map: Vec<(bool, bool)>,
 }
 
-crate::inherit!(TParser<'a>, state, TState);
-
-impl<'a> TParser<'a> {
-    pub const MAX_TYPE_INSTANTIATION_DEPTH: usize = 1000;
-
-    pub fn new(state: &'a mut TState, context: &'a mut TContext) -> Self {
-        Self {
-            module: Mod::reserved_value(),
-            state,
-            context,
+impl Ctx {
+    /// Computes types which ast is loaded in context and adds them to `module`.
+    pub fn compute_types(&mut self, module: Mod) -> Result {
+        if module == BUILTIN_MODULE {
+            self.add_builtin_types();
         }
-    }
-
-    pub fn parse(&mut self, module: Mod) -> Result {
         self.module = module;
         self.collect(module)?;
         self.connect()?;
@@ -58,20 +64,23 @@ impl<'a> TParser<'a> {
         Ok(())
     }
 
+    /// Parses Type expression and returns the entity. This can instantiate new types.
     pub fn parse_type(&mut self, module: Mod, ast: Ast) -> Result<Ty> {
         self.module = module;
-        let result = self.ty(module, ast, 0)?;
-
+        let ast_data = self.take_ast_data(module);
+        let result = self.ty(&ast_data, module, ast, 0)?;
+        self.put_ast_data(module, ast_data);
         self.connect()?;
         self.calc_sizes()?;
         Ok(result)
     }
 
+    /// Calculates size of all new types.
     fn calc_sizes(&mut self) -> Result {
         let mut lookup = std::mem::take(&mut self.type_cycle_map);
-        let mut resolved = std::mem::take(&mut self.context.resolved);
-        let mut ordering = self.context.pool.get();
-        let mut cycle_stack = self.context.pool.get();
+        let mut resolved = std::mem::take(&mut self.resolved);
+        let mut ordering = self.temp_vec();
+        let mut cycle_stack = self.temp_vec();
         lookup.resize(self.types.len(), (false, false));
 
         for ty in resolved.drain(..) {
@@ -82,7 +91,10 @@ impl<'a> TParser<'a> {
             if let Some(cycle) =
                 self.detect_cycles(ty, &mut cycle_stack, &mut lookup, Some(&mut ordering))
             {
-                return Err(TError::new(TEKind::InfiniteSize(cycle), Token::default()));
+                return Err(Error::new(
+                    error::Kind::InfiniteSize(cycle),
+                    Token::default(),
+                ));
             }
 
             for ty in ordering.drain(..) {
@@ -90,71 +102,74 @@ impl<'a> TParser<'a> {
             }
         }
 
-        self.context.resolved = resolved;
+        self.resolved = resolved;
         self.type_cycle_map = lookup;
 
         Ok(())
     }
 
+    /// Calculates size of the type, assuming all dependant types are calculated.
     fn calc_size(&mut self, ty: Ty) -> Result {
         let ty_ent = &mut self.types[ty];
-        match &mut ty_ent.kind {
-            TKind::Structure(stype) => {
+        match ty_ent.kind {
+            ty::Kind::Structure(kind, fields) => {
                 let mut size = Size::ZERO;
-                let mut fields = std::mem::take(&mut stype.fields);
-                let kind = stype.kind;
                 let align = fields
+                    .as_slice(&self.field_slices)
                     .iter()
-                    .map(|field| self.types[field.ty].align)
+                    .map(|&field| self.types[self.fields[field].ty].align)
                     .max()
                     .unwrap_or(Size::ZERO);
 
                 if align != Size::ZERO {
                     match kind {
-                        SKind::Struct | SKind::Tuple => {
+                        StructureKind::Struct | StructureKind::Tuple => {
                             let calc = move |offset: Size| {
                                 let temp = Size::new(
-                                    offset.s32 & (align.s32 - 1),
-                                    offset.s64 & (align.s64 - 1),
+                                    offset.s32() & (align.s32() - 1),
+                                    offset.s64() & (align.s64() - 1),
                                 );
                                 let add = (temp != Size::ZERO) as u32;
-                                Size::new(align.s32 * add - temp.s32, align.s64 * add - temp.s64)
+                                Size::new(
+                                    align.s32() * add - temp.s32(),
+                                    align.s64() * add - temp.s64(),
+                                )
                             };
 
-                            for field in &mut fields {
+                            for &field in fields.as_slice(&self.field_slices) {
                                 size = size.add(calc(size));
+                                let field = &mut self.fields[field];
                                 field.offset = size;
                                 size = size.add(self.types[field.ty].size);
                             }
 
                             size = size.add(calc(size));
                         }
-                        SKind::Union => {
+                        StructureKind::Union => {
                             size = fields
+                                .as_slice(&self.field_slices)
                                 .iter()
-                                .map(|field| self.types[field.ty].size)
+                                .map(|&field| self.types[self.fields[field].ty].size)
                                 .max()
-                                .unwrap();
+                                .unwrap_or(Size::ZERO);
                         }
                     }
                 }
-
-                self.types[ty].kind.structure_mut().fields = fields;
 
                 let ty_ent = &mut self.types[ty];
                 ty_ent.align = align;
                 ty_ent.size = size;
             }
-            &mut TKind::Array(element, size) => {
+            ty::Kind::Array(element, size) => {
                 let element_size = self.types[element].size;
                 self.types[ty].size = Size::new(size, size).mul(element_size);
             }
-            TKind::Enumeration(_)
-            | TKind::Pointer(..)
-            | TKind::Builtin(..)
-            | TKind::FunPointer(..) => (),
+            ty::Kind::Enumeration(_)
+            | ty::Kind::Pointer(..)
+            | ty::Kind::Builtin(..)
+            | ty::Kind::FunPointer(..) => (),
 
-            TKind::Constant(_) | TKind::Generic(_) | TKind::Unresolved(_) => {
+            ty::Kind::Constant(_) | ty::Kind::Generic(_) | ty::Kind::Unresolved(_) => {
                 unreachable!("{:?}", ty_ent.kind)
             }
         }
@@ -162,35 +177,52 @@ impl<'a> TParser<'a> {
         Ok(())
     }
 
+    /// Connects all collected types with their dependency. Not all types have dependency
+    /// so they can be handled wile collecting.
     fn connect(&mut self) -> Result {
-        while let Some((id, depth)) = self.context.unresolved.pop() {
-            if depth > Self::MAX_TYPE_INSTANTIATION_DEPTH {
-                return Err(TError::new(
-                    TEKind::InstantiationDepthExceeded,
+        while let Some((id, depth)) = self.unresolved.pop() {
+            if depth > MAX_TYPE_INSTANTIATION_DEPTH {
+                return Err(Error::new(
+                    error::Kind::InstantiationDepthExceeded,
                     self.types[id].hint.clone(),
                 ));
             }
 
-            let ty = &self.types[id];
-            let ty_module = ty.module;
+            let TyEnt { module, kind, .. } = self.types[id].clone();
 
-            match &ty.kind {
-                &TKind::Unresolved(ast) => self.connect_type(ty_module, id, ast, depth)?,
+            let ast_data = self.take_ast_data(module);
+
+            match kind {
+                ty::Kind::Unresolved(ast) => {
+                    self.connect_type(&ast_data, module, id, ast, depth)?
+                }
                 kind => unreachable!("{:?}", kind),
             }
 
-            self.context.resolved.push(id);
+            self.put_ast_data(module, ast_data);
+
+            self.resolved.push(id);
         }
         Ok(())
     }
 
-    fn connect_type(&mut self, module: Mod, id: Ty, ast: Ast, depth: usize) -> Result {
-        match self.modules[module].kind(ast) {
-            AKind::Struct(_) => {
-                self.connect_structure(module, id, ast, SKind::Struct, depth)?;
+    /// Connects given type, using `ast_data` as source of ast. For more practical parsing
+    /// ast_data should be first taken from `module` and passed to the method by reference.
+    /// `depth` is used to detect infinite type instantiation.
+    fn connect_type(
+        &mut self,
+        ast_data: &ast::Data,
+        module: Mod,
+        id: Ty,
+        ast: Ast,
+        depth: usize,
+    ) -> Result {
+        match ast_data.kind(ast) {
+            ast::Kind::Struct(_) => {
+                self.connect_structure(ast_data, module, id, ast, StructureKind::Struct, depth)?;
             }
-            AKind::Union(_) => {
-                self.connect_structure(module, id, ast, SKind::Union, depth)?;
+            ast::Kind::Union(_) => {
+                self.connect_structure(ast_data, module, id, ast, StructureKind::Union, depth)?;
             }
             kind => unreachable!("{:?}", kind),
         }
@@ -198,64 +230,58 @@ impl<'a> TParser<'a> {
         Ok(())
     }
 
+    /// Connects structure type. Refer to [`Self::connect_type`] for argument documentation. Kind of the structure type
+    /// will be simply saved inside resulting type.
     fn connect_structure(
         &mut self,
+        ast_data: &ast::Data,
         module: Mod,
         id: Ty,
         ast: Ast,
-        kind: SKind,
+        kind: StructureKind,
         depth: usize,
     ) -> Result {
-        let mut fields = self.context.pool.get();
-        let module_ent = &self.state.modules[module];
-        let module_id = module_ent.id;
-        let params = self.state.types[id].params;
-        let params_len = module_ent.type_slice(params).len();
-        let mut shadowed = self.context.pool.get();
-        let header = module_ent.son(ast, 0);
-        let header_ent = module_ent.load(header);
-        let header_len = module_ent.len(header_ent.sons);
-        let is_instance = header_ent.kind == AKind::Instantiation;
+        let mut fields = self.temp_vec();
+        let mut params = self.temp_vec();
+        let module_id = self.module_id(module);
+        let mut shadowed = self.temp_vec();
+        let header = ast_data.son(ast, 0);
+        let sons = ast_data.sons(header);
 
-        if is_instance {
-            if params_len != header_len {
-                return Err(TError::new(
-                    TEKind::WrongInstantiationArgAmount(params_len - 1, header_len - 1),
+        params.extend_from_slice(self.type_slice(self.types[id].params));
+
+        if ast_data.kind(header) == ast::Kind::Instantiation {
+            if params.len() != sons.len() {
+                return Err(Error::new(
+                    error::Kind::WrongInstantiationArgAmount(params.len() - 1, sons.len() - 1),
                     self.types[id].hint.clone(),
                 ));
             }
-            for i in 1..header_len {
-                let module_ent = &self.modules[module];
-                let param = module_ent.type_slice(params)[i];
-                let hash = module_ent.son_ent(header, i).token.span.hash;
-                let id = TYPE_SALT.add(hash).add(module_id);
+            for (&param, &son) in params.iter().zip(sons.iter()) {
+                let hash = self.hash_token(ast_data.token(son));
+                let id = hash.add(module_id);
 
-                let sha = self.state.types.link(id, param);
-                shadowed.push((id, sha));
+                let shadow = self.add_temporary_item(module, id, Item::ty(param.as_u32()));
+                shadowed.push((id, shadow));
             }
         }
 
-        let module_ent = &self.modules[module];
-        let body = module_ent.son(ast, 1);
+        let body = ast_data.son(ast, 1);
         if body != Ast::reserved_value() {
-            let body = *module_ent.load(body);
-            let len = module_ent.len(body.sons);
-            for i in 0..len {
-                let module_ent = &self.modules[module];
-                let &AstEnt { sons, kind, token } = module_ent.get_ent(body.sons, i);
-                let field_line_len = module_ent.len(sons);
-                let type_ast = module_ent.get(sons, field_line_len - 1);
+            let sons = ast_data.sons(body);
+            for &son in sons {
+                let (kind, sons, token) = ast_data.ent(son).parts();
+                let field_line_len = ast_data.len(sons);
+                let type_ast = ast_data.get(sons, field_line_len - 1);
                 let (vis, embedded) = match &kind {
-                    &AKind::StructField(vis, embedded) => (vis, embedded),
+                    &ast::Kind::StructField(vis, embedded) => (vis, embedded),
                     _ => unreachable!("{:?}", kind),
                 };
-                let ty = self.ty(module, type_ast, depth)?;
+                let ty = self.ty(ast_data, module, type_ast, depth)?;
                 let hint = token;
-                let module_ent = &self.modules[module];
-                let field_ids = self.modules[module].slice(sons);
-                for &field in field_ids[..field_line_len - 1].iter() {
-                    let id = module_ent.token(field).span.hash;
-                    let field = SField {
+                for &field in &ast_data.slice(sons)[..field_line_len - 1] {
+                    let id = self.hash_token(ast_data.token(field));
+                    let field = FieldEnt {
                         embedded,
                         vis,
                         id,
@@ -264,170 +290,181 @@ impl<'a> TParser<'a> {
                         hint: hint.clone(),
                     };
 
-                    fields.push(field);
+                    fields.push(self.fields.push(field));
                 }
             }
         }
 
         for (id, ty) in shadowed.drain(..) {
-            self.types.remove_link(id, ty);
+            match ty {
+                Some(item) => self.add_temporary_item(module, id, item),
+                None => self.remove_temporary_item(module, id),
+            };
         }
 
-        let s_ent = SType {
-            kind,
-            fields: fields.clone(),
-        };
-
-        self.types[id].kind = TKind::Structure(s_ent);
+        self.types[id].kind = ty::Kind::Structure(
+            kind, 
+            EntityList::from_slice(fields.as_slice(), &mut self.field_slices),
+        );
 
         Ok(())
     }
 
-    fn ty(&mut self, module: Mod, ast: Ast, depth: usize) -> Result<Ty> {
-        let module_ent = &self.modules[module];
-        let &AstEnt { kind, token, sons } = module_ent.a_state.load(ast);
+    /// Returns type for given ast expression. `ast_data` fir from `module`, `ast` is entity from `ast_data`
+    /// and `depth` is used to detect infinite type instantiation.
+    pub fn ty(&mut self, ast_data: &ast::Data, module: Mod, ast: Ast, depth: usize) -> Result<Ty> {
+        let (kind, sons, token) = ast_data.ent(ast).parts();
         let ty = match kind {
-            AKind::Ident => self.simple_type(module, None, ast, &token),
-            AKind::Path => {
-                let module_name = module_ent.get(sons, 0);
-                let name = module_ent.get(sons, 1);
-                self.simple_type(module, Some(module_name), name, &token)
+            ast::Kind::Ident => self.simple_type(ast_data, module, None, ast, token),
+            ast::Kind::Path => {
+                let module_name = ast_data.get(sons, 0);
+                let name = ast_data.get(sons, 1);
+                self.simple_type(ast_data, module, Some(module_name), name, token)
             }
-            AKind::Instantiation => self.instance(module, ast, depth),
-            AKind::Ref(mutable) => self.pointer(module, ast, depth, mutable),
-            AKind::Array => self.array(module, ast, depth),
-            AKind::Lit => self.constant(&token),
-            AKind::FunHeader(..) => self.function_pointer(module, ast, depth),
-            AKind::Tuple => self.tuple(module, ast, depth),
-            _ => unreachable!("{:?}", kind),
+            ast::Kind::Instantiation => self.instance(ast_data, module, ast, depth),
+            ast::Kind::Ref(mutable) => self.pointer(ast_data, module, ast, depth, mutable),
+            ast::Kind::Array => self.array(ast_data, module, ast, depth),
+            ast::Kind::FunHeader(..) => self.function_pointer(ast_data, module, ast, depth),
+            ast::Kind::Tuple => self.tuple(ast_data, module, ast, depth),
+            _ => self.constant(ast_data, module, ast),
         }?;
 
-        let TypeEnt { vis, module, .. } = self.types[ty];
+        let TyEnt { vis, module, .. } = self.types[ty];
 
-        if !self.state.can_access(module, module, vis) {
-            return Err(TError::new(TEKind::VisibilityViolation, token));
+        if !self.ctx.can_access(module, module, vis) {
+            return Err(Error::new(error::Kind::VisibilityViolation, token));
         }
 
         Ok(ty)
     }
 
-    fn tuple(&mut self, module: Mod, ast: Ast, depth: usize) -> Result<Ty> {
-        let mut fields = self.context.pool.get();
-        let module_ent = &self.modules[module];
-        let sons = module_ent.sons(ast);
-        let len = module_ent.len(sons);
-        for i in 0..len {
-            let module_ent = &self.modules[module];
-            let ty = module_ent.get(sons, i);
-            let ty = self.ty(module, ty, depth)?;
-            fields.push(ty);
+    pub fn tuple(
+        &mut self,
+        ast_data: &ast::Data,
+        module: Mod,
+        ast: Ast,
+        depth: usize,
+    ) -> Result<Ty> {
+        let mut fields = self.temp_vec();
+        let sons = ast_data.sons(ast);
+        for &ty in sons {
+            fields.push(self.ty(ast_data, module, ty, depth)?);
         }
 
-        let ty = self.state.tuple_of(self.module, fields.as_slice());
+        let ty = self.tuple_of(self.module, fields.as_slice());
 
         Ok(ty)
     }
 
-    fn function_pointer(&mut self, module: Mod, ast: Ast, depth: usize) -> Result<Ty> {
-        let module_ent = &self.modules[module];
-        let sons = module_ent.sons(ast);
-        let len = module_ent.len(sons);
+    pub fn function_pointer(
+        &mut self,
+        ast_data: &ast::Data,
+        module: Mod,
+        ast: Ast,
+        depth: usize,
+    ) -> Result<Ty> {
+        let mut args = self.temp_vec();
+        let kind = ast_data.kind(ast);
+        let sons = ast_data.sons(ast);
 
-        let mut args = EntityList::new();
-        for i in 1..len - 2 {
-            let arg = self.modules[module].get(sons, i);
-            let ty = self.ty(module, arg, depth)?;
-            self.modules[module].push_type(&mut args, ty);
+        for &arg in &sons[1..sons.len() - 1] {
+            let ty = self.ty(ast_data, module, arg, depth)?;
+            args.push(ty);
         }
 
-        let module_ent = &self.modules[module];
-        let ret = module_ent.get(sons, len - 2);
+        let ret = sons[sons.len() - 1];
         let ret = if ret != Ast::reserved_value() {
-            let ty = self.ty(module, ret, depth)?;
+            let ty = self.ty(ast_data, module, ret, depth)?;
             PackedOption::from(ty)
         } else {
             PackedOption::default()
         };
 
-        let module_ent = &self.modules[module];
-        let call_conv = module_ent.get(sons, len - 1);
-        let call_conv = if call_conv != Ast::reserved_value() {
-            let token = module_ent.token(call_conv);
-            let str = self.display(&token.span);
-            CallConv::from_str(str).ok_or_else(|| TError::new(TEKind::InvalidCallConv, *token))?
-        } else {
-            CallConv::Fast
+        let call_conv = match kind {
+            ast::Kind::FunHeader(_, _, call_conv) => call_conv,
+            _ => unreachable!("{:?}", kind),
         };
 
         let sig = Signature {
-            args: args.clone(),
+            args: EntityList::from_slice(args.as_slice(), &mut self.type_slices),
             ret,
             call_conv,
         };
 
-        let id = self.state.function_type_of(self.module, module, sig);
+        let id = self.function_type_of(self.module, module, sig);
 
         Ok(id)
     }
 
-    fn array(&mut self, module: Mod, ast: Ast, depth: usize) -> Result<Ty> {
-        let module_ent = &self.modules[module];
-        let element = module_ent.son(ast, 0);
-        let length_ast = module_ent.son(ast, 1);
+    pub fn array(
+        &mut self,
+        ast_data: &ast::Data,
+        module: Mod,
+        ast: Ast,
+        depth: usize,
+    ) -> Result<Ty> {
+        let element = ast_data.son(ast, 0);
+        let length_ast = ast_data.son(ast, 1);
+        let token = ast_data.token(length_ast);
 
-        let element = self.ty(module, element, depth)?;
-        let length = self.ty(module, length_ast, depth)?;
+        let element = self.ty(ast_data, module, element, depth)?;
+        let length = self.ty(ast_data, module, length_ast, depth)?;
         let length = match self.types[length].kind {
-            TKind::Constant(TypeConst::Int(i)) => i,
-            _ => {
-                return Err(TError::new(
-                    TEKind::ExpectedIntConstant,
-                    *self.modules[module].token(length_ast),
-                ))
-            }
+            ty::Kind::Constant(constant) => match self.constants[constant].kind {
+                constant::Kind::Int(int, _) => int,
+                _ => return Err(Error::new(error::Kind::ExpectedIntConstant, token)),
+            },
+            _ => return Err(Error::new(error::Kind::ExpectedIntConstant, token)),
         };
 
-        Ok(self.state.array_of(self.module, element, length as usize))
+        Ok(self.array_of(self.module, element, length as usize))
     }
 
-    fn constant(&mut self, token: &Token) -> Result<Ty> {
-        let constant = match token.kind.clone() {
-            LTKind::Int(val, _) => TypeConst::Int(val),
-            LTKind::Uint(val, _) => TypeConst::Int(val as i64),
-            LTKind::Float(val, _) => TypeConst::Float(val),
-            LTKind::Bool(val) => TypeConst::Bool(val),
-            LTKind::Char(val) => TypeConst::Char(val),
-            LTKind::String(val) => TypeConst::String(val),
-            _ => unreachable!("{:?}", token.kind),
-        };
+    pub fn constant(&mut self, ast_data: &ast::Data, module: Mod, ast: Ast) -> Result<Ty> {
+        let mut new_constants = self.temp_vec();
+        let constant = self.fold_const(module, ast_data, ast, ID(0), &mut new_constants)?;
+        self.ctx.extend_temp_items(
+            new_constants
+                .drain(..)
+                .map(|constant| Item::constant(constant.as_u32()))
+        );
+        Ok(self.constant_of(module, constant))
+    }
 
-        let ty = self.state.constant_of(self.module, constant);
-
+    pub fn pointer(
+        &mut self,
+        ast_data: &ast::Data,
+        module: Mod,
+        ast: Ast,
+        depth: usize,
+        mutable: bool,
+    ) -> Result<Ty> {
+        let ty = ast_data.son(ast, 0);
+        let ty = self.ty(ast_data, module, ty, depth)?;
+        let ty = self.pointer_of(self.module, ty, mutable);
         Ok(ty)
     }
 
-    fn pointer(&mut self, module: Mod, ast: Ast, depth: usize, mutable: bool) -> Result<Ty> {
-        let datatype = self.ty(module, self.modules[module].son(ast, 0), depth)?;
-        let datatype = self.state.pointer_of(self.module, datatype, mutable);
-
-        Ok(datatype)
-    }
-
-    fn instance(&mut self, module: Mod, ast: Ast, depth: usize) -> Result<Ty> {
-        let module_ent = &self.modules[module];
-        let ident = module_ent.son(ast, 0);
-        let &AstEnt { token, sons, kind } = module_ent.load(ident);
+    pub fn instance(
+        &mut self,
+        ast_data: &ast::Data,
+        module: Mod,
+        ast: Ast,
+        depth: usize,
+    ) -> Result<Ty> {
+        let ident = ast_data.son(ast, 0);
+        let (kind, sons, token) = ast_data.ent(ident).parts();
         let ty = match kind {
-            AKind::Ident => self.simple_type(module, None, ident, &token)?,
-            AKind::Path => {
-                let module_name = module_ent.get(sons, 0);
-                let name = module_ent.get(sons, 1);
-                self.simple_type(module, Some(module_name), name, &token)?
+            ast::Kind::Ident => self.simple_type(ast_data, module, None, ident, token)?,
+            ast::Kind::Path => {
+                let module_name = ast_data.get(sons, 0);
+                let name = ast_data.get(sons, 1);
+                self.simple_type(ast_data, module, Some(module_name), name, token)?
             }
             _ => unreachable!("{:?}", kind),
         };
 
-        let TypeEnt {
+        let TyEnt {
             vis,
             name,
             attrs,
@@ -436,45 +473,41 @@ impl<'a> TParser<'a> {
             ..
         } = self.types[ty];
 
-        let mut params = EntityList::new();
-        let module_ent = &mut self.modules[module];
-        let sons = module_ent.sons(ast);
-        let ast_len = module_ent.len(sons);
+        let mut params = self.temp_vec();
+        let sons = ast_data.sons(ast);
 
-        self.modules[original_module].push_type(&mut params, ty);
+        params.push(ty);
 
-        let mut id = TYPE_SALT.add(ty_id);
-        for i in 1..ast_len {
-            let ty = self.modules[module].get(sons, i);
-            let ty = self.ty(module, ty, depth)?;
+        let mut id = ty_id;
+        for &ty in &sons[1..] {
+            let ty = self.ty(ast_data, module, ty, depth)?;
             id = id.add(self.types[ty].id);
-            self.modules[original_module].push_type(&mut params, ty);
+            params.push(ty);
         }
-        id = id.add(self.modules[original_module].id);
+        id = id.add(self.module_id(original_module));
 
-        if let Some(id) = self.state.find_computed(self.module, id) {
-            self.modules[original_module].clear_type_slice(&mut params);
+        if let Some(id) = self.find_computed_type(self.module, id) {
             return Ok(id);
         }
 
         let ty_ent = &self.types[ty];
 
         let ast = match ty_ent.kind {
-            TKind::Generic(ast) => ast,
+            ty::Kind::Generic(ast) => ast,
             _ => {
-                return Err(TError::new(
-                    TEKind::InstancingNonGeneric(ty_ent.hint.clone()),
+                return Err(Error::new(
+                    error::Kind::InstancingNonGeneric(ty_ent.hint.clone()),
                     token,
                 ))
             }
         };
 
-        let type_ent = TypeEnt {
+        let type_ent = TyEnt {
             id,
             module: original_module,
             vis,
-            params,
-            kind: TKind::Unresolved(ast),
+            params: EntityList::from_slice(params.as_slice(), &mut self.type_slices),
+            kind: ty::Kind::Unresolved(ast),
             name,
             hint: token,
             attrs,
@@ -482,157 +515,685 @@ impl<'a> TParser<'a> {
             align: Size::ZERO,
         };
 
-        let ty = self.state.add_type(self.module, type_ent);
+        let ty = self.add_type(self.module, type_ent);
 
-        self.context.unresolved.push((ty, depth));
+        self.unresolved.push((ty, depth));
 
         Ok(ty)
     }
 
-    fn simple_type(
+    pub fn simple_type(
         &mut self,
+        ast_data: &ast::Data,
         module: Mod,
         target: Option<Ast>,
         name: Ast,
-        token: &Token,
+        token: Token,
     ) -> Result<Ty> {
-        let module_ent = &self.modules[module];
-        let id = TYPE_SALT.add(module_ent.token(name).span.hash);
+        let mut id = self.hash_token(ast_data.token(name));
 
-        let target = if let Some(target) = target {
-            let token = module_ent.token(target);
-            Some(
-                self.find_dep(module, token)
-                    .ok_or(TError::new(TEKind::UnknownModule, *token))?,
-            )
-        } else {
-            None
-        };
+        if let Some(target) = target {
+            let token = ast_data.token(target);
+            let module = self.find_dep(module, token)
+                .ok_or(Error::new(error::Kind::UnknownModule, token))?;
+            id = id.add(self.module_id(module));
+        }
 
-        let mut buffer = self.context.pool.get();
-        self.find_item(module, id, target, &mut buffer)
-            .map_err(|(a, b)| TError::new(TEKind::AmbiguousType(a, b), *token))?
-            .ok_or_else(|| TError::new(TEKind::UnknownType, *token))
+        self.find_type(module, id, token).map_err(Into::into)
     }
 
-    fn collect(&mut self, module: Mod) -> Result<()> {
-        let module_ent = &self.modules[module];
-        let module_name = module_ent.id;
-        let types = module_ent.types();
+    pub fn collect(&mut self, module: Mod) -> Result<()> {
+        let module_id = self.module_id(module);
+        let mut temp = self.ctx.temp_vec();
+        let ast_data = self.take_ast_data(module);
 
-        for i in (0..types.len()).step_by(2) {
-            let module_ent = &self.modules[module];
-            let types = module_ent.types();
-            let type_ast = types[i];
-            let attrs = types[i + 1];
-            let &AstEnt { token, kind, sons } = module_ent.load(type_ast);
+        println!("Collecting types for module {:?}", module);
+
+        for &(type_ast, attrs) in self.ctx.types().as_slice() {
+            let (kind, sons, _) = ast_data.ent(type_ast).parts();
             match kind {
-                AKind::Enum(vis) => {
-                    let ident = *module_ent.get_ent(sons, 0);
-                    let variants = module_ent.get(sons, 1);
+                ast::Kind::Enum(vis) => {
+                    let ident = ast_data.slice(sons)[0];
+                    let variants = ast_data.get(sons, 1);
                     let variants = if !variants.is_reserved_value() {
-                        let variants = module_ent.sons(variants);
-                        let variants_len = module_ent.len(variants);
-                        let mut real_variants = Vec::with_capacity(variants_len);
-                        for i in 0..variants_len {
-                            real_variants.push(module_ent.get_ent(variants, i).token.span.hash);
+                        temp.clear();
+                        for &var in ast_data.sons(variants) {
+                            temp.push(self.enum_variants.push(EnumVariantEnt {
+                                id: self.hash_token(ast_data.token(var)),
+                            }));
                         }
-                        real_variants
+                        EntityList::from_slice(temp.as_slice(), &mut self.enum_slices)
                     } else {
-                        vec![]
+                        EntityList::new()
                     };
 
-                    let kind = TKind::Enumeration(variants);
-                    let id = TYPE_SALT.add(ident.token.span.hash).add(module_name);
-                    let datatype = TypeEnt {
+                    let ident = ast_data.token(ident);
+                    let hash = self.hash_token(ident);
+
+                    let kind = ty::Kind::Enumeration(variants);
+                    let id = hash.add(module_id);
+                    let datatype = TyEnt {
                         vis,
                         id,
                         module,
                         kind,
-                        name: ident.token.span,
+                        name: ident.span(),
                         attrs,
-                        hint: ident.token,
+                        hint: ident,
 
                         ..Default::default()
                     };
 
-                    let (replaced, _) = self.add_type_low(module, datatype, true);
-                    if let Some(other) = replaced {
-                        return Err(TError::new(TEKind::Redefinition(other.hint), token));
-                    }
+                    self.add_type(module, datatype);
                 }
-                AKind::Struct(vis) | AKind::Union(vis) => {
-                    let ident = module_ent.get(sons, 0);
-                    let ident_ent = module_ent.load(ident);
-                    let (ident, kind) = if ident_ent.kind == AKind::Ident {
-                        (ident_ent, TKind::Unresolved(type_ast))
-                    } else if ident_ent.kind == AKind::Instantiation {
+                ast::Kind::Struct(vis) | ast::Kind::Union(vis) => {
+                    let ident = ast_data.get(sons, 0);
+                    let ident_ent = ast_data.ent(ident);
+                    let (ident, kind) = if ident_ent.kind() == ast::Kind::Ident {
+                        (ident_ent, ty::Kind::Unresolved(type_ast))
+                    } else if ident_ent.kind() == ast::Kind::Instantiation {
                         (
-                            module_ent.a_state.get_ent(ident_ent.sons, 0),
-                            TKind::Generic(type_ast),
+                            ast_data.get_ent(ident_ent.sons(), 0),
+                            ty::Kind::Generic(type_ast),
                         )
                     } else {
-                        return Err(TError::new(
-                            TEKind::UnexpectedAst(String::from("expected struct identifier")),
-                            ident_ent.token,
+                        return Err(Error::new(
+                            error::Kind::UnexpectedAst(String::from("expected struct identifier")),
+                            ident_ent.token(),
                         ));
                     };
 
-                    let id = TYPE_SALT.add(ident.token.span.hash).add(module_name);
-                    let datatype = TypeEnt {
+                    let hash = self.hash_token(ident.token());
+
+                    let id = hash.add(module_id);
+                    let datatype = TyEnt {
                         vis,
                         id,
                         module,
                         kind,
-                        name: ident.token.span,
+                        name: ident.span(),
                         attrs,
-                        hint: ident.token,
+                        hint: ident.token(),
 
                         ..Default::default()
                     };
 
-                    let (replaced, id) = self.add_type_low(module, datatype, true);
-                    if let Some(other) = replaced {
-                        return Err(TError::new(TEKind::Redefinition(other.hint), token));
-                    }
+                    let id = self.add_type(module, datatype);
 
-                    if let TKind::Unresolved(_) = &self.types[id].kind {
-                        self.context.unresolved.push((id, 0));
+                    if let ty::Kind::Unresolved(_) = &self.types[id].kind {
+                        self.unresolved.push((id, 0));
                     }
                 }
                 kind => unreachable!("{:?}", kind),
             }
         }
 
+        self.put_ast_data(module, ast_data);
+
         Ok(())
     }
+
+    pub fn tuple_of(&mut self, source_module: Mod, types: &[Ty]) -> Ty {
+        let mut filed_name = String::with_capacity(2);
+        let mut fields = Vec::with_capacity(types.len());
+        let mut id = ID::new("--tuple--");
+        for (i, &ty) in types.iter().enumerate() {
+            id = id.add(self.types[ty].id);
+            writeln!(filed_name, "f{}", i).unwrap();
+            let field = FieldEnt {
+                id: ID::new(&filed_name),
+                ty,
+
+                embedded: false,
+                vis: Vis::Public,
+                offset: Size::ZERO,
+                hint: Token::default(),
+            };
+            fields.push(self.fields.push(field));
+            filed_name.clear();
+        }
+
+        id = id.add(self.module_id(BUILTIN_MODULE));
+
+        if let Some(ty) = self.find_computed_type(source_module, id) {
+            return ty;
+        }
+
+        let ty_ent = TyEnt {
+            id,
+            module: BUILTIN_MODULE,
+            vis: Vis::Public,
+            kind: ty::Kind::Structure(
+                StructureKind::Tuple, 
+                EntityList::from_slice(fields.as_slice(), &mut self.field_slices)
+            ),
+
+            ..Default::default()
+        };
+
+        let ty = self.add_type(source_module, ty_ent);
+
+        ty
+    }
+
+    pub fn pointer_of(&mut self, source_module: Mod, ty: Ty, mutable: bool) -> Ty {
+        let TyEnt { module, id, .. } = self.types[ty];
+        let name = if mutable { "&var " } else { "&" };
+        let id = ID::new(name).add(id).add(self.module_id(module));
+
+        if let Some(ty) = self.find_computed_type(source_module, id) {
+            return ty;
+        }
+
+        let size = Size::POINTER;
+
+        let pointer_type = TyEnt {
+            vis: Vis::Public,
+            id,
+            kind: ty::Kind::Pointer(ty, mutable),
+            module,
+            size,
+            align: size,
+
+            ..Default::default()
+        };
+
+        self.add_type(source_module, pointer_type)
+    }
+
+    pub fn array_of(&mut self, source_module: Mod, element: Ty, length: usize) -> Ty {
+        let TyEnt {
+            id,
+            module,
+            size,
+            align,
+            vis,
+            ..
+        } = self.types[element];
+
+        let id = ID::new("[]").add(id).add(ID(length as u64));
+
+        if let Some(ty) = self.find_computed_type(source_module, id) {
+            return ty;
+        }
+
+        let ty_ent = TyEnt {
+            id,
+            vis,
+            module,
+            kind: ty::Kind::Array(element, length as u32),
+            size: size.mul(Size::new(length as u32, length as u32)),
+            align,
+
+            ..Default::default()
+        };
+
+        self.add_type(source_module, ty_ent)
+    }
+
+    pub fn constant_of(&mut self, source_module: Mod, constant: Const) -> Ty {
+        let id = self.constants[constant].kind.hash(self);
+
+        if let Some(ty) = self.find_computed_type(source_module, id) {
+            return ty;
+        }
+
+        let ty_ent = TyEnt {
+            id,
+            vis: Vis::Public,
+            kind: ty::Kind::Constant(constant),
+            module: BUILTIN_MODULE,
+
+            ..Default::default()
+        };
+
+        self.add_type(source_module, ty_ent)
+    }
+
+    /// Creates a function pointer type of given `sig`. `module` is the module where signature
+    /// has ist argument slice stored. `source_module` is the module where the function pointer is
+    /// used.
+    pub fn function_type_of(&mut self, source_module: Mod, module: Mod, sig: Signature) -> Ty {
+        let mut id = ID::new("fun").add(ID(
+            unsafe { std::mem::transmute::<_, u8>(sig.call_conv) } as u64
+        ));
+
+        for arg in self.type_slice(sig.args).iter() {
+            id = id.add(self.types[*arg].id);
+        }
+
+        if sig.ret.is_some() {
+            id = id.add(ID::new("->")).add(self.types[sig.ret.unwrap()].id);
+        }
+
+        id = id.add(self.module_id(BUILTIN_MODULE));
+
+        if let Some(ty) = self.find_computed_type(source_module, id) {
+            return ty;
+        }
+
+        let size = Size::POINTER;
+        let type_ent = TyEnt {
+            kind: ty::Kind::FunPointer(sig),
+            id,
+            module,
+            vis: Vis::None,
+            size,
+            align: size,
+
+            ..Default::default()
+        };
+
+        self.add_type(source_module, type_ent)
+    }
+
+    pub fn find_computed_type(&mut self, source_module: Mod, id: ID) -> Option<Ty> {
+        if let Some(ty) = self.get_item_unchecked(source_module, id) {
+            debug_assert!(ty.kind() == modules::item::Kind::Type);
+            let ty = Ty::from_u32(ty.id());
+            return Some(ty);
+        }
+
+        None
+    }
+
+    pub fn pointer_base(&self, ty: Ty) -> Option<Ty> {
+        if let ty::Kind::Pointer(base, _) = self.types[ty].kind {
+            Some(base)
+        } else {
+            None
+        }
+    }
+
+    pub fn pointer_mutability(&self, ty: Ty) -> bool {
+        if let ty::Kind::Pointer(_, mutability) = self.types[ty].kind {
+            mutability
+        } else {
+            false
+        }
+    }
+
+    pub fn base_of(&self, ty: Ty) -> Ty {
+        if let ty::Kind::Array(..) = self.types[ty].kind {
+            return ARRAY_TY;
+        }
+
+        self.type_slice(self.types[ty].params)
+            .first()
+            .cloned()
+            .unwrap_or(ty)
+    }
+
+    pub fn add_type(&mut self, source_module: Mod, ent: TyEnt) -> Ty {
+        let id = ent.id;
+        let ty = self.types.push(ent);
+        let item = Item::ty(ty.as_u32());
+        if source_module == self.module {
+            self.add_temp_item(item);
+        } else {
+            self.extend_module_items(source_module, &[item]);
+            let shadow = self.add_temporary_item(source_module, id, item);
+            debug_assert!(shadow.is_none());
+        }
+        ty
+    }
+
+    pub fn push_type(&mut self, list: &mut EntityList<Ty>, ty: Ty) {
+        list.push(ty, &mut self.type_slices);
+    }
+
+    pub fn type_slice(&self, list: EntityList<Ty>) -> &[Ty] {
+        list.as_slice(&self.type_slices)
+    }
+
+    pub fn fold_const(
+        &mut self,
+        module: Mod,
+        ast_data: &ast::Data,
+        ast: Ast,
+        id: ID,
+        new_constants: &mut Vec<Const>,
+    ) -> Result<Const> {
+        let mut garbage = self.temp_vec();
+        let constant =
+            self.fold_const_low(module, ast_data, ast, new_constants, &mut garbage, true)?;
+        self.constants[constant].id = id;
+
+        new_constants.push(constant);
+
+        for &garbage in garbage.iter() {
+            let value = self.constants[garbage].kind;
+            if let constant::Kind::Array(mut values) = value {
+                values.clear(&mut self.constant_slices);
+            }
+            self.constants.remove(garbage);
+        }
+
+        Ok(constant)
+    }
+
+    pub fn fold_const_low(
+        &mut self,
+        module: Mod,
+        ast_data: &ast::Data,
+        ast: Ast,
+        new_constants: &mut Vec<Const>,
+        garbage: &mut Vec<Const>,
+        is_root: bool,
+    ) -> Result<Const> {
+        let (kind, sons, token) = ast_data.ent(ast).parts();
+        let sons = ast_data.slice(sons);
+        match kind {
+            ast::Kind::Index => {
+                let header = self.fold_const_low(
+                    module,
+                    ast_data,
+                    sons[0],
+                    new_constants,
+                    garbage,
+                    is_root,
+                )?;
+                let accessor = self.fold_const_low(
+                    module,
+                    ast_data,
+                    sons[1],
+                    new_constants,
+                    garbage,
+                    is_root,
+                )?;
+
+                let accessed = match (self.constants[header].kind, self.constants[accessor].kind) {
+                    (constant::Kind::Array(elements), constant::Kind::Int(value, _)) => elements
+                        .get(value as usize, &self.constant_slices)
+                        .ok_or_else(|| Error::new(error::Kind::IndexOutOfBounds, token))?,
+                    (constant::Kind::Array(elements), constant::Kind::Uint(value, _)) => elements
+                        .get(value as usize, &self.constant_slices)
+                        .ok_or_else(|| Error::new(error::Kind::IndexOutOfBounds, token))?,
+                    _ => return Err(Error::new(error::Kind::UnsupportedConst, token)),
+                };
+
+                Ok(accessed)
+            }
+            ast::Kind::Binary => {
+                let a =
+                    self.fold_const_low(module, ast_data, sons[1], new_constants, garbage, false)?;
+                let b =
+                    self.fold_const_low(module, ast_data, sons[2], new_constants, garbage, false)?;
+                let op = self.display_token(ast_data.token(sons[0]));
+                let new = match (self.constants[a].kind, self.constants[b].kind) {
+                    (constant::Kind::Int(a, base_a), constant::Kind::Int(b, base_b)) => {
+                        if matches!(op, "==" | "!=" | "<" | ">" | "<=" | ">=") {
+                            constant::Kind::Bool(match op {
+                                "==" => a == b,
+                                "!=" => a != b,
+                                "<" => a < b,
+                                ">" => a > b,
+                                "<=" => a <= b,
+                                ">=" => a >= b,
+                                _ => return Err(Error::new(error::Kind::UnsupportedConst, token)),
+                            })
+                        } else {
+                            constant::Kind::Int(
+                                match op {
+                                    "+" => a + b,
+                                    "-" => a - b,
+                                    "*" => a * b,
+                                    "/" => a / b,
+                                    "%" => a % b,
+                                    "<<" => a << b,
+                                    ">>" => a >> b,
+                                    "&" => a & b,
+                                    "|" => a | b,
+                                    "^" => a ^ b,
+                                    "max" => a.max(b),
+                                    "min" => a.min(b),
+                                    _ => {
+                                        return Err(Error::new(
+                                            error::Kind::UnsupportedConst,
+                                            token,
+                                        ))
+                                    }
+                                },
+                                base_a.max(base_b),
+                            )
+                        }
+                    }
+                    (constant::Kind::Uint(a, base_a), constant::Kind::Uint(b, base_b)) => {
+                        if matches!(op, "==" | "!=" | "<" | ">" | "<=" | ">=") {
+                            constant::Kind::Bool(match op {
+                                "==" => a == b,
+                                "!=" => a != b,
+                                "<" => a < b,
+                                ">" => a > b,
+                                "<=" => a <= b,
+                                ">=" => a >= b,
+                                _ => return Err(Error::new(error::Kind::UnsupportedConst, token)),
+                            })
+                        } else {
+                            constant::Kind::Uint(
+                                match op {
+                                    "+" => a + b,
+                                    "-" => a - b,
+                                    "*" => a * b,
+                                    "/" => a / b,
+                                    "%" => a % b,
+                                    "<<" => a << b,
+                                    ">>" => a >> b,
+                                    "&" => a & b,
+                                    "|" => a | b,
+                                    "^" => a ^ b,
+                                    "max" => a.max(b),
+                                    "min" => a.min(b),
+                                    _ => {
+                                        return Err(Error::new(
+                                            error::Kind::UnsupportedConst,
+                                            token,
+                                        ))
+                                    }
+                                },
+                                base_a.max(base_b),
+                            )
+                        }
+                    }
+                    (constant::Kind::Float(a, base_a), constant::Kind::Float(b, base_b)) => {
+                        if matches!(op, "==" | "!=" | "<" | ">" | "<=" | ">=") {
+                            constant::Kind::Bool(match op {
+                                "==" => a == b,
+                                "!=" => a != b,
+                                "<" => a < b,
+                                ">" => a > b,
+                                "<=" => a <= b,
+                                ">=" => a >= b,
+                                _ => return Err(Error::new(error::Kind::UnsupportedConst, token)),
+                            })
+                        } else {
+                            constant::Kind::Float(
+                                match op {
+                                    "+" => a + b,
+                                    "-" => a - b,
+                                    "*" => a * b,
+                                    "/" => a / b,
+                                    "%" => a % b,
+                                    "max" => a.max(b),
+                                    "min" => a.min(b),
+                                    _ => {
+                                        return Err(Error::new(
+                                            error::Kind::UnsupportedConst,
+                                            token,
+                                        ))
+                                    }
+                                },
+                                base_a.max(base_b),
+                            )
+                        }
+                    }
+                    _ => return Err(Error::new(error::Kind::UnsupportedConst, token)),
+                };
+
+                let constant = self.constants.push(ConstEnt {
+                    kind: new,
+                    module,
+
+                    ..Default::default()
+                });
+                if !is_root {
+                    garbage.push(constant);
+                }
+                Ok(constant)
+            }
+
+            ast::Kind::Unary => {
+                let constant =
+                    self.fold_const_low(module, ast_data, sons[1], new_constants, garbage, false)?;
+                let op = self.display_token(ast_data.token(sons[0]));
+                let new = match self.constants[constant].kind {
+                    constant::Kind::Int(value, base) => constant::Kind::Int(
+                        match op {
+                            "-" => -value,
+                            "!" => !value,
+                            "++" => value + 1,
+                            "--" => value - 1,
+                            "abs" => value.abs(),
+                            _ => return Err(Error::new(error::Kind::UnsupportedConst, token)),
+                        },
+                        base,
+                    ),
+                    constant::Kind::Uint(value, base) => constant::Kind::Uint(
+                        match op {
+                            "!" => !value,
+                            "++" => value + 1,
+                            "--" => value - 1,
+                            _ => return Err(Error::new(error::Kind::UnsupportedConst, token)),
+                        },
+                        base,
+                    ),
+                    constant::Kind::Float(value, base) => constant::Kind::Float(
+                        match op {
+                            "-" => -value,
+                            "abs" => value.abs(),
+                            _ => return Err(Error::new(error::Kind::UnsupportedConst, token)),
+                        },
+                        base,
+                    ),
+                    constant::Kind::Bool(value) => constant::Kind::Bool(match op {
+                        "!" => !value,
+                        _ => return Err(Error::new(error::Kind::UnsupportedConst, token)),
+                    }),
+                    constant::Kind::Str(_) | constant::Kind::Array(_) => {
+                        return Err(Error::new(error::Kind::UnsupportedConst, token))
+                    }
+                };
+
+                let constant = self.constants.push(ConstEnt {
+                    kind: new,
+                    module,
+
+                    ..Default::default()
+                });
+                if !is_root {
+                    garbage.push(constant);
+                }
+                Ok(constant)
+            }
+            ast::Kind::Array => {
+                let mut list = EntityList::new();
+                for &son in sons.iter() {
+                    let constant =
+                        self.fold_const_low(module, ast_data, son, new_constants, garbage, false)?;
+                    if is_root {
+                        new_constants.push(constant);
+                    } else {
+                        garbage.push(constant);
+                    }
+                    list.push(constant, &mut self.constant_slices);
+                }
+                let constant = self.constants.push(ConstEnt {
+                    kind:  constant::Kind::Array(list),
+                    module,
+
+                    ..Default::default()
+                });
+                if !is_root {
+                    garbage.push(constant);
+                }
+                return Ok(constant);
+            }
+            ast::Kind::Path => {
+                let hash = sons[1..]
+                    .iter()
+                    .fold(None, |acc: Option<ID>, &e| {
+                        let hash = self.hash_token(ast_data.token(e));
+                        acc.map(|h| h.add(hash)).or(Some(hash))
+                    })
+                    .unwrap();
+
+                self.find_const(module, hash, token)
+            }
+            ast::Kind::Ident => {
+                let hash = self.hash_token(token);
+                self.find_const(module, hash, token)
+            }
+            ast::Kind::Lit => {
+                let constant = constant::Kind::from_token(self, token);
+                let constant = self.constants.push(ConstEnt {
+                    kind: constant,
+                    module,
+
+                    ..Default::default()
+                });
+                if !is_root {
+                    garbage.push(constant);
+                }
+                Ok(constant)
+            }
+            _ => Err(Error::new(error::Kind::UnsupportedConst, token)),
+        }
+    }
+
+    pub fn find_const(&self, module: Mod, hash: ID, token: Token) -> Result<Const> {
+        let item = self.find_item(module, hash, token).map_err(Into::into)?;
+        if item.kind() != modules::item::Kind::Const {
+            return Err(Error::new(error::Kind::NotConst, token));
+        }
+
+        return Ok(Const::from_u32(item.id()));
+    }
+
+    pub fn find_type(&self, module: Mod, hash: ID, token: Token) -> Result<Ty> {
+        let item = self.find_item(module, hash, token).map_err(Into::into)?;
+        if item.kind() != modules::item::Kind::Type {
+            return Err(Error::new(error::Kind::NotType, token));
+        }
+        
+        return Ok(Ty::from_u32(item.id()));
+    }
 }
 
-impl<'a> ItemSearch<Ty> for TParser<'a> {
-    fn find(&self, id: ID) -> Option<Ty> {
-        self.types.index(id).cloned()
-    }
+impl Deref for Ctx {
+    type Target = modules::Ctx;
 
-    fn scopes(&self, module: Mod, buffer: &mut Vec<(Mod, ID)>) {
-        self.collect_scopes(module, buffer)
-    }
-
-    fn module_id(&self, module: Mod) -> ID {
-        self.modules[module].id
+    fn deref(&self) -> &Self::Target {
+        &self.ctx
     }
 }
 
-impl<'a> TreeStorage<Ty> for TParser<'a> {
+impl DerefMut for Ctx {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        &mut self.ctx
+    }
+}
+
+impl<'a> TreeStorage<Ty> for Ctx {
     fn node_dep(&self, id: Ty, idx: usize) -> Ty {
         let node = &self.types[id];
         match &node.kind {
-            TKind::Structure(stype) => stype.fields[idx].ty,
-            TKind::Array(ty, _) => *ty,
-            TKind::FunPointer(fun) => {
-                if idx == self.modules[node.module].type_slice(fun.args).len() {
+            ty::Kind::Structure(_, fields) => self.fields[fields.as_slice(&self.field_slices)[idx]].ty,
+            ty::Kind::Array(ty, _) => *ty,
+            ty::Kind::FunPointer(fun) => {
+                if idx == self.type_slice(fun.args).len() {
                     fun.ret.unwrap()
                 } else {
-                    self.modules[node.module].type_slice(fun.args)[idx]
+                    self.type_slice(fun.args)[idx]
                 }
             }
             _ => unreachable!("{:?}", node.kind),
@@ -643,13 +1204,13 @@ impl<'a> TreeStorage<Ty> for TParser<'a> {
         let node = &self.types[id];
 
         match &node.kind {
-            TKind::Builtin(_) | TKind::Pointer(..) | TKind::Enumeration(_) => 0,
-            TKind::FunPointer(fun) => {
-                self.modules[node.module].type_slice(fun.args).len() + fun.ret.is_some() as usize
+            ty::Kind::Builtin(_) | ty::Kind::Pointer(..) | ty::Kind::Enumeration(_) => 0,
+            ty::Kind::FunPointer(fun) => {
+                self.type_slice(fun.args).len() + fun.ret.is_some() as usize
             }
-            TKind::Array(..) => 1,
-            TKind::Structure(stype) => stype.fields.len(),
-            TKind::Generic(_) | TKind::Unresolved(_) | TKind::Constant(_) => {
+            ty::Kind::Array(..) => 1,
+            ty::Kind::Structure(_, fields) => fields.len(&self.field_slices),
+            ty::Kind::Generic(_) | ty::Kind::Unresolved(_) | ty::Kind::Constant(_) => {
                 unreachable!("{:?}", node)
             }
         }
@@ -660,76 +1221,27 @@ impl<'a> TreeStorage<Ty> for TParser<'a> {
     }
 }
 
-pub trait ItemSearch<T: EntityRef> {
-    fn find(&self, id: ID) -> Option<T>;
-    fn scopes(&self, module: Mod, buffer: &mut Vec<(Mod, ID)>);
-    fn module_id(&self, module: Mod) -> ID;
+crate::impl_entity!(EnumVariant);
 
-    fn find_item(
-        &self,
-        module: Mod,
-        id: ID,
-        target_module: Option<Mod>,
-        buffer: &mut Vec<(Mod, ID)>,
-    ) -> std::result::Result<Option<T>, (T, T)> {
-        if let Some(module) = target_module {
-            Ok(self.find(id.add(self.module_id(module))))
-        } else {
-            if let Some(fun) = self.find(id.add(self.module_id(module))) {
-                Ok(Some(fun))
-            } else {
-                self.scopes(module, buffer);
+#[derive(Debug, Clone, Default)]
+pub struct EnumVariantEnt {
+    id: ID,
+}
 
-                let mut found = None;
-                for (_, module_id) in buffer.drain(1..) {
-                    if let Some(fun) = self.find(id.add(module_id)) {
-                        if let Some(found) = found {
-                            return Err((found, fun));
-                        }
-                        found = Some(fun);
-                        break;
-                    }
-                }
-                Ok(found)
-            }
-        }
+impl EnumVariantEnt {
+    pub fn id(&self) -> ID {
+        self.id
     }
 }
 
-pub struct TypeConstDisplay<'a> {
-    state: &'a TState,
-    constant: &'a TypeConst,
-}
-
-impl<'a> TypeConstDisplay<'a> {
-    pub fn new(state: &'a TState, constant: &'a TypeConst) -> Self {
-        Self { state, constant }
-    }
-}
-
-impl std::fmt::Display for TypeConstDisplay<'_> {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self.constant {
-            TypeConst::Bool(b) => write!(f, "{}", b),
-            TypeConst::Int(i) => write!(f, "{}", i),
-            TypeConst::Float(float) => write!(f, "{}", float),
-            TypeConst::Char(c) => write!(f, "'{}'", c),
-            TypeConst::String(s) => write!(f, "\"{}\"", self.state.display(s)),
-        }
-    }
-}
+#[derive(Debug, Clone, Default)]
+pub struct ModCtx {}
 
 impl Signature {
-    pub fn to_cr_signature(
-        &self,
-        module: Mod,
-        state: &TState,
-        isa: &dyn TargetIsa,
-        target: &mut CrSignature,
-    ) {
+    pub fn to_cr_signature(&self, state: &Ctx, isa: &dyn TargetIsa, target: &mut CrSignature) {
         target.call_conv = self.call_conv.to_cr_call_conv(isa);
         target.params.extend(
-            state.modules[module]
+            state
                 .type_slice(self.args)
                 .iter()
                 .map(|&ty| AbiParam::new(state.types[ty].to_cr_type(isa))),
@@ -749,366 +1261,65 @@ impl Signature {
     }
 }
 
-#[derive(Debug, Clone, Default)]
-pub struct TContext {
-    pub mt_context: MTContext,
-    pub constant_buffer: String,
-    pub unresolved: Vec<(Ty, usize)>,
-    pub resolved: Vec<Ty>,
-}
-
-crate::inherit!(TContext, mt_context, MTContext);
-
-#[derive(Debug, Clone, QuickSer)]
-pub struct TState {
-    pub builtin_repo: BuiltinRepo,
-    pub types: Table<Ty, TypeEnt>,
-
-    pub type_cycle_map: Vec<(bool, bool)>,
-    pub mt_state: MTState,
-}
-
-crate::inherit!(TState, mt_state, MTState);
-
-impl TState {
-    fn tuple_of(&mut self, source_module: Mod, types: &[Ty]) -> Ty {
-        let mut filed_name = String::with_capacity(2);
-        let mut fields = Vec::with_capacity(types.len());
-        let mut id = ID::new("--tuple--");
-        for (i, &ty) in types.iter().enumerate() {
-            id = id.add(self.types[ty].id);
-            writeln!(filed_name, "f{}", i).unwrap();
-            let field = SField {
-                id: ID::new(&filed_name),
-                ty,
-
-                embedded: false,
-                vis: Vis::Public,
-                offset: Size::ZERO,
-                hint: Token::default(),
-            };
-            fields.push(field);
-            filed_name.clear();
-        }
-
-        id = id.add(self.modules[BUILTIN_MODULE].id);
-
-        if let Some(ty) = self.find_computed(source_module, id) {
-            return ty;
-        }
-
-        let s_ent = SType {
-            kind: SKind::Tuple,
-            fields: fields.clone(),
-        };
-
-        let ty_ent = TypeEnt {
-            id,
-            module: BUILTIN_MODULE,
-            vis: Vis::Public,
-            kind: TKind::Structure(s_ent),
-
-            ..Default::default()
-        };
-
-        let ty = self.add_type(source_module, ty_ent);
-
-        ty
-    }
-
-    pub fn pointer_of(&mut self, source_module: Mod, ty: Ty, mutable: bool) -> Ty {
-        let TypeEnt { module, id, .. } = self.types[ty];
-        let name = if mutable { "&var " } else { "&" };
-        let id = TYPE_SALT
-            .add(ID::new(name))
-            .add(id)
-            .add(self.modules[module].id);
-
-        if let Some(ty) = self.find_computed(source_module, id) {
-            return ty;
-        }
-
-        let size = Size::POINTER;
-
-        let pointer_type = TypeEnt {
-            vis: Vis::Public,
-            id,
-            kind: TKind::Pointer(ty, mutable),
-            module,
-            size,
-            align: size,
-
-            ..Default::default()
-        };
-
-        self.add_type(source_module, pointer_type)
-    }
-
-    pub fn array_of(&mut self, source_module: Mod, element: Ty, length: usize) -> Ty {
-        let TypeEnt {
-            id,
-            module,
-            size,
-            align,
-            vis,
-            ..
-        } = self.types[element];
-
-        let id = TYPE_SALT.add(ID::new("[]")).add(id).add(ID(length as u64));
-
-        if let Some(ty) = self.find_computed(source_module, id) {
-            return ty;
-        }
-
-        let ty_ent = TypeEnt {
-            id,
-            vis,
-            module,
-            kind: TKind::Array(element, length as u32),
-            size: size.mul(Size::new(length as u32, length as u32)),
-            align,
-
-            ..Default::default()
-        };
-
-        self.add_type(source_module, ty_ent)
-    }
-
-    pub fn constant_of(&mut self, source_module: Mod, constant: TypeConst) -> Ty {
-        let display = format!("{}", TypeConstDisplay::new(self, &constant));
-
-        let id = TYPE_SALT.add(ID::new(&display));
-
-        if let Some(ty) = self.find_computed(source_module, id) {
-            return ty;
-        }
-
-        let ty_ent = TypeEnt {
-            id,
-            vis: Vis::Public,
-            kind: TKind::Constant(constant),
-            module: BUILTIN_MODULE,
-
-            ..Default::default()
-        };
-
-        self.add_type(source_module, ty_ent)
-    }
-
-    /// Creates a function pointer type of given `sig`. `module` is the module where signature
-    /// has ist argument slice stored. `source_module` is the module where the function pointer is
-    /// used.
-    pub fn function_type_of(&mut self, source_module: Mod, module: Mod, sig: Signature) -> Ty {
-        let mut id = TYPE_SALT.add(ID::new("fun")).add(ID(unsafe {
-            std::mem::transmute::<_, u8>(sig.call_conv)
-        } as u64));
-
-        for arg in self.modules[module].type_slice(sig.args).iter() {
-            id = id.add(self.types[*arg].id);
-        }
-
-        if sig.ret.is_some() {
-            id = id.add(ID::new("->")).add(self.types[sig.ret.unwrap()].id);
-        }
-
-        id = id.add(self.modules[BUILTIN_MODULE].id);
-
-        if let Some(ty) = self.find_computed(source_module, id) {
-            return ty;
-        }
-
-        let size = Size::POINTER;
-        let type_ent = TypeEnt {
-            kind: TKind::FunPointer(sig),
-            id,
-            module,
-            vis: Vis::None,
-            size,
-            align: size,
-
-            ..Default::default()
-        };
-
-        self.add_type(source_module, type_ent)
-    }
-
-    pub fn find_computed(&mut self, source_module: Mod, id: ID) -> Option<Ty> {
-        if let Some(&ty) = self.types.index(id) {
-            self.modules[source_module].add_type(ty);
-            return Some(ty);
-        }
-
-        None
-    }
-
-    pub fn add_type(&mut self, source_module: Mod, ent: TypeEnt) -> Ty {
-        let (shadow, id) = self.add_type_low(source_module, ent, false);
-        debug_assert!(shadow.is_none(), "{:?}", id);
-        id
-    }
-
-    pub fn add_type_low(
-        &mut self,
-        source_module: Mod,
-        ent: TypeEnt,
-        allow_shadow: bool,
-    ) -> (Option<TypeEnt>, Ty) {
-        let (shadow, ty) = self.types.insert(ent.id, ent);
-
-        self.modules[source_module].add_type(ty);
-        debug_assert!(shadow.is_none() || allow_shadow);
-        (shadow, ty)
-    }
-
-    pub fn pointer_base(&self, ty: Ty) -> Option<Ty> {
-        if let TKind::Pointer(base, _) = self.types[ty].kind {
-            Some(base)
-        } else {
-            None
-        }
-    }
-
-    pub fn pointer_mutability(&self, ty: Ty) -> bool {
-        if let TKind::Pointer(_, mutability) = self.types[ty].kind {
-            mutability
-        } else {
-            false
-        }
-    }
-
-    pub fn base_of(&self, ty: Ty) -> Ty {
-        if let TKind::Array(..) = self.types[ty].kind {
-            return self.builtin_repo.array;
-        }
-        let TypeEnt { module, params, .. } = self.types[ty];
-        self.modules[module]
-            .type_slice(params)
-            .first()
-            .cloned()
-            .unwrap_or(ty)
-    }
-}
-
-impl GarbageTarget<Ty, TypeEnt> for TState {
-    fn state(&mut self) -> &mut Table<Ty, TypeEnt> {
-        &mut self.types
-    }
-
-    fn remove(&mut self, _k: Ty, ent: &mut TypeEnt) -> bool {
-        if matches!(ent.kind, TKind::Builtin(..)) {
-            return false;
-        }
-
-        if self.modules[ent.module].clean {
-            self.modules[ent.module].clear_types(&mut ent.params);
-        }
-
-        true
-    }
-}
-
-impl IncrementalData for TState {
-    fn prepare(&mut self) {
-        self.type_cycle_map.clear();
-        self.mt_state.prepare();
-    }
-}
-
-impl Default for TState {
-    fn default() -> Self {
-        let mut s = Self {
-            builtin_repo: Default::default(),
-            types: Table::new(),
-            mt_state: MTState::default(),
-            type_cycle_map: Vec::new(),
-        };
-
-        s.builtin_repo = BuiltinRepo::new(&mut s);
-
-        return s;
-    }
-}
-
 macro_rules! define_repo {
     (
-        $($name:ident, $repr:expr, $s32:expr, $s64:expr);+
+        $($const_name:ident, $name:ident, $repr:expr, $s32:expr, $s64:expr, $index:expr);+
     ) => {
-        #[derive(Clone, Debug, Copy, RealQuickSer)]
-        pub struct BuiltinRepo {
-            $(pub $name: Ty,)+
-        }
+        $(
+            pub const $const_name: Ty = Ty($index);
+        )+
+        pub const ALL_BUILTIN_TYPES: &[Ty] = &[$($const_name),+];
 
-        impl Default for BuiltinRepo {
-            fn default() -> Self {
-                Self {
-                    $(
-                        $name: Ty::new(0),
-                    )+
-                }
-            }
-        }
-
-        impl BuiltinRepo {
-            pub fn new(state: &mut TState) -> Self {
+        impl Ctx {
+            pub fn add_builtin_types(&mut self) {
                 let module = BUILTIN_MODULE;
-                let builtin_id = state.modules[module].id;
+                let builtin_id = self.module_id(module);
 
                 $(
-                    let name = state.builtin_span(stringify!($name));
-                    let id = TYPE_SALT.add(ID::new(stringify!($name))).add(builtin_id);
-                    let type_ent = TypeEnt {
+                    let name = self.builtin_span(stringify!($name));
+                    let id = ID::new(stringify!($name)).add(builtin_id);
+                    let type_ent = TyEnt {
                         id,
-                        vis: Vis::Public,
-                        kind: TKind::Builtin(CrTypeWr($repr)),
+                        kind: ty::Kind::Builtin(CrTypeWr($repr)),
                         size: Size::new($s32, $s64),
                         align: Size::new($s32, $s64).min(Size::new(4, 8)),
                         module,
-                        hint: Token::new(LTKind::Ident, name.clone()),
+                        hint: Token::new(token::Kind::Ident, name.clone(), LineData::default()),
                         name,
 
                         ..Default::default()
                     };
-                    let $name = state.add_type(module, type_ent);
+                    self.add_type(module, type_ent);
                 )+
-
-                Self {
-                    $($name,)+
-                }
-            }
-
-            pub fn type_list(&self) -> [Ty; 14] {
-                [
-                    $(self.$name,)+
-                ]
             }
         }
     };
 }
 
 define_repo!(
-    i8, I8, 1, 1;
-    i16, I16, 2, 2;
-    i32, I32, 4, 4;
-    i64, I64, 8, 8;
-    u8, I8, 1, 1;
-    u16, I16, 2, 2;
-    u32, I32, 4, 4;
-    u64, I64, 8, 8;
-    f32, F32, 4, 4;
-    f64, F64, 8, 8;
-    bool, B1, 1, 1;
-    int, INVALID, 4, 8;
-    uint, INVALID, 4, 8;
-    array, INVALID, 0, 0
+    I8_TY, i8, I8, 1, 1, 0;
+    I16_TY, i16, I16, 2, 2, 1;
+    I32_TY, i32, I32, 4, 4, 2;
+    I64_TY, i64, I64, 8, 8, 3;
+    U8_TY, u8, I8, 1, 1, 4;
+    U16_TY, u16, I16, 2, 2, 5;
+    U32_TY, u32, I32, 4, 4, 6;
+    U64_TY, u64, I64, 8, 8, 7;
+    F32_TY, f32, F32, 4, 4, 8;
+    F64_TY, f64, F64, 8, 8, 9;
+    BOOL_TY, bool, B1, 1, 1, 10;
+    INT_TY, int, INVALID, 4, 8, 11;
+    UINT_TY, uint, INVALID, 4, 8, 12;
+    ARRAY_TY, array, INVALID, 0, 0, 13
 );
 
 pub struct TypeDisplay<'a> {
-    state: &'a TState,
+    state: &'a Ctx,
     type_id: Ty,
 }
 
 impl<'a> TypeDisplay<'a> {
-    pub fn new(state: &'a TState, type_id: Ty) -> Self {
+    pub fn new(state: &'a Ctx, type_id: Ty) -> Self {
         Self { state, type_id }
     }
 }
@@ -1117,15 +1328,15 @@ impl<'a> std::fmt::Display for TypeDisplay<'a> {
     fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
         let ty = &self.state.types[self.type_id];
         match &ty.kind {
-            &TKind::Pointer(id, mutable) => {
+            &ty::Kind::Pointer(id, mutable) => {
                 if mutable {
                     write!(f, "&var {}", Self::new(self.state, id))
                 } else {
                     write!(f, "&{}", Self::new(self.state, id))
                 }
             }
-            TKind::Structure(_) if !ty.params.is_empty() => {
-                let params = self.state.modules[ty.module].type_slice(ty.params);
+            ty::Kind::Structure(..) if !ty.params.is_empty() => {
+                let params = self.state.type_slice(ty.params);
                 write!(f, "{}", Self::new(self.state, params[0]))?;
                 write!(f, "[")?;
                 write!(f, "{}", Self::new(self.state, params[1]))?;
@@ -1134,24 +1345,24 @@ impl<'a> std::fmt::Display for TypeDisplay<'a> {
                 }
                 write!(f, "]")
             }
-            TKind::Builtin(_)
-            | TKind::Unresolved(_)
-            | TKind::Generic(_)
-            | TKind::Structure(_)
-            | TKind::Enumeration(_) => {
-                write!(f, "{}", self.state.display(&ty.name))
+            ty::Kind::Builtin(_)
+            | ty::Kind::Unresolved(_)
+            | ty::Kind::Generic(_)
+            | ty::Kind::Structure(..)
+            | ty::Kind::Enumeration(_) => {
+                write!(f, "{}", self.state.display(ty.name))
             }
-            TKind::Constant(value) => {
-                write!(f, "{}", TypeConstDisplay::new(self.state, value))
+            &ty::Kind::Constant(value) => {
+                write!(f, "{}", ConstDisplay::new(self.state, value))
             }
-            TKind::Array(id, len) => {
+            ty::Kind::Array(id, len) => {
                 write!(f, "[{}, {}]", Self::new(self.state, *id), len)
             }
-            TKind::FunPointer(fun) => {
+            ty::Kind::FunPointer(fun) => {
                 write!(
                     f,
                     "fn({})",
-                    self.state.modules[ty.module]
+                    self.state
                         .type_slice(fun.args)
                         .iter()
                         .map(|id| format!("{}", Self::new(self.state, *id)))
@@ -1167,172 +1378,465 @@ impl<'a> std::fmt::Display for TypeDisplay<'a> {
     }
 }
 
-crate::def_displayer!(
-    TErrorDisplay,
-    TState,
-    TError,
-    |self, f| {
-        TEKind::VisibilityViolation => {
-            write!(f, "visibility of the type disallows the access, {}", VISIBILITY_MESSAGE)?;
-        },
-        TEKind::InstancingNonGeneric(origin) => {
-            writeln!(
-                f,
-                "instancing non-generic type, defined here:\n {}",
-                TokenDisplay::new(&self.state, origin)
-            )?;
-        },
-        TEKind::AError(error) => {
-            writeln!(f, "{}", AErrorDisplay::new(self.state, error))?;
-        },
-        TEKind::UnexpectedAst(token) => {
-            writeln!(f, "{}", token)?;
-        },
-        &TEKind::AmbiguousType(a, b) => {
-            let a = self.state.types[a].hint.clone();
-            let b = self.state.types[b].hint.clone();
-            writeln!(
-                f,
-                "matches\n{}\nand\n{}\nambiguity is not allowed",
-                TokenDisplay::new(&self.state, &a),
-                TokenDisplay::new(&self.state, &b)
-            )?;
-        },
-        TEKind::UnknownType => {
-            writeln!(f, "type not defined in current scope")?;
-        },
-        TEKind::NotGeneric => {
-            writeln!(f, "type is not generic thus cannot be instantiated")?;
-        },
-        TEKind::UnknownModule => {
-            writeln!(f, "module not defined in current scope")?;
-        },
-        TEKind::InstantiationDepthExceeded => {
-            writeln!(
-                f,
-                "instantiation depth exceeded, max is {}",
-                TParser::MAX_TYPE_INSTANTIATION_DEPTH
-            )?;
-        },
-        TEKind::WrongInstantiationArgAmount(actual, expected) => {
-            writeln!(
-                f,
-                "wrong amount of arguments for type instantiation, expected {} but got {}",
-                expected, actual
-            )?;
-        },
-        TEKind::AccessingExternalPrivateType => {todo!()},
-        TEKind::AccessingFilePrivateType =>  {todo!()},
-        TEKind::InfiniteSize(cycle) => {
-            writeln!(f, "infinite size detected, cycle:")?;
-            for ty in cycle.iter() {
-                writeln!(f, "  {}", TypeDisplay::new(self.state, *ty))?;
+impl ErrorDisplayState<Error> for Ctx {
+    fn fmt(&self, e: &Error, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match &e.kind {
+            error::Kind::VisibilityViolation => {
+                write!(
+                    f,
+                    "visibility of the type disallows the access, {}",
+                    VISIBILITY_MESSAGE
+                )?;
             }
-        },
-        TEKind::Redefinition(other) => {
-            writeln!(f, "is redefinition of\n{}", TokenDisplay::new(&self.state, other))?;
-        },
+            error::Kind::InstancingNonGeneric(origin) => {
+                writeln!(
+                    f,
+                    "instancing non-generic type, defined here:\n {}",
+                    token::Display::new(&self.ctx, &origin)
+                )?;
+            }
+            error::Kind::NotType => {
+                write!(f, "expected type")?;
+            }
+            error::Kind::ModuleError(error) => {
+                writeln!(f, "{}", ErrorDisplay::new(&self.ctx, error))?;
+            }
+            error::Kind::AstError(error) => {
+                writeln!(f, "{}", ErrorDisplay::new(self.ctx.deref(), error))?;
+            }
+            error::Kind::UnexpectedAst(token) => {
+                writeln!(f, "{}", token)?;
+            }
+            &error::Kind::AmbiguousType(a, b) => {
+                let a = self.types[a].hint.clone();
+                let b = self.types[b].hint.clone();
+                writeln!(
+                    f,
+                    "matches\n{}\nand\n{}\nambiguity is not allowed",
+                    token::Display::new(self.sources(), &a),
+                    token::Display::new(self.sources(), &b)
+                )?;
+            }
+            error::Kind::UnknownType => {
+                writeln!(f, "type not defined in current scope")?;
+            }
+            error::Kind::NotGeneric => {
+                writeln!(f, "type is not generic thus cannot be instantiated")?;
+            }
+            error::Kind::UnknownModule => {
+                writeln!(f, "module not defined in current scope")?;
+            }
+            error::Kind::InstantiationDepthExceeded => {
+                writeln!(
+                    f,
+                    "instantiation depth exceeded, max is {}",
+                    MAX_TYPE_INSTANTIATION_DEPTH
+                )?;
+            }
+            error::Kind::WrongInstantiationArgAmount(actual, expected) => {
+                writeln!(
+                    f,
+                    "wrong amount of arguments for type instantiation, expected {} but got {}",
+                    expected, actual
+                )?;
+            }
+            error::Kind::AccessingExternalPrivateType => {
+                todo!()
+            }
+            error::Kind::AccessingFilePrivateType => {
+                todo!()
+            }
+            error::Kind::InfiniteSize(cycle) => {
+                writeln!(f, "infinite size detected, cycle:")?;
+                for ty in cycle.iter() {
+                    writeln!(f, "  {}", TypeDisplay::new(self, *ty))?;
+                }
+            }
+            error::Kind::Redefinition(other) => {
+                writeln!(
+                    f,
+                    "is redefinition of\n{}",
+                    token::Display::new(self.sources(), other)
+                )?;
+            }
 
-        TEKind::ExpectedIntConstant => {
-            writeln!(f, "expected positive integer constant")?;
-        },
-        TEKind::InvalidCallConv => {
-            call_conv_error(f)?;
-        },
+            error::Kind::ExpectedIntConstant => {
+                writeln!(f, "expected positive integer constant")?;
+            }
+            error::Kind::InvalidCallConv => {
+                CallConv::error(f)?;
+            }
+            error::Kind::UnsupportedConst => {
+                writeln!(
+                    f,
+                    "unsupported constant operation, use 'let' instead of 'const' if possible"
+                )?;
+            }
+            error::Kind::NotConst => {
+                writeln!(f, "value of this expression is not known at compile time")?;
+            }
+            error::Kind::Undefined => {
+                writeln!(f, "expression points to undefined value")?;
+            }
+            error::Kind::IndexOutOfBounds => {
+                writeln!(f, "index out of bounds inside a constant expression")?;
+            }
+        }
+
+        Ok(())
     }
-);
 
-#[derive(Debug)]
-pub struct TError {
-    pub kind: TEKind,
-    pub token: Token,
+    fn sources(&self) -> &crate::lexer::Ctx {
+        self.ctx.sources()
+    }
 }
 
-impl TError {
-    pub fn new(kind: TEKind, token: Token) -> Self {
+#[derive(Debug)]
+pub struct Error {
+    kind: error::Kind,
+    token: Token,
+}
+
+impl Error {
+    pub fn new(kind: error::Kind, token: Token) -> Self {
         Self { kind, token }
     }
 }
 
-#[derive(Debug)]
-pub enum TEKind {
-    InvalidCallConv,
-    VisibilityViolation,
-    InstancingNonGeneric(Token),
-    AError(AError),
-    UnexpectedAst(String),
-    AmbiguousType(Ty, Ty),
-    UnknownType,
-    NotGeneric,
-    UnknownModule,
-    InstantiationDepthExceeded,
-    WrongInstantiationArgAmount(usize, usize),
-    AccessingExternalPrivateType,
-    AccessingFilePrivateType,
-    InfiniteSize(Vec<Ty>),
-    Redefinition(Token),
-    ExpectedIntConstant,
+impl DisplayError for Error {
+    fn token(&self) -> Token {
+        self.token
+    }
 }
 
-/// Collects and removes all unwanted data based of set and destructor.
-/// If set does not contain the index, it is passed to the destructor, and if
-/// destructor returns true data is removed. The state is moved for duration
-/// of function so referring to other entities from state is impossible.
-pub trait GarbageTarget<I: EntityRef + Default, T: Default + TableId> {
-    fn state(&mut self) -> &mut Table<I, T>;
-    fn remove(&mut self, k: I, ent: &mut T) -> bool;
+impl Into<Error> for modules::Error {
+    fn into(self) -> Error {
+        Error::new(error::Kind::ModuleError(self), Token::default())
+    }
+}
 
-    fn remove_garbage(&mut self, set: &EntitySet<I>) {
-        let mut table = std::mem::take(self.state());
+mod error {
+    use super::*;
 
-        for k in (0..table.len()).map(|i| I::new(i)) {
-            if table.is_valid(k) && !set.contains(k) && self.remove(k, &mut table[k]) {
-                table.remove_by_index(k);
+    #[derive(Debug)]
+    pub enum Kind {
+        NotType,
+        InvalidCallConv,
+        VisibilityViolation,
+        InstancingNonGeneric(Token),
+        AstError(ast::Error),
+        ModuleError(modules::Error),
+        UnexpectedAst(String),
+        AmbiguousType(Ty, Ty),
+        UnknownType,
+        NotGeneric,
+        UnknownModule,
+        InstantiationDepthExceeded,
+        WrongInstantiationArgAmount(usize, usize),
+        AccessingExternalPrivateType,
+        AccessingFilePrivateType,
+        InfiniteSize(Vec<Ty>),
+        Redefinition(Token),
+        ExpectedIntConstant,
+        UnsupportedConst,
+        NotConst,
+        Undefined,
+        IndexOutOfBounds,
+    }
+}
+
+crate::impl_entity!(Ty);
+
+#[derive(Debug, Clone, QuickSer, Default)]
+pub struct TyEnt {
+    pub id: ID,
+    pub module: Mod,
+    pub vis: Vis,
+    pub params: EntityList<Ty>,
+    pub kind: ty::Kind,
+    pub name: Span,
+    pub hint: Token,
+    pub attrs: Ast,
+    pub size: Size,
+    pub align: Size,
+}
+
+impl TyEnt {
+    pub fn to_cr_type(&self, isa: &dyn TargetIsa) -> Type {
+        match &self.kind {
+            ty::Kind::Pointer(..)
+            | ty::Kind::Array(..)
+            | ty::Kind::Structure(..)
+            | ty::Kind::FunPointer(_) => isa.pointer_type(),
+            ty::Kind::Enumeration(_) => I8, //temporary solution
+            &ty::Kind::Builtin(ty) => ty.0,
+            ty::Kind::Generic(_) | ty::Kind::Constant(_) | ty::Kind::Unresolved(_) => {
+                unreachable!()
             }
         }
+    }
 
-        *self.state() = table;
+    pub fn on_stack(&self, ptr_ty: Type) -> bool {
+        self.size.pick(ptr_ty == I32) > ptr_ty.bytes() as u32
+    }
+
+    fn item_data(&self) -> (Mod, Token, ID) {
+        (self.module, self.hint, self.id)
+    }
+}
+
+mod ty {
+    use super::*;
+
+    #[derive(Debug, Clone, QuickEnumGets, Copy, RealQuickSer)]
+    pub enum Kind {
+        Builtin(CrTypeWr),
+        Pointer(Ty, bool),
+        Enumeration(EntityList<EnumVariant>),
+        Array(Ty, u32),
+        FunPointer(Signature),
+        Constant(Const),
+        Structure(StructureKind, EntityList<Field>),
+        Generic(Ast),
+        Unresolved(Ast),
+    }
+
+    impl Default for ty::Kind {
+        fn default() -> Self {
+            ty::Kind::Builtin(CrTypeWr(INVALID))
+        }
+    }
+}
+
+crate::impl_wrapper!(CrTypeWr, Type);
+
+#[derive(Debug, Clone, Copy, Default, RealQuickSer)]
+pub struct Signature {
+    pub call_conv: CallConv,
+    pub args: EntityList<Ty>,
+    pub ret: PackedOption<Ty>,
+}
+
+crate::impl_entity!(Field);
+
+#[derive(Debug, Clone, Default, Copy, RealQuickSer)]
+pub struct FieldEnt {
+    pub embedded: bool,
+    pub vis: Vis,
+    pub id: ID,
+    pub offset: Size,
+    pub ty: Ty,
+    pub hint: Token,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, RealQuickSer)]
+pub enum StructureKind {
+    Struct,
+    Union,
+    Tuple,
+}
+
+crate::impl_entity!(Const);
+
+#[derive(Debug, Clone, Copy, RealQuickSer, Default)]
+pub struct ConstEnt {
+    id: ID,
+    module: Mod,
+    vis: Vis,
+    hint: Token,
+    kind: constant::Kind,
+}
+
+impl ConstEnt {
+    pub fn item_data(&self) -> (Mod, Token, ID) {
+        (self.module, self.hint, self.id)
+    }
+
+    pub fn vis(&self) -> Vis {
+        self.vis
+    }
+}
+
+mod constant {
+    use super::*;
+
+    #[derive(Clone, Debug, Copy)]
+    pub enum Kind {
+        Int(i64, u8),
+        Uint(u64, u8),
+        Float(f64, u8),
+        Bool(bool),
+        Str(Span),
+        Array(EntityList<Const>),
+    }
+    
+    impl Kind {
+        pub fn from_token(ctx: &mut Ctx, token: Token) -> Self {
+            let mut chars = ctx.display(token.span()).chars();
+            match token.kind() {
+                token::Kind::Int(_) | token::Kind::Uint(_) | token::Kind::Float(_) => {
+                    match chars.number().unwrap() {
+                        lexer::Number::Int(num, base) => Self::Int(num, base),
+                        lexer::Number::Uint(num, base) => Self::Uint(num, base),
+                        lexer::Number::Float(num, base) => Self::Float(num, base),
+                    }
+                }
+                token::Kind::Bool(value) => Self::Bool(value),
+                token::Kind::String => {
+                    let mut result = String::with_capacity(chars.as_str().len());
+                    chars.string(Some(&mut result));
+                    let result = ctx.builtin_span(&result);
+                    Self::Str(result)
+                }
+                token::Kind::Char => Self::Uint(chars.character() as u64, 32),
+                _ => unreachable!(),
+            }
+        }
+    
+        pub fn hash(self, ctx: &Ctx) -> ID {
+            match self {
+                Kind::Int(value, base) => ID(0).add(ID(value as u64)).add(ID(base as u64)),
+                Kind::Uint(value, base) => ID(1).add(ID(value as u64)).add(ID(base as u64)),
+                Kind::Float(value, base) => ID(2).add(ID(value.to_bits())).add(ID(base as u64)),
+                Kind::Bool(value) => ID(3).add(ID(value as u64)),
+                Kind::Str(span) => ID(4).add(ctx.hash_span(span)),
+                Kind::Array(elements) => {
+                    let mut id = ID(5);
+                    for &element in elements.as_slice(&ctx.constant_slices) {
+                        id = id.add(ctx.constants[element].kind.hash(ctx));
+                    }
+                    id
+                }
+            }
+        }
+    }
+}
+
+
+pub struct ConstDisplay<'a> {
+    ctx: &'a Ctx,
+    constant: Const,
+}
+
+impl<'a> ConstDisplay<'a> {
+    pub fn new(ctx: &'a Ctx, constant: Const) -> Self {
+        Self { ctx, constant }
+    }
+}
+
+impl std::fmt::Display for ConstDisplay<'_> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self.ctx.constants[self.constant].kind {
+            constant::Kind::Bool(b) => write!(f, "{}", b),
+            constant::Kind::Int(i, base) => write!(f, "{}i{}", i, base),
+            constant::Kind::Uint(i, base) => write!(f, "{}u{}", i, base),
+            constant::Kind::Float(float, base) => write!(f, "{}f{}", float, base),
+            constant::Kind::Str(s) => write!(f, "\"{}\"", self.ctx.display(s)),
+            constant::Kind::Array(elements) => {
+                write!(f, "[")?;
+                for (i, &element) in elements
+                    .as_slice(&self.ctx.constant_slices)
+                    .iter()
+                    .enumerate()
+                {
+                    if i != 0 {
+                        write!(f, ", ")?;
+                    }
+                    write!(f, "{}", Self::new(self.ctx, element))?;
+                }
+                write!(f, "]")
+            }
+        }
+    }
+}
+
+impl LexerBase for Chars<'_> {
+    fn next(&mut self) -> Option<char> {
+        Iterator::next(self)
+    }
+
+    fn peek(&self) -> Option<char> {
+        Iterator::next(&mut self.clone())
+    }
+}
+
+impl Default for constant::Kind {
+    fn default() -> Self {
+        Self::Bool(false)
+    }
+}
+
+impl ScopeManager for Ctx {
+    fn get_item_unchecked(&self, module: Mod, id: ID) -> Option<modules::Item> {
+        self.ctx.get_item_unchecked(module, id)
+    }
+
+    fn module_id(&self, module: Mod) -> ID {
+        self.ctx.module_id(module)
+    }
+
+    fn module_dependency(&self, module: Mod) -> &[(ID, Span, Mod)] {
+        self.ctx.module_dependency(module)
+    }
+
+    fn module_scope(&mut self, module: Mod) -> &mut crate::util::storage::Map<modules::Item> {
+        self.ctx.module_scope(module)
+    }
+
+    fn item_data(&self, item: modules::Item) -> (Mod, Token, ID) {
+        match item.kind() {
+            modules::item::Kind::Type => self.types[Ty::from_u32(item.id())].item_data(),
+            modules::item::Kind::Const => self.constants[Const::from_u32(item.id())].item_data(),
+            modules::item::Kind::Global |
+            modules::item::Kind::Variable |
+            modules::item::Kind::Function |
+            modules::item::Kind::Collision => unreachable!(),
+        }
     }
 }
 
 pub fn test() {
     const PATH: &str = "src/types/test_project";
 
-    let (mut state, hint) = TState::load_data(PATH, ID(0)).unwrap_or_default();
-    let mut context = TContext::default();
+    let mut ctx = Ctx::default();
+    let mut item_buffer = vec![];
 
-    MTParser::new(&mut state, &mut context)
-        .parse(PATH)
-        .map_err(|e| panic!("{}", MTErrorDisplay::new(&state, &e)))
+    let order = ctx
+        .compute_module_tree(PATH)
+        .map_err(|e| panic!("{}", ErrorDisplay::new(&ctx.ctx, &e)))
         .unwrap();
 
-    let module_order = std::mem::take(&mut state.module_order);
+    for &module in &order {
+        ctx.collect_imported_items(module, &mut item_buffer);
 
-    let mut used = EntitySet::with_capacity(state.types.len());
+        ctx.extend_scope(module, &item_buffer)
+            .map_err(|e| panic!("{}", ErrorDisplay::new(&ctx.ctx, &e)))
+            .unwrap();
 
-    // mark all unchanged module type dependencies as used
-    for &module in &module_order {
-        if state.modules[module].clean {
-            let module_ent = &state.mt_state.modules[module];
-            for &ty in module_ent.used_types() {
-                used.insert(ty);
+        
+        
+        loop {
+            let more = ctx
+                .compute_ast(module)
+                .map_err(|e| panic!("{}", ErrorDisplay::new(&ctx.ctx, &e)))
+                .unwrap();
+
+            ctx.compute_types(module)
+                .map_err(|e| panic!("\n{}", ErrorDisplay::new(&ctx, &e)))
+                .unwrap();
+            
+            item_buffer.clear();
+            ctx.dump_temp_items(&mut item_buffer);
+            ctx.extend_module_items(module, &item_buffer);
+            ctx.extend_scope(module, &item_buffer)
+                .map_err(|e| panic!("{}", ErrorDisplay::new(&ctx.ctx, &e)))
+                .unwrap();
+                
+            if !more {
+                break;
             }
         }
+
+        ctx.clear_after_module();
     }
-
-    state.remove_garbage(&used);
-
-    // recompile dirty modules
-    for &module in &module_order {
-        if state.modules[module].clean {
-            continue;
-        }
-
-        TParser::new(&mut state, &mut context)
-            .parse(module)
-            .map_err(|e| panic!("\n{}", TErrorDisplay::new(&mut state, &e)))
-            .unwrap();
-    }
-
-    state.save_data(PATH, ID(0), Some(hint)).unwrap();
 }

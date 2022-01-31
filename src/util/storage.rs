@@ -1,22 +1,18 @@
 use std::ops::{Index, IndexMut};
 
-use cranelift::{
-    codegen::entity::EntityRef,
-    entity::{PoolMap, SecondaryMap},
-};
+use cranelift::codegen::entity::EntityRef;
 use quick_proc::QuickSer;
 
 use super::sdbm::ID;
 
 #[derive(Clone, Debug, QuickSer)]
 pub struct Map<V> {
-    indices: Vec<(u32, u32, u32)>,
-    ids: Vec<ID>,
-    cache: Vec<V>,
-    size: u32,
-    mod_mask: u64,
-    count: usize,
+    indices: Vec<u32>,
+    cache: Vec<MapEntry<V>>,
 }
+
+#[derive(Clone, Debug, Default, QuickSer)]
+pub struct MapEntry<V>(ID, Option<V>, u32);
 
 impl<V: Default> Default for Map<V> {
     fn default() -> Self {
@@ -32,63 +28,55 @@ impl<V: Default> Map<V> {
     pub fn with_capacity(capacity: usize) -> Self {
         let mut map = Self {
             indices: Vec::new(),
-            ids: Vec::new(),
             cache: Vec::new(),
-            size: 0,
-            mod_mask: 0,
-            count: 0,
         };
 
-        map.increase_cache();
-
-        while map.lim() < capacity {
-            map.increase_cache();
-        }
+        map.reserve(capacity.max(1));
 
         map
     }
 
-    pub fn reserve(&mut self, additional: usize) {
-        let capacity = (self.count + additional).next_power_of_two();
-        while self.lim() < capacity {
-            self.increase_cache();
+    pub fn reserve(&mut self, capacity: usize) {
+        if capacity < self.indices.len() {
+            return;
         }
+        self.increase_cache(capacity.next_power_of_two());
     }
 
     pub fn insert(&mut self, key: ID, value: V) -> Option<V> {
         let ix = self.calc_index(key);
 
-        let slice = self.indices[ix];
-        for i in slice.0..slice.1 {
-            if self.ids[i as usize] == key {
-                return Some(std::mem::replace(&mut self.cache[i as usize], value));
+        let mut last = self.indices[ix];
+        let mut current = last;
+        loop {
+            if current == u32::MAX {
+                let new = self.cache.len();
+                let next = new.next_power_of_two();
+                if next > self.indices.len() {
+                    self.increase_cache(next);
+                    return self.insert(key, value);
+                }
+                self.cache.push(MapEntry(key, Some(value), u32::MAX));
+                if last == u32::MAX {
+                    self.indices[ix] = new as u32;
+                } else {
+                    self.cache[last as usize].2 = new as u32;
+                }
+                break;
             }
-        }
 
-        self.count += 1;
-
-        if slice.1 != slice.2 {
-            // there is spare space
-            self.indices[ix] = (slice.0, slice.1 + 1, slice.2);
-            self.ids[slice.1 as usize] = key;
-            self.cache[slice.1 as usize] = value;
-            return None;
-        } else {
-            // reallocate the elements
-            let start = self.cache.len() as u32;
-            for i in slice.0..slice.1 {
-                let id = self.ids[i as usize];
-                let elem = std::mem::take(&mut self.cache[i as usize]);
-                self.ids.push(id);
-                self.cache.push(elem);
+            let entry = &mut self.cache[current as usize];
+            if entry.1.is_none() {
+                entry.0 = key;
+                entry.1 = Some(value);
+                break;
             }
-            self.ids.push(key);
-            self.cache.push(value);
-            self.indices[ix] = (start, self.cache.len() as u32, self.cache.len() as u32);
-        }
+            if entry.0 == key {
+                return std::mem::replace(&mut entry.1, Some(value));
+            }
 
-        if self.count > self.indices.len() {
-            self.increase_cache();
+            last = current;
+            current = entry.2;
         }
 
         None
@@ -97,12 +85,20 @@ impl<V: Default> Map<V> {
     pub fn get(&self, key: ID) -> Option<&V> {
         let ix = self.calc_index(key);
 
-        let slice = self.indices[ix];
+        let mut current = self.indices[ix];
 
-        for i in slice.0..slice.1 {
-            if self.ids[i as usize] == key {
-                return Some(&self.cache[i as usize]);
+        while current != u32::MAX {
+            let entry = &self.cache[current as usize];
+
+            if entry.1.is_none() {
+                break;
             }
+
+            if entry.0 == key {
+                return entry.1.as_ref();
+            }
+
+            current = entry.2;
         }
 
         return None;
@@ -111,58 +107,74 @@ impl<V: Default> Map<V> {
     pub fn get_mut(&mut self, key: ID) -> Option<&mut V> {
         let ix = self.calc_index(key);
 
-        let slice = self.indices[ix];
+        let mut current = self.indices[ix];
 
-        for i in slice.0..slice.1 {
-            if self.ids[i as usize] == key {
-                return Some(&mut self.cache[i as usize]);
+        while current != u32::MAX {
+            let entry = &self.cache[current as usize];
+
+            if entry.0 == key || entry.1.is_none() {
+                break;
             }
+
+            current = entry.2;
         }
 
-        return None;
+        if current == u32::MAX {
+            None
+        } else {
+            self.cache[current as usize].1.as_mut()
+        }
     }
 
     pub fn remove(&mut self, key: ID) -> Option<V> {
         let ix = self.calc_index(key);
 
-        let slice = self.indices[ix];
+        let mut previous = u32::MAX;
+        let mut current = self.indices[ix];
+        let mut prev_found = u32::MAX;
+        let mut found = u32::MAX;
 
-        for i in slice.0..slice.1 {
-            let elem = &mut self.cache[i as usize];
+        while current != u32::MAX {
+            let entry = &mut self.cache[current as usize];
 
-            if self.ids[i as usize] == key {
-                self.count -= 1;
-                let elem = std::mem::take(elem);
-                self.ids.swap(i as usize, slice.1 as usize - 1);
-                self.cache.swap(i as usize, slice.1 as usize - 1);
-                self.indices[ix] = (slice.0, slice.1 - 1, slice.2);
-                return Some(elem);
+            if entry.0 == key {
+                entry.0 = ID(0);
+                prev_found = previous;
+                found = current;
             }
+
+            previous = current;
+            current = entry.2;
         }
 
-        return None;
+        if found == u32::MAX {
+            return None;
+        }
+
+        if prev_found == u32::MAX {
+            if self.cache[found as usize].2 != u32::MAX {
+                self.indices[ix] = self.cache[found as usize].2;
+            }
+        } else {
+            self.cache[prev_found as usize].2 = self.cache[found as usize].2;
+        }
+
+        self.cache[previous as usize].2 = found;
+        self.cache[found as usize].2 = u32::MAX;
+
+        std::mem::take(&mut self.cache[found as usize].1)
     }
 
     pub fn contains_key(&self, key: ID) -> bool {
-        match self.get(key) {
-            Some(_) => true,
-            None => false,
-        }
+        self.get(key).is_some()
     }
 
     pub fn clear(&mut self) {
         for i in self.indices.iter_mut() {
-            *i = (0, 0, 0);
+            *i = u32::MAX;
         }
 
-        self.ids.clear();
         self.cache.clear();
-
-        self.count = 0;
-    }
-
-    pub fn is_empty(&mut self) -> bool {
-        self.count == 0
     }
 
     #[inline]
@@ -178,131 +190,46 @@ impl<V: Default> Map<V> {
     fn calc_index(&self, key: ID) -> usize {
         let hash = Self::hash_u64(key.0);
         // Faster modulus
-        (hash & self.mod_mask) as usize
+        (hash & (self.indices.len() as u64 - 1)) as usize
     }
 
-    #[inline]
-    fn lim(&self) -> usize {
-        2u64.pow(self.size) as usize
-    }
-
-    fn increase_cache(&mut self) {
-        self.size += 1;
-        let new_lim = self.lim();
-        self.mod_mask = (new_lim as u64) - 1;
-
+    fn increase_cache(&mut self, size: usize) {
         let indices = std::mem::take(&mut self.indices);
-        let ids = std::mem::replace(&mut self.ids, Vec::with_capacity(new_lim));
-        let mut cache = std::mem::replace(&mut self.cache, Vec::with_capacity(new_lim));
-        self.indices.resize(new_lim, (0, 0, 0));
+        let mut cache = std::mem::replace(&mut self.cache, Vec::with_capacity(size));
+        self.indices.resize(size, u32::MAX);
 
-        for slice in indices {
-            for j in slice.0..slice.1 {
-                let id = ids[j as usize];
-                let elem = std::mem::take(&mut cache[j as usize]);
-                let new_idx = self.calc_index(id);
-                let slice = self.indices[new_idx];
-                let start = self.cache.len();
-                for k in slice.0..slice.1 {
-                    let id = self.ids[k as usize];
-                    let elem = std::mem::take(&mut self.cache[k as usize]);
-                    self.ids.push(id);
-                    self.cache.push(elem);
+        for mut index in indices {
+            while index != u32::MAX {
+                let entry = std::mem::take(&mut cache[index as usize]);
+                if entry.1.is_none() {
+                    break;
                 }
-                self.ids.push(id);
-                self.cache.push(elem);
-                self.indices[new_idx] = (
-                    start as u32,
-                    self.cache.len() as u32,
-                    self.cache.len() as u32,
-                );
+                self.insert(entry.0, entry.1.unwrap());
+                index = entry.2;
             }
         }
-    }
-
-    pub fn len(&self) -> usize {
-        self.count as usize
-    }
-
-    pub fn load(&self) -> usize {
-        self.indices.iter().map(|s| s.1 - s.0).sum::<u32>() as usize
-    }
-
-    pub fn load_rate(&self) -> f64 {
-        (self.count as f64) / (self.cache.len() as f64) * 100f64
     }
 
     pub fn capacity(&self) -> usize {
         self.cache.len()
     }
 
-    pub fn assert_count(&self) -> bool {
-        self.count == self.load()
-    }
-
     pub fn keys<'a>(&'a self) -> impl Iterator<Item = ID> + 'a {
-        self.indices
+        self.cache
             .iter()
-            .map(move |c| self.ids[c.0 as usize..c.1 as usize].iter())
-            .flatten()
-            .map(|kv| *kv)
+            .filter_map(|i| if i.1.is_some() { Some(i.0) } else { None })
     }
 
     pub fn values<'a>(&'a self) -> impl Iterator<Item = &'a V> + 'a {
-        self.indices
-            .iter()
-            .map(move |c| self.cache[c.0 as usize..c.1 as usize].iter())
-            .flatten()
-            .map(|kv| kv)
+        self.cache.iter().filter_map(|i| i.1.as_ref())
     }
 
     pub fn values_mut<'a>(&'a mut self) -> impl Iterator<Item = &'a mut V> + 'a {
-        MapValueMutIterator {
-            map: self,
-            index: 0,
-            sub_index: 0,
-        }
+        self.cache.iter_mut().filter_map(|i| i.1.as_mut())
     }
 }
 
-pub struct MapValueMutIterator<'a, V> {
-    map: &'a mut Map<V>,
-    index: usize,
-    sub_index: usize,
-}
-
-impl<'a, V: Default> Iterator for MapValueMutIterator<'a, V> {
-    type Item = &'a mut V;
-
-    fn next(&mut self) -> Option<Self::Item> {
-        if self.index >= self.map.indices.len() {
-            return None;
-        }
-
-        let slice = self.map.indices[self.index];
-
-        if self.sub_index >= slice.1 as usize {
-            self.index += 1;
-
-            if self.index >= self.map.indices.len() {
-                return None;
-            }
-
-            self.sub_index = 0;
-        }
-
-        let elem = unsafe {
-            std::mem::transmute::<&mut _, &'a mut V>(
-                &mut self.map.cache[slice.0 as usize + self.sub_index],
-            )
-        };
-        self.sub_index += 1;
-
-        Some(elem)
-    }
-}
-
-#[derive(Clone, Debug, QuickSer)]
+/*#[derive(Clone, Debug, QuickSer)]
 pub struct Table<I: EntityRef, T: Default> {
     map: Map<I>,
     ids: SecondaryMap<I, ID>,
@@ -455,7 +382,7 @@ impl<I: EntityRef + Default, T: Default> Default for Table<I, T> {
     fn default() -> Self {
         Self::new()
     }
-}
+}*/
 
 #[derive(QuickSer)]
 pub struct LinkedList<I: EntityRef, T> {
@@ -710,19 +637,23 @@ pub fn test() {
     let count = 1000;
 
     for _ in 0..100 {
-        for i in 0..count {
+        for i in 1..count {
             map.insert(ID((i * i) as u64), i);
         }
 
-        for i in 0..count {
+        for i in 1..count {
             assert_eq!(map.get(ID((i * i) as u64)), Some(&i));
         }
 
-        for i in 0..count {
+        for i in 1..count {
             assert_eq!(map.remove(ID((i * i) as u64)), Some(i));
         }
 
-        for i in 0..count {
+        for i in 1..count {
+            map.insert(ID((i * i) as u64), i);
+        }
+
+        for i in 1..count {
             map.insert(ID((i * i) as u64), i);
         }
 

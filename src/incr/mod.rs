@@ -5,7 +5,7 @@ use quick_proc::QuickSer;
 
 use crate::util::sdbm::ID;
 
-/// Incremental data adds loading and saving methods to the type. Data is also 
+/// Incremental data adds loading and saving methods to the type. Data is also
 /// compressed before saving on disc and decompressed before loading.
 pub trait IncrementalData: QuickSer {
     /// Prepare the data for serialization. Usually just clear
@@ -45,7 +45,7 @@ pub trait IncrementalData: QuickSer {
         Some((data, progress))
     }
 
-    /// Saves incremental data to disc. Location is determined as 
+    /// Saves incremental data to disc. Location is determined as
     /// `root_path` / meta / `hash` .bin. Data is compressed.
     fn save_data(
         &mut self,
@@ -55,13 +55,11 @@ pub trait IncrementalData: QuickSer {
     ) -> std::io::Result<()> {
         self.prepare();
 
-
         let mut buffer = Vec::with_capacity(size_hint.unwrap_or(1024 * 1024));
 
         crate::VERSION.to_string().ser(&mut buffer);
 
         self.ser(&mut buffer);
-
 
         let mut path = PathBuf::new();
         path.push(root_path);
