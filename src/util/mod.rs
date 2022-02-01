@@ -95,7 +95,7 @@ macro_rules! impl_entity {
     ($($name:ident),*) => {
         $(
             #[derive(Clone, Copy, Debug, PartialEq, Eq, RealQuickSer)]
-            pub struct $name(u32);
+            pub struct $name(pub u32);
 
             impl Default for $name {
                 fn default() -> Self {

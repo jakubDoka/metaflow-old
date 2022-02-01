@@ -4,7 +4,7 @@ use crate::ast::{self, Ast, CallConv, Vis};
 use crate::lexer::{
     self, token, DisplayError, ErrorDisplay, ErrorDisplayState, LexerBase, LineData, Span, Token,
 };
-use crate::modules::{self, Mod, TreeStorage, BUILTIN_MODULE, ScopeManager, Item};
+use crate::modules::{self, Mod, TreeStorage, BUILTIN_MODULE, ScopeManager, Item, Ty, Const};
 use crate::util::sdbm::ID;
 use crate::util::Size;
 use cranelift::codegen::ir::types::Type;
@@ -243,7 +243,6 @@ impl Ctx {
     ) -> Result {
         let mut fields = self.temp_vec();
         let mut params = self.temp_vec();
-        let module_id = self.module_id(module);
         let mut shadowed = self.temp_vec();
         let header = ast_data.son(ast, 0);
         let sons = ast_data.sons(header);
@@ -258,10 +257,9 @@ impl Ctx {
                 ));
             }
             for (&param, &son) in params.iter().zip(sons.iter()) {
-                let hash = self.hash_token(ast_data.token(son));
-                let id = hash.add(module_id);
+                let id = self.hash_token(ast_data.token(son));
 
-                let shadow = self.add_temporary_item(module, id, Item::ty(param.as_u32()));
+                let shadow = self.add_temporary_item(module, id, Item::Ty(param));
                 shadowed.push((id, shadow));
             }
         }
@@ -351,7 +349,7 @@ impl Ctx {
             fields.push(self.ty(ast_data, module, ty, depth)?);
         }
 
-        let ty = self.tuple_of(self.module, fields.as_slice());
+        let ty = self.tuple_of(fields.as_slice());
 
         Ok(ty)
     }
@@ -391,7 +389,7 @@ impl Ctx {
             call_conv,
         };
 
-        let id = self.function_type_of(self.module, module, sig);
+        let id = self.function_type_of(module, sig);
 
         Ok(id)
     }
@@ -417,7 +415,7 @@ impl Ctx {
             _ => return Err(Error::new(error::Kind::ExpectedIntConstant, token)),
         };
 
-        Ok(self.array_of(self.module, element, length as usize))
+        Ok(self.array_of(element, length as usize))
     }
 
     pub fn constant(&mut self, ast_data: &ast::Data, module: Mod, ast: Ast) -> Result<Ty> {
@@ -426,7 +424,7 @@ impl Ctx {
         self.ctx.extend_temp_items(
             new_constants
                 .drain(..)
-                .map(|constant| Item::constant(constant.as_u32()))
+                .map(|constant| Item::Const(constant))
         );
         Ok(self.constant_of(module, constant))
     }
@@ -441,7 +439,7 @@ impl Ctx {
     ) -> Result<Ty> {
         let ty = ast_data.son(ast, 0);
         let ty = self.ty(ast_data, module, ty, depth)?;
-        let ty = self.pointer_of(self.module, ty, mutable);
+        let ty = self.pointer_of(ty, mutable);
         Ok(ty)
     }
 
@@ -484,7 +482,6 @@ impl Ctx {
             id = id.add(self.types[ty].id);
             params.push(ty);
         }
-        id = id.add(self.module_id(original_module));
 
         if let Some(id) = self.find_computed_type(self.module, id) {
             return Ok(id);
@@ -543,7 +540,6 @@ impl Ctx {
     }
 
     pub fn collect(&mut self, module: Mod) -> Result<()> {
-        let module_id = self.module_id(module);
         let mut temp = self.ctx.temp_vec();
         let ast_data = self.take_ast_data(module);
 
@@ -568,10 +564,9 @@ impl Ctx {
                     };
 
                     let ident = ast_data.token(ident);
-                    let hash = self.hash_token(ident);
+                    let id = self.hash_token(ident);
 
                     let kind = ty::Kind::Enumeration(variants);
-                    let id = hash.add(module_id);
                     let datatype = TyEnt {
                         vis,
                         id,
@@ -603,9 +598,7 @@ impl Ctx {
                         ));
                     };
 
-                    let hash = self.hash_token(ident.token());
-
-                    let id = hash.add(module_id);
+                    let id = self.hash_token(ident.token());
                     let datatype = TyEnt {
                         vis,
                         id,
@@ -633,12 +626,19 @@ impl Ctx {
         Ok(())
     }
 
-    pub fn tuple_of(&mut self, source_module: Mod, types: &[Ty]) -> Ty {
+    pub fn tuple_of(&mut self, types: &[Ty]) -> Ty {
         let mut filed_name = String::with_capacity(2);
         let mut fields = Vec::with_capacity(types.len());
-        let mut id = ID::new("--tuple--");
+        let mut id = ID::new("()");
+        let mut best_module = Mod::reserved_value();
         for (i, &ty) in types.iter().enumerate() {
-            id = id.add(self.types[ty].id);
+            let TyEnt {
+                id: ty_id, module, ..
+            } = self.types[ty];
+            if module != BUILTIN_MODULE && module.index() < best_module.index() {
+                best_module = module;
+            }
+            id = id.add(ty_id);
             writeln!(filed_name, "f{}", i).unwrap();
             let field = FieldEnt {
                 id: ID::new(&filed_name),
@@ -653,9 +653,11 @@ impl Ctx {
             filed_name.clear();
         }
 
-        id = id.add(self.module_id(BUILTIN_MODULE));
+        if best_module.is_reserved_value() {
+            best_module = BUILTIN_MODULE;
+        }
 
-        if let Some(ty) = self.find_computed_type(source_module, id) {
+        if let Some(ty) = self.find_computed_type(best_module, id) {
             return ty;
         }
 
@@ -671,24 +673,21 @@ impl Ctx {
             ..Default::default()
         };
 
-        let ty = self.add_type(source_module, ty_ent);
-
-        ty
+        self.add_type(best_module, ty_ent)
     }
 
-    pub fn pointer_of(&mut self, source_module: Mod, ty: Ty, mutable: bool) -> Ty {
+    pub fn pointer_of(&mut self, ty: Ty, mutable: bool) -> Ty {
         let TyEnt { module, id, .. } = self.types[ty];
         let name = if mutable { "&var " } else { "&" };
-        let id = ID::new(name).add(id).add(self.module_id(module));
+        let id = ID::new(name).add(id);
 
-        if let Some(ty) = self.find_computed_type(source_module, id) {
+        if let Some(ty) = self.find_computed_type(module, id) {
             return ty;
         }
 
         let size = Size::POINTER;
 
         let pointer_type = TyEnt {
-            vis: Vis::Public,
             id,
             kind: ty::Kind::Pointer(ty, mutable),
             module,
@@ -698,10 +697,10 @@ impl Ctx {
             ..Default::default()
         };
 
-        self.add_type(source_module, pointer_type)
+        self.add_type(module, pointer_type)
     }
 
-    pub fn array_of(&mut self, source_module: Mod, element: Ty, length: usize) -> Ty {
+    pub fn array_of(&mut self, element: Ty, length: usize) -> Ty {
         let TyEnt {
             id,
             module,
@@ -713,7 +712,7 @@ impl Ctx {
 
         let id = ID::new("[]").add(id).add(ID(length as u64));
 
-        if let Some(ty) = self.find_computed_type(source_module, id) {
+        if let Some(ty) = self.find_computed_type(module, id) {
             return ty;
         }
 
@@ -728,7 +727,7 @@ impl Ctx {
             ..Default::default()
         };
 
-        self.add_type(source_module, ty_ent)
+        self.add_type(module, ty_ent)
     }
 
     pub fn constant_of(&mut self, source_module: Mod, constant: Const) -> Ty {
@@ -751,24 +750,39 @@ impl Ctx {
     }
 
     /// Creates a function pointer type of given `sig`. `module` is the module where signature
-    /// has ist argument slice stored. `source_module` is the module where the function pointer is
-    /// used.
-    pub fn function_type_of(&mut self, source_module: Mod, module: Mod, sig: Signature) -> Ty {
+    /// has ist argument slice stored.
+    pub fn function_type_of(&mut self, module: Mod, sig: Signature) -> Ty {
         let mut id = ID::new("fun").add(ID(
             unsafe { std::mem::transmute::<_, u8>(sig.call_conv) } as u64
         ));
 
-        for arg in self.type_slice(sig.args).iter() {
-            id = id.add(self.types[*arg].id);
+        let mut best_module = Mod::reserved_value();
+
+        for &arg in self.type_slice(sig.args) {
+            let TyEnt {
+                id: ty_id, module, ..
+            } = self.types[arg];
+            id = id.add(ty_id);
+            if module != BUILTIN_MODULE && module.index() < best_module.index() {
+                best_module = module;
+            }
         }
 
         if sig.ret.is_some() {
-            id = id.add(ID::new("->")).add(self.types[sig.ret.unwrap()].id);
+            let TyEnt {
+                id: ty_id, module, ..
+            } = self.types[sig.ret.unwrap()];
+            id = id.add(ID::new("->")).add(ty_id);
+            if module != BUILTIN_MODULE && module.index() < best_module.index() {
+                best_module = module;
+            }
         }
 
-        id = id.add(self.module_id(BUILTIN_MODULE));
+        if best_module.is_reserved_value() {
+            best_module = BUILTIN_MODULE;
+        }
 
-        if let Some(ty) = self.find_computed_type(source_module, id) {
+        if let Some(ty) = self.find_computed_type(best_module, id) {
             return ty;
         }
 
@@ -784,14 +798,16 @@ impl Ctx {
             ..Default::default()
         };
 
-        self.add_type(source_module, type_ent)
+        self.add_type(best_module, type_ent)
     }
 
     pub fn find_computed_type(&mut self, source_module: Mod, id: ID) -> Option<Ty> {
         if let Some(ty) = self.get_item_unchecked(source_module, id) {
-            debug_assert!(ty.kind() == modules::item::Kind::Type);
-            let ty = Ty::from_u32(ty.id());
-            return Some(ty);
+            if let Item::Ty(ty) = ty {
+                return Some(ty);
+            } else {
+                panic!("Expected type, found {:?}", ty);
+            }
         }
 
         None
@@ -827,7 +843,7 @@ impl Ctx {
     pub fn add_type(&mut self, source_module: Mod, ent: TyEnt) -> Ty {
         let id = ent.id;
         let ty = self.types.push(ent);
-        let item = Item::ty(ty.as_u32());
+        let item = Item::Ty(ty);
         if source_module == self.module {
             self.add_temp_item(item);
         } else {
@@ -1152,20 +1168,24 @@ impl Ctx {
 
     pub fn find_const(&self, module: Mod, hash: ID, token: Token) -> Result<Const> {
         let item = self.find_item(module, hash, token).map_err(Into::into)?;
-        if item.kind() != modules::item::Kind::Const {
-            return Err(Error::new(error::Kind::NotConst, token));
+        if let Item::Const(constant) = item {
+            Ok(constant)
+        } else {
+            Err(Error::new(error::Kind::NotConst, token))
         }
-
-        return Ok(Const::from_u32(item.id()));
     }
 
     pub fn find_type(&self, module: Mod, hash: ID, token: Token) -> Result<Ty> {
         let item = self.find_item(module, hash, token).map_err(Into::into)?;
-        if item.kind() != modules::item::Kind::Type {
-            return Err(Error::new(error::Kind::NotType, token));
+        if let Item::Ty(ty) = item {
+            Ok(ty)
+        } else {
+            Err(Error::new(error::Kind::NotType, token))
         }
-        
-        return Ok(Ty::from_u32(item.id()));
+    }
+
+    pub fn type_name(&self, ty: Ty) -> Span {
+        self.types[ty].name
     }
 }
 
@@ -1545,8 +1565,6 @@ mod error {
     }
 }
 
-crate::impl_entity!(Ty);
-
 #[derive(Debug, Clone, QuickSer, Default)]
 pub struct TyEnt {
     pub id: ID,
@@ -1635,8 +1653,6 @@ pub enum StructureKind {
     Union,
     Tuple,
 }
-
-crate::impl_entity!(Const);
 
 #[derive(Debug, Clone, Copy, RealQuickSer, Default)]
 pub struct ConstEnt {
@@ -1767,7 +1783,7 @@ impl Default for constant::Kind {
 }
 
 impl ScopeManager for Ctx {
-    fn get_item_unchecked(&self, module: Mod, id: ID) -> Option<modules::Item> {
+    fn get_item_unchecked(&self, module: Mod, id: ID) -> Option<Item> {
         self.ctx.get_item_unchecked(module, id)
     }
 
@@ -1779,18 +1795,18 @@ impl ScopeManager for Ctx {
         self.ctx.module_dependency(module)
     }
 
-    fn module_scope(&mut self, module: Mod) -> &mut crate::util::storage::Map<modules::Item> {
+    fn module_scope(&mut self, module: Mod) -> &mut crate::util::storage::Map<Item> {
         self.ctx.module_scope(module)
     }
 
-    fn item_data(&self, item: modules::Item) -> (Mod, Token, ID) {
-        match item.kind() {
-            modules::item::Kind::Type => self.types[Ty::from_u32(item.id())].item_data(),
-            modules::item::Kind::Const => self.constants[Const::from_u32(item.id())].item_data(),
-            modules::item::Kind::Global |
-            modules::item::Kind::Variable |
-            modules::item::Kind::Function |
-            modules::item::Kind::Collision => unreachable!(),
+    fn item_data(&self, item: Item) -> (Mod, Token, ID) {
+        match item {
+            Item::Ty(ty) => self.types[ty].item_data(),
+            Item::Const(constant) => self.constants[constant].item_data(),
+            Item::Local(_) |
+            Item::Global(_) |
+            Item::Fun(_) |
+            Item::Collision => unreachable!(),
         }
     }
 }

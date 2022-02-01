@@ -1,61 +1,55 @@
 use std::ops::{Deref, DerefMut};
 
-use crate::ast::{AKind, AstDisplay, AstEnt, OpKind, Vis};
-use crate::entities::{
-    Ast, CallConv, Fun, FunBody, IKind, Mod, Signature, TKind, Ty, TypeConst, TypeEnt, ValueEnt,
-    BUILTIN_MODULE,
-};
+use crate::ast::{AstDisplay, AstEnt, OpKind, Vis, Ast, CallConv};
 use crate::incr::IncrementalData;
-use crate::lexer::TKind as LTKind;
-use crate::lexer::{Span, Token, TokenDisplay};
-use crate::module_tree::{MTErrorDisplay, MTParser};
-use crate::types::{
-    GarbageTarget, ItemSearch, TContext, TError, TErrorDisplay, TParser, TState, TypeDisplay,
-    TYPE_SALT,
-};
+use crate::lexer::{Span, Token, self, token, ErrorDisplayState, DisplayError};
+use crate::modules::Mod;
+use crate::types::{Ty, Signature, self, ALL_BUILTIN_TYPES, I8_TY, I16_TY, I32_TY, I64_TY, U8_TY, U16_TY, U32_TY, U64_TY, INT_TY, UINT_TY, F64_TY, F32_TY, BOOL_TY};
 use crate::util::sdbm::ID;
-use crate::util::storage::{Table, TableId};
 use crate::util::Size;
 
 use cranelift::codegen::ir::types::I64;
-use cranelift::codegen::ir::{Block, GlobalValue, Inst, Type, Value};
+use cranelift::codegen::ir::{GlobalValue, Value};
 use cranelift::codegen::packed_option::{PackedOption, ReservedValue};
-use cranelift::entity::{EntityList, EntitySet, ListPool, SparseMap, SparseMapValue};
+use cranelift::entity::{EntityList, EntitySet, ListPool, SparseMap, SparseMapValue, PoolMap};
 use cranelift::module::Linkage;
 use quick_proc::{QuickDefault, QuickSer, RealQuickSer};
 
-type Result<T = ()> = std::result::Result<T, FError>;
-type ExprResult = Result<Option<Value>>;
+type Result<T = ()> = std::result::Result<T, Error>;
+type ExprResult = Result<Option<Local>>;
 
-// wales i made up btw
-pub const FUN_SALT: ID = ID(0xDEADBEEF);
-pub const UNARY_SALT: ID = ID(0xFADACAFE);
-pub const BINARY_SALT: ID = ID(0xBEEFDEAD);
-pub const GLOBAL_SALT: ID = ID(0x2849437252);
+#[derive(Default)]
+pub struct Ctx {
+    ctx: types::Ctx,
 
-pub struct FParser<'a> {
-    state: &'a mut FState,
-    context: &'a mut FContext,
-    ptr_ty: Type,
-    module: Mod,
+    vars: Vec<(ID, Value)>,
+    loops: Vec<Loop>,
+    frames: Vec<usize>,
+    labels: Vec<(ID, EntityList<Command>, Option<Section>)>,
+    label_insts: ListPool<Command>,
+
+    in_assign: bool,
+    in_var_ref: bool,
+
+    unresolved_globals: Vec<Global>,
+    resolved_globals: Vec<Global>,
+    unresolved: Vec<Fun>,
+    entry_points: Vec<Fun>,
+
+    entry_point_data: MainFunData,
+
+    funs: PoolMap<Fun, FunEnt>,
+    generic_funs: SparseMap<Fun, GFun>,
+    globals: PoolMap<Global, GlobalEnt>,
+
+    do_stacktrace: bool,
 }
 
-crate::inherit!(FParser<'a>, state, FState);
-
-impl<'a> FParser<'a> {
-    pub fn new(state: &'a mut FState, context: &'a mut FContext, ptr_ty: Type) -> Self {
-        Self {
-            state,
-            context,
-            ptr_ty,
-            module: Mod::reserved_value(),
-        }
-    }
-
-    pub fn parse(&mut self, module: Mod) -> Result {
+impl Ctx {
+    /*pub fn parse(&mut self, module: Mod) -> Result {
         TParser::new(self.state, self.context)
             .parse(module)
-            .map_err(|err| FError::new(FEKind::TypeError(err), Token::default()))?;
+            .map_err(|err| FError::new(error::Kind::TypeError(err), Token::default()))?;
 
         self.module = module;
 
@@ -324,9 +318,9 @@ impl<'a> FParser<'a> {
         let token = *module_ent.token(ast);
         let loop_header = self.context.find_loop(&label).map_err(|outside| {
             if outside {
-                FError::new(FEKind::ContinueOutsideLoop, token)
+                FError::new(error::Kind::ContinueOutsideLoop, token)
             } else {
-                FError::new(FEKind::WrongLabel, token)
+                FError::new(error::Kind::WrongLabel, token)
             }
         })?;
 
@@ -352,9 +346,9 @@ impl<'a> FParser<'a> {
 
         let loop_header = self.context.find_loop(&label).map_err(|outside| {
             if outside {
-                FError::new(FEKind::BreakOutsideLoop, token)
+                FError::new(error::Kind::BreakOutsideLoop, token)
             } else {
-                FError::new(FEKind::WrongLabel, token)
+                FError::new(error::Kind::WrongLabel, token)
             }
         })?;
 
@@ -406,7 +400,7 @@ impl<'a> FParser<'a> {
         } else {
             let token = *module_ent.token(return_value_ast);
             if ty.is_none() {
-                return Err(FError::new(FEKind::UnexpectedReturnValue, token));
+                return Err(FError::new(error::Kind::UnexpectedReturnValue, token));
             }
             let value = self.expr(fun, return_value_ast, body)?;
             let module_ent = &mut self.state.modules[module];
@@ -487,7 +481,7 @@ impl<'a> FParser<'a> {
             let module = self.funs[fun].module;
             let module_ent = &self.state.modules[module];
             let token = *module_ent.token(ast);
-            FError::new(FEKind::ExpectedValue, token)
+            FError::new(error::Kind::ExpectedValue, token)
         })
     }
 
@@ -532,7 +526,7 @@ impl<'a> FParser<'a> {
         };
         let result = self
             .call_low(fun, None, None, FUN_SALT, span, &[], args, token, body)?
-            .ok_or_else(|| FError::new(FEKind::ExpectedValue, token))?;
+            .ok_or_else(|| FError::new(error::Kind::ExpectedValue, token))?;
 
         Ok(Some(self.deref_expr_low(fun, result, token, body)?))
     }
@@ -561,7 +555,7 @@ impl<'a> FParser<'a> {
         }
 
         if element_ty.is_none() {
-            return Err(FError::new(FEKind::EmptyArray, token));
+            return Err(FError::new(error::Kind::EmptyArray, token));
         }
 
         let element_ty = element_ty.unwrap();
@@ -619,7 +613,7 @@ impl<'a> FParser<'a> {
         } = module_ent.values[value];
 
         if !prev_mutable && mutable {
-            return Err(FError::new(FEKind::MutableToImmutable, token));
+            return Err(FError::new(error::Kind::MutableToImmutable, token));
         }
 
         let ty = self.pointer_of(ty, mutable);
@@ -875,7 +869,7 @@ impl<'a> FParser<'a> {
                     module_ent.push_block_arg(merge_block, value);
                     result = Some(value);
                 } else {
-                    return Err(FError::new(FEKind::UnexpectedValue, token));
+                    return Err(FError::new(error::Kind::UnexpectedValue, token));
                 }
             } else {
                 if body.current_block.is_some() {
@@ -885,7 +879,7 @@ impl<'a> FParser<'a> {
                         module_ent.set_block_args(merge_block, EntityList::new());
                     }
                     if result.is_some() {
-                        return Err(FError::new(FEKind::ExpectedValue, token));
+                        return Err(FError::new(error::Kind::ExpectedValue, token));
                     }
                     module_ent.add_valueless_inst(
                         IKind::Jump(merge_block, EntityList::new()),
@@ -936,7 +930,7 @@ impl<'a> FParser<'a> {
                         TKind::FunPointer(fp) => fp,
                         _ => {
                             return Err(FError::new(
-                                FEKind::ExpectedFunctionPointer,
+                                error::Kind::ExpectedFunctionPointer,
                                 pointer_ast_token,
                             ));
                         }
@@ -950,7 +944,7 @@ impl<'a> FParser<'a> {
 
                 if mismatched {
                     return Err(FError::new(
-                        FEKind::FunPointerArgMismatch(
+                        error::Kind::FunPointerArgMismatch(
                             ty,
                             values
                                 .iter()
@@ -1094,10 +1088,10 @@ impl<'a> FParser<'a> {
         }
 
         let other_fun = result
-            .map_err(|(a, b)| FError::new(FEKind::AmbiguousFunction(a, b), token))?
+            .map_err(|(a, b)| FError::new(error::Kind::AmbiguousFunction(a, b), token))?
             .ok_or_else(|| {
                 FError::new(
-                    FEKind::FunctionNotFound(name.clone(), types.to_vec()),
+                    error::Kind::FunctionNotFound(name.clone(), types.to_vec()),
                     token,
                 )
             })?;
@@ -1131,7 +1125,7 @@ impl<'a> FParser<'a> {
                 self.create(other_fun, params, &types)?
             }
             .ok_or_else(|| {
-                FError::new(FEKind::GenericMismatch(name.clone(), types.to_vec()), token)
+                FError::new(error::Kind::GenericMismatch(name.clone(), types.to_vec()), token)
             })?
         } else {
             other_fun
@@ -1212,7 +1206,7 @@ impl<'a> FParser<'a> {
 
         if mismatched {
             return Err(FError::new(
-                FEKind::FunArgMismatch(other_fun, types.to_vec()),
+                error::Kind::FunArgMismatch(other_fun, types.to_vec()),
                 token,
             ));
         }
@@ -1225,7 +1219,7 @@ impl<'a> FParser<'a> {
         }
 
         if !self.state.can_access(module, other_module, vis) {
-            return Err(FError::new(FEKind::VisibilityViolation, token));
+            return Err(FError::new(error::Kind::VisibilityViolation, token));
         }
 
         let module_ent = &mut self.modules[module];
@@ -1319,7 +1313,7 @@ impl<'a> FParser<'a> {
 
             Ok(None)
         })()?
-        .ok_or_else(|| FError::new(FEKind::UndefinedVariable, token))?;
+        .ok_or_else(|| FError::new(error::Kind::UndefinedVariable, token))?;
 
         Ok(Some(result))
     }
@@ -1336,7 +1330,7 @@ impl<'a> FParser<'a> {
                     let name_token = *module_ent.token(name);
                     let dep = self
                         .find_dep(module, &module_name_token)
-                        .ok_or_else(|| FError::new(FEKind::UnknownModule, module_name_token))?;
+                        .ok_or_else(|| FError::new(error::Kind::UnknownModule, module_name_token))?;
                     let caller = self.parse_type(dep, caller_name)?;
                     let caller = self.t_state.base_of(caller);
                     Ok((Some(dep), Some(caller), name_token))
@@ -1371,7 +1365,7 @@ impl<'a> FParser<'a> {
         Ok(
             match self
                 .find_item(module, id, target, &mut module_buffer)
-                .map_err(|(a, b)| FError::new(FEKind::AmbiguousFunction(a, b), ident))?
+                .map_err(|(a, b)| FError::new(error::Kind::AmbiguousFunction(a, b), ident))?
             {
                 Some(f) => {
                     let FunEnt {
@@ -1381,7 +1375,7 @@ impl<'a> FParser<'a> {
                         ..
                     } = self.funs[f];
                     if !self.state.can_access(module, other_module, vis) {
-                        return Err(FError::new(FEKind::VisibilityViolation, ident));
+                        return Err(FError::new(error::Kind::VisibilityViolation, ident));
                     }
                     // we store the pointers in the module function comes from,
                     // this makes it more likely we will reuse already instantiated
@@ -1413,12 +1407,12 @@ impl<'a> FParser<'a> {
         let mut module_buffer = self.context.pool.get();
         let global = self
             .find_item(module, id, target, &mut module_buffer)
-            .map_err(|(a, b)| FError::new(FEKind::AmbiguousGlobal(a, b), name))?;
+            .map_err(|(a, b)| FError::new(error::Kind::AmbiguousGlobal(a, b), name))?;
 
         let found = if let Some(found) = global {
             let GlobalEnt { vis, module, .. } = self.globals[found];
             if !self.state.can_access(module, module, vis) {
-                return Err(FError::new(FEKind::GlobalVisibilityViolation, name));
+                return Err(FError::new(error::Kind::GlobalVisibilityViolation, name));
             }
             found
         } else {
@@ -1572,7 +1566,7 @@ impl<'a> FParser<'a> {
 
         if original_size != datatype_size {
             return Err(FError::new(
-                FEKind::InvalidBitCast(original_size, datatype_size),
+                error::Kind::InvalidBitCast(original_size, datatype_size),
                 token,
             ));
         }
@@ -1596,7 +1590,7 @@ impl<'a> FParser<'a> {
         let mut path = self.context.pool.get();
         let success = self.find_field(ty, field, &mut path);
         if !success {
-            return Err(FError::new(FEKind::UnknownField(ty), token));
+            return Err(FError::new(error::Kind::UnknownField(ty), token));
         };
 
         let mut offset = Size::ZERO;
@@ -1607,7 +1601,7 @@ impl<'a> FParser<'a> {
                 TKind::Structure(stype) => {
                     let s_field = &stype.fields[i];
                     if !self.state.can_access(module, ty.module, s_field.vis) {
-                        return Err(FError::new(FEKind::FieldVisibilityViolation, token));
+                        return Err(FError::new(error::Kind::FieldVisibilityViolation, token));
                     }
                     offset = offset.add(s_field.offset);
                     current_type = s_field.ty;
@@ -1621,7 +1615,7 @@ impl<'a> FParser<'a> {
                         TKind::Structure(stype) => {
                             let s_field = &stype.fields[i];
                             if !self.state.can_access(module, ty.module, s_field.vis) {
-                                return Err(FError::new(FEKind::FieldVisibilityViolation, token));
+                                return Err(FError::new(error::Kind::FieldVisibilityViolation, token));
                             }
                             offset = s_field.offset;
                             current_type = s_field.ty;
@@ -1673,7 +1667,7 @@ impl<'a> FParser<'a> {
         let value_datatype = module_ent.type_of_value(value);
         let mutable = module_ent.is_mutable(target);
         if !mutable {
-            return Err(FError::new(FEKind::AssignToImmutable, token));
+            return Err(FError::new(error::Kind::AssignToImmutable, token));
         }
 
         assert_type(value_datatype, target_datatype, &token)?;
@@ -1993,7 +1987,7 @@ impl<'a> FParser<'a> {
                 let (shadowed, global) = self.state.globals.insert(id, GlobalEnt::default());
                 if let Some(shadowed) = shadowed {
                     return Err(FError::new(
-                        FEKind::RedefinedGlobal(shadowed.hint.clone()),
+                        error::Kind::RedefinedGlobal(shadowed.hint.clone()),
                         hint,
                     ));
                 }
@@ -2075,7 +2069,7 @@ impl<'a> FParser<'a> {
                 .unwrap_or(module_ent.son(attr, 0));
             let token = *module_ent.token(final_attr);
             let str = self.state.display(&token.span);
-            CallConv::from_str(str).ok_or_else(|| FError::new(FEKind::InvalidCallConv, token))?
+            CallConv::from_str(str).ok_or_else(|| FError::new(error::Kind::InvalidCallConv, token))?
         } else {
             CallConv::Fast
         };
@@ -2110,7 +2104,7 @@ impl<'a> FParser<'a> {
                 };
 
                 if name.kind != AKind::Ident {
-                    return Err(FError::new(FEKind::InvalidFunctionHeader, name.token));
+                    return Err(FError::new(error::Kind::InvalidFunctionHeader, name.token));
                 }
 
                 if name_ent.kind == AKind::Instantiation {
@@ -2157,7 +2151,7 @@ impl<'a> FParser<'a> {
 
                 (nm, id, Err(sig), FKind::Generic, false)
             } else {
-                return Err(FError::new(FEKind::InvalidFunctionHeader, name_ent.token));
+                return Err(FError::new(error::Kind::InvalidFunctionHeader, name_ent.token));
             };
 
         id = id.add(module_id);
@@ -2184,7 +2178,7 @@ impl<'a> FParser<'a> {
         let (shadowed, id) = self.add_fun(module, fun_ent);
         if let Some(shadowed) = shadowed {
             return Err(FError::new(
-                FEKind::Redefinition(shadowed.hint.clone()),
+                error::Kind::Redefinition(shadowed.hint.clone()),
                 hint,
             ));
         }
@@ -2227,12 +2221,12 @@ impl<'a> FParser<'a> {
                 let int = self.state.builtin_repo.int;
                 let temp_ptr = self.pointer_of(int, false);
                 if count != int || args != self.pointer_of(temp_ptr, false) {
-                    return Err(FError::new(FEKind::InvalidEntrySignature, hint));
+                    return Err(FError::new(error::Kind::InvalidEntrySignature, hint));
                 }
                 self.modules[module].add_values(&[arg1, arg2])
             }
             _ => {
-                return Err(FError::new(FEKind::InvalidEntrySignature, hint));
+                return Err(FError::new(error::Kind::InvalidEntrySignature, hint));
             }
         };
 
@@ -2413,13 +2407,13 @@ impl<'a> FParser<'a> {
     fn pointer_base(&mut self, ty: Ty, token: Token) -> Result<Ty> {
         self.t_state
             .pointer_base(ty)
-            .ok_or_else(|| FError::new(FEKind::NonPointerDereference, token))
+            .ok_or_else(|| FError::new(error::Kind::NonPointerDereference, token))
     }
 
     fn parse_type(&mut self, module: Mod, ast: Ast) -> Result<Ty> {
         TParser::new(self.state, self.context)
             .parse_type(module, ast)
-            .map_err(|err| FError::new(FEKind::TypeError(err), Token::default()))
+            .map_err(|err| FError::new(error::Kind::TypeError(err), Token::default()))
     }
 
     fn resolve_linkage(&self, module: Mod, attrs: Ast) -> Result<(Linkage, Option<Span>)> {
@@ -2428,7 +2422,7 @@ impl<'a> FParser<'a> {
             let len = module_ent.ast_len(attr);
             if len < 2 {
                 return Err(FError::new(
-                    FEKind::TooShortAttribute(len - 1, 1),
+                    error::Kind::TooShortAttribute(len - 1, 1),
                     *module_ent.token(attr),
                 ));
             }
@@ -2439,7 +2433,7 @@ impl<'a> FParser<'a> {
                 "hidden" => Linkage::Hidden,
                 "preemptible" => Linkage::Preemptible,
                 "local" => Linkage::Local,
-                _ => return Err(FError::new(FEKind::InvalidLinkage, *module_ent.token(attr))),
+                _ => return Err(FError::new(error::Kind::InvalidLinkage, *module_ent.token(attr))),
             };
 
             Ok((
@@ -2455,354 +2449,598 @@ impl<'a> FParser<'a> {
 
     fn pointer_of(&mut self, ty: Ty, mutable: bool) -> Ty {
         self.state.pointer_of(self.module, ty, mutable)
+    }*/
+
+    fn find_computed(&mut self, source_module: Mod, id: ID) -> Option<Fun> {
+        if let Some(&fun) = self.funs.index(id) {
+            self.modules[source_module].add_fun(fun);
+            return Some(fun);
+        }
+
+        None
+    }
+
+    fn add_fun(&mut self, module: Mod, fun_ent: FunEnt) -> (Option<FunEnt>, Fun) {
+        let id = fun_ent.id;
+        let (shadow, fun) = self.funs.insert(id, fun_ent);
+        self.modules[module].add_fun(fun);
+        (shadow, fun)
+    }
+
+    fn push_scope(&mut self) {
+        self.frames.push(self.vars.len());
+    }
+
+    fn pop_scope(&mut self) {
+        let idx = self.frames.pop().unwrap();
+        self.vars.truncate(idx)
+    }
+
+    fn find_variable(&self, id: ID) -> Option<Local> {
+        self.vars.iter().rev().find(|v| v.0 == id).map(|v| v.1)
+    }
+
+    fn find_loop(&self, token: &Token) -> std::result::Result<Loop, bool> {
+        if token.span.len() == 0 {
+            return self.loops.last().cloned().ok_or(true);
+        }
+
+        let name = token.span.hash;
+
+        self.loops
+            .iter()
+            .rev()
+            .find(|l| l.name == name)
+            .cloned()
+            .ok_or_else(|| self.loops.is_empty())
+    }
+
+    fn add_builtin_functions(&mut self) {
+        for &i in ALL_BUILTIN_TYPES {
+            for &j in ALL_BUILTIN_TYPES {
+                let name = self.type_name(i);
+                self.create_builtin_fun(
+                    Some(j),
+                    name,
+                    &[j],
+                    Some(i),
+                );
+            }
+        }
+
+        let integer_types = &[
+            I8_TY,
+            I16_TY,
+            I32_TY,
+            I64_TY,
+            U8_TY,
+            U16_TY,
+            U32_TY,
+            U64_TY,
+            INT_TY,
+            UINT_TY
+        ][..];
+
+        let builtin_unary_ops = [
+            ("~ + ++ --", integer_types),
+            (
+                "- abs",
+                &[
+                    I8_TY,
+                    I16_TY,
+                    I32_TY,
+                    I64_TY,
+                    F32_TY,
+                    F64_TY,
+                    INT_TY,
+                ][..],
+            ),
+            ("!", &[BOOL_TY][..]),
+        ];
+
+        for &(operators, types) in builtin_unary_ops.iter() {
+            for op in operators.split(' ') {
+                let op = self.builtin_span(op);
+                for &datatype in types.iter() {
+                    self.create_builtin_fun(
+                        Some(datatype),
+                        op.clone(),
+                        &[datatype],
+                        Some(datatype),
+                    );
+                }
+            }
+        }
+
+        let builtin_bin_ops = [
+            ("+ - * / % == != >= <= > < ^ | & >> <<", integer_types),
+            (
+                "+ - * / == != >= <= > <",
+                &[F32_TY, F64_TY][..],
+            ),
+            ("&& || ^ | &", &[BOOL_TY][..]),
+        ];
+
+        for &(operators, types) in builtin_bin_ops.iter() {
+            for op in operators.split(' ') {
+                let op_span = self.builtin_span(op);
+                for &ty in types.iter() {
+                    let return_type = if matches!(op, "==" | "!=" | ">" | "<" | ">=" | "<=") {
+                        BOOL_TY
+                    } else {
+                        ty
+                    };
+                    self.create_builtin_fun(
+                        Some(ty),
+                        op_span,
+                        &[ty, ty],
+                        Some(return_type),
+                    );
+                }
+            }
+        }
+    }
+
+    fn create_builtin_fun(
+        &mut self,
+        caller: Option<Ty>,
+        name: Span,
+        args: &[Ty],
+        ret: Option<Ty>,
+    ) {
+        /*let id = salt.add(name.hash).add(self.types[args[0]].id);
+        let module_ent = &mut self.modules[module];
+        let id = id.add(module_ent.id);
+        let args = module_ent.add_type_slice(args);
+        let sig = Signature {
+            call_conv: CallConv::Fast,
+            args,
+            ret,
+        };
+
+        let fun_ent = FunEnt {
+            id,
+            name,
+            vis: Vis::Public,
+            module,
+            kind: FKind::Builtin,
+            sig,
+
+            ..Default::default()
+        };
+
+        assert!(self.add_fun(module, fun_ent).0.is_none());
+        */
     }
 }
+
+impl Deref for Ctx {
+    type Target = types::Ctx;
+
+    fn deref(&self) -> &Self::Target {
+        &self.ctx
+    }
+}
+
+impl DerefMut for Ctx {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        &mut self.ctx
+    }
+}
+
+crate::impl_entity!(
+    Command, Section
+);
 
 fn assert_type(actual: Ty, expected: Ty, token: &Token) -> Result {
     if actual == expected {
         Ok(())
     } else {
-        Err(FError::new(FEKind::TypeMismatch(actual, expected), *token))
+        Err(Error::new(error::Kind::TypeMismatch(actual, expected), *token))
     }
 }
 
-impl<'a> ItemSearch<Fun> for FParser<'a> {
-    fn find(&self, id: ID) -> Option<Fun> {
-        self.state.funs.index(id).cloned()
-    }
+#[derive(Debug, Clone, Default, Copy, RealQuickSer)]
+pub struct ValueEnt {
+    pub ty: Ty,
+    pub inst: PackedOption<Command>,
+    pub offset: Size,
+    pub mutable: bool,
+    pub on_stack: bool,
+}
 
-    fn scopes(&self, module: Mod, buffer: &mut Vec<(Mod, ID)>) {
-        self.state.collect_scopes(module, buffer)
-    }
-
-    fn module_id(&self, module: Mod) -> ID {
-        self.state.modules[module].id
+impl ValueEnt {
+    pub fn temp(ty: Ty) -> Self {
+        Self {
+            ty,
+            ..Default::default()
+        }
     }
 }
 
-impl<'a> ItemSearch<GlobalValue> for FParser<'a> {
-    fn find(&self, id: ID) -> Option<GlobalValue> {
-        self.state.globals.index(id).cloned()
-    }
+#[derive(Debug, Default, Clone, Copy, RealQuickSer)]
+pub struct CommandEnt {
+    pub kind: IKind,
+    pub value: PackedOption<Value>,
+    pub prev: PackedOption<Command>,
+    pub next: PackedOption<Command>,
+    pub block: PackedOption<Section>,
+}
 
-    fn scopes(&self, module: Mod, buffer: &mut Vec<(Mod, ID)>) {
-        self.state.collect_scopes(module, buffer)
-    }
+#[derive(Debug, Clone, Copy, RealQuickSer)]
+pub enum IKind {
+    NoOp,
+    FunPointer(Fun),
+    FunPointerCall(Local, EntityList<Local>),
+    GlobalLoad(GlobalValue),
+    Call(Fun, EntityList<Local>),
+    VarDecl(Local),
+    Zeroed,
+    Uninitialized,
+    Lit(token::Kind),
+    Return(PackedOption<Local>),
+    Assign(Local),
+    Jump(Section, EntityList<Local>),
+    JumpIfTrue(Local, Section, EntityList<Local>),
+    Offset(Local),
+    Deref(Local, bool),
+    Ref(Local),
+    Cast(Local),
+}
 
-    fn module_id(&self, module: Mod) -> ID {
-        self.state.modules[module].id
+impl IKind {
+    pub fn is_closing(&self) -> bool {
+        matches!(self, IKind::Jump(..) | IKind::Return(..))
     }
 }
 
-crate::def_displayer!(
-    FErrorDisplay,
-    FState,
-    FError,
-    |self, f| {
-        &FEKind::DuplicateEntrypoint(other) => {
-            let other = self.state.funs[other].hint.clone();
-            writeln!(
-                f,
-                "entrypoint already defined here:\n{}",
-                TokenDisplay::new(self.state, &other)
-            )?;
-        },
-        FEKind::TooShortAttribute(actual, expected) => {
-            writeln!(
-                f,
-                "too short attribute, expected {} but got {}",
-                expected, actual
-            )?;
-        },
-        FEKind::InvalidCallConv => {
-            crate::types::call_conv_error(f)?;
-        },
-        FEKind::InvalidLinkage => {
-            writeln!(f, "Invalid linkage, valid linkages are:")?;
-            for cc in ["import", "local", "export", "preemptible", "hidden"] {
-                writeln!(f, "  {}", cc)?;
-            }
-        },
-        FEKind::TypeError(error) => {
-            writeln!(f, "{}", TErrorDisplay::new(self.state, &error))?;
-        },
-        FEKind::Redefinition(other) => {
-            writeln!(f, "redefinition of\n{}", TokenDisplay::new(self.state, &other))?;
-        },
-        FEKind::InvalidBitCast(actual, expected) => {
-            writeln!(
-                f,
-                "invalid bit-cast, expected type of size {:?} but got {:?}",
-                expected, actual
-            )?;
-        },
-        FEKind::AssignToImmutable => {
-            writeln!(f, "cannot assign to immutable value")?;
-        },
-        FEKind::ExpectedValue => {
-            writeln!(f, "expected this expression to have a value")?;
-        },
-        &FEKind::TypeMismatch(actual, expected) => {
-            writeln!(
-                f,
-                "type mismatch, expected '{}' but got '{}'",
-                TypeDisplay::new(&self.state, expected),
-                TypeDisplay::new(&self.state, actual)
-            )?;
-        },
-        FEKind::FunctionNotFound(name, arguments) => {
-            writeln!(
-                f,
-                "'{}({})' does not exist within current scope",
-                self.state.display(name),
-                arguments
-                    .iter()
-                    .map(|t| format!("{}", TypeDisplay::new(&self.state, *t)))
-                    .collect::<Vec<_>>()
-                    .join(", ")
-            )?;
-        },
-        FEKind::GenericMismatch(name, arguments) => {
-            writeln!(
-                f,
-                "'{}({})' does not match the generic signature",
-                self.state.display(name),
-                arguments
-                    .iter()
-                    .map(|t| format!("{}", TypeDisplay::new(&self.state, *t)))
-                    .collect::<Vec<_>>()
-                    .join(", ")
-            )?;
-        },
-        FEKind::UnexpectedValue => {
-            writeln!(
-                f,
-                "value not expected here, consider adding 'pass' after expression"
-            )?;
-        },
-        FEKind::UnexpectedReturnValue => {
-            writeln!(f, "return value not expected, if you want to return something, add '-> <type>' after '()' in signature")?;
-        },
-        FEKind::UnexpectedAuto => {
-            writeln!(f, "'auto' not allowed here")?;
-        },
-        FEKind::UndefinedVariable => {
-            writeln!(f, "cannot find variable in current scope")?;
-        },
-        FEKind::UnresolvedType => {
-            writeln!(
-                f,
-                "type of this expression cannot be inferred, consider annotating the type"
-            )?;
-        },
-        &FEKind::UnknownField(ty) => {
-            writeln!(
-                f,
-                "unknown field for type '{}', type has this fields (embedded included):",
-                TypeDisplay::new(&self.state, ty)
-            )?;
-            let mut frontier = vec![(ty, Span::default(), true)];
-            let mut i = 0;
-            while i < frontier.len() {
-                let (ty, _, embedded) = frontier[i];
-                if !embedded {
-                    continue;
+impl Default for IKind {
+    fn default() -> Self {
+        IKind::NoOp
+    }
+}
+
+#[derive(Debug, Clone, Copy, Default, RealQuickSer)]
+pub struct BlockEnt {
+    pub prev: PackedOption<Section>,
+    pub next: PackedOption<Section>,
+
+    pub args: EntityList<Local>,
+
+    pub start: PackedOption<Command>,
+    pub end: PackedOption<Command>,
+}
+
+impl ErrorDisplayState<Error> for Ctx {
+    fn fmt(&self, e: &Error, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match e.kind() {
+            &error::Kind::DuplicateEntrypoint(other) => {
+                let other = self.state.funs[other].hint.clone();
+                writeln!(
+                    f,
+                    "entrypoint already defined here:\n{}",
+                    TokenDisplay::new(self.state, &other)
+                )?;
+            },
+            error::Kind::TooShortAttribute(actual, expected) => {
+                writeln!(
+                    f,
+                    "too short attribute, expected {} but got {}",
+                    expected, actual
+                )?;
+            },
+            error::Kind::InvalidCallConv => {
+                crate::types::call_conv_error(f)?;
+            },
+            error::Kind::InvalidLinkage => {
+                writeln!(f, "Invalid linkage, valid linkages are:")?;
+                for cc in ["import", "local", "export", "preemptible", "hidden"] {
+                    writeln!(f, "  {}", cc)?;
                 }
-                match &self.state.types[ty].kind {
-                    TKind::Structure(stype) => {
-                        for f in stype.fields.iter() {
-                            frontier.push((f.ty, f.hint.span, f.embedded));
-                        }
-                    },
-                    _ => (),
+            },
+            error::Kind::TypeError(error) => {
+                writeln!(f, "{}", TErrorDisplay::new(self.state, &error))?;
+            },
+            error::Kind::Redefinition(other) => {
+                writeln!(f, "redefinition of\n{}", TokenDisplay::new(self.state, &other))?;
+            },
+            error::Kind::InvalidBitCast(actual, expected) => {
+                writeln!(
+                    f,
+                    "invalid bit-cast, expected type of size {:?} but got {:?}",
+                    expected, actual
+                )?;
+            },
+            error::Kind::AssignToImmutable => {
+                writeln!(f, "cannot assign to immutable value")?;
+            },
+            error::Kind::ExpectedValue => {
+                writeln!(f, "expected this expression to have a value")?;
+            },
+            &error::Kind::TypeMismatch(actual, expected) => {
+                writeln!(
+                    f,
+                    "type mismatch, expected '{}' but got '{}'",
+                    TypeDisplay::new(&self.state, expected),
+                    TypeDisplay::new(&self.state, actual)
+                )?;
+            },
+            error::Kind::FunctionNotFound(name, arguments) => {
+                writeln!(
+                    f,
+                    "'{}({})' does not exist within current scope",
+                    self.state.display(name),
+                    arguments
+                        .iter()
+                        .map(|t| format!("{}", TypeDisplay::new(&self.state, *t)))
+                        .collect::<Vec<_>>()
+                        .join(", ")
+                )?;
+            },
+            error::Kind::GenericMismatch(name, arguments) => {
+                writeln!(
+                    f,
+                    "'{}({})' does not match the generic signature",
+                    self.state.display(name),
+                    arguments
+                        .iter()
+                        .map(|t| format!("{}", TypeDisplay::new(&self.state, *t)))
+                        .collect::<Vec<_>>()
+                        .join(", ")
+                )?;
+            },
+            error::Kind::UnexpectedValue => {
+                writeln!(
+                    f,
+                    "value not expected here, consider adding 'pass' after expression"
+                )?;
+            },
+            error::Kind::UnexpectedReturnValue => {
+                writeln!(f, "return value not expected, if you want to return something, add '-> <type>' after '()' in signature")?;
+            },
+            error::Kind::UnexpectedAuto => {
+                writeln!(f, "'auto' not allowed here")?;
+            },
+            error::Kind::UndefinedVariable => {
+                writeln!(f, "cannot find variable in current scope")?;
+            },
+            error::Kind::UnresolvedType => {
+                writeln!(
+                    f,
+                    "type of this expression cannot be inferred, consider annotating the type"
+                )?;
+            },
+            &error::Kind::UnknownField(ty) => {
+                writeln!(
+                    f,
+                    "unknown field for type '{}', type has this fields (embedded included):",
+                    TypeDisplay::new(&self.state, ty)
+                )?;
+                let mut frontier = vec![(ty, Span::default(), true)];
+                let mut i = 0;
+                while i < frontier.len() {
+                    let (ty, _, embedded) = frontier[i];
+                    if !embedded {
+                        continue;
+                    }
+                    match &self.state.types[ty].kind {
+                        TKind::Structure(stype) => {
+                            for f in stype.fields.iter() {
+                                frontier.push((f.ty, f.hint.span, f.embedded));
+                            }
+                        },
+                        _ => (),
+                    }
+                    i += 1;
                 }
-                i += 1;
-            }
+    
+                for (ty, name, _) in frontier {
+                    writeln!(f, "  {}: {}", self.state.display(&name), TypeDisplay::new(&self.state, ty))?;
+                }
+            },
+            error::Kind::MutableToImmutable => {
+                writeln!(f, "cannot take mutable reference of immutable value")?;
+            },
+            error::Kind::MissingElseBranch => {
+                writeln!(f, "expected 'else' branch since 'if' branch returns value, consider adding 'pass' after last expression if this is intended")?;
+            },
+            error::Kind::ContinueOutsideLoop => {
+                writeln!(f, "cannot use 'continue' outside of loop")?;
+            },
+            error::Kind::BreakOutsideLoop => {
+                writeln!(f, "cannot use 'break' outside of loop")?;
+            },
+            error::Kind::WrongLabel => {
+                writeln!(f, "parent loop with this label does not exist")?;
+            },
+            error::Kind::NonPointerDereference => {
+                writeln!(f, "cannot dereference non-pointer type")?;
+            },
+            error::Kind::InvalidFunctionHeader => {
+                writeln!(f, "invalid function header, syntax for header is:\n  ident | op [ '[' ident {{ ',' ident }} ']' ]")?;
+            },
+            &error::Kind::AmbiguousFunction(a, b) => {
+                let a = self.state.funs[a].hint.clone();
+                let b = self.state.funs[b].hint.clone();
+                writeln!(
+                    f,
+                    "ambiguous function call, matches\n{}\nand\n{}",
+                    TokenDisplay::new(self.state, &a),
+                    TokenDisplay::new(self.state, &b)
+                )?;
+            },
+            error::Kind::EmptyArray => {
+                writeln!(
+                    f,
+                    "cannot create empty array from '[]' syntax as type of element is unknown"
+                )?;
+            },
+            error::Kind::RedefinedGlobal(other) => {
+                writeln!(
+                    f,
+                    "redefinition of global variable\n{}\n",
+                    TokenDisplay::new(self.state, &other)
+                )?;
+            },
+            &error::Kind::AmbiguousGlobal(a, b) => {
+                let a = self.state.globals[a].hint.clone();
+                let b = self.state.globals[b].hint.clone();
+                writeln!(
+                    f,
+                    "ambiguous global variable, matches\n{}\nand\n{}",
+                    TokenDisplay::new(self.state, &a),
+                    TokenDisplay::new(self.state, &b)
+                )?;
+            },
+            error::Kind::InvalidEntrySignature => {
+                writeln!(f, "invalid entry point signature, expected 'fun (int, & &u8)' or 'fun ()'")?;
+            },
+            error::Kind::RecursiveInline => {
+                writeln!(f, "cannot inline recursive function")?;
+            },
+            error::Kind::VarInsideGenericScope(scope) => {
+                writeln!(
+                    f,
+                    "cannot declare global inside generic scope\n{}",
+                    TokenDisplay::new(self.state, scope)
+                )?;
+            },
+            error::Kind::UnknownModule => {
+                writeln!(f, "unknown module")?;
+            },
+            error::Kind::InvalidDotCall => {
+                writeln!(f, "call cannot have explicit caller type and be a dot call")?;
+            },
+            error::Kind::VisibilityViolation => {
+                writeln!(f, "function visibility disallows access, {}", crate::types::VISIBILITY_MESSAGE)?;
+            },
+            error::Kind::FieldVisibilityViolation => {
+                writeln!(f, "field visibility disallows access, {}", crate::types::VISIBILITY_MESSAGE)?;
+            },
+            error::Kind::GlobalVisibilityViolation => {
+                writeln!(f, "global variable visibility disallows access, {}", crate::types::VISIBILITY_MESSAGE)?;
+            },
+            error::Kind::FunArgMismatch(fun, arguments) => {
+                let sig = &self.state.funs[*fun].sig;
+                let module = self.state.funs[*fun].module;
+                writeln!(
+                    f,
+                    "function argument types are '({})' but you provided '({})'",
+                    self.state.modules[module]
+                        .type_slice(sig.args)
+                        .iter()
+                        .map(|&a| format!("{}", TypeDisplay::new(&self.state, a)))
+                        .collect::<Vec<_>>().join(", "),
+                    arguments
+                        .iter()
+                        .map(|&a| format!("{}", TypeDisplay::new(&self.state, a)))
+                        .collect::<Vec<_>>().join(", ")
+                )?;
+            },
+            error::Kind::FunPointerArgMismatch(ty, arguments) => {
+                let module = self.state.types[*ty].module;
+                writeln!(
+                    f,
+                    "function pointer argument types are '({})' but you provided '({})'",
+                    &self.state.modules[module].type_slice(
+                            self.state.types[*ty].kind
+                                .fun_pointer()
+                                .args
+                        )
+                        .iter()
+                        .map(|&a| format!("{}", TypeDisplay::new(&self.state, a)))
+                        .collect::<Vec<_>>().join(", "),
+                    arguments
+                        .iter()
+                        .map(|&a| format!("{}", TypeDisplay::new(&self.state, a)))
+                        .collect::<Vec<_>>()
+                        .join(", ")
+                )?;
+            },
+            error::Kind::ExpectedFunctionPointer => {
+                writeln!(f, "only dereferenced function pointer can be called")?;
+            },
+        }
 
-            for (ty, name, _) in frontier {
-                writeln!(f, "  {}: {}", self.state.display(&name), TypeDisplay::new(&self.state, ty))?;
-            }
-        },
-        FEKind::MutableToImmutable => {
-            writeln!(f, "cannot take mutable reference of immutable value")?;
-        },
-        FEKind::MissingElseBranch => {
-            writeln!(f, "expected 'else' branch since 'if' branch returns value, consider adding 'pass' after last expression if this is intended")?;
-        },
-        FEKind::ContinueOutsideLoop => {
-            writeln!(f, "cannot use 'continue' outside of loop")?;
-        },
-        FEKind::BreakOutsideLoop => {
-            writeln!(f, "cannot use 'break' outside of loop")?;
-        },
-        FEKind::WrongLabel => {
-            writeln!(f, "parent loop with this label does not exist")?;
-        },
-        FEKind::NonPointerDereference => {
-            writeln!(f, "cannot dereference non-pointer type")?;
-        },
-        FEKind::InvalidFunctionHeader => {
-            writeln!(f, "invalid function header, syntax for header is:\n  ident | op [ '[' ident {{ ',' ident }} ']' ]")?;
-        },
-        &FEKind::AmbiguousFunction(a, b) => {
-            let a = self.state.funs[a].hint.clone();
-            let b = self.state.funs[b].hint.clone();
-            writeln!(
-                f,
-                "ambiguous function call, matches\n{}\nand\n{}",
-                TokenDisplay::new(self.state, &a),
-                TokenDisplay::new(self.state, &b)
-            )?;
-        },
-        FEKind::EmptyArray => {
-            writeln!(
-                f,
-                "cannot create empty array from '[]' syntax as type of element is unknown"
-            )?;
-        },
-        FEKind::RedefinedGlobal(other) => {
-            writeln!(
-                f,
-                "redefinition of global variable\n{}\n",
-                TokenDisplay::new(self.state, &other)
-            )?;
-        },
-        &FEKind::AmbiguousGlobal(a, b) => {
-            let a = self.state.globals[a].hint.clone();
-            let b = self.state.globals[b].hint.clone();
-            writeln!(
-                f,
-                "ambiguous global variable, matches\n{}\nand\n{}",
-                TokenDisplay::new(self.state, &a),
-                TokenDisplay::new(self.state, &b)
-            )?;
-        },
-        FEKind::InvalidEntrySignature => {
-            writeln!(f, "invalid entry point signature, expected 'fun (int, & &u8)' or 'fun ()'")?;
-        },
-        FEKind::RecursiveInline => {
-            writeln!(f, "cannot inline recursive function")?;
-        },
-        FEKind::VarInsideGenericScope(scope) => {
-            writeln!(
-                f,
-                "cannot declare global inside generic scope\n{}",
-                TokenDisplay::new(self.state, scope)
-            )?;
-        },
-        FEKind::UnknownModule => {
-            writeln!(f, "unknown module")?;
-        },
-        FEKind::InvalidDotCall => {
-            writeln!(f, "call cannot have explicit caller type and be a dot call")?;
-        },
-        FEKind::VisibilityViolation => {
-            writeln!(f, "function visibility disallows access, {}", crate::types::VISIBILITY_MESSAGE)?;
-        },
-        FEKind::FieldVisibilityViolation => {
-            writeln!(f, "field visibility disallows access, {}", crate::types::VISIBILITY_MESSAGE)?;
-        },
-        FEKind::GlobalVisibilityViolation => {
-            writeln!(f, "global variable visibility disallows access, {}", crate::types::VISIBILITY_MESSAGE)?;
-        },
-        FEKind::FunArgMismatch(fun, arguments) => {
-            let sig = &self.state.funs[*fun].sig;
-            let module = self.state.funs[*fun].module;
-            writeln!(
-                f,
-                "function argument types are '({})' but you provided '({})'",
-                self.state.modules[module]
-                    .type_slice(sig.args)
-                    .iter()
-                    .map(|&a| format!("{}", TypeDisplay::new(&self.state, a)))
-                    .collect::<Vec<_>>().join(", "),
-                arguments
-                    .iter()
-                    .map(|&a| format!("{}", TypeDisplay::new(&self.state, a)))
-                    .collect::<Vec<_>>().join(", ")
-            )?;
-        },
-        FEKind::FunPointerArgMismatch(ty, arguments) => {
-            let module = self.state.types[*ty].module;
-            writeln!(
-                f,
-                "function pointer argument types are '({})' but you provided '({})'",
-                &self.state.modules[module].type_slice(
-                        self.state.types[*ty].kind
-                            .fun_pointer()
-                            .args
-                    )
-                    .iter()
-                    .map(|&a| format!("{}", TypeDisplay::new(&self.state, a)))
-                    .collect::<Vec<_>>().join(", "),
-                arguments
-                    .iter()
-                    .map(|&a| format!("{}", TypeDisplay::new(&self.state, a)))
-                    .collect::<Vec<_>>()
-                    .join(", ")
-            )?;
-        },
-        FEKind::ExpectedFunctionPointer => {
-            writeln!(f, "only dereferenced function pointer can be called")?;
-        },
+        Ok(())
     }
-);
+
+    fn sources(&self) -> &lexer::Ctx {
+        self.ctx.sources()
+    }
+}
 
 #[derive(Debug)]
-pub struct FError {
-    pub kind: FEKind,
-    pub token: Token,
+pub struct Error {
+    kind: error::Kind,
+    token: Token,
 }
 
-impl FError {
-    pub fn new(kind: FEKind, token: Token) -> Self {
-        FError { kind, token }
+impl Error {
+    pub fn new(kind: error::Kind, token: Token) -> Self {
+        Error { kind, token }
+    }
+
+    pub fn kind(&self) -> &error::Kind {
+        &self.kind
     }
 }
 
-#[derive(Debug)]
-pub enum FEKind {
-    MutableToImmutable,
-    FunPointerArgMismatch(Ty, Vec<Ty>),
-    ExpectedFunctionPointer,
-    FunArgMismatch(Fun, Vec<Ty>),
-    GlobalVisibilityViolation,
-    FieldVisibilityViolation,
-    VisibilityViolation,
-    InvalidDotCall,
-    UnknownModule,
-    VarInsideGenericScope(Token),
-    RecursiveInline,
-    InvalidEntrySignature,
-    EmptyArray,
-    RedefinedGlobal(Token),
-    DuplicateEntrypoint(Fun),
-    TooShortAttribute(usize, usize),
-    InvalidLinkage,
-    InvalidCallConv,
-    TypeError(TError),
-    Redefinition(Token),
-    InvalidBitCast(Size, Size),
-    AssignToImmutable,
-    ExpectedValue,
-    TypeMismatch(Ty, Ty),
-    FunctionNotFound(Span, Vec<Ty>),
-    GenericMismatch(Span, Vec<Ty>),
-    UnexpectedValue,
-    UnexpectedReturnValue,
-    UnexpectedAuto,
-    UndefinedVariable,
-    UnresolvedType,
-    UnknownField(Ty),
-    MissingElseBranch,
-    ContinueOutsideLoop,
-    BreakOutsideLoop,
-    WrongLabel,
-    NonPointerDereference,
-    InvalidFunctionHeader,
-    AmbiguousFunction(Fun, Fun),
-    AmbiguousGlobal(GlobalValue, GlobalValue),
+impl DisplayError for Error {
+    fn token(&self) -> Token {
+        self.token
+    }
 }
+
+mod error {
+    use super::*;
+    
+    #[derive(Debug)]
+    pub enum Kind {
+        MutableToImmutable,
+        FunPointerArgMismatch(Ty, Vec<Ty>),
+        ExpectedFunctionPointer,
+        FunArgMismatch(Fun, Vec<Ty>),
+        GlobalVisibilityViolation,
+        FieldVisibilityViolation,
+        VisibilityViolation,
+        InvalidDotCall,
+        UnknownModule,
+        VarInsideGenericScope(Token),
+        RecursiveInline,
+        InvalidEntrySignature,
+        EmptyArray,
+        RedefinedGlobal(Token),
+        DuplicateEntrypoint(Fun),
+        TooShortAttribute(usize, usize),
+        InvalidLinkage,
+        InvalidCallConv,
+        TypeError(types::Error),
+        Redefinition(Token),
+        InvalidBitCast(Size, Size),
+        AssignToImmutable,
+        ExpectedValue,
+        TypeMismatch(Ty, Ty),
+        FunctionNotFound(Span, Vec<Ty>),
+        GenericMismatch(Span, Vec<Ty>),
+        UnexpectedValue,
+        UnexpectedReturnValue,
+        UnexpectedAuto,
+        UndefinedVariable,
+        UnresolvedType,
+        UnknownField(Ty),
+        MissingElseBranch,
+        ContinueOutsideLoop,
+        BreakOutsideLoop,
+        WrongLabel,
+        NonPointerDereference,
+        InvalidFunctionHeader,
+        AmbiguousFunction(Fun, Fun),
+        AmbiguousGlobal(Global, Global),
+    }
+}
+
+
 
 pub enum DotInstr {
     None,
@@ -2812,29 +3050,23 @@ pub enum DotInstr {
 
 #[derive(Debug, Clone, QuickDefault, Copy, RealQuickSer)]
 pub struct FunEnt {
-    pub id: ID,
-    pub module: Mod,
-    pub hint: Token,
-    pub params: EntityList<Ty>, // must drop
-    pub base_fun: PackedOption<Fun>,
-    pub sig: Signature, // must drop
-    pub body: FunBody,
-    pub kind: FKind,
-    pub name: Span,
-    pub ast: Ast,
-    pub attrs: Ast,
-    pub scope: Ast,
-    pub alias: Option<Span>,
-    pub vis: Vis,
-    pub linkage: Linkage,
-    pub untraced: bool,
-    pub inline: bool,
-}
-
-impl TableId for FunEnt {
-    fn id(&self) -> ID {
-        self.id
-    }
+    id: ID,
+    module: Mod,
+    hint: Token,
+    params: EntityList<Ty>, // must drop
+    base_fun: PackedOption<Fun>,
+    sig: Signature, // must drop
+    body: FunBody,
+    kind: FKind,
+    name: Span,
+    ast: Ast,
+    attrs: Ast,
+    scope: Ast,
+    alias: Option<Span>,
+    vis: Vis,
+    linkage: Linkage,
+    untraced: bool,
+    inline: bool,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, RealQuickSer)]
@@ -2878,11 +3110,42 @@ impl Default for FKind {
     }
 }
 
+#[derive(Debug, Default, Clone, Copy, RealQuickSer)]
+pub struct FunBody {
+    pub dependant_functions: EntityList<Fun>,
+    pub dependant_globals: EntityList<GlobalValue>,
+    pub current_block: PackedOption<Section>,
+    pub entry_block: PackedOption<Section>,
+    pub last_block: PackedOption<Section>,
+}
+
+impl FunBody {
+    pub fn clear(&mut self) {
+        self.entry_block = PackedOption::default();
+        self.last_block = PackedOption::default();
+        self.current_block = PackedOption::default();
+    }
+}
+
+#[derive(Debug, Clone, Default, Copy, RealQuickSer)]
+pub struct GlobalEnt {
+    id: ID,
+    vis: Vis,
+    mutable: bool,
+    module: Mod,
+    ty: Ty,
+    hint: Token,
+    ast: Ast,
+    attrs: Ast,
+    alias: Option<Span>,
+    linkage: Linkage,
+}
+
 #[derive(Debug, Clone, Default, QuickSer)]
 pub struct GFun {
-    pub id: Fun,
-    pub call_conv: CallConv,
-    pub sig: GenericSignature,
+    id: Fun,
+    call_conv: CallConv,
+    sig: GenericSignature,
 }
 
 impl SparseMapValue<Fun> for GFun {
@@ -2893,9 +3156,9 @@ impl SparseMapValue<Fun> for GFun {
 
 #[derive(Debug, Clone, Default, QuickSer)]
 pub struct GenericSignature {
-    pub params: Vec<ID>,
-    pub elements: Vec<GenericElement>,
-    pub arg_count: usize,
+    params: Vec<ID>,
+    elements: Vec<GenericElement>,
+    arg_count: usize,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Copy, RealQuickSer)]
@@ -2922,322 +3185,46 @@ impl GenericElement {
 #[derive(Debug, Clone)]
 pub struct Loop {
     name: ID,
-    start_block: Block,
-    end_block: Block,
+    start_block: Section,
+    end_block: Section,
 }
 
 #[derive(Debug, Clone, Copy, RealQuickSer)]
 pub struct MainFunData {
     id: Fun,
-    arg1: Value,
-    arg2: Value,
-    return_value: Value,
+    arg1: Local,
+    arg2: Local,
+    return_value: Local,
 }
 
 impl Default for MainFunData {
     fn default() -> Self {
         Self {
             id: Fun::reserved_value(),
-            arg1: Value::reserved_value(),
-            arg2: Value::reserved_value(),
-            return_value: Value::reserved_value(),
+            arg1: Local::reserved_value(),
+            arg2: Local::reserved_value(),
+            return_value: Local::reserved_value(),
         }
-    }
-}
-
-#[derive(QuickSer)]
-pub struct FState {
-    pub t_state: TState,
-    pub funs: Table<Fun, FunEnt>,
-    pub generic_funs: SparseMap<Fun, GFun>,
-    pub globals: Table<GlobalValue, GlobalEnt>,
-
-    pub index_span: Span,
-    pub index_var_span: Span,
-    pub do_stacktrace: bool,
-
-    pub pop_fun_hahs: ID,
-    pub push_fun_hash: ID,
-}
-
-crate::inherit!(FState, t_state, TState);
-
-impl FState {
-    fn find_computed(&mut self, source_module: Mod, id: ID) -> Option<Fun> {
-        if let Some(&fun) = self.funs.index(id) {
-            self.modules[source_module].add_fun(fun);
-            return Some(fun);
-        }
-
-        None
-    }
-
-    fn add_fun(&mut self, module: Mod, fun_ent: FunEnt) -> (Option<FunEnt>, Fun) {
-        let id = fun_ent.id;
-        let (shadow, fun) = self.funs.insert(id, fun_ent);
-        self.modules[module].add_fun(fun);
-        (shadow, fun)
-    }
-}
-
-impl GarbageTarget<Fun, FunEnt> for FState {
-    fn state(&mut self) -> &mut Table<Fun, FunEnt> {
-        &mut self.funs
-    }
-
-    fn remove(&mut self, fun: Fun, ent: &mut FunEnt) -> bool {
-        if ent.kind == FKind::Builtin {
-            return false;
-        }
-
-        let module_ent = &mut self.mt_state.modules[ent.module];
-
-        if module_ent.clean {
-            module_ent.clear_types(&mut ent.params);
-            module_ent.clear_types(&mut ent.sig.args);
-        }
-        if ent.kind == FKind::Generic {
-            self.generic_funs.remove(fun);
-        }
-
-        true
-    }
-}
-
-impl IncrementalData for FState {
-    fn prepare(&mut self) {
-        self.t_state.prepare();
-    }
-}
-
-impl Default for FState {
-    fn default() -> Self {
-        let mut state = Self {
-            t_state: TState::default(),
-            funs: Table::new(),
-            generic_funs: SparseMap::new(),
-            index_span: Span::default(),
-            index_var_span: Span::default(),
-            globals: Table::new(),
-            do_stacktrace: false,
-
-            pop_fun_hahs: ID(0),
-            push_fun_hash: ID(0),
-        };
-
-        state.pop_fun_hahs = FUN_SALT
-            .add(ID::new("pop_frame"))
-            .add(ID(0))
-            .add(state.modules[BUILTIN_MODULE].id);
-
-        state.push_fun_hash = FUN_SALT
-            .add(ID::new("push_frame"))
-            .add(ID(0))
-            .add(state.modules[BUILTIN_MODULE].id);
-
-        state.index_span = state.builtin_span("__index__");
-        state.index_var_span = state.builtin_span("__index_var__");
-
-        let module_id = BUILTIN_MODULE;
-
-        let types = state.builtin_repo.type_list();
-
-        fn create_builtin_fun(
-            state: &mut FState,
-            module: Mod,
-            salt: ID,
-            name: Span,
-            args: &[Ty],
-            ret: PackedOption<Ty>,
-        ) {
-            let id = salt.add(name.hash).add(state.types[args[0]].id);
-            let module_ent = &mut state.modules[module];
-            let id = id.add(module_ent.id);
-            let args = module_ent.add_type_slice(args);
-            let sig = Signature {
-                call_conv: CallConv::Fast,
-                args,
-                ret,
-            };
-
-            let fun_ent = FunEnt {
-                id,
-                name,
-                vis: Vis::Public,
-                module,
-                kind: FKind::Builtin,
-                sig,
-
-                ..Default::default()
-            };
-
-            assert!(state.add_fun(module, fun_ent).0.is_none());
-        }
-
-        for i in types {
-            for j in types {
-                let name = state.types[i].name.clone();
-                create_builtin_fun(
-                    &mut state,
-                    module_id,
-                    FUN_SALT,
-                    name,
-                    &[j],
-                    PackedOption::from(i),
-                );
-            }
-        }
-
-        let integer_types = &[
-            state.builtin_repo.i8,
-            state.builtin_repo.i16,
-            state.builtin_repo.i32,
-            state.builtin_repo.i64,
-            state.builtin_repo.u8,
-            state.builtin_repo.u16,
-            state.builtin_repo.u32,
-            state.builtin_repo.u64,
-            state.builtin_repo.int,
-            state.builtin_repo.uint,
-        ][..];
-
-        let builtin_unary_ops = [
-            ("~ + ++ --", integer_types),
-            (
-                "- abs",
-                &[
-                    state.builtin_repo.i8,
-                    state.builtin_repo.i16,
-                    state.builtin_repo.i32,
-                    state.builtin_repo.i64,
-                    state.builtin_repo.f32,
-                    state.builtin_repo.f64,
-                    state.builtin_repo.int,
-                ][..],
-            ),
-            ("!", &[state.builtin_repo.bool][..]),
-        ];
-
-        for &(operators, types) in builtin_unary_ops.iter() {
-            for op in operators.split(' ') {
-                let op = state.builtin_span(op);
-                for &datatype in types.iter() {
-                    create_builtin_fun(
-                        &mut state,
-                        module_id,
-                        UNARY_SALT,
-                        op.clone(),
-                        &[datatype],
-                        PackedOption::from(datatype),
-                    );
-                }
-            }
-        }
-
-        let builtin_bin_ops = [
-            ("+ - * / % == != >= <= > < ^ | & >> <<", integer_types),
-            (
-                "+ - * / == != >= <= > <",
-                &[state.builtin_repo.f32, state.builtin_repo.f64][..],
-            ),
-            ("&& || ^ | &", &[state.builtin_repo.bool][..]),
-        ];
-
-        for &(operators, types) in builtin_bin_ops.iter() {
-            for op in operators.split(' ') {
-                let op_span = state.builtin_span(op);
-                for &ty in types.iter() {
-                    let return_type = if matches!(op, "==" | "!=" | ">" | "<" | ">=" | "<=") {
-                        state.builtin_repo.bool
-                    } else {
-                        ty
-                    };
-                    create_builtin_fun(
-                        &mut state,
-                        module_id,
-                        BINARY_SALT,
-                        op_span,
-                        &[ty, ty],
-                        PackedOption::from(return_type),
-                    );
-                }
-            }
-        }
-
-        state
-    }
-}
-
-#[derive(Default)]
-pub struct FContext {
-    pub t_context: TContext,
-
-    pub vars: Vec<(ID, Value)>,
-    pub loops: Vec<Loop>,
-    pub frames: Vec<usize>,
-    pub labels: Vec<(ID, EntityList<Inst>, Option<Block>)>,
-    pub label_insts: ListPool<Inst>,
-
-    pub in_assign: bool,
-    pub in_var_ref: bool,
-
-    pub unresolved_globals: Vec<GlobalValue>,
-    pub resolved_globals: Vec<GlobalValue>,
-    pub unresolved: Vec<Fun>,
-    pub entry_points: Vec<Fun>,
-
-    pub entry_point_data: MainFunData,
-}
-
-crate::inherit!(FContext, t_context, TContext);
-
-impl FContext {
-    fn push_scope(&mut self) {
-        self.frames.push(self.vars.len());
-    }
-
-    fn pop_scope(&mut self) {
-        let idx = self.frames.pop().unwrap();
-        self.vars.truncate(idx)
-    }
-
-    fn find_variable(&self, id: ID) -> Option<Value> {
-        self.vars.iter().rev().find(|v| v.0 == id).map(|v| v.1)
-    }
-
-    fn find_loop(&self, token: &Token) -> std::result::Result<Loop, bool> {
-        if token.span.len() == 0 {
-            return self.loops.last().cloned().ok_or(true);
-        }
-
-        let name = token.span.hash;
-
-        self.loops
-            .iter()
-            .rev()
-            .find(|l| l.name == name)
-            .cloned()
-            .ok_or_else(|| self.loops.is_empty())
     }
 }
 
 pub struct FunDisplay<'a> {
-    pub state: &'a FState,
-    pub fun: Fun,
+    ctx: &'a Ctx,
+    fun: Fun,
 }
 
 impl<'a> FunDisplay<'a> {
-    pub fn new(state: &'a FState, fun: Fun) -> Self {
-        Self { state, fun }
+    pub fn new(ctx: &'a Ctx, fun: Fun) -> Self {
+        Self { ctx, fun }
     }
 }
 
 impl std::fmt::Display for FunDisplay<'_> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        let fun = &self.state.funs[self.fun];
-        let module_ent = &self.state.modules[fun.module];
+        /*let fun = &self.ctx.funs[self.fun];
+        let module_ent = &self.ctx.modules[fun.module];
 
-        writeln!(f, "{}", self.state.display(&fun.hint.span))?;
+        writeln!(f, "{}", self.ctx.display(&fun.hint.span))?;
         writeln!(f)?;
 
         let mut current = fun.body.entry_block;
@@ -3260,20 +3247,20 @@ impl std::fmt::Display for FunDisplay<'_> {
                 current_inst = inst.next;
             }
             current = block.next;
-        }
+        }*/
 
         Ok(())
     }
 }
 
 pub fn test() {
-    panic!("{}", std::mem::size_of::<Span>());
+    /*panic!("{}", std::mem::size_of::<Span>());
 
     const PATH: &str = "src/functions/test_project";
 
     let now = std::time::Instant::now();
-    let (mut state, hint) = FState::load_data(PATH, ID(0)).unwrap_or_default();
-    let mut context = FContext::default();
+    let (mut state, hint) = Ctx::load_data(PATH, ID(0)).unwrap_or_default();
+    let mut context = Ctx::default();
     println!("{}", now.elapsed().as_secs_f32());
 
     MTParser::new(&mut state, &mut context)
@@ -3322,4 +3309,5 @@ pub fn test() {
     println!("{}", now.elapsed().as_secs_f32());
     state.save_data(PATH, ID(0), Some(hint)).unwrap();
     println!("{}", now.elapsed().as_secs_f64());
+    */
 }

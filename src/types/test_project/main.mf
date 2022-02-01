@@ -13,10 +13,11 @@ struct Gro:
   s, t, u: i32
 
 struct IntOption:
+  gua: (Gro, Bogus, (int, int), (Focus, Focus, (int,)))
   o: module::Option[int]
 
 struct SomeArray:
-  a: [int, 8]
+  a: [int, 8 * 10]
 
 struct Interface:
   value: uint

@@ -560,7 +560,7 @@ pub trait ScopeManager {
             .get_item_unchecked(module, id)
             .ok_or_else(|| Error::new(error::Kind::ItemNotFound, hint))?;
 
-        if item.kind() == item::Kind::Collision {
+        if item == Item::Collision {
             let candidates = self
                 .module_dependency(module)
                 .iter()
@@ -589,7 +589,7 @@ pub trait ScopeManager {
             let (self_module, self_token, mut id) = self.item_data(item);
             if let Some(&collision) = scope.get(id) {
                 let (collision_module, collision_token, _) = self.item_data(collision);
-                if collision.kind() == item::Kind::Collision {
+                if collision == Item::Collision {
                     if self_module != module {
                         id = id.add(self.module_id(self_module));
                     }
@@ -601,7 +601,7 @@ pub trait ScopeManager {
                         ));
                     }
 
-                    scope.insert(id, Item::collision());
+                    scope.insert(id, Item::Collision);
                     scope.insert(id.add(self.module_id(collision_module)), item);
 
                     id = id.add(self.module_id(self_module));
@@ -622,73 +622,29 @@ pub trait ScopeManager {
     }
 }
 
-/// Items holds Kind of the item it points to and raw index to it.
-/// Its rather unsafe to create entity from the id, but it allows
-/// better source organization.
-#[derive(Debug, Clone, Default, Copy, RealQuickSer)]
-pub struct Item {
-    kind: item::Kind,
-    id: u32,
+crate::impl_entity!(Fun, Global, Local, Ty, Const);
+
+/// Kind specifies to what [`Item`] points.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, RealQuickSer)]
+pub enum Item {
+    /// Item is colliding with another and needs
+    /// to be referred to by module path.
+    Collision,
+    /// Item refers to type.
+    Ty(Ty),
+    /// Item refers to const.
+    Const(Const),
+    /// Item refers to global.
+    Global(Global),
+    /// Item refers to local value.
+    Local(Local),
+    /// Item refers to function.
+    Fun(Fun),
 }
 
-impl Item {
-    pub fn collision() -> Self {
-        Item {
-            kind: item::Kind::Collision,
-            id: u32::MAX,
-        }
-    }
-
-    pub fn ty(id: u32) -> Self {
-        Item {
-            kind: item::Kind::Type,
-            id,
-        }
-    }
-
-    pub fn constant(id: u32) -> Self {
-        Item {
-            kind: item::Kind::Const,
-            id,
-        }
-    }
-
-    /// Returns Kind of the item.
-    pub fn kind(&self) -> item::Kind {
-        self.kind
-    }
-
-    /// Returns raw index of the item.
-    pub fn id(&self) -> u32 {
-        self.id
-    }
-}
-
-/// Module offers namespace to Item kind.
-pub mod item {
-
-    /// Kind specifies to what [`Item`] points.
-    #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-    pub enum Kind {
-        /// Item is colliding with another and needs
-        /// to be referred to by module path.
-        Collision,
-        /// Item refers to type.
-        Type,
-        /// Item refers to const.
-        Const,
-        /// Item refers to global.
-        Global,
-        /// Item refers to variable.
-        Variable,
-        /// Item refers to function.
-        Function,
-    }
-
-    impl Default for Kind {
-        fn default() -> Self {
-            Kind::Collision
-        }
+impl Default for Item {
+    fn default() -> Self {
+        Item::Collision
     }
 }
 
