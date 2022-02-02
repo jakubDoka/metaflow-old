@@ -63,7 +63,7 @@ fn test() {
     lexer::test();
     ast::test();
     modules::test();
-    //types::test();
+    types::test();
     //functions::test();
     //gen::test();
 }

@@ -4,7 +4,7 @@ use crate::ast::{self, Ast, CallConv, Vis};
 use crate::lexer::{
     self, token, DisplayError, ErrorDisplay, ErrorDisplayState, LexerBase, LineData, Span, Token,
 };
-use crate::modules::{self, Mod, TreeStorage, BUILTIN_MODULE, ScopeManager, Item, Ty, Const};
+use crate::modules::{self, Mod, TreeStorage, BUILTIN_MODULE, Item, Ty, Const, item};
 use crate::util::sdbm::ID;
 use crate::util::Size;
 use cranelift::codegen::ir::types::Type;
@@ -31,14 +31,30 @@ pub const VISIBILITY_MESSAGE: &str = concat!(
 /// Otherwise, user could encounter weird compiler freezes.
 pub const MAX_TYPE_INSTANTIATION_DEPTH: usize = 1000;
 
+macro_rules! impl_item_find {
+    ($($name:ident, $kind:ident)+) => {
+        $(
+            pub fn $name(&self, module: Mod, hash: ID, token: Token) -> Result<$kind> {
+                let item = self.find_item(module, hash, token).map_err(Into::into)?;
+                if let item::Kind::$kind(id) = item.kind() {
+                    Ok(id)
+                } else {
+                    Err(Error::new(error::Kind::ItemMismatch(
+                        item.kind(), 
+                        vec![item::Kind::$kind($kind::default())],
+                    ), token))
+                }
+            }
+        )+
+    };
+}
+
 /// Another extension that handles type parsing on parsed ast. Its important to note
 #[derive(Debug, Clone, Default)]
 pub struct Ctx {
     ctx: modules::Ctx,
     unresolved: Vec<(Ty, usize)>,
     resolved: Vec<Ty>,
-
-    module: Mod,
 
     enum_slices: ListPool<EnumVariant>,
     enum_variants: PrimaryMap<EnumVariant, EnumVariantEnt>,
@@ -57,7 +73,6 @@ impl Ctx {
         if module == BUILTIN_MODULE {
             self.add_builtin_types();
         }
-        self.module = module;
         self.collect(module)?;
         self.connect()?;
         self.calc_sizes()?;
@@ -66,7 +81,6 @@ impl Ctx {
 
     /// Parses Type expression and returns the entity. This can instantiate new types.
     pub fn parse_type(&mut self, module: Mod, ast: Ast) -> Result<Ty> {
-        self.module = module;
         let ast_data = self.take_ast_data(module);
         let result = self.ty(&ast_data, module, ast, 0)?;
         self.put_ast_data(module, ast_data);
@@ -259,7 +273,7 @@ impl Ctx {
             for (&param, &son) in params.iter().zip(sons.iter()) {
                 let id = self.hash_token(ast_data.token(son));
 
-                let shadow = self.add_temporary_item(module, id, Item::Ty(param));
+                let shadow = self.push_item(module, id, item::Kind::Ty(param));
                 shadowed.push((id, shadow));
             }
         }
@@ -294,10 +308,7 @@ impl Ctx {
         }
 
         for (id, ty) in shadowed.drain(..) {
-            match ty {
-                Some(item) => self.add_temporary_item(module, id, item),
-                None => self.remove_temporary_item(module, id),
-            };
+            self.pop_item(module, id, ty);
         }
 
         self.types[id].kind = ty::Kind::Structure(
@@ -349,7 +360,7 @@ impl Ctx {
             fields.push(self.ty(ast_data, module, ty, depth)?);
         }
 
-        let ty = self.tuple_of(fields.as_slice());
+        let ty = self.tuple_of(module, fields.as_slice());
 
         Ok(ty)
     }
@@ -415,17 +426,18 @@ impl Ctx {
             _ => return Err(Error::new(error::Kind::ExpectedIntConstant, token)),
         };
 
-        Ok(self.array_of(element, length as usize))
+        Ok(self.array_of(module, element, length as usize))
     }
 
     pub fn constant(&mut self, ast_data: &ast::Data, module: Mod, ast: Ast) -> Result<Ty> {
         let mut new_constants = self.temp_vec();
         let constant = self.fold_const(module, ast_data, ast, ID(0), &mut new_constants)?;
-        self.ctx.extend_temp_items(
-            new_constants
-                .drain(..)
-                .map(|constant| Item::Const(constant))
-        );
+        for constant in new_constants.drain(..) {
+            let constant_ent = &self.constants[constant];
+            let id = ID::new("-c-").add(constant_ent.kind.hash(self));
+            let item = Item::new(item::Kind::Const(constant), module, constant_ent.hint);
+            self.add_item(module, id, item).map_err(Into::into)?;
+        }
         Ok(self.constant_of(module, constant))
     }
 
@@ -439,7 +451,7 @@ impl Ctx {
     ) -> Result<Ty> {
         let ty = ast_data.son(ast, 0);
         let ty = self.ty(ast_data, module, ty, depth)?;
-        let ty = self.pointer_of(ty, mutable);
+        let ty = self.pointer_of(module, ty, mutable);
         Ok(ty)
     }
 
@@ -483,7 +495,7 @@ impl Ctx {
             params.push(ty);
         }
 
-        if let Some(id) = self.find_computed_type(self.module, id) {
+        if let Some(id) = self.find_computed_type(original_module, id) {
             return Ok(id);
         }
 
@@ -512,7 +524,7 @@ impl Ctx {
             align: Size::ZERO,
         };
 
-        let ty = self.add_type(self.module, type_ent);
+        let ty = self.add_type(module, type_ent).unwrap();
 
         self.unresolved.push((ty, depth));
 
@@ -531,8 +543,8 @@ impl Ctx {
 
         if let Some(target) = target {
             let token = ast_data.token(target);
-            let module = self.find_dep(module, token)
-                .ok_or(Error::new(error::Kind::UnknownModule, token))?;
+            let hash = self.hash_token(token);
+            let module = self.find_module(module, hash, token)?;
             id = id.add(self.module_id(module));
         }
 
@@ -542,8 +554,6 @@ impl Ctx {
     pub fn collect(&mut self, module: Mod) -> Result<()> {
         let mut temp = self.ctx.temp_vec();
         let ast_data = self.take_ast_data(module);
-
-        println!("Collecting types for module {:?}", module);
 
         for &(type_ast, attrs) in self.ctx.types().as_slice() {
             let (kind, sons, _) = ast_data.ent(type_ast).parts();
@@ -579,7 +589,7 @@ impl Ctx {
                         ..Default::default()
                     };
 
-                    self.add_type(module, datatype);
+                    self.add_type(module, datatype).map_err(Into::into)?;
                 }
                 ast::Kind::Struct(vis) | ast::Kind::Union(vis) => {
                     let ident = ast_data.get(sons, 0);
@@ -610,8 +620,7 @@ impl Ctx {
 
                         ..Default::default()
                     };
-
-                    let id = self.add_type(module, datatype);
+                    let id = self.add_type(module, datatype).map_err(Into::into)?;
 
                     if let ty::Kind::Unresolved(_) = &self.types[id].kind {
                         self.unresolved.push((id, 0));
@@ -626,7 +635,7 @@ impl Ctx {
         Ok(())
     }
 
-    pub fn tuple_of(&mut self, types: &[Ty]) -> Ty {
+    pub fn tuple_of(&mut self, source_module: Mod, types: &[Ty]) -> Ty {
         let mut filed_name = String::with_capacity(2);
         let mut fields = Vec::with_capacity(types.len());
         let mut id = ID::new("()");
@@ -663,7 +672,7 @@ impl Ctx {
 
         let ty_ent = TyEnt {
             id,
-            module: BUILTIN_MODULE,
+            module: best_module,
             vis: Vis::Public,
             kind: ty::Kind::Structure(
                 StructureKind::Tuple, 
@@ -673,11 +682,11 @@ impl Ctx {
             ..Default::default()
         };
 
-        self.add_type(best_module, ty_ent)
+        self.add_type(source_module, ty_ent).unwrap()
     }
 
-    pub fn pointer_of(&mut self, ty: Ty, mutable: bool) -> Ty {
-        let TyEnt { module, id, .. } = self.types[ty];
+    pub fn pointer_of(&mut self, source_module: Mod, ty: Ty, mutable: bool) -> Ty {
+        let TyEnt { module, id, vis, .. } = self.types[ty];
         let name = if mutable { "&var " } else { "&" };
         let id = ID::new(name).add(id);
 
@@ -689,6 +698,7 @@ impl Ctx {
 
         let pointer_type = TyEnt {
             id,
+            vis,
             kind: ty::Kind::Pointer(ty, mutable),
             module,
             size,
@@ -697,10 +707,10 @@ impl Ctx {
             ..Default::default()
         };
 
-        self.add_type(module, pointer_type)
+        self.add_type(source_module, pointer_type).unwrap()
     }
 
-    pub fn array_of(&mut self, element: Ty, length: usize) -> Ty {
+    pub fn array_of(&mut self, source_module: Mod, element: Ty, length: usize) -> Ty {
         let TyEnt {
             id,
             module,
@@ -727,13 +737,18 @@ impl Ctx {
             ..Default::default()
         };
 
-        self.add_type(module, ty_ent)
+        self.add_type(source_module, ty_ent).unwrap()
     }
 
+    /// If constant already exists, passed `constant` is dropped.
     pub fn constant_of(&mut self, source_module: Mod, constant: Const) -> Ty {
         let id = self.constants[constant].kind.hash(self);
 
         if let Some(ty) = self.find_computed_type(source_module, id) {
+            if let constant::Kind::Array(mut elements) = self.constants[constant].kind {
+                elements.clear(&mut self.constant_slices);
+            }
+            self.constants.remove(constant);
             return ty;
         }
 
@@ -741,12 +756,13 @@ impl Ctx {
             id,
             vis: Vis::Public,
             kind: ty::Kind::Constant(constant),
-            module: BUILTIN_MODULE,
+            // this eliminates the boat in the builtin module
+            module: source_module, 
 
             ..Default::default()
         };
 
-        self.add_type(source_module, ty_ent)
+        self.add_type(source_module, ty_ent).unwrap()
     }
 
     /// Creates a function pointer type of given `sig`. `module` is the module where signature
@@ -790,7 +806,7 @@ impl Ctx {
         let type_ent = TyEnt {
             kind: ty::Kind::FunPointer(sig),
             id,
-            module,
+            module: best_module,
             vis: Vis::None,
             size,
             align: size,
@@ -798,12 +814,12 @@ impl Ctx {
             ..Default::default()
         };
 
-        self.add_type(best_module, type_ent)
+        self.add_type(module, type_ent).unwrap()
     }
 
     pub fn find_computed_type(&mut self, source_module: Mod, id: ID) -> Option<Ty> {
-        if let Some(ty) = self.get_item_unchecked(source_module, id) {
-            if let Item::Ty(ty) = ty {
+        if let Some(ty) = self.ctx.find_item_unchecked(source_module, id) {
+            if let item::Kind::Ty(ty) = ty.kind() {
                 return Some(ty);
             } else {
                 panic!("Expected type, found {:?}", ty);
@@ -840,18 +856,15 @@ impl Ctx {
             .unwrap_or(ty)
     }
 
-    pub fn add_type(&mut self, source_module: Mod, ent: TyEnt) -> Ty {
-        let id = ent.id;
+    pub fn add_type(&mut self, source_module: Mod, ent: TyEnt) -> Result<Ty> {
+        let TyEnt { module, hint, id, ..} = ent;
         let ty = self.types.push(ent);
-        let item = Item::Ty(ty);
-        if source_module == self.module {
-            self.add_temp_item(item);
-        } else {
-            self.extend_module_items(source_module, &[item]);
-            let shadow = self.add_temporary_item(source_module, id, item);
-            debug_assert!(shadow.is_none());
+        let item = Item::new(item::Kind::Ty(ty), module, hint);
+        self.add_item(module, id, item).map_err(Into::into)?;
+        if source_module != module {
+            self.import_item(source_module, id, item).unwrap();
         }
-        ty
+        Ok(ty)
     }
 
     pub fn push_type(&mut self, list: &mut EntityList<Ty>, ty: Ty) {
@@ -1048,7 +1061,7 @@ impl Ctx {
 
                 let constant = self.constants.push(ConstEnt {
                     kind: new,
-                    module,
+                    _module: module,
 
                     ..Default::default()
                 });
@@ -1102,7 +1115,7 @@ impl Ctx {
 
                 let constant = self.constants.push(ConstEnt {
                     kind: new,
-                    module,
+                    _module: module,
 
                     ..Default::default()
                 });
@@ -1125,7 +1138,7 @@ impl Ctx {
                 }
                 let constant = self.constants.push(ConstEnt {
                     kind:  constant::Kind::Array(list),
-                    module,
+                    _module: module,
 
                     ..Default::default()
                 });
@@ -1135,14 +1148,33 @@ impl Ctx {
                 return Ok(constant);
             }
             ast::Kind::Path => {
-                let hash = sons[1..]
-                    .iter()
-                    .fold(None, |acc: Option<ID>, &e| {
-                        let hash = self.hash_token(ast_data.token(e));
-                        acc.map(|h| h.add(hash)).or(Some(hash))
-                    })
-                    .unwrap();
-
+                let hash = match sons {
+                    &[module_segment, ty, name] => {
+                        let token = ast_data.token(module_segment);
+                        let hash = self.hash_token(token);
+                        let target_module = self.find_module(module, hash, token)?;
+                        let token = ast_data.token(ty);
+                        let hash = self.hash_token(token);
+                        let ty = self.find_type(module, hash, token)?;
+                        let token = ast_data.token(name);
+                        self.hash_token(token).add(self.types[ty].id).add(self.module_id(target_module))
+                    }
+                    &[module_or_ty, name] => {
+                        let token = ast_data.token(module_or_ty);
+                        let hash = self.hash_token(token);
+                        let hash = match self.find_item(module, hash, token).map_err(Into::into)?.kind() {
+                            item::Kind::Mod(module) => self.module_id(module),
+                            item::Kind::Ty(ty) => self.types[ty].id,
+                            kind => return Err(Error::new(error::Kind::ItemMismatch(kind, vec![
+                                item::Kind::Mod(Mod::default()),
+                                item::Kind::Ty(Ty::default()),
+                            ]), token)),
+                        };
+                        let token = ast_data.token(name);
+                        self.hash_token(token).add(hash)
+                    }
+                    _ => todo!(),
+                };
                 self.find_const(module, hash, token)
             }
             ast::Kind::Ident => {
@@ -1153,7 +1185,7 @@ impl Ctx {
                 let constant = constant::Kind::from_token(self, token);
                 let constant = self.constants.push(ConstEnt {
                     kind: constant,
-                    module,
+                    _module: module,
 
                     ..Default::default()
                 });
@@ -1166,23 +1198,11 @@ impl Ctx {
         }
     }
 
-    pub fn find_const(&self, module: Mod, hash: ID, token: Token) -> Result<Const> {
-        let item = self.find_item(module, hash, token).map_err(Into::into)?;
-        if let Item::Const(constant) = item {
-            Ok(constant)
-        } else {
-            Err(Error::new(error::Kind::NotConst, token))
-        }
-    }
-
-    pub fn find_type(&self, module: Mod, hash: ID, token: Token) -> Result<Ty> {
-        let item = self.find_item(module, hash, token).map_err(Into::into)?;
-        if let Item::Ty(ty) = item {
-            Ok(ty)
-        } else {
-            Err(Error::new(error::Kind::NotType, token))
-        }
-    }
+    impl_item_find!(
+        find_const, Const
+        find_type, Ty
+        find_module, Mod
+    );
 
     pub fn type_name(&self, ty: Ty) -> Span {
         self.types[ty].name
@@ -1293,11 +1313,9 @@ macro_rules! define_repo {
         impl Ctx {
             pub fn add_builtin_types(&mut self) {
                 let module = BUILTIN_MODULE;
-                let builtin_id = self.module_id(module);
-
                 $(
                     let name = self.builtin_span(stringify!($name));
-                    let id = ID::new(stringify!($name)).add(builtin_id);
+                    let id = ID::new(stringify!($name));
                     let type_ent = TyEnt {
                         id,
                         kind: ty::Kind::Builtin(CrTypeWr($repr)),
@@ -1309,7 +1327,7 @@ macro_rules! define_repo {
 
                         ..Default::default()
                     };
-                    self.add_type(module, type_ent);
+                    self.add_type(module, type_ent).unwrap();
                 )+
             }
         }
@@ -1401,6 +1419,14 @@ impl<'a> std::fmt::Display for TypeDisplay<'a> {
 impl ErrorDisplayState<Error> for Ctx {
     fn fmt(&self, e: &Error, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match &e.kind {
+            error::Kind::ItemMismatch(actual, expected) => {
+                write!(
+                    f, 
+                    "expected {} but this is {}", 
+                    expected.iter().map(|e| format!("{}", e)).collect::<Vec<_>>().join(" or "), 
+                    actual
+                )?;
+            }
             error::Kind::VisibilityViolation => {
                 write!(
                     f,
@@ -1414,9 +1440,6 @@ impl ErrorDisplayState<Error> for Ctx {
                     "instancing non-generic type, defined here:\n {}",
                     token::Display::new(&self.ctx, &origin)
                 )?;
-            }
-            error::Kind::NotType => {
-                write!(f, "expected type")?;
             }
             error::Kind::ModuleError(error) => {
                 writeln!(f, "{}", ErrorDisplay::new(&self.ctx, error))?;
@@ -1492,9 +1515,6 @@ impl ErrorDisplayState<Error> for Ctx {
                     "unsupported constant operation, use 'let' instead of 'const' if possible"
                 )?;
             }
-            error::Kind::NotConst => {
-                writeln!(f, "value of this expression is not known at compile time")?;
-            }
             error::Kind::Undefined => {
                 writeln!(f, "expression points to undefined value")?;
             }
@@ -1540,7 +1560,7 @@ mod error {
 
     #[derive(Debug)]
     pub enum Kind {
-        NotType,
+        ItemMismatch(item::Kind, Vec<item::Kind>),
         InvalidCallConv,
         VisibilityViolation,
         InstancingNonGeneric(Token),
@@ -1559,7 +1579,6 @@ mod error {
         Redefinition(Token),
         ExpectedIntConstant,
         UnsupportedConst,
-        NotConst,
         Undefined,
         IndexOutOfBounds,
     }
@@ -1596,10 +1615,6 @@ impl TyEnt {
 
     pub fn on_stack(&self, ptr_ty: Type) -> bool {
         self.size.pick(ptr_ty == I32) > ptr_ty.bytes() as u32
-    }
-
-    fn item_data(&self) -> (Mod, Token, ID) {
-        (self.module, self.hint, self.id)
     }
 }
 
@@ -1657,17 +1672,13 @@ pub enum StructureKind {
 #[derive(Debug, Clone, Copy, RealQuickSer, Default)]
 pub struct ConstEnt {
     id: ID,
-    module: Mod,
+    _module: Mod,
     vis: Vis,
     hint: Token,
     kind: constant::Kind,
 }
 
 impl ConstEnt {
-    pub fn item_data(&self) -> (Mod, Token, ID) {
-        (self.module, self.hint, self.id)
-    }
-
     pub fn vis(&self) -> Vis {
         self.vis
     }
@@ -1782,35 +1793,6 @@ impl Default for constant::Kind {
     }
 }
 
-impl ScopeManager for Ctx {
-    fn get_item_unchecked(&self, module: Mod, id: ID) -> Option<Item> {
-        self.ctx.get_item_unchecked(module, id)
-    }
-
-    fn module_id(&self, module: Mod) -> ID {
-        self.ctx.module_id(module)
-    }
-
-    fn module_dependency(&self, module: Mod) -> &[(ID, Span, Mod)] {
-        self.ctx.module_dependency(module)
-    }
-
-    fn module_scope(&mut self, module: Mod) -> &mut crate::util::storage::Map<Item> {
-        self.ctx.module_scope(module)
-    }
-
-    fn item_data(&self, item: Item) -> (Mod, Token, ID) {
-        match item {
-            Item::Ty(ty) => self.types[ty].item_data(),
-            Item::Const(constant) => self.constants[constant].item_data(),
-            Item::Local(_) |
-            Item::Global(_) |
-            Item::Fun(_) |
-            Item::Collision => unreachable!(),
-        }
-    }
-}
-
 pub fn test() {
     const PATH: &str = "src/types/test_project";
 
@@ -1824,11 +1806,10 @@ pub fn test() {
 
     for &module in &order {
         ctx.collect_imported_items(module, &mut item_buffer);
-
-        ctx.extend_scope(module, &item_buffer)
-            .map_err(|e| panic!("{}", ErrorDisplay::new(&ctx.ctx, &e)))
-            .unwrap();
-
+        for &(id, item) in item_buffer.iter() {
+            ctx.import_item(module, id, item).unwrap();
+        }
+        item_buffer.clear();
         
         
         loop {
@@ -1839,13 +1820,6 @@ pub fn test() {
 
             ctx.compute_types(module)
                 .map_err(|e| panic!("\n{}", ErrorDisplay::new(&ctx, &e)))
-                .unwrap();
-            
-            item_buffer.clear();
-            ctx.dump_temp_items(&mut item_buffer);
-            ctx.extend_module_items(module, &item_buffer);
-            ctx.extend_scope(module, &item_buffer)
-                .map_err(|e| panic!("{}", ErrorDisplay::new(&ctx.ctx, &e)))
                 .unwrap();
                 
             if !more {

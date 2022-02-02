@@ -44,7 +44,6 @@ pub struct Ctx {
     module_lookup: Map<Mod>,
     modules: PoolMap<Mod, ModEnt>,
     module_ctxs: SecondaryMap<Mod, ModCtx>,
-    temp_items: Vec<Item>,
 }
 
 impl Ctx {
@@ -90,7 +89,12 @@ impl Ctx {
                 let nick = self.hash_span(nick_span);
 
                 self.module_ctxs[module].used.push(parent_module);
-                self.module_ctxs[parent_module].deps.push((nick, nick_span, module));
+                self.module_ctxs[parent_module].deps.push((nick_span, module));
+                self.import_item(
+                    parent_module, 
+                    nick, 
+                    Item::new(item::Kind::Mod(module), parent_module, token)
+                )?;
             }
 
             if self.seen_modules.contains(module) {
@@ -134,7 +138,13 @@ impl Ctx {
 
             self.module_ctxs[module]
                 .deps
-                .push((ID::new("builtin"), builtin_span, BUILTIN_MODULE));
+                .push((builtin_span, BUILTIN_MODULE));
+            self.import_item(
+                module, 
+                ID::new("builtin"),
+                Item::new(item::Kind::Mod(BUILTIN_MODULE), module, token)
+            )?;
+
             self.module_ctxs[module].ast_state = ast_state;
 
             self.seen_modules.insert(module);
@@ -442,13 +452,7 @@ impl Ctx {
     pub fn collect_scopes(&self, module: Mod, buffer: &mut Vec<Mod>) {
         let module_ent = &self.module_ctxs[module];
         buffer.push(module);
-        buffer.extend(module_ent.deps.iter().map(|dep| dep.2));
-    }
-
-    /// Finds dependency of module by token containing name.
-    pub fn find_dep(&self, inside: Mod, name: Token) -> Option<Mod> {
-        let nick = self.hash_token(name);
-        self.module_ctxs[inside].find_dep(nick)
+        buffer.extend(module_ent.deps.iter().map(|dep| dep.1));
     }
 
     /// Loads a builtin module. Source code is included with macro.
@@ -483,10 +487,6 @@ impl Ctx {
         std::mem::take(&mut self.modules[module].ast)
     }
 
-    pub fn extend_module_items(&mut self, module: Mod, item: &[Item]) {
-        self.modules[module].owned_items.extend_from_slice(item);
-    }
-
     /// Computes ast of module. If true is returned, parsing was
     /// interrupted by top level 'break'.
     pub fn compute_ast(&mut self, module: Mod) -> Result<bool> {
@@ -499,73 +499,25 @@ impl Ctx {
         .map_err(|err| Error::new(error::Kind::AError(err), Token::default()))
     }
 
-    pub fn collect_imported_items(&self, module: Mod, buffer: &mut Vec<Item>) {
-        for &(_, _, module) in self.module_ctxs[module].deps.iter() {
+    pub fn collect_imported_items(&self, module: Mod, buffer: &mut Vec<(ID, Item)>) {
+        for &(.., module) in self.module_ctxs[module].deps.iter() {
             buffer.extend_from_slice(self.modules[module].owned_items.as_slice());
         }
     }
 
-    pub fn add_temp_item(&mut self, item: Item) {
-        self.temp_items.push(item);
-    }
-    
-    pub fn extend_temp_items(&mut self, new_constants: impl Iterator<Item = Item>) {
-        self.temp_items.extend(new_constants);
-    }
+    /// Finds item in scope, if collision occurred, or item does not exist, method returns error.
+    pub fn find_item(&self, module: Mod, id: ID, hint: Token) -> Result<Item> {
+        let scope = &self.module_ctxs[module].scope;
+        let item = scope
+            .get(id)
+            .ok_or_else(|| Error::new(error::Kind::ItemNotFound, hint))?
+            .clone();
 
-    pub fn dump_temp_items(&mut self, target: &mut Vec<Item>) {
-        target.append(&mut self.temp_items);
-    }
-}
-
-impl ScopeManager for Ctx {
-    fn get_item_unchecked(&self, module: Mod, id: ID) -> Option<Item> {
-        self.module_ctxs[module].scope.get(id).cloned()
-    }
-
-    fn module_id(&self, module: Mod) -> ID {
-        self.modules[module].id
-    }
-
-    fn module_dependency(&self, module: Mod) -> &[(ID, Span, Mod)] {
-        &self.module_ctxs[module].deps
-    }
-
-    fn module_scope(&mut self, module: Mod) -> &mut Map<Item> {
-        &mut self.module_ctxs[module].scope
-    }
-
-    fn item_data(&self, _item: Item) -> (Mod, Token, ID) {
-        unimplemented!()
-    }
-}
-
-/// Trait provides access to items inside given module scope and also supports extending
-/// the scope while producing Generic errors and resolving collisions.
-pub trait ScopeManager {
-    /// Retrieves item from scope, this item can be a collision.
-    fn get_item_unchecked(&self, module: Mod, id: ID) -> Option<Item>;
-    /// Returns id of a module.
-    fn module_id(&self, module: Mod) -> ID;
-    /// Returns slice of dependant modules.
-    fn module_dependency(&self, module: Mod) -> &[(ID, Span, Mod)];
-    /// Returns the item map of given module.
-    fn module_scope(&mut self, module: Mod) -> &mut Map<Item>;
-    /// Returns related data to token. `0` is module of item. `1` is hint for error. `2` is id of item.
-    fn item_data(&self, item: Item) -> (Mod, Token, ID);
-
-    /// finds item in scope, if collision occurred, or item does not exist, method returns error.
-    fn find_item(&self, module: Mod, id: ID, hint: Token) -> Result<Item> {
-        let item = self
-            .get_item_unchecked(module, id)
-            .ok_or_else(|| Error::new(error::Kind::ItemNotFound, hint))?;
-
-        if item == Item::Collision {
-            let candidates = self
-                .module_dependency(module)
+        if item.kind == item::Kind::Collision {
+            let candidates = self.module_ctxs[module].deps
                 .iter()
-                .filter_map(|&(_, span, module)| {
-                    self.get_item_unchecked(module, id.add(self.module_id(module)))
+                .filter_map(|&(span, module)| {
+                    scope.get(id.add(self.modules[module].id))
                         .map(|_| span)
                 })
                 .collect::<Vec<_>>();
@@ -575,78 +527,153 @@ pub trait ScopeManager {
         Ok(item)
     }
 
-    fn add_temporary_item(&mut self, module: Mod, id: ID, item: Item) -> Option<Item> {
-        self.module_scope(module).insert(id, item)
+    /// Adds item to module, which means it will be inserted both to owned items and to scope.
+    /// Error can originate from [`Self::import_item()`].
+    pub fn add_item(&mut self, module: Mod, id: ID, item: Item) -> Result {
+        self.modules[module].owned_items.push((id, item));
+        self.import_item(module, id, item)
     }
 
-    fn remove_temporary_item(&mut self, module: Mod, id: ID) -> Option<Item> {
-        self.module_scope(module).remove(id)
-    }
-
-    fn extend_scope(&mut self, module: Mod, items: &[Item]) -> Result {
-        let mut scope = std::mem::take(self.module_scope(module));
-        for &item in items {
-            let (self_module, self_token, mut id) = self.item_data(item);
-            if let Some(&collision) = scope.get(id) {
-                let (collision_module, collision_token, _) = self.item_data(collision);
-                if collision == Item::Collision {
-                    if self_module != module {
-                        id = id.add(self.module_id(self_module));
-                    }
-                } else {
-                    if self_module == module {
-                        return Err(Error::new(
-                            error::Kind::Redefinition(collision_token),
-                            self_token,
-                        ));
-                    }
-
-                    scope.insert(id, Item::Collision);
-                    scope.insert(id.add(self.module_id(collision_module)), item);
-
-                    id = id.add(self.module_id(self_module));
+    /// Imports item into the scope. This can trigger moving items behind external module scope
+    /// if two items have same hash. IF collision between two `module`-owned items occurs, method returns
+    /// error.
+    pub fn import_item(&mut self, module: Mod, mut id: ID, item: Item) -> Result {
+        let scope = &mut self.module_ctxs[module].scope;
+        if let Some(&collision) = scope.get(id) {
+             if collision.kind == item::Kind::Collision { 
+                if item.module != module {
+                    id = id.add(self.modules[item.module].id);
                 }
-                let shadow = scope.insert(id, item);
-                debug_assert!(
-                    shadow.is_none(),
-                    "this means that we did not detect collision when compiling module of 'item'"
-                );
+            } else if collision.module == module {
+                if item.module == module  {
+                    return Err(Error::new(
+                        error::Kind::Redefinition(collision.hint),
+                        item.hint,
+                    ));
+                }
+                id = id.add(self.modules[item.module].id);
             } else {
-                scope.insert(id, item);
+                let redirect = id.add(self.modules[collision.module].id);
+                let shadow = scope.insert(redirect, collision);
+                debug_assert!(shadow.is_none(), "seems like unlucky hashing corrupted the scope");                
+                
+                scope.insert(id, Item::collision());
+                if item.module != module {
+                    id = id.add(self.modules[item.module].id);
+                }
             }
+
+            let shadow = scope.insert(id, item);
+            debug_assert!(
+                shadow.is_none() || shadow.unwrap().kind == item::Kind::Collision,
+                "this means that we did not detect collision when compiling module {:?} {}",
+                shadow, token::Display::new(self.sources(), &item.hint),
+            );
+        } else {
+            scope.insert(id, item);
         }
 
-        *self.module_scope(module) = scope;
-
         Ok(())
+    }
+
+    pub fn push_item(&mut self, module: Mod, id: ID, item: item::Kind) -> Option<Item> {
+        let item = Item::new(item, module, Token::default());
+        self.module_ctxs[module].scope.insert(id, item)
+    }
+
+    pub fn pop_item(&mut self, module: Mod, id: ID, shadow: Option<Item>) {
+        if let Some(shadow) = shadow {
+            self.module_ctxs[module].scope.insert(id, shadow);
+        } else {
+            self.module_ctxs[module].scope.remove(id);
+        }
+    }
+
+    pub fn module_id(&self, module: Mod) -> ID {
+        self.modules[module].id
+    }
+
+    pub fn find_item_unchecked(&self, module: Mod, id: ID) -> Option<Item> {
+        self.module_ctxs[module].scope.get(id).cloned()
     }
 }
 
 crate::impl_entity!(Fun, Global, Local, Ty, Const);
 
-/// Kind specifies to what [`Item`] points.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, RealQuickSer)]
-pub enum Item {
-    /// Item is colliding with another and needs
-    /// to be referred to by module path.
-    Collision,
-    /// Item refers to type.
-    Ty(Ty),
-    /// Item refers to const.
-    Const(Const),
-    /// Item refers to global.
-    Global(Global),
-    /// Item refers to local value.
-    Local(Local),
-    /// Item refers to function.
-    Fun(Fun),
+#[derive(Debug, Clone, Copy, Default, RealQuickSer)]
+pub struct Item {
+    kind: item::Kind,
+    module: Mod,
+    hint: Token,
 }
 
-impl Default for Item {
-    fn default() -> Self {
-        Item::Collision
+impl Item {
+    pub fn new(kind: item::Kind, module: Mod, hint: Token) -> Item {
+        Item {
+            kind,
+            module,
+            hint,
+        }
+    }
+
+    pub fn collision() -> Self {
+        Self {
+            kind: item::Kind::Collision,
+            
+            ..Default::default()
+        }
+    }
+
+    pub fn kind(&self) -> item::Kind {
+        self.kind
+    }
+
+}
+
+pub mod item {
+    use super::*;
+
+    /// Kind specifies to what [`Item`] points to.
+    #[derive(Debug, Clone, Copy, PartialEq, Eq, RealQuickSer)]
+    pub enum Kind {
+        /// Item is colliding with another and needs
+        /// to be referred to by module path.
+        Collision,
+        /// Item refers to imported module.
+        Mod(Mod),
+        /// Item refers to type.
+        Ty(Ty),
+        /// Item refers to const.
+        Const(Const),
+        /// Item refers to global.
+        Global(Global),
+        /// Item refers to local value.
+        Local(Local),
+        /// Item refers to function.
+        Fun(Fun),
+    }
+
+    impl std::fmt::Display for Kind {
+        fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+            match self {
+                Kind::Collision => write!(f, "collision"),
+                Kind::Mod(..) => write!(f, "module"),
+                Kind::Ty(..) => write!(f, "type"),
+                Kind::Const(..) => write!(f, "constant"),
+                Kind::Global(..) => write!(f, "global variable"),
+                Kind::Local(..) => write!(f, "local variable"),
+                Kind::Fun(..) => write!(f, "function"),
+            }
+        }
+    }
+    
+    impl Default for Kind {
+        fn default() -> Self {
+            Kind::Collision
+        }
     }
 }
+
 
 type ManifestDep = (ID, Manifest);
 
@@ -794,22 +821,13 @@ pub struct ModCtx {
     manifest: Manifest,
 
     ast_state: ast::State,
-    deps: Vec<(ID, Span, Mod)>,
+    deps: Vec<(Span, Mod)>,
     used: Vec<Mod>,
-}
-
-impl ModCtx {
-    /// Finds module dependency by hash of its alias.
-    pub fn find_dep(&self, id: ID) -> Option<Mod> {
-        self.deps
-            .iter()
-            .find_map(|dep| if dep.0 == id { Some(dep.2) } else { None })
-    }
 }
 
 impl TreeStorage<Mod> for Ctx {
     fn node_dep(&self, id: Mod, idx: usize) -> Mod {
-        self.module_ctxs[id].deps[idx].2
+        self.module_ctxs[id].deps[idx].1
     }
 
     fn node_len(&self, id: Mod) -> usize {
@@ -830,7 +848,7 @@ pub struct ModEnt {
     #[default(SystemTime::UNIX_EPOCH)]
     modified: SystemTime,
     ast: ast::Data,
-    owned_items: Vec<Item>,
+    owned_items: Vec<(ID, Item)>,
 }
 
 /// Error create upon module building failure.
