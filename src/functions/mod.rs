@@ -1,17 +1,17 @@
 use std::ops::{Deref, DerefMut};
 
-use crate::ast::{AstDisplay, AstEnt, OpKind, Vis, Ast, CallConv};
-use crate::incr::IncrementalData;
-use crate::lexer::{Span, Token, self, token, ErrorDisplayState, DisplayError};
-use crate::modules::Mod;
-use crate::types::{Ty, Signature, self, ALL_BUILTIN_TYPES, I8_TY, I16_TY, I32_TY, I64_TY, U8_TY, U16_TY, U32_TY, U64_TY, INT_TY, UINT_TY, F64_TY, F32_TY, BOOL_TY};
+use crate::ast::{self, Ast, CallConv, Vis};
+use crate::lexer::{self, token, DisplayError, ErrorDisplay, ErrorDisplayState, Span, Token};
+use crate::modules::{self, *};
+use crate::types::{self, *};
 use crate::util::sdbm::ID;
 use crate::util::Size;
 
-use cranelift::codegen::ir::types::I64;
-use cranelift::codegen::ir::{GlobalValue, Value};
+use cranelift::codegen::ir::GlobalValue;
 use cranelift::codegen::packed_option::{PackedOption, ReservedValue};
-use cranelift::entity::{EntityList, EntitySet, ListPool, SparseMap, SparseMapValue, PoolMap};
+use cranelift::entity::{
+    EntityList, EntityRef, ListPool, PoolMap, PrimaryMap, SparseMap, SparseMapValue,
+};
 use cranelift::module::Linkage;
 use quick_proc::{QuickDefault, QuickSer, RealQuickSer};
 
@@ -22,11 +22,11 @@ type ExprResult = Result<Option<Local>>;
 pub struct Ctx {
     ctx: types::Ctx,
 
-    vars: Vec<(ID, Value)>,
+    vars: Vec<(ID, Local)>,
     loops: Vec<Loop>,
     frames: Vec<usize>,
-    labels: Vec<(ID, EntityList<Command>, Option<Section>)>,
-    label_insts: ListPool<Command>,
+    labels: Vec<(ID, EntityList<Cmd>, Option<Section>)>,
+    label_insts: ListPool<Cmd>,
 
     in_assign: bool,
     in_var_ref: bool,
@@ -49,7 +49,7 @@ impl Ctx {
     /*pub fn parse(&mut self, module: Mod) -> Result {
         TParser::new(self.state, self.context)
             .parse(module)
-            .map_err(|err| FError::new(error::Kind::TypeError(err), Token::default()))?;
+            .map_err(|err| Error::new(error::Kind::TypeError(err), Token::default()))?;
 
         self.module = module;
 
@@ -99,12 +99,12 @@ impl Ctx {
         let mut body = FunBody::default();
         let block = module_ent.new_block(&mut body);
         module_ent.select_block(block, &mut body);
-        let arg1 = module_ent.add_temp_value(int);
-        let arg2 = module_ent.add_temp_value(int);
-        module_ent.push_block_arg(block, arg1);
-        module_ent.push_block_arg(block, arg2);
+        let arg1 = module_ent.add_temp_local(int);
+        let arg2 = module_ent.add_temp_local(int);
+        module_ent.push_swection_arg(block, arg1);
+        module_ent.push_swection_arg(block, arg2);
         let init = module_ent.add_zero_value(int, &mut body);
-        let return_value = module_ent.add_value(int, true);
+        let return_value = module_ent.add_local(int, true);
         module_ent.add_var_decl(init, return_value, Token::default(), &mut body);
         let data = MainFunData {
             id,
@@ -125,7 +125,7 @@ impl Ctx {
     }
 
     fn translate_fun(&mut self, fun: Fun) -> Result {
-        let mut shadowed = self.context.pool.get();
+        let mut shadowed = self.temp_vec();
         let FunEnt {
             module,
             scope,
@@ -183,10 +183,10 @@ impl Ctx {
                 let module_ent = &mut self.modules[module];
                 let id = module_ent.get_ent(sons, arg).token.span.hash;
                 let ty = module_ent.type_slice(sig.args)[i];
-                let var = module_ent.add_temp_value(ty);
-                module_ent.push_block_arg(entry_point, var);
-                let var = if kind == AKind::FunArgument(true) {
-                    let carrier = module_ent.add_value(ty, true);
+                let var = module_ent.add_temp_local(ty);
+                module_ent.push_swection_arg(entry_point, var);
+                let var = if kind == ast::Kind::FunArgument(true) {
+                    let carrier = module_ent.add_local(ty, true);
                     module_ent.add_var_decl(var, carrier, token, &mut body);
                     carrier
                 } else {
@@ -206,14 +206,14 @@ impl Ctx {
             if ty_ent.on_stack(self.ptr_ty) {
                 let ty = self.pointer_of(ty, true);
                 let module_ent = &mut self.modules[module];
-                let value = module_ent.add_temp_value(ty);
-                module_ent.push_block_arg(entry_point, value);
+                let value = module_ent.add_temp_local(ty);
+                module_ent.push_swection_arg(entry_point, value);
             }
         }
 
         let (value, hint) = self.block(fun, ast_body, &mut body)?;
 
-        let closed = body.current_block.is_some();
+        let closed = self.body.current_block.is_some();
 
         let module_ent = &mut self.modules[module];
         match (value, closed, has_ret) {
@@ -245,7 +245,7 @@ impl Ctx {
         self.funs[fun].kind = FKind::Represented;
     }
 
-    fn gen_return(&mut self, fun: Fun, value: Option<Value>, token: Token, body: &mut FunBody) {
+    fn gen_return(&mut self, fun: Fun, value: Option<Local>, token: Token, body: &mut FunBody) {
         let module = self.funs[fun].module;
 
         let value = if let Some(value) = value {
@@ -253,11 +253,11 @@ impl Ctx {
             let ty = self.modules[module].type_of_value(value);
             if self.types[ty].on_stack(self.ptr_ty) {
                 let module_ent = &mut self.modules[module];
-                let entry_block = body.entry_block.unwrap();
-                let struct_ptr = module_ent.last_arg_of_block(entry_block).unwrap();
-                let deref = module_ent.add_value(ty, true);
-                module_ent.add_inst(IKind::Deref(struct_ptr, false), deref, token, body);
-                module_ent.add_inst(IKind::Assign(deref), value, token, body);
+                let entry_block = self.body.entry_block.unwrap();
+                let struct_ptr = module_ent.last_section_arg(entry_block).unwrap();
+                let deref = module_ent.add_local(ty, true);
+                module_ent.add_cmd(cmd::Kind::Deref(struct_ptr, false), deref, token, body);
+                module_ent.add_cmd(cmd::Kind::Assign(deref), value, token, body);
                 Some(struct_ptr)
             } else {
                 Some(value)
@@ -269,7 +269,7 @@ impl Ctx {
         self.modules[module].add_return_stmt(value, token, body);
     }
 
-    fn block(&mut self, fun: Fun, ast: Ast, body: &mut FunBody) -> Result<(Option<Value>, Token)> {
+    fn block(&mut self, fun: Fun, ast: Ast, body: &mut FunBody) -> Result<(Option<Local>, Token)> {
         if ast.is_reserved_value() {
             return Ok((None, Token::default()));
         }
@@ -285,7 +285,7 @@ impl Ctx {
         let mut result = None;
         let mut token = Token::default();
         for i in 0..sons_len {
-            if body.current_block.is_none() {
+            if self.body.current_block.is_none() {
                 self.context.pop_scope();
                 return Ok((None, token));
             }
@@ -293,10 +293,10 @@ impl Ctx {
             let stmt = module_ent.get(sons, i);
             token = *module_ent.token(stmt);
             match module_ent.kind(stmt) {
-                AKind::VarStatement(..) => self.var_statement(fun, stmt, body)?,
-                AKind::ReturnStatement => self.return_statement(fun, stmt, body)?,
-                AKind::Break => self.break_statement(fun, stmt, body)?,
-                AKind::Continue => self.continue_statement(fun, stmt, body)?,
+                ast::Kind::VarStatement(..) => self.var_statement(fun, stmt, body)?,
+                ast::Kind::ReturnStatement => self.return_statement(fun, stmt, body)?,
+                ast::Kind::Break => self.break_statement(fun, stmt, body)?,
+                ast::Kind::Continue => self.continue_statement(fun, stmt, body)?,
                 _ => result = self.expr_low(fun, stmt, body)?,
             };
         }
@@ -318,14 +318,14 @@ impl Ctx {
         let token = *module_ent.token(ast);
         let loop_header = self.context.find_loop(&label).map_err(|outside| {
             if outside {
-                FError::new(error::Kind::ContinueOutsideLoop, token)
+                Error::new(error::Kind::ContinueOutsideLoop, token)
             } else {
-                FError::new(error::Kind::WrongLabel, token)
+                Error::new(error::Kind::WrongLabel, token)
             }
         })?;
 
-        module_ent.add_valueless_inst(
-            IKind::Jump(loop_header.start_block, EntityList::new()),
+        module_ent.add_valueless_cmd(
+            cmd::Kind::Jump(loop_header.start_block, EntityList::new()),
             token,
             body,
         );
@@ -346,9 +346,9 @@ impl Ctx {
 
         let loop_header = self.context.find_loop(&label).map_err(|outside| {
             if outside {
-                FError::new(error::Kind::BreakOutsideLoop, token)
+                Error::new(error::Kind::BreakOutsideLoop, token)
             } else {
-                FError::new(error::Kind::WrongLabel, token)
+                Error::new(error::Kind::WrongLabel, token)
             }
         })?;
 
@@ -357,7 +357,7 @@ impl Ctx {
         if return_value_ast != Ast::reserved_value() {
             let return_value = self.expr(fun, return_value_ast, body)?;
             let module_ent = &mut self.state.modules[module];
-            let current_return_value = module_ent.last_arg_of_block(loop_header.end_block);
+            let current_return_value = module_ent.last_section_arg(loop_header.end_block);
             if let Some(current_return_value) = current_return_value {
                 let token = module_ent.token(return_value_ast);
                 let return_ty = module_ent.type_of_value(return_value);
@@ -365,15 +365,15 @@ impl Ctx {
                 assert_type(current_return_ty, return_ty, token)?;
             } else {
                 let ty = module_ent.type_of_value(return_value);
-                let value = module_ent.add_temp_value(ty);
-                module_ent.push_block_arg(loop_header.end_block, value);
+                let value = module_ent.add_temp_local(ty);
+                module_ent.push_swection_arg(loop_header.end_block, value);
             }
 
-            let args = module_ent.add_values(&[return_value]);
-            module_ent.add_valueless_inst(IKind::Jump(loop_header.end_block, args), token, body);
+            let args = module_ent.add_locals(&[return_value]);
+            module_ent.add_valueless_cmd(cmd::Kind::Jump(loop_header.end_block, args), token, body);
         } else {
-            self.state.modules[module].add_valueless_inst(
-                IKind::Jump(loop_header.end_block, EntityList::new()),
+            self.state.modules[module].add_valueless_cmd(
+                cmd::Kind::Jump(loop_header.end_block, EntityList::new()),
                 token,
                 body,
             );
@@ -400,7 +400,7 @@ impl Ctx {
         } else {
             let token = *module_ent.token(return_value_ast);
             if ty.is_none() {
-                return Err(FError::new(error::Kind::UnexpectedReturnValue, token));
+                return Err(Error::new(error::Kind::UnexpectedReturnValue, token));
             }
             let value = self.expr(fun, return_value_ast, body)?;
             let module_ent = &mut self.state.modules[module];
@@ -416,7 +416,7 @@ impl Ctx {
         let module = self.funs[fun].module;
         let module_ent = &self.state.modules[module];
         let &AstEnt { kind, sons, .. } = module_ent.load(ast);
-        let mutable = kind == AKind::VarStatement(Vis::None, true);
+        let mutable = kind == ast::Kind::VarStatement(Vis::None, true);
         let sons_len = module_ent.len(sons);
 
         for i in 0..sons_len {
@@ -435,24 +435,24 @@ impl Ctx {
             let sons = module_ent.sons(name_group);
             let sons_len = module_ent.len(sons);
             if value_group.is_reserved_value() {
-                // in this case we just assign zero values to all variables
+                // in this case we just assign zero locals to all variables
                 for i in 0..sons_len {
                     let ty = ty.unwrap();
                     let token = *module_ent.token(module_ent.get(sons, i));
                     let zero_value = module_ent.add_zero_value(ty, body);
 
-                    let var = module_ent.add_value(ty, mutable);
+                    let var = module_ent.add_local(ty, mutable);
                     self.context.vars.push((token.span.hash, var));
                     module_ent.add_var_decl(zero_value, var, token, body)
                 }
             } else {
-                let values = module_ent.sons(value_group);
+                let locals = module_ent.sons(value_group);
                 // ast parser takes care of the one value multiple variables case
-                // all missing values are pushed as pointer to the first one
+                // all missing locals are pushed as pointer to the first one
                 for i in 0..sons_len {
                     let module_ent = &self.state.modules[module];
                     let name_token = *module_ent.token(module_ent.get(sons, i));
-                    let raw_value = module_ent.get(values, i);
+                    let raw_value = module_ent.get(locals, i);
                     let value_token = *module_ent.token(raw_value);
                     let value = self.expr(fun, raw_value, body)?;
 
@@ -464,7 +464,7 @@ impl Ctx {
                         assert_type(actual_datatype, ty, &value_token)?;
                     }
 
-                    let var = module_ent.add_value(actual_datatype, mutable);
+                    let var = module_ent.add_local(actual_datatype, mutable);
                     self.context.vars.push((name_token.span.hash, var));
                     module_ent.add_var_decl(value, var, name_token, body);
                 }
@@ -472,37 +472,38 @@ impl Ctx {
         }
 
         Ok(())
-    }
+    }*/
 
-    fn expr(&mut self, fun: Fun, ast: Ast, body: &mut FunBody) -> Result<Value> {
+    fn expr(&mut self, ast_data: &ast::DataSwitch, fun: Fun, ast: Ast, builder: &mut Builder) -> Result<Local> {
         // common case is that we expect a value out of the expression though
         // mode specific errors may be useful (TODO)
-        self.expr_low(fun, ast, body)?.ok_or_else(|| {
+        /*self.expr_low(fun, ast, body)?.ok_or_else(|| {
             let module = self.funs[fun].module;
             let module_ent = &self.state.modules[module];
             let token = *module_ent.token(ast);
-            FError::new(error::Kind::ExpectedValue, token)
-        })
+            Error::new(error::Kind::ExpectedValue, token)
+        })*/
+        todo!()
     }
-
+    /*
     fn expr_low(&mut self, fun: Fun, ast: Ast, body: &mut FunBody) -> ExprResult {
         let module = self.funs[fun].module;
         let module_ent = &self.state.modules[module];
         let kind = module_ent.kind(ast);
         match kind {
-            AKind::BinaryOp => self.binary_op(fun, ast, body),
-            AKind::Lit => self.lit(fun, ast, body),
-            AKind::Ident => self.ident(fun, ast, body),
-            AKind::Call(_) => self.call(fun, ast, body),
-            AKind::IfExpr => self.if_expr(fun, ast, body),
-            AKind::Loop => self.loop_expr(fun, ast, body),
-            AKind::DotExpr => self.dot_expr(fun, ast, body),
-            AKind::Deref => self.deref_expr(fun, ast, body),
-            AKind::Ref(mutable) => self.ref_expr(fun, ast, mutable, body),
-            AKind::UnaryOp => self.unary_op(fun, ast, body),
-            AKind::Pass => Ok(None),
-            AKind::Array => self.array(fun, ast, body),
-            AKind::Index => self.index(fun, ast, body),
+            ast::Kind::BinaryOp => self.binary_op(fun, ast, body),
+            ast::Kind::Lit => self.lit(fun, ast, body),
+            ast::Kind::Ident => self.ident(fun, ast, body),
+            ast::Kind::Call(_) => self.call(fun, ast, body),
+            ast::Kind::IfExpr => self.if_expr(fun, ast, body),
+            ast::Kind::Loop => self.loop_expr(fun, ast, body),
+            ast::Kind::DotExpr => self.dot_expr(fun, ast, body),
+            ast::Kind::Deref => self.deref_expr(fun, ast, body),
+            ast::Kind::Ref(mutable) => self.ref_expr(fun, ast, mutable, body),
+            ast::Kind::UnaryOp => self.unary_op(fun, ast, body),
+            ast::Kind::Pass => Ok(None),
+            ast::Kind::Array => self.array(fun, ast, body),
+            ast::Kind::Index => self.index(fun, ast, body),
             _ => todo!(
                 "unmatched expr ast {}",
                 AstDisplay::new(self.state, &module_ent.a_state, ast)
@@ -526,13 +527,13 @@ impl Ctx {
         };
         let result = self
             .call_low(fun, None, None, FUN_SALT, span, &[], args, token, body)?
-            .ok_or_else(|| FError::new(error::Kind::ExpectedValue, token))?;
+            .ok_or_else(|| Error::new(error::Kind::ExpectedValue, token))?;
 
         Ok(Some(self.deref_expr_low(fun, result, token, body)?))
     }
 
     fn array(&mut self, fun: Fun, ast: Ast, body: &mut FunBody) -> ExprResult {
-        let mut values = self.context.pool.get();
+        let mut locals = self.temp_vec();
         let mut element_ty = None;
         let module = self.funs[fun].module;
         let module_ent = &self.state.modules[module];
@@ -551,11 +552,11 @@ impl Ctx {
             } else {
                 element_ty = Some(ty);
             }
-            values.push((value, token));
+            locals.push((value, token));
         }
 
         if element_ty.is_none() {
-            return Err(FError::new(error::Kind::EmptyArray, token));
+            return Err(Error::new(error::Kind::EmptyArray, token));
         }
 
         let element_ty = element_ty.unwrap();
@@ -564,12 +565,12 @@ impl Ctx {
         let ty = self.state.array_of(self.module, element_ty, length);
         let module_ent = &mut self.state.modules[module];
 
-        let temp = module_ent.add_temp_value(ty);
-        module_ent.add_inst(IKind::Uninitialized, temp, token, body);
-        let result = module_ent.add_value(ty, true);
+        let temp = module_ent.add_temp_local(ty);
+        module_ent.add_cmd(cmd::Kind::Uninitialized, temp, token, body);
+        let result = module_ent.add_local(ty, true);
         module_ent.add_var_decl(temp, result, token, body);
 
-        for (i, &(value, token)) in values.iter().enumerate() {
+        for (i, &(value, token)) in locals.iter().enumerate() {
             let offset = element_size.mul(Size::new(i as u32, i as u32));
             let offset = module_ent.offset_value(result, element_ty, offset, token, body);
             module_ent.assign(offset, value, token, body);
@@ -599,21 +600,21 @@ impl Ctx {
     fn ref_expr_low(
         &mut self,
         fun: Fun,
-        value: Value,
+        value: Local,
         token: Token,
         mutable: bool,
-        body: &mut FunBody,
-    ) -> Result<Value> {
+
+    ) -> Result<Local> {
         let module = self.funs[fun].module;
         let module_ent = &self.state.modules[module];
-        let ValueEnt {
+        let LocalEnt {
             ty,
             mutable: prev_mutable,
             ..
-        } = module_ent.values[value];
+        } = module_ent.locals[value];
 
         if !prev_mutable && mutable {
-            return Err(FError::new(error::Kind::MutableToImmutable, token));
+            return Err(Error::new(error::Kind::MutableToImmutable, token));
         }
 
         let ty = self.pointer_of(ty, mutable);
@@ -632,7 +633,7 @@ impl Ctx {
             if value.inst.is_some() {
                 let inst = value.inst.unwrap();
                 match module_ent.inst_kind(inst) {
-                    IKind::Ref(value) | IKind::Offset(value) | IKind::Cast(value) => {
+                    cmd::Kind::Ref(value) | cmd::Kind::Offset(value) | cmd::Kind::Cast(value) => {
                         current = value;
                         continue;
                     }
@@ -661,10 +662,10 @@ impl Ctx {
     fn deref_expr_low(
         &mut self,
         fun: Fun,
-        target: Value,
+        target: Local,
         token: Token,
-        body: &mut FunBody,
-    ) -> Result<Value> {
+
+    ) -> Result<Local> {
         let in_assign = self.context.in_assign;
         let module = self.funs[fun].module;
         let module_ent = &self.state.modules[module];
@@ -673,8 +674,8 @@ impl Ctx {
         let mutable = self.pointer_mutability(ty);
 
         let module_ent = &mut self.state.modules[module];
-        let value = module_ent.add_value(pointed, mutable);
-        module_ent.add_inst(IKind::Deref(target, in_assign), value, token, body);
+        let value = module_ent.add_local(pointed, mutable);
+        module_ent.add_cmd(cmd::Kind::Deref(target, in_assign), value, token, body);
 
         Ok(value)
     }
@@ -711,15 +712,15 @@ impl Ctx {
     }
 
     fn find_field(&mut self, ty: Ty, field_id: ID, path: &mut Vec<usize>) -> bool {
-        let mut frontier = self.context.pool.get();
+        let mut frontier = self.temp_vec();
         frontier.push((usize::MAX, 0, ty));
 
         let mut i = 0;
         while i < frontier.len() {
             let stype = match &self.types[frontier[i].2].kind {
-                TKind::Structure(stype) => stype,
-                &TKind::Pointer(pointed, _) => match &self.types[pointed].kind {
-                    TKind::Structure(stype) => stype,
+                ty::Kind::Structure(stype) => stype,
+                &ty::Kind::Pointer(pointed, _) => match &self.types[pointed].kind {
+                    ty::Kind::Structure(stype) => stype,
                     _ => continue,
                 },
                 _ => continue,
@@ -768,7 +769,7 @@ impl Ctx {
             end_block,
         };
 
-        module_ent.add_valueless_inst(IKind::Jump(start_block, EntityList::new()), token, body);
+        module_ent.add_valueless_cmd(cmd::Kind::Jump(start_block, EntityList::new()), token, body);
 
         self.context.loops.push(header);
         module_ent.select_block(start_block, body);
@@ -780,12 +781,12 @@ impl Ctx {
             .expect("expected previously pushed header");
 
         let module_ent = &mut self.state.modules[module];
-        if body.current_block.is_some() {
-            module_ent.add_valueless_inst(IKind::Jump(start_block, EntityList::new()), token, body);
+        if self.body.current_block.is_some() {
+            module_ent.add_valueless_cmd(cmd::Kind::Jump(start_block, EntityList::new()), token, body);
         }
         module_ent.select_block(end_block, body);
 
-        Ok(module_ent.last_arg_of_block(end_block))
+        Ok(module_ent.last_section_arg(end_block))
     }
 
     fn if_expr(&mut self, fun: Fun, ast: Ast, body: &mut FunBody) -> ExprResult {
@@ -802,8 +803,8 @@ impl Ctx {
         assert_type(cond_type, bool_type, &cond_ast_token)?;
 
         let then_block = module_ent.new_block(body);
-        module_ent.add_valueless_inst(
-            IKind::JumpIfTrue(cond_val, then_block, EntityList::new()),
+        module_ent.add_valueless_cmd(
+            cmd::Kind::JumpIfTrue(cond_val, then_block, EntityList::new()),
             cond_ast_token,
             body,
         );
@@ -822,8 +823,8 @@ impl Ctx {
             )
         };
 
-        module_ent.add_valueless_inst(
-            IKind::Jump(jump_to, EntityList::new()),
+        module_ent.add_valueless_cmd(
+            cmd::Kind::Jump(jump_to, EntityList::new()),
             else_branch_token,
             body,
         );
@@ -839,16 +840,16 @@ impl Ctx {
         let mut jump_inst = None;
         let mut then_filled = false;
         if let (Some(val), Some(_)) = (then_result, else_block) {
-            let args = module_ent.add_values(&[val]);
+            let args = module_ent.add_locals(&[val]);
             jump_inst =
-                Some(module_ent.add_valueless_inst(IKind::Jump(merge_block, args), token, body));
+                Some(module_ent.add_valueless_cmd(cmd::Kind::Jump(merge_block, args), token, body));
             let ty = module_ent.type_of_value(val);
-            let value = module_ent.add_temp_value(ty);
-            let args = module_ent.add_values(&[value]);
+            let value = module_ent.add_temp_local(ty);
+            let args = module_ent.add_locals(&[value]);
             module_ent.set_block_args(merge_block, args);
             result = Some(value);
-        } else if body.current_block.is_some() {
-            module_ent.add_valueless_inst(IKind::Jump(merge_block, EntityList::new()), token, body);
+        } else if self.body.current_block.is_some() {
+            module_ent.add_valueless_cmd(cmd::Kind::Jump(merge_block, EntityList::new()), token, body);
         } else {
             then_filled = true;
         }
@@ -859,30 +860,30 @@ impl Ctx {
             let (else_result, hint) = self.block(fun, else_branch_ast, body)?;
             let module_ent = &mut self.state.modules[module];
             if let Some(value) = else_result {
-                let args = module_ent.add_values(&[value]);
-                module_ent.add_valueless_inst(IKind::Jump(merge_block, args), hint, body);
+                let args = module_ent.add_locals(&[value]);
+                module_ent.add_valueless_cmd(cmd::Kind::Jump(merge_block, args), hint, body);
                 if result.is_some() {
                     // do nothing
                 } else if then_filled {
                     let ty = module_ent.type_of_value(value);
-                    let value = module_ent.add_temp_value(ty);
-                    module_ent.push_block_arg(merge_block, value);
+                    let value = module_ent.add_temp_local(ty);
+                    module_ent.push_swection_arg(merge_block, value);
                     result = Some(value);
                 } else {
-                    return Err(FError::new(error::Kind::UnexpectedValue, token));
+                    return Err(Error::new(error::Kind::UnexpectedValue, token));
                 }
             } else {
-                if body.current_block.is_some() {
+                if self.body.current_block.is_some() {
                     if let Some(jump_inst) = jump_inst {
                         module_ent.insts[jump_inst].kind =
-                            IKind::Jump(merge_block, EntityList::new());
+                            cmd::Kind::Jump(merge_block, EntityList::new());
                         module_ent.set_block_args(merge_block, EntityList::new());
                     }
                     if result.is_some() {
-                        return Err(FError::new(error::Kind::ExpectedValue, token));
+                        return Err(Error::new(error::Kind::ExpectedValue, token));
                     }
-                    module_ent.add_valueless_inst(
-                        IKind::Jump(merge_block, EntityList::new()),
+                    module_ent.add_valueless_cmd(
+                        cmd::Kind::Jump(merge_block, EntityList::new()),
                         token,
                         body,
                     );
@@ -896,28 +897,28 @@ impl Ctx {
     }
 
     fn call(&mut self, fun: Fun, ast: Ast, body: &mut FunBody) -> ExprResult {
-        let mut values = self.context.pool.get();
-        let mut types = self.context.pool.get();
+        let mut locals = self.temp_vec();
+        let mut types = self.temp_vec();
         let do_stacktrace = self.state.do_stacktrace;
         let module = self.funs[fun].module;
         let module_ent = &self.modules[module];
         let &AstEnt { sons, token, kind } = module_ent.load(ast);
-        let dot_call = kind == AKind::Call(true);
+        let dot_call = kind == ast::Kind::Call(true);
         let sons_len = module_ent.len(sons);
         let caller = module_ent.get(sons, 0);
         let caller_kind = module_ent.kind(caller);
         for i in 1..sons_len {
             let value = self.modules[module].get(sons, i);
             let value = self.expr(fun, value, body)?;
-            values.push(value);
+            locals.push(value);
             types.push(self.modules[module].type_of_value(value));
         }
 
-        let mut generic_params = self.context.pool.get();
+        let mut generic_params = self.temp_vec();
         let module_ent = &mut self.modules[module];
         let name = match caller_kind {
-            AKind::Ident | AKind::Path => caller,
-            AKind::Deref => {
+            ast::Kind::Ident | ast::Kind::Path => caller,
+            ast::Kind::Deref => {
                 let pointer_ast = module_ent.son(caller, 0);
                 let pointer_ast_token = *module_ent.token(pointer_ast);
                 let pointer = self.expr(fun, pointer_ast, body)?;
@@ -927,9 +928,9 @@ impl Ctx {
                 let (mismatched, ret) = {
                     let fp_module = self.types[ty].module;
                     let fp = match self.types[ty].kind {
-                        TKind::FunPointer(fp) => fp,
+                        ty::Kind::FunPointer(fp) => fp,
                         _ => {
-                            return Err(FError::new(
+                            return Err(Error::new(
                                 error::Kind::ExpectedFunctionPointer,
                                 pointer_ast_token,
                             ));
@@ -943,10 +944,10 @@ impl Ctx {
                 };
 
                 if mismatched {
-                    return Err(FError::new(
+                    return Err(Error::new(
                         error::Kind::FunPointerArgMismatch(
                             ty,
-                            values
+                            locals
                                 .iter()
                                 .map(|&v| module_ent.type_of_value(v))
                                 .collect(),
@@ -961,17 +962,17 @@ impl Ctx {
 
                 let module_ent = &mut self.state.modules[module];
 
-                let args = module_ent.add_values(&values);
+                let args = module_ent.add_locals(&locals);
                 let value = if ret.is_none() {
-                    module_ent.add_valueless_inst(
-                        IKind::FunPointerCall(pointer, args),
+                    module_ent.add_valueless_cmd(
+                        cmd::Kind::FunPointerCall(pointer, args),
                         token,
                         body,
                     );
                     None
                 } else {
-                    let value = module_ent.add_temp_value(ret.unwrap());
-                    module_ent.add_inst(IKind::FunPointerCall(pointer, args), value, token, body);
+                    let value = module_ent.add_temp_local(ret.unwrap());
+                    module_ent.add_cmd(cmd::Kind::FunPointerCall(pointer, args), value, token, body);
                     Some(value)
                 };
 
@@ -981,7 +982,7 @@ impl Ctx {
 
                 return Ok(value);
             }
-            AKind::Instantiation => {
+            ast::Kind::Instantiation => {
                 let len = module_ent.ast_len(caller);
                 for i in 1..len {
                     let param = self.modules[module].son(caller, i);
@@ -1004,7 +1005,7 @@ impl Ctx {
             FUN_SALT,
             name.span,
             &generic_params,
-            &values,
+            &locals,
             token,
             body,
         )
@@ -1018,17 +1019,17 @@ impl Ctx {
         salt: ID,
         name: Span,
         params: &[Ty],
-        original_values: &[Value],
+        original_values: &[Local],
         token: Token,
-        body: &mut FunBody,
+
     ) -> ExprResult {
-        let mut module_buffer = self.context.pool.get();
-        let mut values = self.context.pool.get();
-        let mut types = self.context.pool.get();
+        let mut module_buffer = self.temp_vec();
+        let mut locals = self.temp_vec();
+        let mut types = self.temp_vec();
         let module = self.funs[fun].module;
         let module_ent = &self.modules[module];
-        values.extend_from_slice(original_values);
-        types.extend(values.iter().map(|&v| module_ent.type_of_value(v)));
+        locals.extend_from_slice(original_values);
+        types.extend(locals.iter().map(|&v| module_ent.type_of_value(v)));
 
         let id = salt.add(name.hash);
 
@@ -1045,7 +1046,7 @@ impl Ctx {
             let ty = module_ent.type_of_value(v);
 
             let mut result = (Ok(None), None, None);
-            let mut fields = self.context.pool.get();
+            let mut fields = self.temp_vec();
             let mut i = 0;
             fields.push((None, ty));
             while i < fields.len() {
@@ -1067,7 +1068,7 @@ impl Ctx {
                     _ => (),
                 }
                 match &self.types[ty].kind {
-                    TKind::Structure(stype) => {
+                    ty::Kind::Structure(stype) => {
                         fields.extend(
                             stype
                                 .fields
@@ -1088,9 +1089,9 @@ impl Ctx {
         }
 
         let other_fun = result
-            .map_err(|(a, b)| FError::new(error::Kind::AmbiguousFunction(a, b), token))?
+            .map_err(|(a, b)| Error::new(error::Kind::AmbiguousFunction(a, b), token))?
             .ok_or_else(|| {
-                FError::new(
+                Error::new(
                     error::Kind::FunctionNotFound(name.clone(), types.to_vec()),
                     token,
                 )
@@ -1105,7 +1106,7 @@ impl Ctx {
                     _ => (false, false),
                 };
                 let (other_pointer, other_mutable) = match &self.types[types[0]].kind {
-                    &TKind::Pointer(_, mutable) => (true, mutable),
+                    &ty::Kind::Pointer(_, mutable) => (true, mutable),
                     _ => (false, false),
                 };
 
@@ -1125,7 +1126,7 @@ impl Ctx {
                 self.create(other_fun, params, &types)?
             }
             .ok_or_else(|| {
-                FError::new(error::Kind::GenericMismatch(name.clone(), types.to_vec()), token)
+                Error::new(error::Kind::GenericMismatch(name.clone(), types.to_vec()), token)
             })?
         } else {
             other_fun
@@ -1148,9 +1149,9 @@ impl Ctx {
         let value = if ret.is_some() {
             let ret = ret.unwrap();
             let on_stack = self.types[ret].on_stack(self.ptr_ty);
-            let value = self.modules[module].add_value(ret, on_stack);
+            let value = self.modules[module].add_local(ret, on_stack);
             if on_stack {
-                values.push(value);
+                locals.push(value);
             }
             Some(value)
         } else {
@@ -1160,18 +1161,18 @@ impl Ctx {
         let mut changed = caller.is_none();
         if changed {
             if let Some(field) = field {
-                values[0] = self.field_access(fun, values[0], field, token, body)?;
+                locals[0] = self.field_access(fun, locals[0], field, token, body)?;
             }
 
             let first_arg_ty = self.modules[other_module].type_slice(sig_args)[0];
-            let first_real_arg_ty = self.modules[module].type_of_value(values[0]);
+            let first_real_arg_ty = self.modules[module].type_of_value(locals[0]);
 
             if first_real_arg_ty != first_arg_ty {
                 if self.t_state.pointer_base(first_real_arg_ty) == Some(first_arg_ty) {
-                    values[0] = self.deref_expr_low(fun, values[0], token, body)?;
+                    locals[0] = self.deref_expr_low(fun, locals[0], token, body)?;
                 } else if self.t_state.pointer_base(first_arg_ty) == Some(first_real_arg_ty) {
                     let mutable = self.pointer_mutability(first_arg_ty);
-                    values[0] = self.ref_expr_low(fun, values[0], token, mutable, body)?;
+                    locals[0] = self.ref_expr_low(fun, locals[0], token, mutable, body)?;
                 } else {
                     // adjust mutability if '&var' instead of '&' is passed
                     let mutability_mismatch = matches!(
@@ -1179,7 +1180,7 @@ impl Ctx {
                             &self.types[first_real_arg_ty].kind,
                             &self.types[first_arg_ty].kind
                         ),
-                        (&TKind::Pointer(_, a), &TKind::Pointer(_, b)) if a != b && b && !a
+                        (&ty::Kind::Pointer(_, a), &ty::Kind::Pointer(_, b)) if a != b && b && !a
                     );
                     if mutability_mismatch {
                         types[0] = first_arg_ty; // just overwrite to so it matches later check
@@ -1188,10 +1189,10 @@ impl Ctx {
                 }
 
                 debug_assert!(
-                    self.modules[module].type_of_value(values[0]) == first_arg_ty || !changed,
+                    self.modules[module].type_of_value(locals[0]) == first_arg_ty || !changed,
                     "{}({:?}) != {}({:?})",
-                    TypeDisplay::new(self.state, self.modules[module].type_of_value(values[0])),
-                    self.modules[module].type_of_value(values[0]),
+                    TypeDisplay::new(self.state, self.modules[module].type_of_value(locals[0])),
+                    self.modules[module].type_of_value(locals[0]),
                     TypeDisplay::new(self.state, first_arg_ty),
                     first_arg_ty,
                 );
@@ -1199,13 +1200,13 @@ impl Ctx {
         }
 
         if changed {
-            types[0] = self.modules[module].type_of_value(values[0]);
+            types[0] = self.modules[module].type_of_value(locals[0]);
         }
 
         let mismatched = self.modules[other_module].verify_args(&self.types, &types, sig_args);
 
         if mismatched {
-            return Err(FError::new(
+            return Err(Error::new(
                 error::Kind::FunArgMismatch(other_fun, types.to_vec()),
                 token,
             ));
@@ -1219,16 +1220,16 @@ impl Ctx {
         }
 
         if !self.state.can_access(module, other_module, vis) {
-            return Err(FError::new(error::Kind::VisibilityViolation, token));
+            return Err(Error::new(error::Kind::VisibilityViolation, token));
         }
 
         let module_ent = &mut self.modules[module];
-        let args = module_ent.add_values(&values);
+        let args = module_ent.add_locals(&locals);
 
         if let Some(value) = value {
-            module_ent.add_inst(IKind::Call(other_fun, args), value, token, body);
+            module_ent.add_cmd(cmd::Kind::Call(other_fun, args), value, token, body);
         } else {
-            module_ent.add_valueless_inst(IKind::Call(other_fun, args), token, body);
+            module_ent.add_valueless_cmd(cmd::Kind::Call(other_fun, args), token, body);
         }
 
         module_ent.add_dependant_function(other_fun, body);
@@ -1254,18 +1255,18 @@ impl Ctx {
         let module_ent = &mut self.modules[module];
 
         // line argument
-        let line = module_ent.add_temp_value(int);
-        module_ent.add_inst(
-            IKind::Lit(LTKind::Int(token.span.line as i64, 0)),
+        let line = module_ent.add_temp_local(int);
+        module_ent.add_cmd(
+            cmd::Kind::Lit(LTKind::Int(token.span.line as i64, 0)),
             line,
             token,
             body,
         );
 
         // column argument
-        let column = module_ent.add_temp_value(int);
-        module_ent.add_inst(
-            IKind::Lit(LTKind::Int(token.span.column as i64, 0)),
+        let column = module_ent.add_temp_local(int);
+        module_ent.add_cmd(
+            cmd::Kind::Lit(LTKind::Int(token.span.column as i64, 0)),
             column,
             token,
             body,
@@ -1279,8 +1280,8 @@ impl Ctx {
         let span = self.state.builtin_span(&final_file_name);
         let ptr = self.pointer_of(u8, false);
         let module_ent = &mut self.modules[module];
-        let file_name = module_ent.add_temp_value(ptr);
-        module_ent.add_inst(IKind::Lit(LTKind::String(span)), file_name, token, body);
+        let file_name = module_ent.add_temp_local(ptr);
+        module_ent.add_cmd(cmd::Kind::Lit(LTKind::String(span)), file_name, token, body);
 
         module_ent.add_valueless_call(push, &[line, column, file_name], token, body);
     }
@@ -1313,7 +1314,7 @@ impl Ctx {
 
             Ok(None)
         })()?
-        .ok_or_else(|| FError::new(error::Kind::UndefinedVariable, token))?;
+        .ok_or_else(|| Error::new(error::Kind::UndefinedVariable, token))?;
 
         Ok(Some(result))
     }
@@ -1321,7 +1322,7 @@ impl Ctx {
     fn parse_ident(&mut self, module: Mod, ast: Ast) -> Result<(Option<Mod>, Option<Ty>, Token)> {
         let module_ent = &self.modules[module];
         let &AstEnt { kind, sons, token } = module_ent.load(ast);
-        if kind == AKind::Ident {
+        if kind == ast::Kind::Ident {
             Ok((None, None, token))
         } else {
             match module_ent.slice(sons) {
@@ -1330,7 +1331,7 @@ impl Ctx {
                     let name_token = *module_ent.token(name);
                     let dep = self
                         .find_dep(module, &module_name_token)
-                        .ok_or_else(|| FError::new(error::Kind::UnknownModule, module_name_token))?;
+                        .ok_or_else(|| Error::new(error::Kind::UnknownModule, module_name_token))?;
                     let caller = self.parse_type(dep, caller_name)?;
                     let caller = self.t_state.base_of(caller);
                     Ok((Some(dep), Some(caller), name_token))
@@ -1357,15 +1358,15 @@ impl Ctx {
         target: Option<Mod>,
         caller: ID,
         ident: Token,
-        body: &mut FunBody,
+
     ) -> ExprResult {
-        let mut module_buffer = self.context.pool.get();
+        let mut module_buffer = self.temp_vec();
         let module = self.funs[fun].module;
         let id = FUN_SALT.add(ident.span.hash).add(caller);
         Ok(
             match self
                 .find_item(module, id, target, &mut module_buffer)
-                .map_err(|(a, b)| FError::new(error::Kind::AmbiguousFunction(a, b), ident))?
+                .map_err(|(a, b)| Error::new(error::Kind::AmbiguousFunction(a, b), ident))?
             {
                 Some(f) => {
                     let FunEnt {
@@ -1375,7 +1376,7 @@ impl Ctx {
                         ..
                     } = self.funs[f];
                     if !self.state.can_access(module, other_module, vis) {
-                        return Err(FError::new(error::Kind::VisibilityViolation, ident));
+                        return Err(Error::new(error::Kind::VisibilityViolation, ident));
                     }
                     // we store the pointers in the module function comes from,
                     // this makes it more likely we will reuse already instantiated
@@ -1383,8 +1384,8 @@ impl Ctx {
                     // to modules pool
                     let ty = self.state.function_type_of(self.module, other_module, sig);
                     let module_ent = &mut self.modules[module];
-                    let value = module_ent.add_temp_value(ty);
-                    module_ent.add_inst(IKind::FunPointer(f), value, ident, body);
+                    let value = module_ent.add_temp_local(ty);
+                    module_ent.add_cmd(cmd::Kind::FunPointer(f), value, ident, body);
                     Some(value)
                 }
                 None => None,
@@ -1398,21 +1399,21 @@ impl Ctx {
         target: Option<Mod>,
         caller: ID,
         name: Token,
-        body: &mut FunBody,
+
     ) -> ExprResult {
         let module = self.funs[fun].module;
 
         let id = GLOBAL_SALT.add(name.span.hash).add(caller);
 
-        let mut module_buffer = self.context.pool.get();
+        let mut module_buffer = self.temp_vec();
         let global = self
             .find_item(module, id, target, &mut module_buffer)
-            .map_err(|(a, b)| FError::new(error::Kind::AmbiguousGlobal(a, b), name))?;
+            .map_err(|(a, b)| Error::new(error::Kind::AmbiguousGlobal(a, b), name))?;
 
         let found = if let Some(found) = global {
             let GlobalEnt { vis, module, .. } = self.globals[found];
             if !self.state.can_access(module, module, vis) {
-                return Err(FError::new(error::Kind::GlobalVisibilityViolation, name));
+                return Err(Error::new(error::Kind::GlobalVisibilityViolation, name));
             }
             found
         } else {
@@ -1421,8 +1422,8 @@ impl Ctx {
 
         let GlobalEnt { ty, mutable, .. } = self.state.globals[found];
         let module_ent = &mut self.modules[module];
-        let value = module_ent.add_value(ty, mutable);
-        module_ent.add_inst(IKind::GlobalLoad(found), value, name, body);
+        let value = module_ent.add_local(ty, mutable);
+        module_ent.add_cmd(cmd::Kind::GlobalLoad(found), value, name, body);
         module_ent.add_dependant_global(found, body);
 
         Ok(Some(value))
@@ -1432,8 +1433,8 @@ impl Ctx {
         &mut self,
         fun: Fun,
         token: Token,
-        body: &mut FunBody,
-    ) -> Option<Value> {
+
+    ) -> Option<Local> {
         let FunEnt {
             module,
             params,
@@ -1455,7 +1456,7 @@ impl Ctx {
             .map(|i| module_ent.type_slice(params)[i]);
         if let Some(ty) = ty {
             match &self.types[ty].kind {
-                &TKind::Constant(t) => {
+                &ty::Kind::Constant(t) => {
                     let repo = self.state.builtin_repo;
                     let (kind, ty) = match t {
                         TypeConst::Bool(val) => (LTKind::Bool(val), repo.bool),
@@ -1468,8 +1469,8 @@ impl Ctx {
                     };
 
                     let module_ent = &mut self.modules[module];
-                    let value = module_ent.add_temp_value(ty);
-                    module_ent.add_inst(IKind::Lit(kind), value, token, body);
+                    let value = module_ent.add_temp_local(ty);
+                    module_ent.add_cmd(cmd::Kind::Lit(kind), value, token, body);
                     Some(value)
                 }
                 _ => None,
@@ -1513,9 +1514,9 @@ impl Ctx {
         };
 
         let module_ent = &mut self.modules[module];
-        let value = module_ent.add_temp_value(ty);
+        let value = module_ent.add_temp_local(ty);
 
-        module_ent.add_inst(IKind::Lit(token.kind.clone()), value, token, body);
+        module_ent.add_cmd(cmd::Kind::Lit(token.kind.clone()), value, token, body);
 
         Ok(Some(value))
     }
@@ -1565,7 +1566,7 @@ impl Ctx {
         let datatype_size = self.types[ty].size;
 
         if original_size != datatype_size {
-            return Err(FError::new(
+            return Err(Error::new(
                 error::Kind::InvalidBitCast(original_size, datatype_size),
                 token,
             ));
@@ -1577,20 +1578,20 @@ impl Ctx {
     fn field_access(
         &mut self,
         fun: Fun,
-        mut header: Value,
+        mut header: Local,
         field: ID,
         token: Token,
-        body: &mut FunBody,
-    ) -> Result<Value> {
+
+    ) -> Result<Local> {
         let in_assign = self.context.in_assign;
         let module = self.funs[fun].module;
         let module_ent = &self.state.modules[module];
         let ty = module_ent.type_of_value(header);
         let mut mutable = module_ent.is_mutable(header) || self.t_state.pointer_mutability(ty);
-        let mut path = self.context.pool.get();
+        let mut path = self.temp_vec();
         let success = self.find_field(ty, field, &mut path);
         if !success {
-            return Err(FError::new(error::Kind::UnknownField(ty), token));
+            return Err(Error::new(error::Kind::UnknownField(ty), token));
         };
 
         let mut offset = Size::ZERO;
@@ -1598,37 +1599,37 @@ impl Ctx {
         for &i in path.iter().rev() {
             let ty = &self.types[current_type];
             match &ty.kind {
-                TKind::Structure(stype) => {
+                ty::Kind::Structure(stype) => {
                     let s_field = &stype.fields[i];
                     if !self.state.can_access(module, ty.module, s_field.vis) {
-                        return Err(FError::new(error::Kind::FieldVisibilityViolation, token));
+                        return Err(Error::new(error::Kind::FieldVisibilityViolation, token));
                     }
                     offset = offset.add(s_field.offset);
                     current_type = s_field.ty;
                 }
-                &TKind::Pointer(pointed, p_mutable) => {
+                &ty::Kind::Pointer(pointed, p_mutable) => {
                     mutable &= p_mutable;
                     let value =
                         self.modules[module].offset_value(header, pointed, offset, token, body);
                     let ty = &self.types[pointed];
                     match &ty.kind {
-                        TKind::Structure(stype) => {
+                        ty::Kind::Structure(stype) => {
                             let s_field = &stype.fields[i];
                             if !self.state.can_access(module, ty.module, s_field.vis) {
-                                return Err(FError::new(error::Kind::FieldVisibilityViolation, token));
+                                return Err(Error::new(error::Kind::FieldVisibilityViolation, token));
                             }
                             offset = s_field.offset;
                             current_type = s_field.ty;
                             let module_ent = &mut self.modules[module];
-                            let loaded = module_ent.add_value_ent(ValueEnt {
+                            let loaded = module_ent.add_value_ent(LocalEnt {
                                 ty: current_type,
                                 mutable,
                                 offset,
 
                                 ..Default::default()
                             });
-                            module_ent.add_inst(
-                                IKind::Deref(value, in_assign),
+                            module_ent.add_cmd(
+                                cmd::Kind::Deref(value, in_assign),
                                 loaded,
                                 token,
                                 body,
@@ -1667,7 +1668,7 @@ impl Ctx {
         let value_datatype = module_ent.type_of_value(value);
         let mutable = module_ent.is_mutable(target);
         if !mutable {
-            return Err(FError::new(error::Kind::AssignToImmutable, token));
+            return Err(Error::new(error::Kind::AssignToImmutable, token));
         }
 
         assert_type(value_datatype, target_datatype, &token)?;
@@ -1675,11 +1676,11 @@ impl Ctx {
         Ok(Some(value))
     }
 
-    fn create(&mut self, fun: Fun, explicit_params: &[Ty], values: &[Ty]) -> Result<Option<Fun>> {
-        let mut arg_buffer = self.context.pool.get();
-        let mut stack = self.context.pool.get();
-        let mut params = self.context.pool.get();
-        let mut g_params = self.context.pool.get();
+    fn create(&mut self, fun: Fun, explicit_params: &[Ty], locals: &[Ty]) -> Result<Option<Fun>> {
+        let mut arg_buffer = self.temp_vec();
+        let mut stack = self.temp_vec();
+        let mut params = self.temp_vec();
+        let mut g_params = self.temp_vec();
 
         let g_ent = self.generic_funs.get_mut(fun).unwrap();
         g_params.extend_from_slice(&g_ent.sig.params);
@@ -1705,7 +1706,7 @@ impl Ctx {
             };
 
             for _ in 0..amount {
-                self.load_arg_from_datatype(values[j], &mut arg_buffer, &mut stack);
+                self.load_arg_from_datatype(locals[j], &mut arg_buffer, &mut stack);
                 let arg = &elements[i + 1..i + 1 + length];
                 {
                     let mut i = 0;
@@ -1777,7 +1778,7 @@ impl Ctx {
         let mut id = FUN_SALT.add(name.hash);
         let fun_module_id = self.state.modules[module].id;
 
-        let mut shadowed = self.context.pool.get();
+        let mut shadowed = self.temp_vec();
         let mut final_params = EntityList::new();
         for i in 0..params.len() {
             if let Some(ty) = params[i] {
@@ -1890,256 +1891,251 @@ impl Ctx {
         self.funs[main_fun_id].body = body;
 
         Ok(())
-    }
-
+    }*/
+    
     fn parse_scope(
         &mut self,
+        ast_data: &ast::DataSwitch,
         module: Mod,
         ast: Ast,
-        (previous, generics, id, shadow, vis): &mut (Ast, Ast, ID, Option<(ID, Option<Ty>)>, Vis),
+        state: &mut ScopeState,
     ) -> Result {
-        if ast == *previous {
+        if ast == state.previous {
             return Ok(());
         }
-        *previous = ast;
-        *generics = Ast::reserved_value();
-        *id = ID(0);
-        if let Some((id, ty)) = *shadow {
-            self.state.types.remove_link(id, ty);
-            *shadow = None;
+        state.previous = ast;
+        state.generics = Ast::reserved_value();
+        state.id = ID(0);
+        if let Some((id, item)) = state.shadow.take() {
+            self.pop_item(module, id, item);
         }
         if ast.is_reserved_value() {
             return Ok(());
         }
 
-        let module_ent = &self.modules[module];
-        let &AstEnt { sons, kind, .. } = module_ent.load(ast);
-        let generic_ast = module_ent.get(sons, 0);
-        let ty = module_ent.get(sons, 1);
-        let ty_kind = module_ent.kind(ty);
-        let module_id = module_ent.id;
+        let (kind, sons, _) = ast_data.ent(ast).parts();
+        let sons = ast_data.slice(sons);
+        let (generics, ty) = (sons[0], sons[1]);
+        let ty_kind = ast_data.kind(ty);
 
-        *vis = match kind {
-            AKind::Impl(vis) => vis,
+        state.vis = match kind {
+            ast::Kind::Impl(vis) => vis,
             _ => unreachable!(),
         };
 
-        *generics = generic_ast;
+        state.generics = generics;
 
         let ty = match ty_kind {
-            AKind::Ident | AKind::Instantiation if generic_ast.is_reserved_value() => {
-                self.parse_type(module, ty)?
+            ast::Kind::Ident | ast::Kind::Instantiation if generics.is_reserved_value() => {
+                self.parse_type(ast_data, module, ty)?
             }
 
-            AKind::Instantiation => {
-                let base = module_ent.son(ty, 0);
-                self.parse_type(module, base)?
+            ast::Kind::Instantiation => {
+                let base = ast_data.sons(ty)[0];
+                self.parse_type(ast_data, module, base)?
             }
-            AKind::Array => self.builtin_repo.array,
+            ast::Kind::Array => ARRAY_TY,
             kind => unreachable!("{:?}", kind),
         };
 
-        *id = self.types[self.t_state.base_of(ty)].id;
-        let id = TYPE_SALT.add(ID::new("Self")).add(module_id);
-        *shadow = Some((id, self.types.link(id, ty)));
+        state.id = self.ctx.type_base_id(ty);
+        let id = ID::new("Self");
+        state.shadow = Some((id, self.push_item(module, id, item::Kind::Ty(ty))));
 
         Ok(())
     }
 
-    fn collect_global_var(
+    pub fn collect_global_var(
         &mut self,
+        ast_data: &ast::DataSwitch,
         module: Mod,
         ast: Ast,
         attrs: Ast,
         scope: ID,
-        body: &mut FunBody,
         vis: Vis,
+        builder: &mut Builder,
     ) -> Result {
-        let fun = self.context.entry_point_data.id;
-        let module_ent = &self.modules[module];
-        let module_id = module_ent.id;
-        let &AstEnt { kind, sons, .. } = module_ent.load(ast);
-        let ast_len = module_ent.len(sons);
+        let fun = self.entry_point_data.id;
+        let (kind, sons, _) = ast_data.ent(ast).parts();
+        let sons = ast_data.slice(sons);
         let (vis, mutable) = match kind {
-            AKind::VarStatement(a_vis, mutable) => (vis.join(a_vis), mutable),
+            ast::Kind::VarStatement(a_vis, mutable) => (vis.join(a_vis), mutable),
             _ => unreachable!(),
         };
 
-        let (linkage, alias) = self.resolve_linkage(module, attrs)?;
+        let (linkage, alias) = self.resolve_linkage(ast_data, attrs)?;
 
-        for i in 0..ast_len {
-            let module_ent = &self.modules[module];
-            let var_line = module_ent.get(sons, i);
-            let ident_group = module_ent.son(var_line, 0);
-            let ident_group_len = module_ent.ast_len(ident_group);
-            let ty = module_ent.son(var_line, 1);
-            let value_group = module_ent.son(var_line, 2);
+        for &ast in sons {
+            let sons = ast_data.sons(ast);
+            let (ident_group, ty, value_group) = (sons[0], sons[1], sons[2]);
             let ty = if ty.is_reserved_value() {
                 None
             } else {
-                Some(self.parse_type(module, ty)?)
+                Some(self.parse_type(ast_data, module, ty)?)
             };
 
-            for i in 0..ident_group_len {
-                let hint = self.modules[module].son_ent(ident_group, i).token;
-                let id = GLOBAL_SALT.add(hint.span.hash).add(scope).add(module_id);
-
-                let (shadowed, global) = self.state.globals.insert(id, GlobalEnt::default());
-                if let Some(shadowed) = shadowed {
-                    return Err(FError::new(
-                        error::Kind::RedefinedGlobal(shadowed.hint.clone()),
-                        hint,
-                    ));
+            let value_group = if value_group.is_reserved_value() { &[] } else { ast_data.sons(value_group) };
+            for (i, &ident) in ast_data.sons(ident_group).iter().enumerate() {
+                let hint = ast_data.token(ident);
+                let mut id = self.hash_token(hint);
+                if scope != ID(0) { 
+                    id = id.add(scope); 
                 }
-
-                let ty = if !value_group.is_reserved_value() {
-                    let value = self.modules[module].son(value_group, i);
-                    let value = self.expr(fun, value, body)?;
-                    self.modules[module].assign_global(global, value, body)
-                } else {
-                    ty.unwrap()
-                };
 
                 let g_ent = GlobalEnt {
                     vis,
                     mutable,
                     id,
                     module,
-                    ty,
                     ast,
                     hint,
                     attrs,
                     linkage,
                     alias,
+
+                    ..Default::default()
                 };
 
-                self.state.globals[global] = g_ent;
+                let id = self.add_global(module, g_ent)?;
 
-                self.modules[module].add_global(global);
+                let ty = if !value_group.is_empty() {
+                    let value = self.expr(ast_data, fun, value_group[i], builder)?;
+                    builder.assign_global(id, value);
+                    builder.data.locals[value].ty
+                } else {
+                    ty.unwrap()
+                };
 
-                self.context.resolved_globals.push(global);
+                self.globals[id].ty = ty;
+
+                self.resolved_globals.push(id);
             }
         }
 
         Ok(())
     }
 
-    fn collect_fun(
+    pub fn collect_fun(
         &mut self,
         module: Mod,
-        ast: Ast,
-        attrs: Ast,
-        scope: Ast,
+        mut ast: Ast,
+        mut attrs: Ast,
+        mut scope: Ast,
         scope_id: ID,
         generics: Ast,
         vis: Vis,
+        temp_ast_data: &mut ast::Data,
+        saved_ast_data: &mut ast::Data,
+        reloc: &mut ast::Reloc,
     ) -> Result {
-        let module_ent = &self.modules[module];
-        let module_id = module_ent.id;
-        let &AstEnt { kind, sons, .. } = module_ent.load(ast);
-        let vis = match kind {
-            AKind::Fun(a_vis) => vis.join(a_vis),
-            _ => unreachable!(),
-        };
-        let header = module_ent.get(sons, 0);
-        let header_ent = *module_ent.load(header);
-        let header_len = module_ent.len(header_ent.sons);
+        let header = temp_ast_data.sons(ast)[0];
+        let (kind, sons, hint) = temp_ast_data.ent(header).parts();
+        let sons = temp_ast_data.slice(sons);
 
-        let salt = match header_ent.kind {
-            AKind::FunHeader(op_kind) => match op_kind {
-                OpKind::Normal => FUN_SALT,
-                OpKind::Binary => BINARY_SALT,
-                OpKind::Unary => UNARY_SALT,
-            },
+        let (op_kind, vis, mut call_conv) = match kind {
+            ast::Kind::FunHeader(op_kind, a_vis, call_conv) => {
+                (op_kind, vis.join(a_vis), call_conv)
+            }
             _ => unreachable!(),
         };
 
-        let maybe_call_conv = module_ent.get(header_ent.sons, header_len - 1);
-        let call_conv = if let Some(attr) =
-            module_ent.attr(attrs, ID::new("call_conv")).or_else(|| {
-                if maybe_call_conv.is_reserved_value() {
-                    None
-                } else {
-                    Some(maybe_call_conv)
-                }
-            }) {
-            let final_attr = module_ent
-                .a_state
-                .son_optional(attr, 1)
-                .unwrap_or(module_ent.son(attr, 0));
-            let token = *module_ent.token(final_attr);
-            let str = self.state.display(&token.span);
-            CallConv::from_str(str).ok_or_else(|| FError::new(error::Kind::InvalidCallConv, token))?
-        } else {
-            CallConv::Fast
-        };
+        if let Some(attr) = self.find_attribute(temp_ast_data, attrs, "call_conv") {
+            let sons = temp_ast_data.sons(attr);
+            let token = temp_ast_data.token(attr);
+            let name = sons
+                .get(1)
+                .ok_or_else(|| {
+                    Error::new(error::Kind::TooShortAttribute(sons.len() - 1, 1), token)
+                })?
+                .clone();
+            let token = temp_ast_data.token(name);
+            let str = self.display(token.span());
+            call_conv = CallConv::from_str(str)
+                .ok_or_else(|| Error::new(error::Kind::InvalidCallConv, token))?;
+        }
 
-        let entry = module_ent.attr(attrs, ID::new("entry")).is_some();
+        let entry = self.find_attribute(temp_ast_data, attrs, "entry").is_some();
+        let untraced = self.find_attribute(temp_ast_data, attrs, "untraced").is_some();
+        let inline = self.find_attribute(temp_ast_data, attrs, "inline").is_some();
 
-        let (linkage, mut alias) = self.resolve_linkage(module, attrs)?;
+        let (linkage, mut alias) =
+            self.resolve_linkage(&ast::DataSwitch::new(temp_ast_data, saved_ast_data), attrs)?;
 
-        let hint = header_ent.token;
-        let name_ent = *self.modules[module].get_ent(header_ent.sons, 0);
-        let (name, mut id, sig, kind, unresolved) =
-            if name_ent.kind == AKind::Ident && generics.is_reserved_value() {
-                let mut sig = self.parse_signature(module, header)?;
-                sig.call_conv = call_conv;
+        let (name_kind, name_sons, name_token) = temp_ast_data.ent(sons[0]).parts();
+        let name_sons = temp_ast_data.slice(name_sons);
+        let (name, id, sig, kind, unresolved) =
+            if name_kind == ast::Kind::Ident && generics.is_reserved_value() {
+                let sig = self.parse_signature(
+                    &ast::DataSwitch::new(temp_ast_data, saved_ast_data),
+                    module,
+                    header,
+                    call_conv,
+                )?;
 
-                let name = name_ent.token.span;
-                let fun_id = salt.add(name.hash).add(scope_id);
+                let name = name_token.span();
+                let fun_id = self.hash_span(name).add(scope_id);
 
                 if linkage == Linkage::Import && alias.is_none() {
                     alias = Some(name);
                 }
 
                 (name, fun_id, Ok(sig), FKind::Normal, true)
-            } else if name_ent.kind == AKind::Instantiation || !generics.is_reserved_value() {
-                let mut args = self.context.pool.get();
-                let mut params = self.context.pool.get();
-                let module_ent = &self.modules[module];
-                let name = if name_ent.kind == AKind::Instantiation {
-                    *module_ent.get_ent(name_ent.sons, 0)
+            } else if name_kind == ast::Kind::Instantiation || !generics.is_reserved_value() {
+                let mut args = self.temp_vec();
+                let mut params = self.temp_vec();
+                let name = if name_kind == ast::Kind::Instantiation {
+                    name_sons[0]
                 } else {
-                    name_ent
+                    sons[0]
                 };
 
-                if name.kind != AKind::Ident {
-                    return Err(FError::new(error::Kind::InvalidFunctionHeader, name.token));
+                if temp_ast_data.kind(name) != ast::Kind::Ident {
+                    return Err(Error::new(
+                        error::Kind::InvalidFunctionHeader,
+                        temp_ast_data.token(name),
+                    ));
                 }
 
-                if name_ent.kind == AKind::Instantiation {
+                if name_kind == ast::Kind::Instantiation {
                     params.extend(
-                        module_ent.slice(name_ent.sons)[1..]
+                        name_sons[1..]
                             .iter()
-                            .map(|&ast| module_ent.token(ast).span.hash),
+                            .map(|&ast| self.hash_token(temp_ast_data.token(ast))),
                     );
                 }
 
                 if !generics.is_reserved_value() {
-                    let sons = module_ent.sons(generics);
                     params.extend(
-                        module_ent
-                            .slice(sons)
+                        temp_ast_data
+                            .sons(generics)
                             .iter()
-                            .map(|&ast| module_ent.token(ast).span.hash),
+                            .map(|&ast| self.hash_token(temp_ast_data.token(ast))),
                     );
                 }
 
                 let mut arg_count = 0;
-                for i in 1..header_len - 2 {
-                    let module_ent = &self.modules[module];
-                    let arg_section = module_ent.get(header_ent.sons, i);
-                    let amount = module_ent.ast_len(arg_section) - 1;
-                    let ty = module_ent.son(arg_section, amount);
+                for &arg in &sons[1..sons.len() - 1] {
+                    let sons = temp_ast_data.sons(arg);
+                    let amount = sons.len() - 1;
+                    let ty = sons[amount];
                     let idx = args.len();
-                    args.push(GenericElement::NextArgument(amount, 0));
-                    self.load_arg(module, scope, ty, &params, &mut args)?;
+                    args.push(GenericElement::NextArgument(amount as u32, 0));
+                    self.load_arg(
+                        &ast::DataSwitch::new(temp_ast_data, saved_ast_data),
+                        module,
+                        scope,
+                        ty,
+                        &params,
+                        &mut args,
+                    )?;
                     let additional = args.len() - idx - 1;
-                    args[idx] = GenericElement::NextArgument(amount, additional);
+                    args[idx] = GenericElement::NextArgument(amount as u32, additional as u32);
                     arg_count += amount;
                 }
 
-                let id = salt.add(name.token.span.hash).add(scope_id);
+                let name_span = temp_ast_data.token(name).span();
+
+                let id = self.hash_span(name_span).add(scope_id);
 
                 let sig = GenericSignature {
                     params: params.clone(),
@@ -2147,16 +2143,21 @@ impl Ctx {
                     arg_count,
                 };
 
-                let nm = name.token.span;
+                ast = saved_ast_data.relocate(ast, temp_ast_data, reloc);
+                attrs = saved_ast_data.relocate(attrs, temp_ast_data, reloc);
+                scope = saved_ast_data.relocate(scope, temp_ast_data, reloc);
 
-                (nm, id, Err(sig), FKind::Generic, false)
+                (name_span, id, Err(sig), FKind::Generic, false)
             } else {
-                return Err(FError::new(error::Kind::InvalidFunctionHeader, name_ent.token));
+                return Err(Error::new(error::Kind::InvalidFunctionHeader, name_token));
             };
 
-        id = id.add(module_id);
-
-        let module_ent = &self.modules[module];
+        let id = match op_kind {
+            ast::OpKind::Normal => id,
+            ast::OpKind::Unary => id.add(ID::new("-u-")),
+            ast::OpKind::Binary => id.add(ID::new("-b-")),
+        };
+        
         let fun_ent = FunEnt {
             vis,
             id,
@@ -2164,8 +2165,8 @@ impl Ctx {
             hint,
             kind,
             name,
-            untraced: module_ent.attr(attrs, ID::new("untraced")).is_some(),
-            inline: module_ent.attr(attrs, ID::new("inline")).is_some(),
+            untraced,
+            inline,
             attrs,
             scope,
             linkage,
@@ -2175,13 +2176,7 @@ impl Ctx {
 
             ..Default::default()
         };
-        let (shadowed, id) = self.add_fun(module, fun_ent);
-        if let Some(shadowed) = shadowed {
-            return Err(FError::new(
-                error::Kind::Redefinition(shadowed.hint.clone()),
-                hint,
-            ));
-        }
+        let id = self.add_fun(module, fun_ent)?;
 
         if let Err(sig) = sig {
             self.generic_funs.insert(GFun { id, sig, call_conv });
@@ -2189,164 +2184,154 @@ impl Ctx {
 
         if unresolved {
             if entry {
-                self.context.entry_points.push(id);
+                self.entry_points.push(id);
             }
-            self.context.unresolved.push(id);
+            self.unresolved.push(id);
         }
 
         Ok(())
     }
 
-    fn add_entry(&mut self, id: Fun, body: &mut FunBody) -> Result {
+    crate::impl_item_adder!(
+        add_fun, funs, FunEnt, Fun
+        add_global, globals, GlobalEnt, Global 
+    );
+
+    pub fn add_entry(&mut self, id: Fun, builder: &mut Builder) -> Result {
         let MainFunData {
             arg1,
             arg2,
             return_value,
             ..
-        } = self.context.entry_point_data;
+        } = self.entry_point_data;
         let FunEnt {
             module, sig, hint, ..
         } = self.funs[id];
-        let module_ent = &mut self.modules[module];
 
         let value = if sig.ret.is_none() {
             None
         } else {
-            Some(module_ent.add_temp_value(sig.ret.unwrap()))
+            Some(builder.add_temp_local(sig.ret.unwrap()))
         };
 
-        let args = match module_ent.type_slice(sig.args) {
+        let args = match self.type_slice(sig.args) {
             &[] => EntityList::new(),
             &[count, args] => {
-                let int = self.state.builtin_repo.int;
-                let temp_ptr = self.pointer_of(int, false);
-                if count != int || args != self.pointer_of(temp_ptr, false) {
-                    return Err(FError::new(error::Kind::InvalidEntrySignature, hint));
+                let temp_ptr = self.pointer_of(module, INT_TY, false);
+                if count != INT_TY || args != self.pointer_of(module, temp_ptr, false) {
+                    return Err(Error::new(error::Kind::InvalidEntrySignature, hint));
                 }
-                self.modules[module].add_values(&[arg1, arg2])
+                builder.add_locals(&[arg1, arg2])
             }
             _ => {
-                return Err(FError::new(error::Kind::InvalidEntrySignature, hint));
+                return Err(Error::new(error::Kind::InvalidEntrySignature, hint));
             }
         };
 
-        let module_ent = &mut self.modules[module];
         if let Some(value) = value {
-            module_ent.add_inst(IKind::Call(id, args), value, hint, body);
-            module_ent.add_inst(IKind::Assign(return_value), value, hint, body);
+            builder.add_cmd(cmd::Kind::Call(id, args), value);
+            builder.add_cmd(cmd::Kind::Assign(return_value), value);
         } else {
-            module_ent.add_valueless_inst(IKind::Call(id, args), hint, body);
+            builder.add_valueless_cmd(cmd::Kind::Call(id, args));
         }
 
         Ok(())
     }
 
-    fn parse_signature(&mut self, module: Mod, header: Ast) -> Result<Signature> {
-        let mut args = EntityList::new();
-        let module_ent = &self.modules[module];
-        let header_len = module_ent.ast_len(header);
+    pub fn parse_signature(
+        &mut self,
+        ast_data: &ast::DataSwitch,
+        module: Mod,
+        header: Ast,
+        call_conv: CallConv,
+    ) -> Result<Signature> {
+        let mut args = self.temp_vec();
+        let sons = ast_data.sons(header);
 
-        for i in 1..header_len - 2 {
-            let module_ent = &self.modules[module];
-            let arg_section = module_ent.son_ent(header, i).sons;
-            let len = module_ent.len(arg_section);
-            let last = module_ent.get(arg_section, len - 1);
-            let ty = self.parse_type(module, last)?;
-            for _ in 0..len - 1 {
-                self.modules[module].push_type(&mut args, ty)
-            }
+        for &argument in &sons[1..sons.len() - 1] {
+            let sons = ast_data.sons(argument);
+            let ty = self.parse_type(ast_data, module, sons[sons.len() - 1])?;
+            args.extend(std::iter::repeat(ty).take(sons.len() - 1));
         }
 
-        let raw_ret_ty = self.modules[module].son(header, header_len - 2);
+        let raw_ret_ty = sons[sons.len() - 1];
         let ret = if raw_ret_ty.is_reserved_value() {
             PackedOption::default()
         } else {
-            PackedOption::from(self.parse_type(module, raw_ret_ty)?)
+            PackedOption::from(self.parse_type(ast_data, module, raw_ret_ty)?)
         };
 
         Ok(Signature {
-            call_conv: CallConv::Fast,
-            args,
+            call_conv,
+            args: self.ctx.add_type_slice(args.as_slice()),
             ret,
         })
     }
 
-    fn load_arg(
+    pub fn load_arg(
         &mut self,
+        ast_data: &ast::DataSwitch,
         module: Mod,
         scope: Ast,
         ast: Ast,
         params: &[ID],
         buffer: &mut Vec<GenericElement>,
     ) -> Result {
-        let mut stack = self.context.pool.get();
+        let mut stack = self.temp_vec();
+        let scope_type = ast_data.son(scope, 1);
         stack.push((ast, false));
 
         while let Some(&(ast, done)) = stack.last() {
-            let module_ent = &self.modules[module];
-            let &AstEnt { kind, sons, token } = module_ent.load(ast);
+            let (kind, _, token) = ast_data.ent(ast).parts();
             if done {
-                if kind == AKind::Instantiation {
+                if kind == ast::Kind::Instantiation {
                     buffer.push(GenericElement::ScopeEnd);
                 }
                 stack.pop();
                 continue;
             }
             stack.last_mut().unwrap().1 = true;
+            let sons = ast_data.sons(ast);
             match kind {
-                AKind::Ident => {
-                    if token.span.hash == ID::new("Self") && !scope.is_reserved_value() {
-                        let ty = module_ent.son(scope, 1);
-                        stack.push((ty, false));
+                ast::Kind::Ident => {
+                    if self.display_token(token) == "Self" && !scope.is_reserved_value() {
+                        stack.push((scope_type, false));
                     } else {
-                        let id = token.span.hash;
+                        let id = self.hash_token(token);
                         if let Some(index) = params.iter().position(|&p| p == id) {
-                            buffer.push(GenericElement::Parameter(index));
+                            buffer.push(GenericElement::Parameter(index as u32));
                         } else {
-                            let ty = self.parse_type(module, ast)?;
-                            buffer.push(GenericElement::Element(ty, None));
+                            let ty = self.parse_type(ast_data, module, ast)?;
+                            buffer.push(GenericElement::Element(ty, None.into()));
                         }
                     }
                 }
-                AKind::Instantiation => {
-                    let sons = module_ent.sons(ast);
-                    let header = module_ent.get(sons, 0);
-                    let ty = self.parse_type(module, header)?;
-                    buffer.push(GenericElement::Element(ty, None));
+                ast::Kind::Instantiation => {
+                    let ty = self.parse_type(ast_data, module, sons[0])?;
+                    buffer.push(GenericElement::Element(ty, None.into()));
                     buffer.push(GenericElement::ScopeStart);
-                    stack.extend(
-                        self.modules[module].slice(sons)[1..]
-                            .iter()
-                            .map(|&a| (a, false)),
-                    );
+                    stack.extend(sons[1..].iter().map(|&a| (a, false)));
                 }
-                AKind::Ref(mutable) => {
-                    let pointed = module_ent.get(sons, 0);
+                ast::Kind::Ref(mutable) => {
+                    let pointed = sons[0];
                     buffer.push(GenericElement::Pointer(mutable));
                     stack.push((pointed, false));
                 }
-                AKind::Array => {
-                    let element = module_ent.get(sons, 0);
-                    let len = module_ent.get(sons, 1);
-                    buffer.push(GenericElement::Array(None));
+                ast::Kind::Array => {
+                    let element = sons[0];
+                    let len = sons[1];
+                    buffer.push(GenericElement::Array(Err(len)));
                     stack.push((element, false));
                     stack.push((len, false));
                 }
-                AKind::Lit => {
-                    let ty = self.parse_type(module, ast)?;
-                    buffer.push(GenericElement::Element(ty, None));
-                }
-                _ => todo!(
-                    "{}",
-                    AstDisplay::new(self.state, &self.modules[module].a_state, ast)
-                ),
+                _ => todo!("{}", ast::Display::new(self, ast_data, ast)),
             }
         }
 
         Ok(())
     }
 
-    fn load_arg_from_datatype(
+    pub fn load_arg_from_datatype(
         &mut self,
         ty: Ty,
         arg_buffer: &mut Vec<GenericElement>,
@@ -2357,12 +2342,8 @@ impl Ctx {
 
         while let Some((ty, done)) = stack.last_mut() {
             let ty = *ty;
-            let TypeEnt {
-                params,
-                kind,
-                module,
-                ..
-            } = &self.types[ty];
+            let params = self.type_params(ty);
+            let kind = self.type_kind(ty);
 
             if *done {
                 if !params.is_empty() {
@@ -2376,116 +2357,87 @@ impl Ctx {
 
             if params.is_empty() {
                 match kind {
-                    &TKind::Pointer(pointed, mutable) => {
+                    ty::Kind::Pointer(pointed, mutable) => {
                         arg_buffer.push(GenericElement::Pointer(mutable));
                         stack.push((pointed, false));
                     }
-                    &TKind::Array(element, size) => {
-                        arg_buffer.push(GenericElement::Array(Some(ty)));
+                    ty::Kind::Array(element, size) => {
+                        arg_buffer.push(GenericElement::Array(Ok(size)));
                         stack.push((element, false));
-                        let size = self
-                            .state
-                            .constant_of(self.module, TypeConst::Int(size as i64));
-                        stack.push((size, false));
                     }
                     _ => {
-                        arg_buffer.push(GenericElement::Element(ty, Some(ty)));
+                        arg_buffer.push(GenericElement::Element(ty, Some(ty).into()));
                     }
                 }
                 continue;
             }
 
-            let module_ent = &self.modules[*module];
-            let slice = module_ent.type_slice(*params);
-            arg_buffer.push(GenericElement::Element(slice[0], Some(ty)));
+            let slice = self.type_slice(params);
+            arg_buffer.push(GenericElement::Element(slice[0], Some(ty).into()));
 
             arg_buffer.push(GenericElement::ScopeStart);
             stack.extend(slice[1..].iter().map(|&p| (p, false)));
         }
     }
 
-    fn pointer_base(&mut self, ty: Ty, token: Token) -> Result<Ty> {
-        self.t_state
+    pub fn pointer_base(&mut self, ty: Ty, token: Token) -> Result<Ty> {
+        self.ctx
             .pointer_base(ty)
-            .ok_or_else(|| FError::new(error::Kind::NonPointerDereference, token))
+            .ok_or_else(|| Error::new(error::Kind::NonPointerDereference, token))
     }
 
-    fn parse_type(&mut self, module: Mod, ast: Ast) -> Result<Ty> {
-        TParser::new(self.state, self.context)
-            .parse_type(module, ast)
-            .map_err(|err| FError::new(error::Kind::TypeError(err), Token::default()))
+    pub fn parse_type(&mut self, ast_data: &ast::DataSwitch, module: Mod, ast: Ast) -> Result<Ty> {
+        self.ctx
+            .parse_type(ast_data, module, ast)
+            .map_err(Into::into)
     }
 
-    fn resolve_linkage(&self, module: Mod, attrs: Ast) -> Result<(Linkage, Option<Span>)> {
-        let module_ent = &self.modules[module];
-        if let Some(attr) = module_ent.attr(attrs, ID::new("linkage")) {
-            let len = module_ent.ast_len(attr);
-            if len < 2 {
-                return Err(FError::new(
-                    error::Kind::TooShortAttribute(len - 1, 1),
-                    *module_ent.token(attr),
+    pub fn resolve_linkage(
+        &self,
+        ast_data: &ast::DataSwitch,
+        attrs: Ast,
+    ) -> Result<(Linkage, Option<Span>)> {
+        if let Some(attr) = self.find_attribute(ast_data, attrs, "linkage") {
+            let sons = ast_data.sons(attr);
+            let linkage = if let Some(&linkage) = sons.get(1) {
+                linkage
+            } else {
+                return Err(Error::new(
+                    error::Kind::TooShortAttribute(sons.len() - 1, 1),
+                    ast_data.token(attr),
                 ));
-            }
-            let linkage = module_ent.son_ent(attr, 1).token.span;
-            let linkage = match self.state.display(&linkage) {
+            };
+            let linkage = ast_data.token(linkage);
+            let linkage = match self.display(linkage.span()) {
                 "import" => Linkage::Import,
                 "export" => Linkage::Export,
                 "hidden" => Linkage::Hidden,
                 "preemptible" => Linkage::Preemptible,
                 "local" => Linkage::Local,
-                _ => return Err(FError::new(error::Kind::InvalidLinkage, *module_ent.token(attr))),
+                _ => return Err(Error::new(error::Kind::InvalidLinkage, linkage)),
             };
 
-            Ok((
-                linkage,
-                module_ent
-                    .son_optional(attr, 2)
-                    .map(|s| module_ent.token(s).span),
-            ))
+            Ok((linkage, sons.get(2).map(|&name| ast_data.span(name))))
         } else {
             Ok((Linkage::Export, None))
         }
     }
 
-    fn pointer_of(&mut self, ty: Ty, mutable: bool) -> Ty {
-        self.state.pointer_of(self.module, ty, mutable)
-    }*/
-
-    fn find_computed(&mut self, source_module: Mod, id: ID) -> Option<Fun> {
-        if let Some(&fun) = self.funs.index(id) {
-            self.modules[source_module].add_fun(fun);
-            return Some(fun);
-        }
-
-        None
-    }
-
-    fn add_fun(&mut self, module: Mod, fun_ent: FunEnt) -> (Option<FunEnt>, Fun) {
-        let id = fun_ent.id;
-        let (shadow, fun) = self.funs.insert(id, fun_ent);
-        self.modules[module].add_fun(fun);
-        (shadow, fun)
-    }
-
-    fn push_scope(&mut self) {
+    pub fn push_scope(&mut self) {
         self.frames.push(self.vars.len());
     }
 
-    fn pop_scope(&mut self) {
+    pub fn pop_scope(&mut self) {
         let idx = self.frames.pop().unwrap();
         self.vars.truncate(idx)
     }
 
-    fn find_variable(&self, id: ID) -> Option<Local> {
-        self.vars.iter().rev().find(|v| v.0 == id).map(|v| v.1)
-    }
-
-    fn find_loop(&self, token: &Token) -> std::result::Result<Loop, bool> {
-        if token.span.len() == 0 {
+    pub fn find_loop(&self, token: Token) -> std::result::Result<Loop, bool> {
+        if token.kind() == token::Kind::None {
             return self.loops.last().cloned().ok_or(true);
         }
 
-        let name = token.span.hash;
+        let name = self.hash_token(token);
 
         self.loops
             .iter()
@@ -2495,45 +2447,23 @@ impl Ctx {
             .ok_or_else(|| self.loops.is_empty())
     }
 
-    fn add_builtin_functions(&mut self) {
+    pub fn add_builtin_functions(&mut self) {
         for &i in ALL_BUILTIN_TYPES {
             for &j in ALL_BUILTIN_TYPES {
                 let name = self.type_name(i);
-                self.create_builtin_fun(
-                    Some(j),
-                    name,
-                    &[j],
-                    Some(i),
-                );
+                self.create_builtin_fun(Some(j), name, &[j], Some(i));
             }
         }
 
         let integer_types = &[
-            I8_TY,
-            I16_TY,
-            I32_TY,
-            I64_TY,
-            U8_TY,
-            U16_TY,
-            U32_TY,
-            U64_TY,
-            INT_TY,
-            UINT_TY
+            I8_TY, I16_TY, I32_TY, I64_TY, U8_TY, U16_TY, U32_TY, U64_TY, INT_TY, UINT_TY,
         ][..];
 
         let builtin_unary_ops = [
             ("~ + ++ --", integer_types),
             (
                 "- abs",
-                &[
-                    I8_TY,
-                    I16_TY,
-                    I32_TY,
-                    I64_TY,
-                    F32_TY,
-                    F64_TY,
-                    INT_TY,
-                ][..],
+                &[I8_TY, I16_TY, I32_TY, I64_TY, F32_TY, F64_TY, INT_TY][..],
             ),
             ("!", &[BOOL_TY][..]),
         ];
@@ -2554,10 +2484,7 @@ impl Ctx {
 
         let builtin_bin_ops = [
             ("+ - * / % == != >= <= > < ^ | & >> <<", integer_types),
-            (
-                "+ - * / == != >= <= > <",
-                &[F32_TY, F64_TY][..],
-            ),
+            ("+ - * / == != >= <= > <", &[F32_TY, F64_TY][..]),
             ("&& || ^ | &", &[BOOL_TY][..]),
         ];
 
@@ -2570,18 +2497,13 @@ impl Ctx {
                     } else {
                         ty
                     };
-                    self.create_builtin_fun(
-                        Some(ty),
-                        op_span,
-                        &[ty, ty],
-                        Some(return_type),
-                    );
+                    self.create_builtin_fun(Some(ty), op_span, &[ty, ty], Some(return_type));
                 }
             }
         }
     }
 
-    fn create_builtin_fun(
+    pub fn create_builtin_fun(
         &mut self,
         caller: Option<Ty>,
         name: Span,
@@ -2628,28 +2550,241 @@ impl DerefMut for Ctx {
     }
 }
 
-crate::impl_entity!(
-    Command, Section
-);
+crate::impl_entity!(Cmd, Section);
 
-fn assert_type(actual: Ty, expected: Ty, token: &Token) -> Result {
+pub fn assert_type(actual: Ty, expected: Ty, token: Token) -> Result {
     if actual == expected {
         Ok(())
     } else {
-        Err(Error::new(error::Kind::TypeMismatch(actual, expected), *token))
+        Err(Error::new(
+            error::Kind::TypeMismatch(actual, expected),
+            token,
+        ))
     }
 }
 
+pub struct Builder<'a> {
+    data: &'a mut Data,
+    body: &'a mut Body,
+}
+
+impl<'a> Builder<'a> {
+    pub fn new(data: &'a mut Data, body: &'a mut Body) -> Self {
+        Self { data, body }
+    }
+
+    pub fn new_block(&mut self) -> Section {
+        let block = self.data.sections.push(Default::default());
+
+        if self.body.entry_block.is_none() {
+            self.body.entry_block = PackedOption::from(block);
+            self.body.last_block = PackedOption::from(block);
+        } else {
+            let last = self.body.last_block.unwrap();
+            self.data.sections[last].next = PackedOption::from(block);
+            self.data.sections[block].prev = PackedOption::from(last);
+            self.body.last_block = PackedOption::from(block);
+        }
+
+        block
+    }
+
+    pub fn select_block(&mut self, block: Section) {
+        debug_assert!(self.body.current_block.is_none());
+        self.body.current_block = PackedOption::from(block);
+    }
+
+    pub fn add_valueless_cmd(&mut self, kind: cmd::Kind) -> Cmd {
+        self.add_inst_low(kind, Default::default())
+    }
+
+    pub fn add_cmd(&mut self, kind: cmd::Kind, value: Local) -> Cmd {
+        let inst = self.add_inst_low(kind, PackedOption::from(value));
+        self.data.locals[value].inst = PackedOption::from(inst);
+        inst
+    }
+
+    fn add_inst_low(&mut self, kind: cmd::Kind, value: PackedOption<Local>) -> Cmd {
+        let inst = self.data.cmds.push(CmdEnt {
+            kind,
+            value,
+
+            ..Default::default()
+        });
+
+        let last = self.body.current_block.unwrap();
+        let block = &mut self.data.sections[last];
+
+        if block.end.is_none() {
+            block.start = PackedOption::from(inst);
+            block.end = PackedOption::from(inst);
+        } else {
+            let last = block.end.unwrap();
+            self.data.cmds[last].next = PackedOption::from(inst);
+            self.data.cmds[inst].prev = PackedOption::from(last);
+            block.end = PackedOption::from(inst);
+        }
+
+        if kind.is_closing() {
+            self.body.current_block = PackedOption::default();
+        }
+
+        inst
+    }
+
+    pub fn add_temp_local(&mut self, ty: Ty) -> Local {
+        self.add_local(ty, false)
+    }
+
+    pub fn add_local(&mut self, ty: Ty, mutable: bool) -> Local {
+        self.data.locals.push(LocalEnt {
+            ty,
+            mutable,
+
+            ..Default::default()
+        })
+    }
+
+    pub fn add_locals(&mut self, slice: &[Local]) -> EntityList<Local> {
+        EntityList::from_slice(slice, &mut self.data.local_slices)
+    }
+
+    pub fn locals(&self, list: EntityList<Local>) -> &[Local] {
+        list.as_slice(&self.data.local_slices)
+    }
+
+    pub fn push_swection_arg(&mut self, block: Section, arg: Local) {
+        let block = &mut self.data.sections[block];
+        block.args.push(arg, &mut self.data.local_slices);
+    }
+
+    pub fn set_block_args(&mut self, entry_block: Section, args: EntityList<Local>) {
+        self.data.sections[entry_block].args = args;
+    }
+
+    pub fn add_zero_value(&mut self, ty: Ty) -> Local {
+        let value = self.add_temp_local(ty);
+        self.add_cmd(cmd::Kind::Zeroed, value);
+        value
+    }
+
+    pub fn add_var_decl(&mut self, init: Local, carrier: Local) {
+        self.add_cmd(cmd::Kind::VarDecl(init), carrier);
+    }
+
+    pub fn add_return_stmt(&mut self, value: Option<Local>) {
+        self.add_inst_low(
+            cmd::Kind::Return(value.map(PackedOption::from).unwrap_or_default()),
+            Default::default(),
+        );
+    }
+
+    pub fn type_of_value(&self, value: Local) -> Ty {
+        self.data.locals[value].ty
+    }
+
+    pub fn last_section_arg(&self, entry_block: Section) -> Option<Local> {
+        self.data.sections[entry_block]
+            .args
+            .as_slice(&self.data.local_slices)
+            .last()
+            .cloned()
+    }
+
+    pub fn offset_value(&mut self, target: Local, ty: Ty, offset: Size) -> Local {
+        let mutable = self.is_mutable(target);
+        let result = self.data.locals.push(LocalEnt {
+            ty,
+            mutable,
+            offset,
+
+            ..Default::default()
+        });
+
+        self.add_cmd(cmd::Kind::Offset(target), result);
+
+        result
+    }
+
+    pub fn is_mutable(&self, target: Local) -> bool {
+        self.data.locals[target].mutable
+    }
+
+    pub fn assign(&mut self, target: Local, value: Local) {
+        self.add_cmd(cmd::Kind::Assign(target), value);
+    }
+
+    pub fn reference(&mut self, ty: Ty, value: Local) -> Local {
+        let result = self.add_local(ty, true);
+        self.add_cmd(cmd::Kind::Ref(value), result);
+        result
+    }
+
+    pub fn assign_global(&mut self, global: Global, value: Local) -> Ty {
+        let ty = self.type_of_value(value);
+        let loaded = self.add_local(ty, true);
+        self.add_cmd(cmd::Kind::GlobalLoad(global), loaded);
+        self.assign(loaded, value);
+        ty
+    }
+
+    pub fn copy_value(&mut self, value: Local) -> Local {
+        let value = self.data.locals[value];
+        self.data.locals.push(value)
+    }
+
+    pub fn block_args(&self, block: Section) -> &[Local] {
+        self.data.sections[block]
+            .args
+            .as_slice(&self.data.local_slices)
+    }
+
+    pub fn cast(&mut self, target: Local, ty: Ty) -> Local {
+        let mutable = self.is_mutable(target);
+        let value = self.add_local(ty, mutable);
+        self.add_cmd(cmd::Kind::Cast(target), value);
+        value
+    }
+
+    pub fn add_valueless_call(&mut self, fun: Fun, args: &[Local]) {
+        let args = self.add_locals(args);
+        self.add_valueless_cmd(cmd::Kind::Call(fun, args));
+    }
+
+    pub fn add_call(&mut self, fun: Fun, args: &[Local], return_ty: Ty) -> Local {
+        let args = self.add_locals(args);
+        let value = self.add_temp_local(return_ty);
+        self.add_cmd(cmd::Kind::Call(fun, args), value);
+        value
+    }
+}
+
+pub struct ScopeState {
+    previous: Ast,
+    generics: Ast,
+    id: ID,
+    shadow: Option<(ID, Option<Item>)>,
+    vis: Vis,
+}
+
+#[derive(Debug, Clone, Default, QuickSer)]
+pub struct Data {
+    locals: PrimaryMap<Local, LocalEnt>,
+    cmds: PrimaryMap<Cmd, CmdEnt>,
+    sections: PrimaryMap<Section, SectionEnt>,
+    local_slices: ListPool<Local>,
+}
+
 #[derive(Debug, Clone, Default, Copy, RealQuickSer)]
-pub struct ValueEnt {
+pub struct LocalEnt {
     pub ty: Ty,
-    pub inst: PackedOption<Command>,
+    pub inst: PackedOption<Cmd>,
     pub offset: Size,
     pub mutable: bool,
     pub on_stack: bool,
 }
 
-impl ValueEnt {
+impl LocalEnt {
     pub fn temp(ty: Ty) -> Self {
         Self {
             ty,
@@ -2659,162 +2794,166 @@ impl ValueEnt {
 }
 
 #[derive(Debug, Default, Clone, Copy, RealQuickSer)]
-pub struct CommandEnt {
-    pub kind: IKind,
-    pub value: PackedOption<Value>,
-    pub prev: PackedOption<Command>,
-    pub next: PackedOption<Command>,
+pub struct CmdEnt {
+    pub kind: cmd::Kind,
+    pub value: PackedOption<Local>,
+    pub prev: PackedOption<Cmd>,
+    pub next: PackedOption<Cmd>,
     pub block: PackedOption<Section>,
 }
 
-#[derive(Debug, Clone, Copy, RealQuickSer)]
-pub enum IKind {
-    NoOp,
-    FunPointer(Fun),
-    FunPointerCall(Local, EntityList<Local>),
-    GlobalLoad(GlobalValue),
-    Call(Fun, EntityList<Local>),
-    VarDecl(Local),
-    Zeroed,
-    Uninitialized,
-    Lit(token::Kind),
-    Return(PackedOption<Local>),
-    Assign(Local),
-    Jump(Section, EntityList<Local>),
-    JumpIfTrue(Local, Section, EntityList<Local>),
-    Offset(Local),
-    Deref(Local, bool),
-    Ref(Local),
-    Cast(Local),
-}
+pub mod cmd {
+    use super::*;
 
-impl IKind {
-    pub fn is_closing(&self) -> bool {
-        matches!(self, IKind::Jump(..) | IKind::Return(..))
+    #[derive(Debug, Clone, Copy, RealQuickSer)]
+    pub enum Kind {
+        NoOp,
+        FunPointer(Fun),
+        FunPointerCall(Local, EntityList<Local>),
+        GlobalLoad(Global),
+        Call(Fun, EntityList<Local>),
+        VarDecl(Local),
+        Zeroed,
+        Uninitialized,
+        Lit(token::Kind),
+        Return(PackedOption<Local>),
+        Assign(Local),
+        Jump(Section, EntityList<Local>),
+        JumpIfTrue(Local, Section, EntityList<Local>),
+        Offset(Local),
+        Deref(Local, bool),
+        Ref(Local),
+        Cast(Local),
     }
-}
 
-impl Default for IKind {
-    fn default() -> Self {
-        IKind::NoOp
+    impl Kind {
+        pub fn is_closing(&self) -> bool {
+            matches!(self, Kind::Jump(..) | Kind::Return(..))
+        }
+    }
+
+    impl Default for Kind {
+        fn default() -> Self {
+            Kind::NoOp
+        }
     }
 }
 
 #[derive(Debug, Clone, Copy, Default, RealQuickSer)]
-pub struct BlockEnt {
+pub struct SectionEnt {
     pub prev: PackedOption<Section>,
     pub next: PackedOption<Section>,
 
     pub args: EntityList<Local>,
 
-    pub start: PackedOption<Command>,
-    pub end: PackedOption<Command>,
+    pub start: PackedOption<Cmd>,
+    pub end: PackedOption<Cmd>,
 }
 
 impl ErrorDisplayState<Error> for Ctx {
     fn fmt(&self, e: &Error, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match e.kind() {
             &error::Kind::DuplicateEntrypoint(other) => {
-                let other = self.state.funs[other].hint.clone();
+                let other = self.funs[other].hint.clone();
                 writeln!(
                     f,
                     "entrypoint already defined here:\n{}",
-                    TokenDisplay::new(self.state, &other)
+                    token::Display::new(self, &other)
                 )?;
-            },
+            }
             error::Kind::TooShortAttribute(actual, expected) => {
                 writeln!(
                     f,
                     "too short attribute, expected {} but got {}",
                     expected, actual
                 )?;
-            },
+            }
             error::Kind::InvalidCallConv => {
-                crate::types::call_conv_error(f)?;
-            },
+                CallConv::error(f)?;
+            }
             error::Kind::InvalidLinkage => {
                 writeln!(f, "Invalid linkage, valid linkages are:")?;
                 for cc in ["import", "local", "export", "preemptible", "hidden"] {
                     writeln!(f, "  {}", cc)?;
                 }
-            },
+            }
             error::Kind::TypeError(error) => {
-                writeln!(f, "{}", TErrorDisplay::new(self.state, &error))?;
-            },
+                writeln!(f, "{}", ErrorDisplay::new(&self.ctx, error))?;
+            }
             error::Kind::Redefinition(other) => {
-                writeln!(f, "redefinition of\n{}", TokenDisplay::new(self.state, &other))?;
-            },
+                writeln!(f, "redefinition of\n{}", token::Display::new(self, &other))?;
+            }
             error::Kind::InvalidBitCast(actual, expected) => {
                 writeln!(
                     f,
                     "invalid bit-cast, expected type of size {:?} but got {:?}",
                     expected, actual
                 )?;
-            },
+            }
             error::Kind::AssignToImmutable => {
                 writeln!(f, "cannot assign to immutable value")?;
-            },
+            }
             error::Kind::ExpectedValue => {
                 writeln!(f, "expected this expression to have a value")?;
-            },
+            }
             &error::Kind::TypeMismatch(actual, expected) => {
                 writeln!(
                     f,
                     "type mismatch, expected '{}' but got '{}'",
-                    TypeDisplay::new(&self.state, expected),
-                    TypeDisplay::new(&self.state, actual)
+                    TypeDisplay::new(&self, expected),
+                    TypeDisplay::new(&self, actual)
                 )?;
-            },
+            }
             error::Kind::FunctionNotFound(name, arguments) => {
                 writeln!(
                     f,
                     "'{}({})' does not exist within current scope",
-                    self.state.display(name),
+                    self.display(*name),
                     arguments
                         .iter()
-                        .map(|t| format!("{}", TypeDisplay::new(&self.state, *t)))
+                        .map(|t| format!("{}", TypeDisplay::new(&self, *t)))
                         .collect::<Vec<_>>()
                         .join(", ")
                 )?;
-            },
+            }
             error::Kind::GenericMismatch(name, arguments) => {
                 writeln!(
                     f,
                     "'{}({})' does not match the generic signature",
-                    self.state.display(name),
+                    self.display(*name),
                     arguments
                         .iter()
-                        .map(|t| format!("{}", TypeDisplay::new(&self.state, *t)))
+                        .map(|t| format!("{}", TypeDisplay::new(&self, *t)))
                         .collect::<Vec<_>>()
                         .join(", ")
                 )?;
-            },
+            }
             error::Kind::UnexpectedValue => {
                 writeln!(
                     f,
                     "value not expected here, consider adding 'pass' after expression"
                 )?;
-            },
+            }
             error::Kind::UnexpectedReturnValue => {
                 writeln!(f, "return value not expected, if you want to return something, add '-> <type>' after '()' in signature")?;
-            },
+            }
             error::Kind::UnexpectedAuto => {
                 writeln!(f, "'auto' not allowed here")?;
-            },
+            }
             error::Kind::UndefinedVariable => {
                 writeln!(f, "cannot find variable in current scope")?;
-            },
+            }
             error::Kind::UnresolvedType => {
                 writeln!(
                     f,
                     "type of this expression cannot be inferred, consider annotating the type"
                 )?;
-            },
+            }
             &error::Kind::UnknownField(ty) => {
                 writeln!(
                     f,
                     "unknown field for type '{}', type has this fields (embedded included):",
-                    TypeDisplay::new(&self.state, ty)
+                    TypeDisplay::new(&self, ty)
                 )?;
                 let mut frontier = vec![(ty, Span::default(), true)];
                 let mut i = 0;
@@ -2823,143 +2962,161 @@ impl ErrorDisplayState<Error> for Ctx {
                     if !embedded {
                         continue;
                     }
-                    match &self.state.types[ty].kind {
-                        TKind::Structure(stype) => {
-                            for f in stype.fields.iter() {
-                                frontier.push((f.ty, f.hint.span, f.embedded));
+                    match self.type_kind(ty) {
+                        ty::Kind::Structure(_, fields) => {
+                            for &f in self.ctx.field_slice(fields) {
+                                let f = self.ctx.field(f);
+                                frontier.push((f.ty(), f.hint().span(), f.embedded()));
                             }
-                        },
+                        }
                         _ => (),
                     }
                     i += 1;
                 }
-    
+
                 for (ty, name, _) in frontier {
-                    writeln!(f, "  {}: {}", self.state.display(&name), TypeDisplay::new(&self.state, ty))?;
+                    writeln!(
+                        f,
+                        "  {}: {}",
+                        self.display(name),
+                        TypeDisplay::new(&self, ty)
+                    )?;
                 }
-            },
+            }
             error::Kind::MutableToImmutable => {
                 writeln!(f, "cannot take mutable reference of immutable value")?;
-            },
+            }
             error::Kind::MissingElseBranch => {
                 writeln!(f, "expected 'else' branch since 'if' branch returns value, consider adding 'pass' after last expression if this is intended")?;
-            },
+            }
             error::Kind::ContinueOutsideLoop => {
                 writeln!(f, "cannot use 'continue' outside of loop")?;
-            },
+            }
             error::Kind::BreakOutsideLoop => {
                 writeln!(f, "cannot use 'break' outside of loop")?;
-            },
+            }
             error::Kind::WrongLabel => {
                 writeln!(f, "parent loop with this label does not exist")?;
-            },
+            }
             error::Kind::NonPointerDereference => {
                 writeln!(f, "cannot dereference non-pointer type")?;
-            },
+            }
             error::Kind::InvalidFunctionHeader => {
                 writeln!(f, "invalid function header, syntax for header is:\n  ident | op [ '[' ident {{ ',' ident }} ']' ]")?;
-            },
+            }
             &error::Kind::AmbiguousFunction(a, b) => {
-                let a = self.state.funs[a].hint.clone();
-                let b = self.state.funs[b].hint.clone();
+                let a = self.funs[a].hint.clone();
+                let b = self.funs[b].hint.clone();
                 writeln!(
                     f,
                     "ambiguous function call, matches\n{}\nand\n{}",
-                    TokenDisplay::new(self.state, &a),
-                    TokenDisplay::new(self.state, &b)
+                    token::Display::new(self, &a),
+                    token::Display::new(self, &b)
                 )?;
-            },
+            }
             error::Kind::EmptyArray => {
                 writeln!(
                     f,
                     "cannot create empty array from '[]' syntax as type of element is unknown"
                 )?;
-            },
+            }
             error::Kind::RedefinedGlobal(other) => {
                 writeln!(
                     f,
                     "redefinition of global variable\n{}\n",
-                    TokenDisplay::new(self.state, &other)
+                    token::Display::new(self, &other)
                 )?;
-            },
+            }
             &error::Kind::AmbiguousGlobal(a, b) => {
-                let a = self.state.globals[a].hint.clone();
-                let b = self.state.globals[b].hint.clone();
+                let a = self.globals[a].hint.clone();
+                let b = self.globals[b].hint.clone();
                 writeln!(
                     f,
                     "ambiguous global variable, matches\n{}\nand\n{}",
-                    TokenDisplay::new(self.state, &a),
-                    TokenDisplay::new(self.state, &b)
+                    token::Display::new(self, &a),
+                    token::Display::new(self, &b)
                 )?;
-            },
+            }
             error::Kind::InvalidEntrySignature => {
-                writeln!(f, "invalid entry point signature, expected 'fun (int, & &u8)' or 'fun ()'")?;
-            },
+                writeln!(
+                    f,
+                    "invalid entry point signature, expected 'fun (int, & &u8)' or 'fun ()'"
+                )?;
+            }
             error::Kind::RecursiveInline => {
                 writeln!(f, "cannot inline recursive function")?;
-            },
+            }
             error::Kind::VarInsideGenericScope(scope) => {
                 writeln!(
                     f,
                     "cannot declare global inside generic scope\n{}",
-                    TokenDisplay::new(self.state, scope)
+                    token::Display::new(self, scope)
                 )?;
-            },
+            }
             error::Kind::UnknownModule => {
                 writeln!(f, "unknown module")?;
-            },
+            }
             error::Kind::InvalidDotCall => {
                 writeln!(f, "call cannot have explicit caller type and be a dot call")?;
-            },
+            }
             error::Kind::VisibilityViolation => {
-                writeln!(f, "function visibility disallows access, {}", crate::types::VISIBILITY_MESSAGE)?;
-            },
+                writeln!(
+                    f,
+                    "function visibility disallows access, {}",
+                    crate::types::VISIBILITY_MESSAGE
+                )?;
+            }
             error::Kind::FieldVisibilityViolation => {
-                writeln!(f, "field visibility disallows access, {}", crate::types::VISIBILITY_MESSAGE)?;
-            },
+                writeln!(
+                    f,
+                    "field visibility disallows access, {}",
+                    crate::types::VISIBILITY_MESSAGE
+                )?;
+            }
             error::Kind::GlobalVisibilityViolation => {
-                writeln!(f, "global variable visibility disallows access, {}", crate::types::VISIBILITY_MESSAGE)?;
-            },
+                writeln!(
+                    f,
+                    "global variable visibility disallows access, {}",
+                    crate::types::VISIBILITY_MESSAGE
+                )?;
+            }
             error::Kind::FunArgMismatch(fun, arguments) => {
-                let sig = &self.state.funs[*fun].sig;
-                let module = self.state.funs[*fun].module;
+                let sig = &self.funs[*fun].sig;
                 writeln!(
                     f,
                     "function argument types are '({})' but you provided '({})'",
-                    self.state.modules[module]
-                        .type_slice(sig.args)
+                    self.type_slice(sig.args)
                         .iter()
-                        .map(|&a| format!("{}", TypeDisplay::new(&self.state, a)))
-                        .collect::<Vec<_>>().join(", "),
+                        .map(|&a| format!("{}", TypeDisplay::new(&self, a)))
+                        .collect::<Vec<_>>()
+                        .join(", "),
                     arguments
                         .iter()
-                        .map(|&a| format!("{}", TypeDisplay::new(&self.state, a)))
-                        .collect::<Vec<_>>().join(", ")
-                )?;
-            },
-            error::Kind::FunPointerArgMismatch(ty, arguments) => {
-                let module = self.state.types[*ty].module;
-                writeln!(
-                    f,
-                    "function pointer argument types are '({})' but you provided '({})'",
-                    &self.state.modules[module].type_slice(
-                            self.state.types[*ty].kind
-                                .fun_pointer()
-                                .args
-                        )
-                        .iter()
-                        .map(|&a| format!("{}", TypeDisplay::new(&self.state, a)))
-                        .collect::<Vec<_>>().join(", "),
-                    arguments
-                        .iter()
-                        .map(|&a| format!("{}", TypeDisplay::new(&self.state, a)))
+                        .map(|&a| format!("{}", TypeDisplay::new(&self, a)))
                         .collect::<Vec<_>>()
                         .join(", ")
                 )?;
-            },
+            }
+            error::Kind::FunPointerArgMismatch(ty, arguments) => {
+                writeln!(
+                    f,
+                    "function pointer argument types are '({})' but you provided '({})'",
+                    &self
+                        .type_slice(self.type_kind(*ty).fun_pointer().args)
+                        .iter()
+                        .map(|&a| format!("{}", TypeDisplay::new(self, a)))
+                        .collect::<Vec<_>>()
+                        .join(", "),
+                    arguments
+                        .iter()
+                        .map(|&a| format!("{}", TypeDisplay::new(self, a)))
+                        .collect::<Vec<_>>()
+                        .join(", ")
+                )?;
+            }
             error::Kind::ExpectedFunctionPointer => {
                 writeln!(f, "only dereferenced function pointer can be called")?;
-            },
+            }
         }
 
         Ok(())
@@ -2986,6 +3143,18 @@ impl Error {
     }
 }
 
+impl Into<Error> for types::Error {
+    fn into(self) -> Error {
+        Error::new(error::Kind::TypeError(self), Token::default())
+    }
+}
+
+impl Into<Error> for modules::Error {
+    fn into(self) -> Error {
+        Error::new(error::Kind::TypeError(self.into()), Token::default())
+    }
+}
+
 impl DisplayError for Error {
     fn token(&self) -> Token {
         self.token
@@ -2994,7 +3163,7 @@ impl DisplayError for Error {
 
 mod error {
     use super::*;
-    
+
     #[derive(Debug)]
     pub enum Kind {
         MutableToImmutable,
@@ -3040,8 +3209,6 @@ mod error {
     }
 }
 
-
-
 pub enum DotInstr {
     None,
     Deref,
@@ -3056,7 +3223,7 @@ pub struct FunEnt {
     params: EntityList<Ty>, // must drop
     base_fun: PackedOption<Fun>,
     sig: Signature, // must drop
-    body: FunBody,
+    body: Body,
     kind: FKind,
     name: Span,
     ast: Ast,
@@ -3077,15 +3244,16 @@ pub enum FKind {
     Represented,
     Compiled,
     JitCompiled,
-    CompiledAndJitCompiled
+    CompiledAndJitCompiled,
 }
 
 impl FKind {
     pub fn add(&mut self, other: Self) {
         match (*self, other) {
-            (Self::Compiled, Self::JitCompiled) | 
-            (Self::JitCompiled, Self::Compiled) => *self = Self::CompiledAndJitCompiled,
-            _ =>  *self = other,
+            (Self::Compiled, Self::JitCompiled) | (Self::JitCompiled, Self::Compiled) => {
+                *self = Self::CompiledAndJitCompiled
+            }
+            _ => *self = other,
         }
     }
 
@@ -3111,7 +3279,7 @@ impl Default for FKind {
 }
 
 #[derive(Debug, Default, Clone, Copy, RealQuickSer)]
-pub struct FunBody {
+pub struct Body {
     pub dependant_functions: EntityList<Fun>,
     pub dependant_globals: EntityList<GlobalValue>,
     pub current_block: PackedOption<Section>,
@@ -3119,7 +3287,7 @@ pub struct FunBody {
     pub last_block: PackedOption<Section>,
 }
 
-impl FunBody {
+impl Body {
     pub fn clear(&mut self) {
         self.entry_block = PackedOption::default();
         self.last_block = PackedOption::default();
@@ -3166,10 +3334,10 @@ pub enum GenericElement {
     ScopeStart,
     ScopeEnd,
     Pointer(bool), // true if mutable
-    Array(Option<Ty>),
-    Element(Ty, Option<Ty>),
-    Parameter(usize),
-    NextArgument(usize, usize), // amount of arguments, amount of elements for representation
+    Array(std::result::Result<u32, Ast>),
+    Element(Ty, PackedOption<Ty>),
+    Parameter(u32),
+    NextArgument(u32, u32), // amount of arguments, amount of elements for representation
 }
 
 impl GenericElement {
@@ -3227,7 +3395,7 @@ impl std::fmt::Display for FunDisplay<'_> {
         writeln!(f, "{}", self.ctx.display(&fun.hint.span))?;
         writeln!(f)?;
 
-        let mut current = fun.body.entry_block;
+        let mut current = fun.self.body.entry_block;
         while current.is_some() {
             let block = &module_ent.blocks[current.unwrap()];
             writeln!(
@@ -3302,10 +3470,10 @@ pub fn test() {
             .parse(module)
             .map_err(|e| panic!("\n{}", FErrorDisplay::new(&mut state, &e)))
             .unwrap();
-        
-        
+
+
     }
-   
+
     println!("{}", now.elapsed().as_secs_f32());
     state.save_data(PATH, ID(0), Some(hint)).unwrap();
     println!("{}", now.elapsed().as_secs_f64());

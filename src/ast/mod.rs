@@ -32,13 +32,23 @@ pub struct Parser<'a> {
     ctx: &'a mut Ctx,
     state: &'a mut State,
     data: &'a mut Data,
+    collector: &'a mut Collector,
 }
 
 impl<'a> Parser<'a> {
     /// Because of private fields.
-    pub fn new(state: &'a mut State, data: &'a mut Data, ctx: &'a mut Ctx) -> Self {
-        ctx.clear_after_break();
-        Self { ctx, state, data }
+    pub fn new(
+        state: &'a mut State,
+        data: &'a mut Data,
+        ctx: &'a mut Ctx,
+        collector: &'a mut Collector,
+    ) -> Self {
+        Self {
+            ctx,
+            state,
+            data,
+            collector,
+        }
     }
 
     /// Parses the manifest, assuming state is pointing to manifest source.
@@ -300,15 +310,15 @@ impl<'a> Parser<'a> {
                     token::Kind::Enum => self.enum_declaration()?,
                     _ => unreachable!(),
                 };
-                self.ctx.add_type((item, attributes));
+                self.collector.types.push((item, attributes));
             }
             token::Kind::Fun => {
                 let item = self.fun()?;
-                self.ctx.add_fun((item, attributes, impl_ast));
+                self.collector.funs.push((item, attributes, impl_ast));
             }
             token::Kind::Var | token::Kind::Let => {
                 let item = self.var_statement(true)?;
-                self.ctx.add_global((item, attributes, impl_ast));
+                self.collector.globals.push((item, attributes, impl_ast));
             }
             token::Kind::Attr => {
                 self.attr()?;
@@ -1262,7 +1272,8 @@ impl RelocSafety {
     }
 }
 
-pub struct RelocContext {
+#[derive(Debug, Default)]
+pub struct Reloc {
     mapping: SecondaryMap<Ast, Ast>,
     frontier: Vec<Ast>,
     temp_sons: Vec<Ast>,
@@ -1270,7 +1281,7 @@ pub struct RelocContext {
     safety: RelocSafety,
 }
 
-impl RelocContext {
+impl Reloc {
     pub fn clear(&mut self) {
         self.mapping.clear();
         #[cfg(debug_assertions)]
@@ -1367,7 +1378,7 @@ impl Data {
     /// But clearing context after each relocation can create duplicate
     /// trees. Don't worry, safety is asserted during the debug builds
     /// at runtime.
-    pub fn relocate(&mut self, target: Ast, source: &Self, ctx: &mut RelocContext) -> Ast {
+    pub fn relocate(&mut self, target: Ast, source: &Self, ctx: &mut Reloc) -> Ast {
         #[cfg(debug_assertions)]
         {
             assert!(ctx.safety.check(&mut self.safety));
@@ -1408,13 +1419,97 @@ impl Data {
     }
 }
 
-#[derive(Debug, Clone, Default)]
-pub struct Ctx {
-    ctx: lexer::Ctx,
+#[derive(Copy, Clone, Debug)]
+pub struct DataSwitch<'a> {
+    a: &'a Data,
+    b: &'a Data,
+    swapped: bool,
+}
 
+impl<'a> DataSwitch<'a> {
+    pub fn new(a: &'a Data, b: &'a Data) -> Self {
+        Self {
+            a,
+            b,
+            swapped: false,
+        }
+    }
+
+    pub fn swapped(&self) -> bool {
+        self.swapped
+    }
+
+    pub fn set_swapped(&mut self, swapped: bool) {
+        if self.swapped != swapped {
+            self.swap();
+        }
+    }
+
+    pub fn swap(&mut self) {
+        std::mem::swap(&mut self.a, &mut self.b);
+        self.swapped = !self.swapped;
+    }
+}
+
+impl Deref for DataSwitch<'_> {
+    type Target = Data;
+
+    fn deref(&self) -> &Self::Target {
+        self.a
+    }
+}
+
+#[derive(Default, Debug)]
+pub struct Collector {
     funs: Vec<(Ast, Ast, Ast)>,
     types: Vec<(Ast, Ast)>,
     globals: Vec<(Ast, Ast, Ast)>,
+}
+
+impl Collector {
+    pub fn clear(&mut self) {
+        self.funs.clear();
+        self.types.clear();
+        self.globals.clear();
+    }
+
+    pub fn use_funs<E, F: FnMut(Ast, Ast, Ast) -> std::result::Result<(), E>>(
+        &mut self,
+        mut f: F,
+    ) -> std::result::Result<(), E> {
+        for (fun, attrs, scope) in self.funs.drain(..) {
+            f(fun, attrs, scope)?;
+        }
+
+        Ok(())
+    }
+
+    pub fn use_types<E, F: FnMut(Ast, Ast) -> std::result::Result<(), E>>(
+        &mut self,
+        mut f: F,
+    ) -> std::result::Result<(), E> {
+        for (ty, attrs) in self.types.drain(..) {
+            f(ty, attrs)?;
+        }
+
+        Ok(())
+    }
+
+    pub fn use_globals<E, F: FnMut(Ast, Ast, Ast) -> std::result::Result<(), E>>(
+        &mut self,
+        mut f: F,
+    ) -> std::result::Result<(), E> {
+        for (global, attrs, scope) in self.globals.drain(..) {
+            f(global, attrs, scope)?;
+        }
+
+        Ok(())
+    }
+}
+
+#[derive(Debug, Clone, Default)]
+pub struct Ctx {
+    ctx: lexer::Ctx,
 
     attrib_stack: Vec<Ast>,
     attrib_frames: Vec<usize>,
@@ -1424,42 +1519,10 @@ pub struct Ctx {
 }
 
 impl Ctx {
-    pub fn clear_after_break(&mut self) {
-        self.funs.clear();
-        self.types.clear();
-        self.globals.clear();
-    }
-
     pub fn clear_after_module(&mut self) {
         self.attrib_stack.clear();
         self.attrib_frames.clear();
         self.current_attributes.clear();
-    }
-
-    pub fn funs(&self) -> &[(Ast, Ast, Ast)] {
-        self.funs.as_slice()
-    }
-
-    pub fn types(&mut self) -> PoolRef<(Ast, Ast)> {
-        let mut temp = self.temp_vec();
-        temp.append(&mut self.types);
-        temp
-    }
-
-    pub fn globals(&self) -> &[(Ast, Ast, Ast)] {
-        self.globals.as_slice()
-    }
-
-    pub fn add_fun(&mut self, fun: (Ast, Ast, Ast)) {
-        self.funs.push(fun);
-    }
-
-    pub fn add_global(&mut self, global: (Ast, Ast, Ast)) {
-        self.globals.push(global);
-    }
-
-    pub fn add_type(&mut self, ty: (Ast, Ast)) {
-        self.types.push(ty);
     }
 
     pub fn create_attribute_slice(&mut self, data: &mut Data) -> EntityList<Ast> {
@@ -1754,13 +1817,13 @@ impl AstEnt {
     }
 }
 
-pub struct AstDisplay<'a> {
+pub struct Display<'a> {
     main_state: &'a Ctx,
     state: &'a Data,
     ast: Ast,
 }
 
-impl<'a> AstDisplay<'a> {
+impl<'a> Display<'a> {
     pub fn new(main_state: &'a Ctx, state: &'a Data, ast: Ast) -> Self {
         Self {
             main_state,
@@ -1791,7 +1854,7 @@ impl<'a> AstDisplay<'a> {
     }
 }
 
-impl std::fmt::Display for AstDisplay<'_> {
+impl std::fmt::Display for Display<'_> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         self.log(self.ast, 0, f)
     }
@@ -2038,27 +2101,40 @@ pub fn test() {
     let source = ctx.add_source(source);
     let mut data = Data::default();
     let mut state = State::new(source, &ctx).unwrap();
+    let mut collector = Collector::default();
 
-    let mut a_parser = Parser::new(&mut state, &mut data, &mut ctx);
+    let mut a_parser = Parser::new(&mut state, &mut data, &mut ctx, &mut collector);
     a_parser.parse().unwrap();
 
-    for &(global, attrs, header) in ctx.globals() {
-        println!("===global===");
-        print!("{}", AstDisplay::new(&ctx, &data, header));
-        print!("{}", AstDisplay::new(&ctx, &data, attrs));
-        print!("{}", AstDisplay::new(&ctx, &data, global));
-    }
+    collector
+        .use_globals(|global, attrs, header| {
+            println!("===global===");
+            print!("{}", Display::new(&ctx, &data, header));
+            print!("{}", Display::new(&ctx, &data, attrs));
+            print!("{}", Display::new(&ctx, &data, global));
 
-    for &(ty, attrs) in ctx.types().as_slice() {
-        println!("===type===");
-        print!("{}", AstDisplay::new(&ctx, &data, attrs));
-        print!("{}", AstDisplay::new(&ctx, &data, ty));
-    }
+            Result::Ok(())
+        })
+        .unwrap();
 
-    for &(fun, attrs, header) in ctx.funs() {
-        println!("===fun===");
-        print!("{}", AstDisplay::new(&ctx, &data, header));
-        print!("{}", AstDisplay::new(&ctx, &data, attrs));
-        print!("{}", AstDisplay::new(&ctx, &data, fun));
-    }
+    collector
+        .use_types(|ty, attrs| {
+            println!("===type===");
+            print!("{}", Display::new(&ctx, &data, attrs));
+            print!("{}", Display::new(&ctx, &data, ty));
+
+            Result::Ok(())
+        })
+        .unwrap();
+
+    collector
+        .use_funs(|fun, attrs, header| {
+            println!("===fun===");
+            print!("{}", Display::new(&ctx, &data, header));
+            print!("{}", Display::new(&ctx, &data, attrs));
+            print!("{}", Display::new(&ctx, &data, fun));
+
+            Result::Ok(())
+        })
+        .unwrap();
 }

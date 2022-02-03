@@ -4,7 +4,7 @@ use crate::ast::{self, Ast, CallConv, Vis};
 use crate::lexer::{
     self, token, DisplayError, ErrorDisplay, ErrorDisplayState, LexerBase, LineData, Span, Token,
 };
-use crate::modules::{self, Mod, TreeStorage, BUILTIN_MODULE, Item, Ty, Const, item};
+use crate::modules::{self, item, Const, Item, Mod, TreeStorage, Ty, BUILTIN_MODULE};
 use crate::util::sdbm::ID;
 use crate::util::Size;
 use cranelift::codegen::ir::types::Type;
@@ -40,13 +40,34 @@ macro_rules! impl_item_find {
                     Ok(id)
                 } else {
                     Err(Error::new(error::Kind::ItemMismatch(
-                        item.kind(), 
+                        item.kind(),
                         vec![item::Kind::$kind($kind::default())],
                     ), token))
                 }
             }
         )+
     };
+}
+
+#[macro_export]
+macro_rules! impl_item_adder {
+    ($($name:ident, $container:ident, $ent:ident, $kind:ident)+) => {
+        $(
+            pub fn $name(&mut self, source_module: Mod, ent: $ent) -> Result<$kind> {
+                let $ent {
+                    module, hint, id, ..
+                } = ent;
+                let ty = self.$container.push(ent);
+                let item = Item::new(item::Kind::$kind(ty), module, hint);
+                self.add_item(module, id, item).map_err(Into::into)?;
+                if source_module != module {
+                    self.import_item(source_module, id, item).unwrap();
+                }
+                Ok(ty)
+            }
+        )+
+    };
+
 }
 
 /// Another extension that handles type parsing on parsed ast. Its important to note
@@ -58,7 +79,7 @@ pub struct Ctx {
 
     enum_slices: ListPool<EnumVariant>,
     enum_variants: PrimaryMap<EnumVariant, EnumVariantEnt>,
-    constants: PoolMap<Const, ConstEnt>,
+    constants: PoolMap<Const, constant::Kind>,
     constant_slices: ListPool<Const>,
     types: PoolMap<Ty, TyEnt>,
     type_slices: ListPool<Ty>,
@@ -68,23 +89,19 @@ pub struct Ctx {
 }
 
 impl Ctx {
-    /// Computes types which ast is loaded in context and adds them to `module`.
-    pub fn compute_types(&mut self, module: Mod) -> Result {
-        if module == BUILTIN_MODULE {
-            self.add_builtin_types();
-        }
-        self.collect(module)?;
-        self.connect()?;
+    /// Computes collected types. It not only connects the fields with
+    /// referenced types but also detects types with infinite size.
+    pub fn compute_types(&mut self, ast_data: &ast::DataSwitch) -> Result {
+        self.connect(ast_data)?;
         self.calc_sizes()?;
         Ok(())
     }
 
     /// Parses Type expression and returns the entity. This can instantiate new types.
-    pub fn parse_type(&mut self, module: Mod, ast: Ast) -> Result<Ty> {
-        let ast_data = self.take_ast_data(module);
+    /// State of `ast_data` will be adjusted by method as needed (initial state does not matter).
+    pub fn parse_type(&mut self, ast_data: &ast::DataSwitch, module: Mod, ast: Ast) -> Result<Ty> {
         let result = self.ty(&ast_data, module, ast, 0)?;
-        self.put_ast_data(module, ast_data);
-        self.connect()?;
+        self.connect(ast_data)?;
         self.calc_sizes()?;
         Ok(result)
     }
@@ -193,7 +210,8 @@ impl Ctx {
 
     /// Connects all collected types with their dependency. Not all types have dependency
     /// so they can be handled wile collecting.
-    fn connect(&mut self) -> Result {
+    fn connect(&mut self, ast_data: &ast::DataSwitch) -> Result {
+        let mut ast_data = ast_data.clone();
         while let Some((id, depth)) = self.unresolved.pop() {
             if depth > MAX_TYPE_INSTANTIATION_DEPTH {
                 return Err(Error::new(
@@ -202,10 +220,14 @@ impl Ctx {
                 ));
             }
 
-            let TyEnt { module, kind, .. } = self.types[id].clone();
+            let TyEnt {
+                module,
+                kind,
+                params,
+                ..
+            } = self.types[id].clone();
 
-            let ast_data = self.take_ast_data(module);
-
+            ast_data.set_swapped(!params.is_empty());
             match kind {
                 ty::Kind::Unresolved(ast) => {
                     self.connect_type(&ast_data, module, id, ast, depth)?
@@ -213,10 +235,9 @@ impl Ctx {
                 kind => unreachable!("{:?}", kind),
             }
 
-            self.put_ast_data(module, ast_data);
-
             self.resolved.push(id);
         }
+
         Ok(())
     }
 
@@ -225,7 +246,7 @@ impl Ctx {
     /// `depth` is used to detect infinite type instantiation.
     fn connect_type(
         &mut self,
-        ast_data: &ast::Data,
+        ast_data: &ast::DataSwitch,
         module: Mod,
         id: Ty,
         ast: Ast,
@@ -248,7 +269,7 @@ impl Ctx {
     /// will be simply saved inside resulting type.
     fn connect_structure(
         &mut self,
-        ast_data: &ast::Data,
+        ast_data: &ast::DataSwitch,
         module: Mod,
         id: Ty,
         ast: Ast,
@@ -312,7 +333,7 @@ impl Ctx {
         }
 
         self.types[id].kind = ty::Kind::Structure(
-            kind, 
+            kind,
             EntityList::from_slice(fields.as_slice(), &mut self.field_slices),
         );
 
@@ -321,7 +342,13 @@ impl Ctx {
 
     /// Returns type for given ast expression. `ast_data` fir from `module`, `ast` is entity from `ast_data`
     /// and `depth` is used to detect infinite type instantiation.
-    pub fn ty(&mut self, ast_data: &ast::Data, module: Mod, ast: Ast, depth: usize) -> Result<Ty> {
+    pub fn ty(
+        &mut self,
+        ast_data: &ast::DataSwitch,
+        module: Mod,
+        ast: Ast,
+        depth: usize,
+    ) -> Result<Ty> {
         let (kind, sons, token) = ast_data.ent(ast).parts();
         let ty = match kind {
             ast::Kind::Ident => self.simple_type(ast_data, module, None, ast, token),
@@ -349,7 +376,7 @@ impl Ctx {
 
     pub fn tuple(
         &mut self,
-        ast_data: &ast::Data,
+        ast_data: &ast::DataSwitch,
         module: Mod,
         ast: Ast,
         depth: usize,
@@ -367,7 +394,7 @@ impl Ctx {
 
     pub fn function_pointer(
         &mut self,
-        ast_data: &ast::Data,
+        ast_data: &ast::DataSwitch,
         module: Mod,
         ast: Ast,
         depth: usize,
@@ -407,43 +434,45 @@ impl Ctx {
 
     pub fn array(
         &mut self,
-        ast_data: &ast::Data,
+        ast_data: &ast::DataSwitch,
         module: Mod,
         ast: Ast,
         depth: usize,
     ) -> Result<Ty> {
         let element = ast_data.son(ast, 0);
         let length_ast = ast_data.son(ast, 1);
-        let token = ast_data.token(length_ast);
 
         let element = self.ty(ast_data, module, element, depth)?;
-        let length = self.ty(ast_data, module, length_ast, depth)?;
-        let length = match self.types[length].kind {
-            ty::Kind::Constant(constant) => match self.constants[constant].kind {
-                constant::Kind::Int(int, _) => int,
-                _ => return Err(Error::new(error::Kind::ExpectedIntConstant, token)),
-            },
-            _ => return Err(Error::new(error::Kind::ExpectedIntConstant, token)),
-        };
+        let length = self.fold_array_length(ast_data, module, length_ast)?;
 
         Ok(self.array_of(module, element, length as usize))
     }
 
-    pub fn constant(&mut self, ast_data: &ast::Data, module: Mod, ast: Ast) -> Result<Ty> {
-        let mut new_constants = self.temp_vec();
-        let constant = self.fold_const(module, ast_data, ast, ID(0), &mut new_constants)?;
-        for constant in new_constants.drain(..) {
-            let constant_ent = &self.constants[constant];
-            let id = ID::new("-c-").add(constant_ent.kind.hash(self));
-            let item = Item::new(item::Kind::Const(constant), module, constant_ent.hint);
-            self.add_item(module, id, item).map_err(Into::into)?;
+    pub fn fold_array_length(
+        &mut self,
+        ast_data: &ast::DataSwitch,
+        module: Mod,
+        ast: Ast,
+    ) -> Result<u32> {
+        let length = self.fold_immediate_const(ast_data, module, ast)?;
+        match length {
+            constant::Kind::Int(value, _) => Ok(value as u32),
+            constant::Kind::Uint(value, _) => Ok(value as u32),
+            _ => Err(Error::new(
+                error::Kind::ExpectedIntConstant,
+                ast_data.token(ast),
+            )),
         }
+    }
+
+    pub fn constant(&mut self, ast_data: &ast::DataSwitch, module: Mod, ast: Ast) -> Result<Ty> {
+        let constant = self.fold_const(ast_data, module, ast)?;
         Ok(self.constant_of(module, constant))
     }
 
     pub fn pointer(
         &mut self,
-        ast_data: &ast::Data,
+        ast_data: &ast::DataSwitch,
         module: Mod,
         ast: Ast,
         depth: usize,
@@ -457,7 +486,7 @@ impl Ctx {
 
     pub fn instance(
         &mut self,
-        ast_data: &ast::Data,
+        ast_data: &ast::DataSwitch,
         module: Mod,
         ast: Ast,
         depth: usize,
@@ -533,7 +562,7 @@ impl Ctx {
 
     pub fn simple_type(
         &mut self,
-        ast_data: &ast::Data,
+        ast_data: &ast::DataSwitch,
         module: Mod,
         target: Option<Ast>,
         name: Ast,
@@ -551,21 +580,31 @@ impl Ctx {
         self.find_type(module, id, token).map_err(Into::into)
     }
 
-    pub fn collect(&mut self, module: Mod) -> Result<()> {
-        let mut temp = self.ctx.temp_vec();
-        let ast_data = self.take_ast_data(module);
+    pub fn collect(
+        &mut self,
+        module: Mod,
+        temp_ast_data: &ast::Data,
+        saved_ast_data: &mut ast::Data,
+        collector: &mut ast::Collector,
+        reloc: &mut ast::Reloc,
+    ) -> Result<()> {
+        if module == BUILTIN_MODULE {
+            self.add_builtin_types();
+        }
 
-        for &(type_ast, attrs) in self.ctx.types().as_slice() {
-            let (kind, sons, _) = ast_data.ent(type_ast).parts();
+        let mut temp = self.ctx.temp_vec();
+
+        collector.use_types(|ty, mut attrs| {
+            let (kind, sons, _) = temp_ast_data.ent(ty).parts();
             match kind {
                 ast::Kind::Enum(vis) => {
-                    let ident = ast_data.slice(sons)[0];
-                    let variants = ast_data.get(sons, 1);
+                    let ident = temp_ast_data.slice(sons)[0];
+                    let variants = temp_ast_data.get(sons, 1);
                     let variants = if !variants.is_reserved_value() {
                         temp.clear();
-                        for &var in ast_data.sons(variants) {
+                        for &var in temp_ast_data.sons(variants) {
                             temp.push(self.enum_variants.push(EnumVariantEnt {
-                                id: self.hash_token(ast_data.token(var)),
+                                id: self.hash_token(temp_ast_data.token(var)),
                             }));
                         }
                         EntityList::from_slice(temp.as_slice(), &mut self.enum_slices)
@@ -573,7 +612,7 @@ impl Ctx {
                         EntityList::new()
                     };
 
-                    let ident = ast_data.token(ident);
+                    let ident = temp_ast_data.token(ident);
                     let id = self.hash_token(ident);
 
                     let kind = ty::Kind::Enumeration(variants);
@@ -592,14 +631,16 @@ impl Ctx {
                     self.add_type(module, datatype).map_err(Into::into)?;
                 }
                 ast::Kind::Struct(vis) | ast::Kind::Union(vis) => {
-                    let ident = ast_data.get(sons, 0);
-                    let ident_ent = ast_data.ent(ident);
+                    let ident = temp_ast_data.get(sons, 0);
+                    let ident_ent = temp_ast_data.ent(ident);
                     let (ident, kind) = if ident_ent.kind() == ast::Kind::Ident {
-                        (ident_ent, ty::Kind::Unresolved(type_ast))
+                        (ident_ent, ty::Kind::Unresolved(ty))
                     } else if ident_ent.kind() == ast::Kind::Instantiation {
+                        attrs = saved_ast_data.relocate(attrs, temp_ast_data, reloc);
+                        let ty = saved_ast_data.relocate(ty, temp_ast_data, reloc);
                         (
-                            ast_data.get_ent(ident_ent.sons(), 0),
-                            ty::Kind::Generic(type_ast),
+                            temp_ast_data.get_ent(ident_ent.sons(), 0),
+                            ty::Kind::Generic(ty),
                         )
                     } else {
                         return Err(Error::new(
@@ -628,9 +669,9 @@ impl Ctx {
                 }
                 kind => unreachable!("{:?}", kind),
             }
-        }
 
-        self.put_ast_data(module, ast_data);
+            Ok(())
+        })?;
 
         Ok(())
     }
@@ -675,8 +716,8 @@ impl Ctx {
             module: best_module,
             vis: Vis::Public,
             kind: ty::Kind::Structure(
-                StructureKind::Tuple, 
-                EntityList::from_slice(fields.as_slice(), &mut self.field_slices)
+                StructureKind::Tuple,
+                EntityList::from_slice(fields.as_slice(), &mut self.field_slices),
             ),
 
             ..Default::default()
@@ -686,7 +727,9 @@ impl Ctx {
     }
 
     pub fn pointer_of(&mut self, source_module: Mod, ty: Ty, mutable: bool) -> Ty {
-        let TyEnt { module, id, vis, .. } = self.types[ty];
+        let TyEnt {
+            module, id, vis, ..
+        } = self.types[ty];
         let name = if mutable { "&var " } else { "&" };
         let id = ID::new(name).add(id);
 
@@ -742,10 +785,10 @@ impl Ctx {
 
     /// If constant already exists, passed `constant` is dropped.
     pub fn constant_of(&mut self, source_module: Mod, constant: Const) -> Ty {
-        let id = self.constants[constant].kind.hash(self);
+        let id = self.constants[constant].hash(self);
 
         if let Some(ty) = self.find_computed_type(source_module, id) {
-            if let constant::Kind::Array(mut elements) = self.constants[constant].kind {
+            if let constant::Kind::Array(mut elements) = self.constants[constant] {
                 elements.clear(&mut self.constant_slices);
             }
             self.constants.remove(constant);
@@ -757,7 +800,7 @@ impl Ctx {
             vis: Vis::Public,
             kind: ty::Kind::Constant(constant),
             // this eliminates the boat in the builtin module
-            module: source_module, 
+            module: source_module,
 
             ..Default::default()
         };
@@ -856,17 +899,8 @@ impl Ctx {
             .unwrap_or(ty)
     }
 
-    pub fn add_type(&mut self, source_module: Mod, ent: TyEnt) -> Result<Ty> {
-        let TyEnt { module, hint, id, ..} = ent;
-        let ty = self.types.push(ent);
-        let item = Item::new(item::Kind::Ty(ty), module, hint);
-        self.add_item(module, id, item).map_err(Into::into)?;
-        if source_module != module {
-            self.import_item(source_module, id, item).unwrap();
-        }
-        Ok(ty)
-    }
-
+    impl_item_adder!(add_type, types, TyEnt, Ty);
+    
     pub fn push_type(&mut self, list: &mut EntityList<Ty>, ty: Ty) {
         list.push(ty, &mut self.type_slices);
     }
@@ -875,23 +909,27 @@ impl Ctx {
         list.as_slice(&self.type_slices)
     }
 
-    pub fn fold_const(
+    fn fold_immediate_const(
         &mut self,
+        ast_data: &ast::DataSwitch,
         module: Mod,
-        ast_data: &ast::Data,
         ast: Ast,
-        id: ID,
-        new_constants: &mut Vec<Const>,
-    ) -> Result<Const> {
+    ) -> Result<constant::Kind> {
+        let constant = self.fold_const(ast_data, module, ast)?;
+        let value = self.constants[constant];
+        if let constant::Kind::Array(mut values) = value {
+            values.clear(&mut self.constant_slices);
+        }
+        self.constants.remove(constant);
+        Ok(value)
+    }
+
+    fn fold_const(&mut self, ast_data: &ast::DataSwitch, module: Mod, ast: Ast) -> Result<Const> {
         let mut garbage = self.temp_vec();
-        let constant =
-            self.fold_const_low(module, ast_data, ast, new_constants, &mut garbage, true)?;
-        self.constants[constant].id = id;
 
-        new_constants.push(constant);
-
+        let constant = self.fold_const_low(module, ast_data, ast, &mut garbage, true)?;
         for &garbage in garbage.iter() {
-            let value = self.constants[garbage].kind;
+            let value = self.constants[garbage];
             if let constant::Kind::Array(mut values) = value {
                 values.clear(&mut self.constant_slices);
             }
@@ -904,9 +942,8 @@ impl Ctx {
     pub fn fold_const_low(
         &mut self,
         module: Mod,
-        ast_data: &ast::Data,
+        ast_data: &ast::DataSwitch,
         ast: Ast,
-        new_constants: &mut Vec<Const>,
         garbage: &mut Vec<Const>,
         is_root: bool,
     ) -> Result<Const> {
@@ -914,24 +951,10 @@ impl Ctx {
         let sons = ast_data.slice(sons);
         match kind {
             ast::Kind::Index => {
-                let header = self.fold_const_low(
-                    module,
-                    ast_data,
-                    sons[0],
-                    new_constants,
-                    garbage,
-                    is_root,
-                )?;
-                let accessor = self.fold_const_low(
-                    module,
-                    ast_data,
-                    sons[1],
-                    new_constants,
-                    garbage,
-                    is_root,
-                )?;
+                let header = self.fold_const_low(module, ast_data, sons[0], garbage, is_root)?;
+                let accessor = self.fold_const_low(module, ast_data, sons[1], garbage, is_root)?;
 
-                let accessed = match (self.constants[header].kind, self.constants[accessor].kind) {
+                let accessed = match (self.constants[header], self.constants[accessor]) {
                     (constant::Kind::Array(elements), constant::Kind::Int(value, _)) => elements
                         .get(value as usize, &self.constant_slices)
                         .ok_or_else(|| Error::new(error::Kind::IndexOutOfBounds, token))?,
@@ -944,12 +967,10 @@ impl Ctx {
                 Ok(accessed)
             }
             ast::Kind::Binary => {
-                let a =
-                    self.fold_const_low(module, ast_data, sons[1], new_constants, garbage, false)?;
-                let b =
-                    self.fold_const_low(module, ast_data, sons[2], new_constants, garbage, false)?;
+                let a = self.fold_const_low(module, ast_data, sons[1], garbage, false)?;
+                let b = self.fold_const_low(module, ast_data, sons[2], garbage, false)?;
                 let op = self.display_token(ast_data.token(sons[0]));
-                let new = match (self.constants[a].kind, self.constants[b].kind) {
+                let new = match (self.constants[a], self.constants[b]) {
                     (constant::Kind::Int(a, base_a), constant::Kind::Int(b, base_b)) => {
                         if matches!(op, "==" | "!=" | "<" | ">" | "<=" | ">=") {
                             constant::Kind::Bool(match op {
@@ -1059,12 +1080,7 @@ impl Ctx {
                     _ => return Err(Error::new(error::Kind::UnsupportedConst, token)),
                 };
 
-                let constant = self.constants.push(ConstEnt {
-                    kind: new,
-                    _module: module,
-
-                    ..Default::default()
-                });
+                let constant = self.constants.push(new);
                 if !is_root {
                     garbage.push(constant);
                 }
@@ -1072,10 +1088,9 @@ impl Ctx {
             }
 
             ast::Kind::Unary => {
-                let constant =
-                    self.fold_const_low(module, ast_data, sons[1], new_constants, garbage, false)?;
+                let constant = self.fold_const_low(module, ast_data, sons[1], garbage, false)?;
                 let op = self.display_token(ast_data.token(sons[0]));
-                let new = match self.constants[constant].kind {
+                let new = match self.constants[constant] {
                     constant::Kind::Int(value, base) => constant::Kind::Int(
                         match op {
                             "-" => -value,
@@ -1113,12 +1128,7 @@ impl Ctx {
                     }
                 };
 
-                let constant = self.constants.push(ConstEnt {
-                    kind: new,
-                    _module: module,
-
-                    ..Default::default()
-                });
+                let constant = self.constants.push(new);
                 if !is_root {
                     garbage.push(constant);
                 }
@@ -1127,21 +1137,13 @@ impl Ctx {
             ast::Kind::Array => {
                 let mut list = EntityList::new();
                 for &son in sons.iter() {
-                    let constant =
-                        self.fold_const_low(module, ast_data, son, new_constants, garbage, false)?;
-                    if is_root {
-                        new_constants.push(constant);
-                    } else {
+                    let constant = self.fold_const_low(module, ast_data, son, garbage, false)?;
+                    if !is_root {
                         garbage.push(constant);
                     }
                     list.push(constant, &mut self.constant_slices);
                 }
-                let constant = self.constants.push(ConstEnt {
-                    kind:  constant::Kind::Array(list),
-                    _module: module,
-
-                    ..Default::default()
-                });
+                let constant = self.constants.push(constant::Kind::Array(list));
                 if !is_root {
                     garbage.push(constant);
                 }
@@ -1157,18 +1159,32 @@ impl Ctx {
                         let hash = self.hash_token(token);
                         let ty = self.find_type(module, hash, token)?;
                         let token = ast_data.token(name);
-                        self.hash_token(token).add(self.types[ty].id).add(self.module_id(target_module))
+                        self.hash_token(token)
+                            .add(self.types[ty].id)
+                            .add(self.module_id(target_module))
                     }
                     &[module_or_ty, name] => {
                         let token = ast_data.token(module_or_ty);
                         let hash = self.hash_token(token);
-                        let hash = match self.find_item(module, hash, token).map_err(Into::into)?.kind() {
+                        let hash = match self
+                            .find_item(module, hash, token)
+                            .map_err(Into::into)?
+                            .kind()
+                        {
                             item::Kind::Mod(module) => self.module_id(module),
                             item::Kind::Ty(ty) => self.types[ty].id,
-                            kind => return Err(Error::new(error::Kind::ItemMismatch(kind, vec![
-                                item::Kind::Mod(Mod::default()),
-                                item::Kind::Ty(Ty::default()),
-                            ]), token)),
+                            kind => {
+                                return Err(Error::new(
+                                    error::Kind::ItemMismatch(
+                                        kind,
+                                        vec![
+                                            item::Kind::Mod(Mod::default()),
+                                            item::Kind::Ty(Ty::default()),
+                                        ],
+                                    ),
+                                    token,
+                                ))
+                            }
                         };
                         let token = ast_data.token(name);
                         self.hash_token(token).add(hash)
@@ -1183,12 +1199,7 @@ impl Ctx {
             }
             ast::Kind::Lit => {
                 let constant = constant::Kind::from_token(self, token);
-                let constant = self.constants.push(ConstEnt {
-                    kind: constant,
-                    _module: module,
-
-                    ..Default::default()
-                });
+                let constant = self.constants.push(constant);
                 if !is_root {
                     garbage.push(constant);
                 }
@@ -1206,6 +1217,34 @@ impl Ctx {
 
     pub fn type_name(&self, ty: Ty) -> Span {
         self.types[ty].name
+    }
+
+    pub fn type_module(&self, ty: Ty) -> Mod {
+        self.types[ty].module
+    }
+
+    pub fn type_kind(&self, ty: Ty) -> ty::Kind {
+        self.types[ty].kind
+    }
+
+    pub fn type_params(&self, ty: Ty) -> EntityList<Ty> {
+        self.types[ty].params
+    }
+
+    pub fn field_slice(&self, fields: EntityList<Field>) -> &[Field] {
+        fields.as_slice(&self.field_slices)
+    }
+
+    pub fn field(&self, f: Field) -> FieldEnt {
+        self.fields[f]
+    }
+
+    pub fn add_type_slice(&mut self, slice: &[Ty]) -> EntityList<Ty> {
+        EntityList::from_slice(slice, &mut self.type_slices)
+    }
+
+    pub fn type_base_id(&self, ty: Ty) -> ID {
+        self.types[self.base_of(ty)].id
     }
 }
 
@@ -1227,7 +1266,9 @@ impl<'a> TreeStorage<Ty> for Ctx {
     fn node_dep(&self, id: Ty, idx: usize) -> Ty {
         let node = &self.types[id];
         match &node.kind {
-            ty::Kind::Structure(_, fields) => self.fields[fields.as_slice(&self.field_slices)[idx]].ty,
+            ty::Kind::Structure(_, fields) => {
+                self.fields[fields.as_slice(&self.field_slices)[idx]].ty
+            }
             ty::Kind::Array(ty, _) => *ty,
             ty::Kind::FunPointer(fun) => {
                 if idx == self.type_slice(fun.args).len() {
@@ -1421,9 +1462,13 @@ impl ErrorDisplayState<Error> for Ctx {
         match &e.kind {
             error::Kind::ItemMismatch(actual, expected) => {
                 write!(
-                    f, 
-                    "expected {} but this is {}", 
-                    expected.iter().map(|e| format!("{}", e)).collect::<Vec<_>>().join(" or "), 
+                    f,
+                    "expected {} but this is {}",
+                    expected
+                        .iter()
+                        .map(|e| format!("{}", e))
+                        .collect::<Vec<_>>()
+                        .join(" or "),
                     actual
                 )?;
             }
@@ -1618,7 +1663,7 @@ impl TyEnt {
     }
 }
 
-mod ty {
+pub mod ty {
     use super::*;
 
     #[derive(Debug, Clone, QuickEnumGets, Copy, RealQuickSer)]
@@ -1654,12 +1699,38 @@ crate::impl_entity!(Field);
 
 #[derive(Debug, Clone, Default, Copy, RealQuickSer)]
 pub struct FieldEnt {
-    pub embedded: bool,
-    pub vis: Vis,
-    pub id: ID,
-    pub offset: Size,
-    pub ty: Ty,
-    pub hint: Token,
+    embedded: bool,
+    vis: Vis,
+    id: ID,
+    offset: Size,
+    ty: Ty,
+    hint: Token,
+}
+
+impl FieldEnt {
+    pub fn embedded(&self) -> bool {
+        self.embedded
+    }
+
+    pub fn vis(&self) -> Vis {
+        self.vis
+    }
+
+    pub fn id(&self) -> ID {
+        self.id
+    }
+
+    pub fn offset(&self) -> Size {
+        self.offset
+    }
+
+    pub fn ty(&self) -> Ty {
+        self.ty
+    }
+
+    pub fn hint(&self) -> Token {
+        self.hint
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, RealQuickSer)]
@@ -1667,21 +1738,6 @@ pub enum StructureKind {
     Struct,
     Union,
     Tuple,
-}
-
-#[derive(Debug, Clone, Copy, RealQuickSer, Default)]
-pub struct ConstEnt {
-    id: ID,
-    _module: Mod,
-    vis: Vis,
-    hint: Token,
-    kind: constant::Kind,
-}
-
-impl ConstEnt {
-    pub fn vis(&self) -> Vis {
-        self.vis
-    }
 }
 
 mod constant {
@@ -1696,7 +1752,7 @@ mod constant {
         Str(Span),
         Array(EntityList<Const>),
     }
-    
+
     impl Kind {
         pub fn from_token(ctx: &mut Ctx, token: Token) -> Self {
             let mut chars = ctx.display(token.span()).chars();
@@ -1719,7 +1775,7 @@ mod constant {
                 _ => unreachable!(),
             }
         }
-    
+
         pub fn hash(self, ctx: &Ctx) -> ID {
             match self {
                 Kind::Int(value, base) => ID(0).add(ID(value as u64)).add(ID(base as u64)),
@@ -1730,7 +1786,7 @@ mod constant {
                 Kind::Array(elements) => {
                     let mut id = ID(5);
                     for &element in elements.as_slice(&ctx.constant_slices) {
-                        id = id.add(ctx.constants[element].kind.hash(ctx));
+                        id = id.add(ctx.constants[element].hash(ctx));
                     }
                     id
                 }
@@ -1738,7 +1794,6 @@ mod constant {
         }
     }
 }
-
 
 pub struct ConstDisplay<'a> {
     ctx: &'a Ctx,
@@ -1753,7 +1808,7 @@ impl<'a> ConstDisplay<'a> {
 
 impl std::fmt::Display for ConstDisplay<'_> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self.ctx.constants[self.constant].kind {
+        match self.ctx.constants[self.constant] {
             constant::Kind::Bool(b) => write!(f, "{}", b),
             constant::Kind::Int(i, base) => write!(f, "{}i{}", i, base),
             constant::Kind::Uint(i, base) => write!(f, "{}u{}", i, base),
@@ -1798,6 +1853,10 @@ pub fn test() {
 
     let mut ctx = Ctx::default();
     let mut item_buffer = vec![];
+    let mut temp_ast_data = ast::Data::default();
+    let mut saved_ast_data = ast::Data::default();
+    let mut collector = ast::Collector::default();
+    let mut reloc = ast::Reloc::default();
 
     let order = ctx
         .compute_module_tree(PATH)
@@ -1810,18 +1869,27 @@ pub fn test() {
             ctx.import_item(module, id, item).unwrap();
         }
         item_buffer.clear();
-        
-        
+
         loop {
             let more = ctx
-                .compute_ast(module)
+                .compute_ast(module, &mut temp_ast_data, &mut collector)
                 .map_err(|e| panic!("{}", ErrorDisplay::new(&ctx.ctx, &e)))
                 .unwrap();
 
-            ctx.compute_types(module)
+            ctx.collect(
+                module,
+                &mut temp_ast_data,
+                &mut saved_ast_data,
+                &mut collector,
+                &mut reloc,
+            )
+            .map_err(|e| panic!("\n{}", ErrorDisplay::new(&ctx, &e)))
+            .unwrap();
+
+            ctx.compute_types(&ast::DataSwitch::new(&temp_ast_data, &saved_ast_data))
                 .map_err(|e| panic!("\n{}", ErrorDisplay::new(&ctx, &e)))
                 .unwrap();
-                
+
             if !more {
                 break;
             }

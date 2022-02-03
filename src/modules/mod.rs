@@ -11,7 +11,7 @@ use cranelift::entity::packed_option::ReservedValue;
 use cranelift::entity::*;
 use quick_proc::*;
 
-use crate::ast::Vis;
+use crate::ast::{Ast, Vis};
 use crate::lexer::*;
 use crate::util::sdbm::ID;
 use crate::util::storage::*;
@@ -70,9 +70,8 @@ impl Ctx {
 
         // cleared each loop
         let mut imports = self.temp_vec();
-        // dummy data, parser does not use it but
-        // references cannot be nil
         let mut ast_data = ast::Data::default();
+        let mut collector = ast::Collector::default();
 
         // loop eliminates recursion
         while let Some((in_code_path, token, from, manifest_id)) = frontier.pop() {
@@ -89,11 +88,13 @@ impl Ctx {
                 let nick = self.hash_span(nick_span);
 
                 self.module_ctxs[module].used.push(parent_module);
-                self.module_ctxs[parent_module].deps.push((nick_span, module));
+                self.module_ctxs[parent_module]
+                    .deps
+                    .push((nick_span, module));
                 self.import_item(
-                    parent_module, 
-                    nick, 
-                    Item::new(item::Kind::Mod(module), parent_module, token)
+                    parent_module,
+                    nick,
+                    Item::new(item::Kind::Mod(module), parent_module, token),
                 )?;
             }
 
@@ -104,8 +105,9 @@ impl Ctx {
 
             let mut ast_state = ast::State::new(source, &self.ctx).map_err(Into::into)?;
 
-            let mut parser = ast::Parser::new(&mut ast_state, &mut ast_data, &mut self.ctx);
-            parser.parse_imports(&mut imports).map_err(Into::into)?;
+            ast::Parser::new(&mut ast_state, &mut ast_data, &mut self.ctx, &mut collector)
+                .parse_imports(&mut imports)
+                .map_err(Into::into)?;
 
             for import in imports.drain(..) {
                 let path = self.display(import.path());
@@ -140,9 +142,9 @@ impl Ctx {
                 .deps
                 .push((builtin_span, BUILTIN_MODULE));
             self.import_item(
-                module, 
+                module,
                 ID::new("builtin"),
-                Item::new(item::Kind::Mod(BUILTIN_MODULE), module, token)
+                Item::new(item::Kind::Mod(BUILTIN_MODULE), module, token),
             )?;
 
             self.module_ctxs[module].ast_state = ast_state;
@@ -274,6 +276,7 @@ impl Ctx {
 
         let mut frontier = vec![(manifest_id, ast::Dep::default())];
         let mut data = ast::Data::default();
+        let mut collector = ast::Collector::default();
         while let Some((manifest_id, import)) = frontier.pop() {
             if self.seen_manifests.contains(manifest_id) {
                 continue;
@@ -310,7 +313,7 @@ impl Ctx {
             self.manifests[manifest_id].source = source;
 
             let mut state = ast::State::new(source, &self.ctx).map_err(Into::into)?;
-            let manifest = ast::Parser::new(&mut state, &mut data, self)
+            let manifest = ast::Parser::new(&mut state, &mut data, self, &mut collector)
                 .parse_manifest()
                 .map_err(Into::into)?;
 
@@ -464,7 +467,6 @@ impl Ctx {
         let module = ModEnt {
             id: ID::new("builtin"),
             modified: SystemTime::now(),
-            ast: ast::Data::default(),
 
             ..Default::default()
         };
@@ -472,28 +474,19 @@ impl Ctx {
         self.module_ctxs[module].ast_state = ast::State::new(source, &self.ctx).unwrap();
     }
 
-    /// Returns ast that module holds.
-    pub fn ast_data(&self, module: Mod) -> &ast::Data {
-        &self.modules[module].ast
-    }
-
-    /// Sets ast data of module to given value.
-    pub fn put_ast_data(&mut self, module: Mod, ast_data: ast::Data) {
-        self.modules[module].ast = ast_data;
-    }
-
-    /// Takes ownership of ast_data, leaving default value inside a module.
-    pub fn take_ast_data(&mut self, module: Mod) -> ast::Data {
-        std::mem::take(&mut self.modules[module].ast)
-    }
-
     /// Computes ast of module. If true is returned, parsing was
     /// interrupted by top level 'break'.
-    pub fn compute_ast(&mut self, module: Mod) -> Result<bool> {
+    pub fn compute_ast(
+        &mut self,
+        module: Mod,
+        buffer: &mut ast::Data,
+        collector: &mut ast::Collector,
+    ) -> Result<bool> {
         ast::Parser::new(
             &mut self.module_ctxs[module].ast_state,
-            &mut self.modules[module].ast,
+            buffer,
             &mut self.ctx,
+            collector,
         )
         .parse()
         .map_err(|err| Error::new(error::Kind::AError(err), Token::default()))
@@ -514,11 +507,11 @@ impl Ctx {
             .clone();
 
         if item.kind == item::Kind::Collision {
-            let candidates = self.module_ctxs[module].deps
+            let candidates = self.module_ctxs[module]
+                .deps
                 .iter()
                 .filter_map(|&(span, module)| {
-                    scope.get(id.add(self.modules[module].id))
-                        .map(|_| span)
+                    scope.get(id.add(self.modules[module].id)).map(|_| span)
                 })
                 .collect::<Vec<_>>();
             return Err(Error::new(error::Kind::ItemCollision(candidates), hint));
@@ -540,12 +533,12 @@ impl Ctx {
     pub fn import_item(&mut self, module: Mod, mut id: ID, item: Item) -> Result {
         let scope = &mut self.module_ctxs[module].scope;
         if let Some(&collision) = scope.get(id) {
-             if collision.kind == item::Kind::Collision { 
+            if collision.kind == item::Kind::Collision {
                 if item.module != module {
                     id = id.add(self.modules[item.module].id);
                 }
             } else if collision.module == module {
-                if item.module == module  {
+                if item.module == module {
                     return Err(Error::new(
                         error::Kind::Redefinition(collision.hint),
                         item.hint,
@@ -555,8 +548,11 @@ impl Ctx {
             } else {
                 let redirect = id.add(self.modules[collision.module].id);
                 let shadow = scope.insert(redirect, collision);
-                debug_assert!(shadow.is_none(), "seems like unlucky hashing corrupted the scope");                
-                
+                debug_assert!(
+                    shadow.is_none(),
+                    "seems like unlucky hashing corrupted the scope"
+                );
+
                 scope.insert(id, Item::collision());
                 if item.module != module {
                     id = id.add(self.modules[item.module].id);
@@ -567,7 +563,8 @@ impl Ctx {
             debug_assert!(
                 shadow.is_none() || shadow.unwrap().kind == item::Kind::Collision,
                 "this means that we did not detect collision when compiling module {:?} {}",
-                shadow, token::Display::new(self.sources(), &item.hint),
+                shadow,
+                token::Display::new(self.sources(), &item.hint),
             );
         } else {
             scope.insert(id, item);
@@ -596,6 +593,18 @@ impl Ctx {
     pub fn find_item_unchecked(&self, module: Mod, id: ID) -> Option<Item> {
         self.module_ctxs[module].scope.get(id).cloned()
     }
+
+    pub fn find_attribute(&self, ast_data: &ast::Data, attributes: Ast, name: &str) -> Option<Ast> {
+        let id = ID::new(name);
+        for &attr in ast_data.sons(attributes) {
+            let attr_id = self.hash_token(ast_data.son_ent(attr, 0).token());
+            if id == attr_id {
+                return Some(attr);
+            }
+        }
+
+        None
+    }
 }
 
 crate::impl_entity!(Fun, Global, Local, Ty, Const);
@@ -609,17 +618,13 @@ pub struct Item {
 
 impl Item {
     pub fn new(kind: item::Kind, module: Mod, hint: Token) -> Item {
-        Item {
-            kind,
-            module,
-            hint,
-        }
+        Item { kind, module, hint }
     }
 
     pub fn collision() -> Self {
         Self {
             kind: item::Kind::Collision,
-            
+
             ..Default::default()
         }
     }
@@ -627,7 +632,6 @@ impl Item {
     pub fn kind(&self) -> item::Kind {
         self.kind
     }
-
 }
 
 pub mod item {
@@ -666,14 +670,13 @@ pub mod item {
             }
         }
     }
-    
+
     impl Default for Kind {
         fn default() -> Self {
             Kind::Collision
         }
     }
 }
-
 
 type ManifestDep = (ID, Manifest);
 
@@ -719,7 +722,10 @@ impl ErrorDisplayState<Error> for Ctx {
     fn fmt(&self, e: &Error, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match e.kind() {
             error::Kind::ItemCollision(candidates) => {
-                writeln!(f, "tri specifying module this item comes from, here are all candidates:")?;
+                writeln!(
+                    f,
+                    "tri specifying module this item comes from, here are all candidates:"
+                )?;
                 for &candidate in candidates {
                     writeln!(f, "  {}:: ", self.display(candidate))?;
                 }
@@ -847,7 +853,6 @@ pub struct ModEnt {
     id: ID,
     #[default(SystemTime::UNIX_EPOCH)]
     modified: SystemTime,
-    ast: ast::Data,
     owned_items: Vec<(ID, Item)>,
 }
 

@@ -495,8 +495,6 @@ pub enum Number {
     Float(f64, u8),
 }
 
-
-
 /// Lexer provides generic parsing algorithms for some token literals.
 pub trait LexerBase {
     /// Advance by one character and return next one.
@@ -636,7 +634,11 @@ pub trait LexerBase {
             'i' | 'u' | 'f' => {
                 self.next();
                 let base = self.parse_number(10)?.0 as u8;
-                let base = if base == 0 { POINTER_WIDTH_MARKER } else { base };
+                let base = if base == 0 {
+                    POINTER_WIDTH_MARKER
+                } else {
+                    base
+                };
                 match next_char {
                     'i' => Number::Int(number as i64, base),
                     'u' => Number::Uint(number, base),
@@ -648,7 +650,10 @@ pub trait LexerBase {
                 if fraction == 0 && !is_float {
                     Number::Int(number as i64, POINTER_WIDTH_MARKER)
                 } else {
-                    Number::Float(number as f64 + (fraction as f64 / exponent as f64), POINTER_WIDTH_MARKER)
+                    Number::Float(
+                        number as f64 + (fraction as f64 / exponent as f64),
+                        POINTER_WIDTH_MARKER,
+                    )
                 }
             }
         })
@@ -1271,7 +1276,7 @@ pub trait ErrorDisplayState<E: DisplayError> {
     fn sources(&self) -> &Ctx;
 }
 
-/// Any error ctaht can ne displayed.
+/// Any error that can ne displayed.
 pub trait DisplayError {
     /// Getter of error token.
     fn token(&self) -> Token;

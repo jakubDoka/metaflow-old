@@ -3,15 +3,13 @@
 #![feature(vec_into_raw_parts)]
 //#![warn(missing_docs)]
 
-use cranelift::codegen::ir::Function;
-
 //use std::time::Instant;
 
 //use gen::GErrorDisplay;
 
 pub mod ast;
 //pub mod entities;
-//pub mod functions;
+pub mod functions;
 //pub mod gen;
 pub mod incr;
 pub mod lexer;
@@ -23,7 +21,6 @@ pub mod util;
 pub const VERSION: &str = env!("CARGO_PKG_VERSION");
 
 fn main() {
-    println!("{}", std::mem::size_of::<Function>());
     #[cfg(feature = "testing")]
     test();
     #[cfg(not(feature = "testing"))]
