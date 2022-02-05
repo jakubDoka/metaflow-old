@@ -1,9 +1,9 @@
-struct Option[T]:
+struct [T] Option:
   priv present: bool
   priv value: T
 
 struct Some:
   priv value: int
 
-struct Goof[T]:
+struct [T] Goof:
   priv value: Option[T]

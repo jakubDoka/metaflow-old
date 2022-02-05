@@ -109,6 +109,21 @@ Struct(None) "struct Scope\r":
  None
  Ident "Scope"
  None
+===type false ===
+None
+Bound(None) "bound Sound:\r\n  fun beep() -> Seq[u8]\r\n\r":
+ None
+ Ident "Sound"
+ None
+ Group ":\r\n  fun beep() -> Seq[u8]\r\n\r":
+  Fun "fun beep() -> Seq[u8]\r":
+   FunHeader(Normal, None, Fast) "fun beep() -> Seq[u8]\r":
+    None
+    Ident "beep"
+    Instantiation "Seq[u8]\r":
+     Ident "Seq"
+     Ident "u8"
+   None
 ===type true ===
 None
 Struct(None) "struct[T] Template\r":
@@ -675,3 +690,10 @@ Fun "fun some_string -> &u8:\r\n  \"\r\nhello there\r\n  \"":
    Ident "u8"
  Group ":\r\n  \"\r\nhello there\r\n  \"":
   Lit "\"\r\nhello there\r\n  \""
+===bound_impl false ===
+Impl(None) "impl Sound for Scope":
+ None
+ Ident "Sound"
+ Ident "Scope"
+ Group ":\r\n  fun beep() -> Seq[u8]:\r\n    return [0x80, 0x00, 0x00, 0x00].toSeq()\r\n\r":
+  None

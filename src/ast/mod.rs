@@ -981,7 +981,7 @@ impl<'a> Parser<'a> {
                     token::Kind::RBra,
                     Self::expr,
                 )?;
-                return Ok(self.ast(Kind::Array, sons.as_slice(), token));
+                self.ast(Kind::Array, sons.as_slice(), token)
             }
             token::Kind::Fun => return self.fun_header(true),
             _ => todo!("unmatched simple expr pattern {:?}", self.state.current()),

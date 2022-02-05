@@ -284,7 +284,7 @@ impl Ctx {
         let mut params = self.temp_vec();
         let mut shadowed = self.temp_vec();
         let sons = ast_data.sons(ast);
-        let (generics, body) = (sons[1], sons[2]);
+        let (generics, body) = (sons[0], sons[2]);
         
         params.extend_from_slice(self.type_slice(self.types[id].params));
         
@@ -520,7 +520,7 @@ impl Ctx {
                 ty::Kind::Generic(ast) => ast,
                 _ => unreachable!("{:?}", kind),
             };
-            let generic_ast = ast_data.son(generic_ast, 1);
+            let generic_ast = ast_data.son(generic_ast, 0);
             ast_data.sons(generic_ast).len()
         };
 
@@ -601,28 +601,28 @@ impl Ctx {
     pub fn collect(
         &mut self,
         module: Mod,
-        temp_ast_data: &ast::Data,
-        saved_ast_data: &mut ast::Data,
+        mut ast_data: ast::DataSwitch,
         collector: &mut ast::Collector,
-        reloc: &mut ast::Reloc,
     ) -> Result<()> {
+        
         if module == BUILTIN_MODULE {
             self.add_builtin_types();
         }
 
         let mut temp = self.ctx.temp_vec();
 
-        collector.use_types(|ty, mut attrs| {
-            let (kind, sons, _) = temp_ast_data.ent(ty).parts();
-            let sons = temp_ast_data.slice(sons);
+        collector.use_types(|saved, ty, attrs| {
+            ast_data.set_swapped(saved);
+            let (kind, sons, _) = ast_data.ent(ty).parts();
+            let sons = ast_data.slice(sons);
             match kind {
                 ast::Kind::Enum(vis) => {
                     let (name, variants) = (sons[0], sons[1]);
                     let variants = if !variants.is_reserved_value() {
                         temp.clear();
-                        for &var in temp_ast_data.sons(variants) {
+                        for &var in ast_data.sons(variants) {
                             temp.push(self.enum_variants.push(EnumVariantEnt {
-                                id: self.hash_token(temp_ast_data.token(var)),
+                                id: self.hash_token(ast_data.token(var)),
                             }));
                         }
                         EntityList::from_slice(temp.as_slice(), &mut self.enum_slices)
@@ -630,7 +630,7 @@ impl Ctx {
                         EntityList::new()
                     };
 
-                    let hint = temp_ast_data.token(name);
+                    let hint = ast_data.token(name);
                     let id = self.hash_token(hint);
 
                     let kind = ty::Kind::Enumeration(variants);
@@ -648,16 +648,13 @@ impl Ctx {
                     self.add_type(module, datatype).map_err(Into::into)?;
                 }
                 ast::Kind::Struct(vis) | ast::Kind::Union(vis) | ast::Kind::Bound(vis) => {
-                    
-                    let (ident, generics) = (sons[0], sons[1]);
-                    let kind = if !generics.is_reserved_value() {
-                        attrs = saved_ast_data.relocate(attrs, temp_ast_data, reloc);
-                        let ty = saved_ast_data.relocate(ty, temp_ast_data, reloc);
+                    let ident = sons[1];
+                    let kind = if saved {
                         ty::Kind::Generic(ty)
                     } else {
                         ty::Kind::Unresolved(ty)
                     };
-                    let hint = temp_ast_data.token(ident);
+                    let hint = ast_data.token(ident);
                     let id = self.hash_token(hint);
 
                     let datatype = TyEnt {
@@ -1883,16 +1880,15 @@ pub fn test() {
         item_buffer.clear();
 
         loop {
+            let mut data = ast::DataCollector::new(&mut temp_ast_data, &mut saved_ast_data, &mut reloc);
             let more = ctx
-                .compute_ast(module, &mut temp_ast_data, &mut collector)
+                .compute_ast(module, &mut data, &mut collector)
                 .map_err(|e| panic!("{}", ErrorDisplay::new(&ctx.ctx, &e)))
                 .unwrap();
             ctx.collect(
                 module,
-                &mut temp_ast_data,
-                &mut saved_ast_data,
+                ast::DataSwitch::new(&temp_ast_data, &saved_ast_data),
                 &mut collector,
-                &mut reloc,
             )
             .map_err(|e| panic!("\n{}", ErrorDisplay::new(&ctx, &e)))
             .unwrap();

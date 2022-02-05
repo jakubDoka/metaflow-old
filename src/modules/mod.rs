@@ -70,7 +70,10 @@ impl Ctx {
 
         // cleared each loop
         let mut imports = self.temp_vec();
-        let mut ast_data = ast::Data::default();
+        let mut temp_data = ast::Data::default();
+        let mut saved_data = ast::Data::default();
+        let mut reloc = ast::Reloc::default();
+        
         let mut collector = ast::Collector::default();
 
         // loop eliminates recursion
@@ -104,10 +107,12 @@ impl Ctx {
             }
 
             let mut ast_state = ast::State::new(source, &self.ctx).map_err(Into::into)?;
-
-            ast::Parser::new(&mut ast_state, &mut ast_data, &mut self.ctx, &mut collector)
-                .parse_imports(&mut imports)
-                .map_err(Into::into)?;
+            {
+                let mut data = ast::DataCollector::new(&mut temp_data, &mut saved_data, &mut reloc);
+                ast::Parser::new(&mut ast_state, &mut data, &mut self.ctx, &mut collector)
+                    .parse_imports(&mut imports)
+                    .map_err(Into::into)?;
+            }
 
             for import in imports.drain(..) {
                 let path = self.display(import.path());
@@ -275,7 +280,10 @@ impl Ctx {
         };
 
         let mut frontier = vec![(manifest_id, ast::Dep::default())];
-        let mut data = ast::Data::default();
+        let mut saved_data = ast::Data::default();
+        let mut temp_data = ast::Data::default();
+        let mut reloc = ast::Reloc::default();
+        
         let mut collector = ast::Collector::default();
         while let Some((manifest_id, import)) = frontier.pop() {
             if self.seen_manifests.contains(manifest_id) {
@@ -312,10 +320,13 @@ impl Ctx {
             let source = self.add_source(source);
             self.manifests[manifest_id].source = source;
 
-            let mut state = ast::State::new(source, &self.ctx).map_err(Into::into)?;
-            let manifest = ast::Parser::new(&mut state, &mut data, self, &mut collector)
-                .parse_manifest()
-                .map_err(Into::into)?;
+            let manifest = {
+                let mut state = ast::State::new(source, &self.ctx).map_err(Into::into)?;
+                let mut data = ast::DataCollector::new(&mut saved_data, &mut temp_data, &mut reloc);
+                ast::Parser::new(&mut state, &mut data, self, &mut collector)
+                    .parse_manifest()
+                    .map_err(Into::into)?
+            };
 
             let root_file_span = manifest
                 .find_attr(ID::new("root"))
@@ -476,11 +487,11 @@ impl Ctx {
 
     /// Computes ast of module. If true is returned, parsing was
     /// interrupted by top level 'break'.
-    pub fn compute_ast(
-        &mut self,
+    pub fn compute_ast<'a>(
+        &'a mut self,
         module: Mod,
-        buffer: &mut ast::Data,
-        collector: &mut ast::Collector,
+        buffer: &'a mut ast::DataCollector<'a>,
+        collector: &'a mut ast::Collector,
     ) -> Result<bool> {
         ast::Parser::new(
             &mut self.module_ctxs[module].ast_state,

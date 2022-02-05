@@ -4,7 +4,7 @@ var pub stacktrace: Seq[StackFrame]
 attr push(untraced)
 
 ## returns size of T in bytes
-fun pub sizeof[T] -> int
+fun pub [T] sizeof -> int
 
 attr inline
 impl pub [T, L] [T, L]:
@@ -61,7 +61,7 @@ impl pub Seq[u8]:
     memcpy(s.get_unchecked_var(s.len), value, i)
     s.len += i
 
-struct pub Seq[T]:
+struct pub [T] Seq:
   data: &var T
   len: int
   cap: int
@@ -163,7 +163,7 @@ impl pub [T] Seq[T]:
   fun in_bounds(s: &Self, index: int) -> bool:
     index >= 0 & index < s.len
   
-struct pub Option[T]:
+struct pub [T] Option:
   priv value: T
   priv is_some: bool
 

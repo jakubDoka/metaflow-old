@@ -13,8 +13,8 @@ pub mod ast;
 //pub mod gen;
 pub mod incr;
 pub mod lexer;
-//pub mod modules;
-//pub mod types;
+pub mod modules;
+pub mod types;
 pub mod util;
 
 /// Crate version used for validating incremental data.
@@ -59,8 +59,8 @@ fn test() {
     util::test();
     lexer::test();
     ast::test();
-    //modules::test();
-    //types::test();
+    modules::test();
+    types::test();
     //functions::test();
     //gen::test();
 }
