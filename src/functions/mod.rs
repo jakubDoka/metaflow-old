@@ -41,6 +41,9 @@ pub struct Ctx {
     funs: PoolMap<Fun, FunEnt>,
     generic_funs: SparseMap<Fun, GFun>,
     globals: PoolMap<Global, GlobalEnt>,
+    bounds: PoolMap<Bound, BoundEnt>,
+    bound_slices: ListPool<Bound>,
+    fun_slices: ListPool<Fun>,
 
     do_stacktrace: bool,
 }
@@ -3213,6 +3216,21 @@ pub enum DotInstr {
     None,
     Deref,
     Ref,
+}
+
+/// Bound can be in three states, default is blueprint that is 
+/// used for instantiation. When structure binds to bound, and 
+/// bound and bind-impl is generic, the ast of this block is 
+/// saved and instantiated as needed. Once bound is instantiated,
+/// id does not have ast, but it holds onto origin. Both origin and 
+/// instance are used to add the methods to scope while instantiating
+/// generic constructs.
+#[derive(Debug, Clone, Copy, RealQuickSer, Default)]
+pub struct BoundEnt {
+    origin: PackedOption<Bound>,
+    inherits: EntityList<Bound>,
+    methods: EntityList<Fun>,
+    ast: PackedOption<Ast>,
 }
 
 #[derive(Debug, Clone, QuickDefault, Copy, RealQuickSer)]

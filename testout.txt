@@ -230,12 +230,17 @@ Fun "fun new -> Self:\r\n    return\r\n  \r":
  Group ":\r\n    return\r\n  \r":
   Return "return\r":
    None
-===fun false ===
-Group "= [1, 2, 3]\r":
- Array "[1, 2, 3]\r":
-  Lit "1"
-  Lit "2"
-  Lit "3"
+===fun true ===
+Impl(None) "impl[T] Template[T]":
+ Generics "[T] ":
+  GenericParam "T":
+   Ident "T"
+   None
+ Instantiation "Template[T]":
+  Ident "Template"
+  Ident "T"
+ None
+ None
 None
 Fun "fun do_nothing(s: Self, value: T) -> T:\r\n    value\r\n\r":
  FunHeader(Normal, None, Fast) "fun do_nothing(s: Self, value: T) -> T":

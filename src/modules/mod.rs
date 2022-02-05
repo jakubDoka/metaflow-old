@@ -607,7 +607,7 @@ impl Ctx {
     }
 }
 
-crate::impl_entity!(Fun, Global, Local, Ty, Const);
+crate::impl_entity!(Fun, Global, Local, Ty, Const, Bound);
 
 #[derive(Debug, Clone, Copy, Default, RealQuickSer)]
 pub struct Item {
@@ -655,6 +655,8 @@ pub mod item {
         Local(Local),
         /// Item refers to function.
         Fun(Fun),
+        /// Item refers to bound.
+        Bound(Bound),
     }
 
     impl std::fmt::Display for Kind {
@@ -667,6 +669,7 @@ pub mod item {
                 Kind::Global(..) => write!(f, "global variable"),
                 Kind::Local(..) => write!(f, "local variable"),
                 Kind::Fun(..) => write!(f, "function"),
+                Kind::Bound(..) => write!(f, "bound"),
             }
         }
     }

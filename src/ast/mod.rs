@@ -31,15 +31,25 @@ type Result<T = ()> = std::result::Result<T, Error>;
 pub struct Parser<'a> {
     ctx: &'a mut Ctx,
     state: &'a mut State,
-    data: &'a mut Data,
+    data: &'a mut DataCollector<'a>,
     collector: &'a mut Collector,
 }
 
+/// The methods in parser are documented in following way:
+/// - `{}` items inside are repeating 0..n times. If there is not `()` around this,
+/// items are inlined in node with other items. This inlining is present in nodes
+/// where is only one repeating pattern on top level. (fx. [`Parser::fun_header()`])
+/// - `[]` items inside are repeating 0..1 times. Its represented by single
+/// ast node that can be either reserved_value or point to something.
+/// - `()` items inside are grouped together inside an ast node.
+/// - `:`  item after is repeating inside an indented block.
+/// - `|`  makes choice between left and right side. Can be chained.
+/// - `''` string in inside is regex.
 impl<'a> Parser<'a> {
     /// Because of private fields.
     pub fn new(
         state: &'a mut State,
-        data: &'a mut Data,
+        data: &'a mut DataCollector<'a>,
         ctx: &'a mut Ctx,
         collector: &'a mut Collector,
     ) -> Self {
@@ -216,7 +226,7 @@ impl<'a> Parser<'a> {
                 Ast::reserved_value(),
                 concat!(
                     "expected 'break' | 'fun' | 'attr' | 'struct' | 'enum'",
-                    " | 'union' | 'let' | 'var' | 'impl' | '##'",
+                    " | 'union' | 'bound' | 'let' | 'var' | 'impl' | '##'",
                 ),
             )? {
                 return Ok(true);
@@ -227,52 +237,141 @@ impl<'a> Parser<'a> {
     }
 
     /// Parses impl block.
-    pub fn impl_block(&mut self) -> Result {
+    pub fn impl_block(&mut self) -> Result<Ast> {
         let token = self.state.current();
         self.next()?;
 
         let vis = self.vis()?;
 
-        let generics = if self.state.current() == token::Kind::LBra {
-            let token = self.state.current();
-            let mut sons = self.ctx.temp_vec();
-            self.list(
-                &mut sons,
-                token::Kind::LBra,
-                token::Kind::Comma,
-                token::Kind::RBra,
-                Self::ident,
-            )?;
-            let sons = self.data.add_slice(sons.as_slice());
-            let token = token.join_trimmed(self.state.current());
-            self.data.add(AstEnt::new(Kind::Group, sons, token))
+        let generics = self.generics()?;
+
+        let target_or_bound = self.type_expr()?;
+        let maybe_target = if self.state.current_kind() == token::Kind::For {
+            self.next()?;
+            self.type_expr()?
         } else {
             Ast::reserved_value()
         };
 
-        let expr = self.type_expr()?;
-        let sons = self.data.add_slice(&[generics, expr]);
+        let mut sons = self.data.add_slice(&[
+            generics,
+            target_or_bound,
+            maybe_target,
+            Ast::reserved_value(),
+        ]);
         let token = token.join_trimmed(self.state.current());
         let impl_ast = self.data.add(AstEnt::new(Kind::Impl(vis), sons, token));
 
-        self.expect_str(token::Kind::Colon, "expected ':' after 'impl' type")?;
-        self.next()?;
-        self.walk_block(|s| {
-            s.top_item(impl_ast, "expected 'fun' | 'attr' | 'let' | 'var' | '##'")
-        })?;
+        let result = if maybe_target.is_reserved_value() {
+            self.expect_str(token::Kind::Colon, "expected ':' after 'impl' type")?;
+            self.next()?;
+            self.walk_block(|s| {
+                s.top_item(impl_ast, "expected 'fun' | 'attr' | 'let' | 'var' | '##'")
+            })?;
+            Ast::reserved_value()
+        } else {
+            // construct the impl-bound body
+            if self.state.current_kind() == token::Kind::Colon {
+                let token = self.state.current();
+                self.next()?;
+                let mut elements = self.ctx.temp_vec();
+                self.walk_block(|s| {
+                    let kind = s.state.current_kind();
+                    elements.push(s.pop_attributes(kind));
+                    match kind {
+                        // all that can be in the impl-bound body
+                        token::Kind::Ident => drop(s.bound_alias()?),
+                        token::Kind::Fun => drop(s.fun()?),
+                        token::Kind::Attr => s.attr()?,
+                        token::Kind::Comment(_) => s.comment()?,
+                        _ => {
+                            return Err(
+                                s.unexpected_str("expected 'fun' | '##' | 'attr' | identifier")
+                            )
+                        }
+                    }
+                    Ok(false)
+                })?;
+                let content = self.ast(Kind::Group, elements.as_slice(), token);
+                let sons_len = 4;
+                sons.as_mut_slice(&mut self.data.connections)[sons_len - 1] = content;
+            }
+            impl_ast
+        };
 
-        Ok(())
+        Ok(result)
     }
 
     /// Parses top item. `impl_ast` is added to each item if provided, `message` is what
     /// gets displayed as error message if invalid item was encountered. Returns true
     /// if `break` was found.
     pub fn top_item(&mut self, impl_ast: Ast, message: &'static str) -> Result<bool> {
+        if impl_ast.is_reserved_value() {
+            self.data.set_swapped(false);
+        }
+
         let kind = self.state.current_kind();
         if kind == token::Kind::Break {
             self.next()?;
             return Ok(true);
         }
+
+        let attributes = self.pop_attributes(kind);
+
+        match kind {
+            token::Kind::Impl if impl_ast.is_reserved_value() => {
+                self.ctx.push_local_attributes();
+                let impl_block = self.impl_block()?;
+                if !impl_block.is_reserved_value() {
+                    self.collector
+                        .bound_impls
+                        .push((self.data.swapped(), impl_block));
+                }
+                self.ctx.pop_attribute_frame();
+            }
+            token::Kind::Struct | token::Kind::Union | token::Kind::Enum | token::Kind::Bound
+                if impl_ast.is_reserved_value() =>
+            {
+                let item = match kind {
+                    token::Kind::Struct => self.structure_declaration(false)?,
+                    token::Kind::Union => self.structure_declaration(true)?,
+                    token::Kind::Enum => self.enum_declaration()?,
+                    token::Kind::Bound => self.bound_declaration()?,
+                    _ => unreachable!(),
+                };
+                self.collector
+                    .types
+                    .push((self.data.swapped(), item, attributes));
+            }
+            token::Kind::Fun => {
+                let item = self.fun()?;
+                self.collector
+                    .funs
+                    .push((self.data.swapped(), item, attributes, impl_ast));
+            }
+            token::Kind::Var | token::Kind::Let => {
+                let item = self.var_statement(true)?;
+                self.collector
+                    .globals
+                    .push((self.data.swapped(), item, attributes, impl_ast));
+            }
+            token::Kind::Attr => {
+                self.attr()?;
+            }
+            token::Kind::Comment(_) => {
+                self.comment()?;
+            }
+            token::Kind::Indent(_) => {
+                self.next()?;
+            }
+
+            _ => return Err(self.unexpected_str(message)),
+        }
+
+        Ok(false)
+    }
+
+    pub fn pop_attributes(&mut self, kind: token::Kind) -> Ast {
         let collect_attributes = matches!(
             kind,
             token::Kind::Union
@@ -283,60 +382,69 @@ impl<'a> Parser<'a> {
                 | token::Kind::Let
         );
 
-        let attributes = if collect_attributes {
+        if collect_attributes {
             let sons = self.ctx.create_attribute_slice(self.data);
             if !sons.is_empty() {
-                self.data
-                    .add(AstEnt::new(Kind::Group, sons, Token::default()))
-            } else {
-                Ast::reserved_value()
+                return self
+                    .data
+                    .add(AstEnt::new(Kind::Group, sons, Token::default()));
             }
+        }
+
+        Ast::reserved_value()
+    }
+
+    pub fn comment(&mut self) -> Result {
+        let ast = AstEnt::sonless(Kind::Comment, self.state.current());
+        let ast = self.data.add(ast);
+        self.ctx.push_local_attribute(self.data.swapped(), ast);
+        self.next()?;
+
+        Ok(())
+    }
+
+    pub fn bound_alias(&mut self) -> Result<Ast> {
+        let token = self.state.current();
+        let name = self.data.add(AstEnt::sonless(Kind::Ident, token));
+        self.next()?;
+
+        if self.ctx.display(self.state.current().span()) != "=" {
+            return Err(self.unexpected_str("expected '=' after bound alias"));
+        }
+        self.next()?;
+
+        // TODO: support generic instantiations as aliased functions
+        let target = self
+            .data
+            .add(AstEnt::sonless(Kind::Ident, self.state.current()));
+        self.next()?;
+
+        Ok(self.ast(Kind::BoundAlias, &[name, target], token))
+    }
+
+    pub fn bound_declaration(&mut self) -> Result<Ast> {
+        let token = self.state.current();
+        self.next()?;
+
+        let vis = self.vis()?;
+        let generics = self.generics()?;
+        let name = self.ident()?;
+
+        let bounds = if self.state.current_kind() == token::Kind::Embed {
+            self.next()?;
+            self.ignore_newlines()?;
+            self.bound_expr()?
         } else {
             Ast::reserved_value()
         };
 
-        match kind {
-            token::Kind::Impl if impl_ast == Ast::reserved_value() => {
-                self.ctx.push_local_attributes();
-                self.impl_block()?;
-                self.ctx.pop_attribute_frame();
-            }
-            token::Kind::Struct | token::Kind::Union | token::Kind::Enum
-                if impl_ast == Ast::reserved_value() =>
-            {
-                let item = match kind {
-                    token::Kind::Struct => self.structure_declaration(false)?,
-                    token::Kind::Union => self.structure_declaration(true)?,
-                    token::Kind::Enum => self.enum_declaration()?,
-                    _ => unreachable!(),
-                };
-                self.collector.types.push((item, attributes));
-            }
-            token::Kind::Fun => {
-                let item = self.fun()?;
-                self.collector.funs.push((item, attributes, impl_ast));
-            }
-            token::Kind::Var | token::Kind::Let => {
-                let item = self.var_statement(true)?;
-                self.collector.globals.push((item, attributes, impl_ast));
-            }
-            token::Kind::Attr => {
-                self.attr()?;
-            }
-            token::Kind::Comment(_) => {
-                let ast = AstEnt::sonless(Kind::Comment, self.state.current());
-                let ast = self.data.add(ast);
-                self.ctx.push_local_attribute(ast);
-                self.next()?;
-            }
-            token::Kind::Indent(_) => {
-                self.next()?;
-            }
+        let content = if self.state.current_kind() == token::Kind::Colon {
+            self.block(|s| s.fun())?
+        } else {
+            Ast::reserved_value()
+        };
 
-            _ => return Err(self.unexpected_str(message)),
-        }
-
-        Ok(false)
+        Ok(self.ast(Kind::Bound(vis), &[generics, name, bounds, content], token))
     }
 
     /// Parses enum declaration.
@@ -354,10 +462,7 @@ impl<'a> Parser<'a> {
             Ast::reserved_value()
         };
 
-        let sons = self.data.add_slice(&[name, variants]);
-        let token = token.join_trimmed(self.state.current());
-
-        Ok(self.data.add(AstEnt::new(Kind::Enum(vis), sons, token)))
+        Ok(self.ast(Kind::Enum(vis), &[name, variants], token))
     }
 
     /// Parses structure declaration, which can be either struct or union.
@@ -372,7 +477,8 @@ impl<'a> Parser<'a> {
             Kind::Struct(vis)
         };
 
-        let expr = self.type_expr()?;
+        let generics = self.generics()?;
+        let name = self.ident()?;
 
         let body = if self.state.current() == token::Kind::Colon {
             self.block(Self::structure_field)?
@@ -380,10 +486,7 @@ impl<'a> Parser<'a> {
             Ast::reserved_value()
         };
 
-        let sons = self.data.add_slice(&[expr, body]);
-        let token = token.join_trimmed(self.state.current());
-
-        Ok(self.data.add(AstEnt::new(kind, sons, token)))
+        Ok(self.ast(kind, &[generics, name, body], token))
     }
 
     /// Parses s structure field, that can be either of union or struct.
@@ -409,12 +512,7 @@ impl<'a> Parser<'a> {
 
         sons.push(self.type_expr()?);
 
-        let sons = self.data.add_slice(sons.as_slice());
-        let token = token.join_trimmed(self.state.current());
-
-        Ok(self
-            .data
-            .add(AstEnt::new(Kind::StructField(vis, embedded), sons, token)))
+        Ok(self.ast(Kind::StructField(vis, embedded), sons.as_slice(), token))
     }
 
     /// Parses an attribute.
@@ -465,10 +563,7 @@ impl<'a> Parser<'a> {
             _ => Kind::AttributeElement,
         };
 
-        let sons = self.data.add_slice(sons.as_slice());
-        let token = token.join_trimmed(self.state.current());
-
-        Ok(self.data.add(AstEnt::new(kind, sons, token)))
+        Ok(self.ast(kind, sons.as_slice(), token))
     }
 
     pub fn fun(&mut self) -> Result<Ast> {
@@ -480,10 +575,7 @@ impl<'a> Parser<'a> {
             Ast::reserved_value()
         };
 
-        let sons = self.data.add_slice(&[header, body]);
-        let token = token.join_trimmed(self.state.current());
-
-        Ok(self.data.add(AstEnt::new(Kind::Fun, sons, token)))
+        Ok(self.ast(Kind::Fun, &[header, body], token))
     }
 
     pub fn fun_header(&mut self, anonymous: bool) -> Result<Ast> {
@@ -494,15 +586,21 @@ impl<'a> Parser<'a> {
 
         let mut sons = self.ctx.temp_vec();
 
-        let previous = self.state.is_type_expr;
-        self.state.is_type_expr = true;
+        let generics = self.generics()?;
+        sons.push(generics);
+
         let is_op = self.state.current_kind() == token::Kind::Op;
         let ident = match self.state.current_kind() {
-            token::Kind::Ident | token::Kind::Op if !anonymous => self.ident_expr()?,
+            token::Kind::Ident | token::Kind::Op if !anonymous => {
+                let ast = self
+                    .data
+                    .add(AstEnt::sonless(Kind::Ident, self.state.current()));
+                self.next()?;
+                ast
+            }
             _ => Ast::reserved_value(),
         };
         sons.push(ident);
-        self.state.is_type_expr = previous;
 
         if self.state.current() == token::Kind::LPar {
             let parser = if self.state.is_type_expr {
@@ -555,14 +653,11 @@ impl<'a> Parser<'a> {
             CallConv::default()
         };
 
-        let sons = self.data.add_slice(sons.as_slice());
-        let token = token.join_trimmed(self.state.current());
-
-        Ok(self.data.add(AstEnt::new(
+        Ok(self.ast(
             Kind::FunHeader(kind, vis, call_conv),
-            sons,
+            sons.as_slice(),
             token,
-        )))
+        ))
     }
 
     pub fn fun_argument(&mut self) -> Result<Ast> {
@@ -584,12 +679,7 @@ impl<'a> Parser<'a> {
         )?;
 
         sons.push(self.type_expr()?);
-        let sons = self.data.add_slice(sons.as_slice());
-        let token = token.join_trimmed(self.state.current());
-
-        Ok(self
-            .data
-            .add(AstEnt::new(Kind::FunArgument(mutable), sons, token)))
+        Ok(self.ast(Kind::FunArgument(mutable), sons.as_slice(), token))
     }
 
     pub fn stmt_block(&mut self) -> Result<Ast> {
@@ -621,10 +711,7 @@ impl<'a> Parser<'a> {
             Ok(false)
         })?;
 
-        let sons = self.data.add_slice(sons.as_slice());
-        let token = token.join_trimmed(self.state.current());
-
-        Ok(self.data.add(AstEnt::new(kind, sons, token)))
+        Ok(self.ast(kind, sons.as_slice(), token))
     }
 
     pub fn var_statement_line(&mut self) -> Result<Ast> {
@@ -666,9 +753,7 @@ impl<'a> Parser<'a> {
                     "expected one value per identifier or one value for all identifiers",
                 ));
             }
-            let values = self.data.add_slice(values.as_slice());
-            let token = token.join_trimmed(self.state.current());
-            self.data.add(AstEnt::new(Kind::Group, values, token))
+            self.ast(Kind::Group, values.as_slice(), token)
         } else {
             Ast::reserved_value()
         };
@@ -679,10 +764,8 @@ impl<'a> Parser<'a> {
 
         let ident_group = self.data.add_slice(ident_group.as_slice());
         let ident_group = self.data.add(AstEnt::new(Kind::Group, ident_group, token));
-        let sons = self.data.add_slice(&[ident_group, datatype, values]);
-        let token = token.join_trimmed(self.state.current());
 
-        Ok(self.data.add(AstEnt::new(Kind::VarAssign, sons, token)))
+        Ok(self.ast(Kind::VarAssign, &[ident_group, datatype, values], token))
     }
 
     pub fn return_statement(&mut self) -> Result<Ast> {
@@ -694,10 +777,49 @@ impl<'a> Parser<'a> {
             self.expr()?
         };
 
-        let sons = self.data.add_slice(&[ret_val]);
-        let token = token.join_trimmed(self.state.current());
+        Ok(self.ast(Kind::Return, &[ret_val], token))
+    }
 
-        Ok(self.data.add(AstEnt::new(Kind::Return, sons, token)))
+    pub fn generics(&mut self) -> Result<Ast> {
+        let token = self.state.current();
+        if token.kind() != token::Kind::LBra {
+            return Ok(Ast::reserved_value());
+        }
+        self.data.set_swapped(true);
+        let mut sons = self.ctx.temp_vec();
+        self.list(
+            &mut sons,
+            token::Kind::LBra,
+            token::Kind::Comma,
+            token::Kind::RBra,
+            Self::generic_param,
+        )?;
+        Ok(self.ast(Kind::Generics, sons.as_slice(), token))
+    }
+
+    pub fn generic_param(&mut self) -> Result<Ast> {
+        let token = self.state.current();
+        let ident = self.ident()?;
+        let bound = if self.state.current() == token::Kind::Colon {
+            self.next()?;
+            self.bound_expr()?
+        } else {
+            Ast::reserved_value()
+        };
+
+        Ok(self.ast(Kind::GenericParam, &[ident, bound], token))
+    }
+
+    pub fn bound_expr(&mut self) -> Result<Ast> {
+        let token = self.state.current();
+        let mut bounds = self.ctx.temp_vec();
+        bounds.push(self.type_expr()?);
+        while self.ctx.display(self.state.current().span()) == "+" {
+            self.next()?;
+            self.ignore_newlines()?;
+            bounds.push(self.type_expr()?);
+        }
+        Ok(self.ast(Kind::Bounds, bounds.as_slice(), token))
     }
 
     pub fn type_expr(&mut self) -> Result<Ast> {
@@ -811,9 +933,7 @@ impl<'a> Parser<'a> {
                         token::Kind::RPar,
                         Self::expr,
                     )?;
-                    let sons = self.data.add_slice(sons.as_slice());
-                    let token = token.join_trimmed(self.state.current());
-                    self.data.add(AstEnt::new(Kind::Tuple, sons, token))
+                    self.ast(Kind::Tuple, sons.as_slice(), token)
                 } else {
                     self.expect_str(token::Kind::RPar, "expected ')'")?;
                     self.next()?;
@@ -846,9 +966,7 @@ impl<'a> Parser<'a> {
                 };
                 let ast = self.simple_expr()?;
                 sons.push(ast);
-                let sons = self.data.add_slice(sons.as_slice());
-                let token = token.join_trimmed(self.state.current());
-                return Ok(self.data.add(AstEnt::new(kind, sons, token)));
+                return Ok(self.ast(kind, sons.as_slice(), token));
             }
             token::Kind::Pass => {
                 self.next()?;
@@ -863,9 +981,7 @@ impl<'a> Parser<'a> {
                     token::Kind::RBra,
                     Self::expr,
                 )?;
-                let sons = self.data.add_slice(sons.as_slice());
-                let token = token.join_trimmed(self.state.current());
-                return Ok(self.data.add(AstEnt::new(Kind::Array, sons, token)));
+                return Ok(self.ast(Kind::Array, sons.as_slice(), token));
             }
             token::Kind::Fun => return self.fun_header(true),
             _ => todo!("unmatched simple expr pattern {:?}", self.state.current()),
@@ -877,9 +993,7 @@ impl<'a> Parser<'a> {
                     token::Kind::Dot => {
                         self.next()?;
                         let expr = self.simple_expr_low(true)?;
-                        let sons = self.data.add_slice(&[ast, expr]);
-                        let token = token.join_trimmed(self.state.current());
-                        AstEnt::new(Kind::Dot, sons, token)
+                        self.ast(Kind::Dot, &[ast, expr], token)
                     }
                     token::Kind::LPar => {
                         let (kind, sons, _) = self.data.ent(ast).parts();
@@ -901,9 +1015,7 @@ impl<'a> Parser<'a> {
                             Self::expr,
                         )?;
 
-                        let sons = self.data.add_slice(new_sons.as_slice());
-                        let token = token.join_trimmed(self.state.current());
-                        AstEnt::new(kind, sons, token)
+                        self.ast(kind, new_sons.as_slice(), token)
                     }
                     token::Kind::LBra => {
                         self.next()?;
@@ -913,15 +1025,13 @@ impl<'a> Parser<'a> {
                         self.expect_str(token::Kind::RBra, "expected ']'")?;
                         self.next()?;
 
-                        let sons = self.data.add_slice(&[ast, expr]);
-                        let token = token.join_trimmed(self.state.current());
-                        AstEnt::new(Kind::Index, sons, token)
+                        self.ast(Kind::Index, &[ast, expr], token)
                     }
 
                     _ => break,
                 };
 
-                ast = self.data.add(new_ast);
+                ast = new_ast;
             }
         }
 
@@ -933,10 +1043,8 @@ impl<'a> Parser<'a> {
         self.next()?;
 
         let label = self.optional_tag()?;
-        let sons = self.data.add_slice(&[label]);
-        let token = token.join_trimmed(self.state.current());
 
-        Ok(self.data.add(AstEnt::new(Kind::Continue, sons, token)))
+        Ok(self.ast(Kind::Continue, &[label], token))
     }
 
     pub fn break_statement(&mut self) -> Result<Ast> {
@@ -951,9 +1059,7 @@ impl<'a> Parser<'a> {
             self.expr()?
         };
 
-        let sons = self.data.add_slice(&[label, ret]);
-        let token = token.join_trimmed(self.state.current());
-        Ok(self.data.add(AstEnt::new(Kind::Break, sons, token)))
+        Ok(self.ast(Kind::Break, &[label, ret], token))
     }
 
     pub fn loop_expr(&mut self) -> Result<Ast> {
@@ -963,10 +1069,7 @@ impl<'a> Parser<'a> {
         let label = self.optional_tag()?;
         let body = self.stmt_block()?;
 
-        let sons = self.data.add_slice(&[label, body]);
-        let token = token.join_trimmed(self.state.current());
-
-        Ok(self.data.add(AstEnt::new(Kind::Loop, sons, token)))
+        Ok(self.ast(Kind::Loop, &[label, body], token))
     }
 
     pub fn optional_tag(&mut self) -> Result<Ast> {
@@ -1022,9 +1125,7 @@ impl<'a> Parser<'a> {
                 Self::expr,
             )?;
 
-            let sons = self.data.add_slice(sons.as_slice());
-            let token = token.join_trimmed(self.state.current());
-            ast = self.data.add(AstEnt::new(Kind::Instantiation, sons, token));
+            ast = self.ast(Kind::Instantiation, sons.as_slice(), token);
         }
 
         Ok(ast)
@@ -1044,9 +1145,7 @@ impl<'a> Parser<'a> {
             token::Kind::Elif => {
                 let token = self.state.current();
                 let branch = self.if_expr()?;
-                let sons = self.data.add_slice(&[branch]);
-                let token = token.join_trimmed(self.state.current());
-                self.data.add(AstEnt::new(Kind::Elif, sons, token))
+                self.ast(Kind::Elif, &[branch], token)
             }
             token::Kind::Indent(_) => match self.state.peeked_kind() {
                 token::Kind::Else => {
@@ -1058,18 +1157,14 @@ impl<'a> Parser<'a> {
                     self.next()?;
                     let token = self.state.current();
                     let branch = self.if_expr()?;
-                    let sons = self.data.add_slice(&[branch]);
-                    let token = token.join_trimmed(self.state.current());
-                    self.data.add(AstEnt::new(Kind::Elif, sons, token))
+                    self.ast(Kind::Elif, &[branch], token)
                 }
                 _ => Ast::reserved_value(),
             },
             _ => Ast::reserved_value(),
         };
 
-        let sons = self.data.add_slice(&[condition, then_block, else_block]);
-
-        Ok(self.data.add(AstEnt::new(Kind::If, sons, token)))
+        Ok(self.ast(Kind::If, &[condition, then_block, else_block], token))
     }
 
     pub fn ident(&mut self) -> Result<Ast> {
@@ -1128,9 +1223,7 @@ impl<'a> Parser<'a> {
             sons.push(expr);
             Ok(false)
         })?;
-        let sons = self.data.add_slice(sons.as_slice());
-        let token = token.join_trimmed(self.state.current());
-        Ok(self.data.add(AstEnt::new(Kind::Group, sons, token)))
+        Ok(self.ast(Kind::Group, sons.as_slice(), token))
     }
 
     pub fn level_continues(&mut self) -> Result<bool> {
@@ -1244,6 +1337,12 @@ impl<'a> Parser<'a> {
     pub fn display(&self, token: Token) -> &str {
         self.ctx.display(token.span())
     }
+
+    pub fn ast(&mut self, kind: Kind, sons: &[Ast], token: Token) -> Ast {
+        let token = token.join_trimmed(self.state.current());
+        let sons = self.data.add_slice(sons);
+        self.data.add(AstEnt::new(kind, sons, token))
+    }
 }
 
 #[cfg(debug_assertions)]
@@ -1309,6 +1408,10 @@ impl Data {
 
     pub fn add_slice(&mut self, slice: &[Ast]) -> EntityList<Ast> {
         EntityList::from_slice(slice, &mut self.connections)
+    }
+
+    pub fn slice_from_iter(&mut self, iter: impl Iterator<Item = Ast>) -> EntityList<Ast> {
+        EntityList::from_iter(iter, &mut self.connections)
     }
 
     pub fn get(&self, sons: EntityList<Ast>, index: usize) -> Ast {
@@ -1385,6 +1488,10 @@ impl Data {
             assert!(ctx.frontier.is_empty());
         }
 
+        if target.is_reserved_value() {
+            return target;
+        }
+
         if !ctx.mapping[target].is_reserved_value() {
             return ctx.mapping[target];
         }
@@ -1398,6 +1505,10 @@ impl Data {
             ctx.temp_sons
                 .extend_from_slice(sons.as_slice(&source.connections));
             for s in ctx.temp_sons.iter_mut() {
+                if s.is_reserved_value() {
+                    continue;
+                }
+                ctx.frontier.push(*s);
                 let alloc = self.entities.push(AstEnt::default());
                 ctx.mapping[*s] = alloc;
                 *s = alloc;
@@ -1416,6 +1527,57 @@ impl Data {
 
     pub fn get_ent(&self, sons: EntityList<Ast>, arg: usize) -> AstEnt {
         self.entities[self.get(sons, arg)]
+    }
+}
+
+pub struct DataCollector<'a> {
+    a: &'a mut Data,
+    b: &'a mut Data,
+    reloc: &'a mut Reloc,
+    swapped: bool,
+}
+
+impl<'a> DataCollector<'a> {
+    pub fn new(a: &'a mut Data, b: &'a mut Data, reloc: &'a mut Reloc) -> Self {
+        Self {
+            a,
+            b,
+            reloc,
+            swapped: false,
+        }
+    }
+
+    pub fn swap(&mut self) {
+        std::mem::swap(&mut self.a, &mut self.b);
+        self.swapped = !self.swapped;
+    }
+
+    pub fn swapped(&self) -> bool {
+        self.swapped
+    }
+
+    pub fn set_swapped(&mut self, swapped: bool) {
+        if self.swapped != swapped {
+            self.swap();
+        }
+    }
+
+    pub fn relocate(&mut self, ast: Ast) -> Ast {
+        self.a.relocate(ast, self.b, self.reloc)
+    }
+}
+
+impl Deref for DataCollector<'_> {
+    type Target = Data;
+
+    fn deref(&self) -> &Self::Target {
+        self.a
+    }
+}
+
+impl DerefMut for DataCollector<'_> {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        self.a
     }
 }
 
@@ -1461,59 +1623,46 @@ impl Deref for DataSwitch<'_> {
 
 #[derive(Default, Debug)]
 pub struct Collector {
-    funs: Vec<(Ast, Ast, Ast)>,
-    types: Vec<(Ast, Ast)>,
-    globals: Vec<(Ast, Ast, Ast)>,
+    funs: Vec<(bool, Ast, Ast, Ast)>,
+    types: Vec<(bool, Ast, Ast)>,
+    globals: Vec<(bool, Ast, Ast, Ast)>,
+    bound_impls: Vec<(bool, Ast)>,
+}
+
+macro_rules! impl_use_items {
+    ($($name:ident, $field:ident, $($component:ident: $datatype:ty),*;)*) => {
+        $(
+            pub fn $name<E, F: FnMut($($datatype),*) -> std::result::Result<(), E>>(
+                &mut self,
+                mut f: F,
+            ) -> std::result::Result<(), E> {
+                #[allow(unused_parens)]
+                for ($($component),*) in self.$field.drain(..) {
+                    f($($component),*)?;
+                }
+
+                Ok(())
+            }
+        )*
+    }
 }
 
 impl Collector {
-    pub fn clear(&mut self) {
-        self.funs.clear();
-        self.types.clear();
-        self.globals.clear();
-    }
-
-    pub fn use_funs<E, F: FnMut(Ast, Ast, Ast) -> std::result::Result<(), E>>(
-        &mut self,
-        mut f: F,
-    ) -> std::result::Result<(), E> {
-        for (fun, attrs, scope) in self.funs.drain(..) {
-            f(fun, attrs, scope)?;
-        }
-
-        Ok(())
-    }
-
-    pub fn use_types<E, F: FnMut(Ast, Ast) -> std::result::Result<(), E>>(
-        &mut self,
-        mut f: F,
-    ) -> std::result::Result<(), E> {
-        for (ty, attrs) in self.types.drain(..) {
-            f(ty, attrs)?;
-        }
-
-        Ok(())
-    }
-
-    pub fn use_globals<E, F: FnMut(Ast, Ast, Ast) -> std::result::Result<(), E>>(
-        &mut self,
-        mut f: F,
-    ) -> std::result::Result<(), E> {
-        for (global, attrs, scope) in self.globals.drain(..) {
-            f(global, attrs, scope)?;
-        }
-
-        Ok(())
-    }
+    impl_use_items!(
+        use_types, types, saved: bool, ty: Ast, attrs: Ast;
+        use_globals, globals, saved: bool, global: Ast, attrs: Ast, scope: Ast;
+        use_bound_impls, bound_impls, saved: bool, imp: Ast;
+        use_funs, funs, saved: bool, fun: Ast, attrs: Ast, scope: Ast;
+    );
 }
 
 #[derive(Debug, Clone, Default)]
 pub struct Ctx {
     ctx: lexer::Ctx,
 
-    attrib_stack: Vec<Ast>,
+    attrib_stack: Vec<(bool, Ast)>,
     attrib_frames: Vec<usize>,
-    current_attributes: Vec<Ast>,
+    current_attributes: Vec<(bool, Ast)>,
 
     pool: Pool,
 }
@@ -1525,27 +1674,35 @@ impl Ctx {
         self.current_attributes.clear();
     }
 
-    pub fn create_attribute_slice(&mut self, data: &mut Data) -> EntityList<Ast> {
+    pub fn create_attribute_slice(&mut self, data: &mut DataCollector) -> EntityList<Ast> {
         self.current_attributes
             .extend_from_slice(&self.attrib_stack);
-        let value = data.add_slice(&self.current_attributes);
+        let mut attrs = self.temp_vec();
+        attrs.extend(self.current_attributes.iter().map(|&(swapped, ast)| {
+            if swapped != data.swapped() {
+                data.relocate(ast)
+            } else {
+                ast
+            }
+        }));
+        let value = data.add_slice(attrs.as_slice());
         self.current_attributes.clear();
         value
     }
 
-    pub fn add_attributes(&mut self, sons: &[Ast], data: &Data) {
+    pub fn add_attributes(&mut self, sons: &[Ast], data: &DataCollector) {
         for &ast in sons {
             let name = self.display(data.son_ent(ast, 0).span());
             if name == "push" {
                 self.attrib_frames.push(self.attrib_stack.len());
                 for &ast in &data.sons(ast)[1..] {
-                    self.attrib_stack.push(ast);
+                    self.attrib_stack.push((data.swapped(), ast));
                 }
             } else if name == "pop" {
                 let len = self.attrib_frames.pop().unwrap();
                 self.attrib_stack.truncate(len);
             } else {
-                self.current_attributes.push(ast);
+                self.current_attributes.push((data.swapped(), ast));
             }
         }
     }
@@ -1565,8 +1722,8 @@ impl Ctx {
             .truncate(self.attrib_frames.pop().unwrap());
     }
 
-    pub fn push_local_attribute(&mut self, ast: Ast) {
-        self.current_attributes.push(ast);
+    pub fn push_local_attribute(&mut self, swapped: bool, ast: Ast) {
+        self.current_attributes.push((swapped, ast));
     }
 }
 
@@ -1878,6 +2035,8 @@ pub enum Kind {
     Tuple,
     Union(Vis),
     Struct(Vis),
+    Bound(Vis),
+    BoundAlias,
     StructField(Vis, bool),
 
     Enum(Vis),
@@ -1901,6 +2060,9 @@ pub enum Kind {
     Deref,
     Array,
     ExprColonExpr,
+    Bounds,
+    GenericParam,
+    Generics,
 
     Loop,
     Break,
@@ -2099,16 +2261,24 @@ pub fn test() {
     );
 
     let source = ctx.add_source(source);
-    let mut data = Data::default();
+    let mut temp_data = Data::default();
+    let mut saved_data = Data::default();
+    let mut reloc = Reloc::default();
     let mut state = State::new(source, &ctx).unwrap();
     let mut collector = Collector::default();
 
-    let mut a_parser = Parser::new(&mut state, &mut data, &mut ctx, &mut collector);
-    a_parser.parse().unwrap();
+    {
+        let mut data = DataCollector::new(&mut temp_data, &mut saved_data, &mut reloc);
+        let mut a_parser = Parser::new(&mut state, &mut data, &mut ctx, &mut collector);
+        a_parser.parse().unwrap();
+    }
+
+    let mut data = DataCollector::new(&mut temp_data, &mut saved_data, &mut reloc);
 
     collector
-        .use_globals(|global, attrs, header| {
-            println!("===global===");
+        .use_globals(|saved, global, attrs, header| {
+            println!("===global {} ===", saved);
+            data.set_swapped(saved);
             print!("{}", Display::new(&ctx, &data, header));
             print!("{}", Display::new(&ctx, &data, attrs));
             print!("{}", Display::new(&ctx, &data, global));
@@ -2118,8 +2288,9 @@ pub fn test() {
         .unwrap();
 
     collector
-        .use_types(|ty, attrs| {
-            println!("===type===");
+        .use_types(|saved, ty, attrs| {
+            println!("===type {} ===", saved);
+            data.set_swapped(saved);
             print!("{}", Display::new(&ctx, &data, attrs));
             print!("{}", Display::new(&ctx, &data, ty));
 
@@ -2128,11 +2299,22 @@ pub fn test() {
         .unwrap();
 
     collector
-        .use_funs(|fun, attrs, header| {
-            println!("===fun===");
+        .use_funs(|saved, fun, attrs, header| {
+            println!("===fun {} ===", saved);
+            data.set_swapped(saved);
             print!("{}", Display::new(&ctx, &data, header));
             print!("{}", Display::new(&ctx, &data, attrs));
             print!("{}", Display::new(&ctx, &data, fun));
+
+            Result::Ok(())
+        })
+        .unwrap();
+
+    collector
+        .use_bound_impls(|saved, ast| {
+            println!("===bound_impl {} ===", saved);
+            data.set_swapped(saved);
+            print!("{}", Display::new(&ctx, &data, ast));
 
             Result::Ok(())
         })

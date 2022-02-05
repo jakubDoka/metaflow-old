@@ -139,6 +139,7 @@ impl<'a> Lexer<'a> {
             "impl" => token::Kind::Impl,
             "enum" => token::Kind::Enum,
             "union" => token::Kind::Union,
+            "bound" => token::Kind::Bound,
             "max" | "min" | "as" | "abs" => token::Kind::Op,
             "true" => token::Kind::Bool(true),
             "false" => token::Kind::Bool(false),
@@ -889,6 +890,8 @@ pub mod token {
         Enum,
         /// Keyword 'union' indicates union declaration.
         Union,
+        /// Keyword 'trait' indicates trait declaration.
+        Bound,
 
         /// Anything matching [`Lexer::char_or_tag()`] regex.
         Tag,
@@ -970,6 +973,7 @@ pub mod token {
                 Self::Impl => "'impl'",
                 Self::Enum => "'enum'",
                 Self::Union => "'ident'",
+                Self::Bound => "'bound'",
 
                 Self::Ident => "ident",
                 Self::Op => "operator",

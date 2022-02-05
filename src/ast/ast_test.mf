@@ -22,7 +22,7 @@ impl Scope:
   fun do_nothing(s: Self):
     pass
 
-struct Template[T]
+struct[T] Template
 
 impl[T] Template[T]:
   fun new -> Self:
@@ -30,6 +30,8 @@ impl[T] Template[T]:
   
   fun do_nothing(s: Self, value: T) -> T:
     value
+
+fun[T] nothing_in_particular(value: T) -> T: value
 
 fun use_chain:
   module::Type::method::[param]()

@@ -49,6 +49,7 @@
         "iconst",
         "imax",
         "imin",
+        "impls",
         "imul",
         "ineg",
         "insts",

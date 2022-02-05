@@ -198,7 +198,8 @@ impl Ctx {
             ty::Kind::Enumeration(_)
             | ty::Kind::Pointer(..)
             | ty::Kind::Builtin(..)
-            | ty::Kind::FunPointer(..) => (),
+            | ty::Kind::FunPointer(..) 
+            | ty::Kind::Bound(_) => (),
 
             ty::Kind::Constant(_) | ty::Kind::Generic(_) | ty::Kind::Unresolved(_) => {
                 unreachable!("{:?}", ty_ent.kind)
@@ -259,6 +260,9 @@ impl Ctx {
             ast::Kind::Union(_) => {
                 self.connect_structure(ast_data, module, id, ast, StructureKind::Union, depth)?;
             }
+            ast::Kind::Bound(_) => {
+                self.types[id].kind = ty::Kind::Bound(ast);
+            }
             kind => unreachable!("{:?}", kind),
         }
 
@@ -279,40 +283,35 @@ impl Ctx {
         let mut fields = self.temp_vec();
         let mut params = self.temp_vec();
         let mut shadowed = self.temp_vec();
-        let header = ast_data.son(ast, 0);
-        let sons = ast_data.sons(header);
-
+        let sons = ast_data.sons(ast);
+        let (generics, body) = (sons[1], sons[2]);
+        
         params.extend_from_slice(self.type_slice(self.types[id].params));
-
-        if ast_data.kind(header) == ast::Kind::Instantiation {
-            if params.len() != sons.len() {
-                return Err(Error::new(
-                    error::Kind::WrongInstantiationArgAmount(params.len() - 1, sons.len() - 1),
-                    self.types[id].hint.clone(),
-                ));
-            }
-            for (&param, &son) in params.iter().zip(sons.iter()) {
-                let id = self.hash_token(ast_data.token(son));
-
+        
+        if !generics.is_reserved_value() {
+            let sons = ast_data.sons(generics);
+            debug_assert!(params.len() != sons.len());
+            for (&param, &son) in params[1..].iter().zip(sons.iter()) {
+                let name = ast_data.sons(son)[0];
+                let id = self.hash_token(ast_data.token(name));
                 let shadow = self.push_item(module, id, item::Kind::Ty(param));
                 shadowed.push((id, shadow));
             }
         }
 
-        let body = ast_data.son(ast, 1);
-        if body != Ast::reserved_value() {
+        if !body.is_reserved_value() {
             let sons = ast_data.sons(body);
             for &son in sons {
                 let (kind, sons, token) = ast_data.ent(son).parts();
-                let field_line_len = ast_data.len(sons);
-                let type_ast = ast_data.get(sons, field_line_len - 1);
+                let sons = ast_data.slice(sons);
+                let type_ast = sons[sons.len() - 1];
                 let (vis, embedded) = match &kind {
                     &ast::Kind::StructField(vis, embedded) => (vis, embedded),
                     _ => unreachable!("{:?}", kind),
                 };
                 let ty = self.ty(ast_data, module, type_ast, depth)?;
                 let hint = token;
-                for &field in &ast_data.slice(sons)[..field_line_len - 1] {
+                for &field in &sons[..sons.len() - 1] {
                     let id = self.hash_token(ast_data.token(field));
                     let field = FieldEnt {
                         embedded,
@@ -403,7 +402,7 @@ impl Ctx {
         let kind = ast_data.kind(ast);
         let sons = ast_data.sons(ast);
 
-        for &arg in &sons[1..sons.len() - 1] {
+        for &arg in &sons[2..sons.len() - 1] {
             let ty = self.ty(ast_data, module, arg, depth)?;
             args.push(ty);
         }
@@ -491,35 +490,55 @@ impl Ctx {
         ast: Ast,
         depth: usize,
     ) -> Result<Ty> {
+        
+
         let ident = ast_data.son(ast, 0);
         let (kind, sons, token) = ast_data.ent(ident).parts();
         let ty = match kind {
-            ast::Kind::Ident => self.simple_type(ast_data, module, None, ident, token)?,
+            ast::Kind::Ident => self.simple_type(&ast_data, module, None, ident, token)?,
             ast::Kind::Path => {
                 let module_name = ast_data.get(sons, 0);
                 let name = ast_data.get(sons, 1);
-                self.simple_type(ast_data, module, Some(module_name), name, token)?
+                self.simple_type(&ast_data, module, Some(module_name), name, token)?
             }
             _ => unreachable!("{:?}", kind),
         };
 
         let TyEnt {
             vis,
-            name,
+            hint,
             attrs,
             module: original_module,
             id: ty_id,
+            kind,
             ..
         } = self.types[ty];
+        let arg_count = {
+            let mut ast_data = ast_data.clone();
+            ast_data.set_swapped(true);
+            let generic_ast = match kind {
+                ty::Kind::Generic(ast) => ast,
+                _ => unreachable!("{:?}", kind),
+            };
+            let generic_ast = ast_data.son(generic_ast, 1);
+            ast_data.sons(generic_ast).len()
+        };
 
         let mut params = self.temp_vec();
         let sons = ast_data.sons(ast);
+
+        if arg_count != sons.len() - 1 {
+            return Err(Error::new(
+                error::Kind::WrongInstantiationArgAmount(sons.len() - 1, arg_count),
+                token,
+            ));
+        }
 
         params.push(ty);
 
         let mut id = ty_id;
         for &ty in &sons[1..] {
-            let ty = self.ty(ast_data, module, ty, depth)?;
+            let ty = self.ty(&ast_data, module, ty, depth)?;
             id = id.add(self.types[ty].id);
             params.push(ty);
         }
@@ -546,8 +565,7 @@ impl Ctx {
             vis,
             params: EntityList::from_slice(params.as_slice(), &mut self.type_slices),
             kind: ty::Kind::Unresolved(ast),
-            name,
-            hint: token,
+            hint,
             attrs,
             size: Size::ZERO,
             align: Size::ZERO,
@@ -596,10 +614,10 @@ impl Ctx {
 
         collector.use_types(|ty, mut attrs| {
             let (kind, sons, _) = temp_ast_data.ent(ty).parts();
+            let sons = temp_ast_data.slice(sons);
             match kind {
                 ast::Kind::Enum(vis) => {
-                    let ident = temp_ast_data.slice(sons)[0];
-                    let variants = temp_ast_data.get(sons, 1);
+                    let (name, variants) = (sons[0], sons[1]);
                     let variants = if !variants.is_reserved_value() {
                         temp.clear();
                         for &var in temp_ast_data.sons(variants) {
@@ -612,8 +630,8 @@ impl Ctx {
                         EntityList::new()
                     };
 
-                    let ident = temp_ast_data.token(ident);
-                    let id = self.hash_token(ident);
+                    let hint = temp_ast_data.token(name);
+                    let id = self.hash_token(hint);
 
                     let kind = ty::Kind::Enumeration(variants);
                     let datatype = TyEnt {
@@ -621,46 +639,38 @@ impl Ctx {
                         id,
                         module,
                         kind,
-                        name: ident.span(),
                         attrs,
-                        hint: ident,
+                        hint,
 
                         ..Default::default()
                     };
 
                     self.add_type(module, datatype).map_err(Into::into)?;
                 }
-                ast::Kind::Struct(vis) | ast::Kind::Union(vis) => {
-                    let ident = temp_ast_data.get(sons, 0);
-                    let ident_ent = temp_ast_data.ent(ident);
-                    let (ident, kind) = if ident_ent.kind() == ast::Kind::Ident {
-                        (ident_ent, ty::Kind::Unresolved(ty))
-                    } else if ident_ent.kind() == ast::Kind::Instantiation {
+                ast::Kind::Struct(vis) | ast::Kind::Union(vis) | ast::Kind::Bound(vis) => {
+                    
+                    let (ident, generics) = (sons[0], sons[1]);
+                    let kind = if !generics.is_reserved_value() {
                         attrs = saved_ast_data.relocate(attrs, temp_ast_data, reloc);
                         let ty = saved_ast_data.relocate(ty, temp_ast_data, reloc);
-                        (
-                            temp_ast_data.get_ent(ident_ent.sons(), 0),
-                            ty::Kind::Generic(ty),
-                        )
+                        ty::Kind::Generic(ty)
                     } else {
-                        return Err(Error::new(
-                            error::Kind::UnexpectedAst(String::from("expected struct identifier")),
-                            ident_ent.token(),
-                        ));
+                        ty::Kind::Unresolved(ty)
                     };
+                    let hint = temp_ast_data.token(ident);
+                    let id = self.hash_token(hint);
 
-                    let id = self.hash_token(ident.token());
                     let datatype = TyEnt {
                         vis,
                         id,
                         module,
                         kind,
-                        name: ident.span(),
                         attrs,
-                        hint: ident.token(),
+                        hint,
 
                         ..Default::default()
                     };
+                    
                     let id = self.add_type(module, datatype).map_err(Into::into)?;
 
                     if let ty::Kind::Unresolved(_) = &self.types[id].kind {
@@ -1216,7 +1226,7 @@ impl Ctx {
     );
 
     pub fn type_name(&self, ty: Ty) -> Span {
-        self.types[ty].name
+        self.types[ty].hint.span()
     }
 
     pub fn type_module(&self, ty: Ty) -> Mod {
@@ -1285,7 +1295,7 @@ impl<'a> TreeStorage<Ty> for Ctx {
         let node = &self.types[id];
 
         match &node.kind {
-            ty::Kind::Builtin(_) | ty::Kind::Pointer(..) | ty::Kind::Enumeration(_) => 0,
+            ty::Kind::Builtin(_) | ty::Kind::Pointer(..) | ty::Kind::Enumeration(_) | ty::Kind::Bound(_) => 0,
             ty::Kind::FunPointer(fun) => {
                 self.type_slice(fun.args).len() + fun.ret.is_some() as usize
             }
@@ -1364,7 +1374,6 @@ macro_rules! define_repo {
                         align: Size::new($s32, $s64).min(Size::new(4, 8)),
                         module,
                         hint: Token::new(token::Kind::Ident, name.clone(), LineData::default()),
-                        name,
 
                         ..Default::default()
                     };
@@ -1414,7 +1423,7 @@ impl<'a> std::fmt::Display for TypeDisplay<'a> {
                     write!(f, "&{}", Self::new(self.state, id))
                 }
             }
-            ty::Kind::Structure(..) if !ty.params.is_empty() => {
+            ty::Kind::Structure(..) |ty::Kind::Bound(_) if !ty.params.is_empty() => {
                 let params = self.state.type_slice(ty.params);
                 write!(f, "{}", Self::new(self.state, params[0]))?;
                 write!(f, "[")?;
@@ -1428,8 +1437,9 @@ impl<'a> std::fmt::Display for TypeDisplay<'a> {
             | ty::Kind::Unresolved(_)
             | ty::Kind::Generic(_)
             | ty::Kind::Structure(..)
-            | ty::Kind::Enumeration(_) => {
-                write!(f, "{}", self.state.display(ty.name))
+            | ty::Kind::Enumeration(_)
+            | ty::Kind::Bound(_) => {
+                write!(f, "{}", self.state.display(ty.hint.span()))
             }
             &ty::Kind::Constant(value) => {
                 write!(f, "{}", ConstDisplay::new(self.state, value))
@@ -1636,7 +1646,6 @@ pub struct TyEnt {
     pub vis: Vis,
     pub params: EntityList<Ty>,
     pub kind: ty::Kind,
-    pub name: Span,
     pub hint: Token,
     pub attrs: Ast,
     pub size: Size,
@@ -1652,7 +1661,7 @@ impl TyEnt {
             | ty::Kind::FunPointer(_) => isa.pointer_type(),
             ty::Kind::Enumeration(_) => I8, //temporary solution
             &ty::Kind::Builtin(ty) => ty.0,
-            ty::Kind::Generic(_) | ty::Kind::Constant(_) | ty::Kind::Unresolved(_) => {
+            ty::Kind::Generic(_) | ty::Kind::Constant(_) | ty::Kind::Unresolved(_) | ty::Kind::Bound(_) => {
                 unreachable!()
             }
         }
@@ -1675,6 +1684,7 @@ pub mod ty {
         FunPointer(Signature),
         Constant(Const),
         Structure(StructureKind, EntityList<Field>),
+        Bound(Ast),
         Generic(Ast),
         Unresolved(Ast),
     }
@@ -1863,6 +1873,8 @@ pub fn test() {
         .map_err(|e| panic!("{}", ErrorDisplay::new(&ctx.ctx, &e)))
         .unwrap();
 
+    
+    
     for &module in &order {
         ctx.collect_imported_items(module, &mut item_buffer);
         for &(id, item) in item_buffer.iter() {
@@ -1875,7 +1887,6 @@ pub fn test() {
                 .compute_ast(module, &mut temp_ast_data, &mut collector)
                 .map_err(|e| panic!("{}", ErrorDisplay::new(&ctx.ctx, &e)))
                 .unwrap();
-
             ctx.collect(
                 module,
                 &mut temp_ast_data,
@@ -1885,15 +1896,15 @@ pub fn test() {
             )
             .map_err(|e| panic!("\n{}", ErrorDisplay::new(&ctx, &e)))
             .unwrap();
-
             ctx.compute_types(&ast::DataSwitch::new(&temp_ast_data, &saved_ast_data))
                 .map_err(|e| panic!("\n{}", ErrorDisplay::new(&ctx, &e)))
                 .unwrap();
-
             if !more {
                 break;
             }
         }
+
+        reloc.clear();
 
         ctx.clear_after_module();
     }

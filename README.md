@@ -207,7 +207,7 @@ item =
 
 impl =
   'impl'
-  [ vis ] [ generics ] datatype
+  [ vis ] [ generics ] datatype [ 'for' datatype ]
   ':' :( 
     function | 
     operator_override | 
@@ -218,35 +218,37 @@ attr =
 attr_element = 
   ident '=' expr | 
   ident [ '(' attr_element { ',' attr_element } ')' ] )
-function = 
-  'fun' 
-  [ vis ] ident [ generics ] 
-  [ '(' [ fun_arg { ',' fun_arg } ] ')' ]
-  [ '->' datatype ] 
-  call_convention
-  [ ':' : statement ]
-operator_override = 
-  'fun' 
-  [ vis ] op [ generics ] 
-  '(' fun_arg [ ',' fun_arg ] ')'
-  '->' datatype 
-  ':' : statement
+function = function_header [ ':' : statement ]
+
+function_argument = ident { ',' ident } ':' datatype
 global_var =
   ( 'var' | 'let' ) 
   [ vis ]
   :( 
     ident { ',' ident } 
     ( 
-      ':' type [ '=' expression ] | 
+      ':' datatype [ '=' expression ] | 
       '=' expression 
     ) 
   )
 union = 'union' structure
 struct = 'struct' structure
+bound = 
+  'bound' 
+    [ vis ] [ generics ] ident
+    [ 'embed' datatype { '+' datatype } ] 
+    ':' : function
 structure =
-  [ vis ] ident [ generics ]
+  [ vis ] [ generics ] ident
   [ ':' : field ]
-enum = 'enum' [ vis ] [ ':' : ident ]
+enum = 'enum' [ vis ] ident [ ':' : ident ]
+
+function_header = 
+  'fun' 
+  [ vis ] [ generics ] ( ident | op )
+  [ '(' [ function_argument { ',' function_argument } ] ')' ]
+  [ '->' datatype ]
+  call_convention
 
 field = 
   [ vis ] [ 'embed' ] 
@@ -318,7 +320,8 @@ datatype =
   'fun' [ '(' datatype { ',' datatype } ')' ] [ '->' datatype ] call_convention |
   '&' [ 'var' ] datatype |
   '(' datatype ',' [ datatype { ',' datatype } ] ')'
-generics = '[' ident { ',' ident } ']'
+generics = '[' generic_item { ',' generic_item } ']'
+generic_element = ident [ ':' datatype { '+' datatype } ]
 args = '(' { [ 'var' ] ident { ',' ident } ':' datatype } ')'
 vis = 'pub' | 'priv'
 char = '([^\\\']|\\(\\|\'|a|b|e|f|v|n|r|t|0|[0-7]{3}|x[0-9a-fA-F]{2}|u[0-9a-fA-F]{4}|U[0-9a-fA-F]{8}))'

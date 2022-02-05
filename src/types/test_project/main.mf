@@ -31,3 +31,33 @@ struct Interface:
 struct Cool: 
   g: Goof[Interface]
   f: StackFrame
+
+bound Empty
+
+impl Empty for f32
+
+bound Bound embed Empty + Empty:
+  fun setter(s: &var Self, b: int)
+  fun call_conv windows_fastcall
+  fun mul(s: &var Self, b: int) -> int
+  fun div(b, c: int) -> int
+  fun get(s: &Self) -> (int, int)
+
+impl f32:
+  fun something_implemented(s: &var Self, b: int):
+    pass
+
+impl Bound for int:
+  setter = something_implemented
+  
+  fun call_conv windows_fastcall:
+    pass
+  
+  fun mul(s: &var Self, b: int) -> int:
+    return *s *= b
+  
+  fun div(b, c: int) -> int:
+    return b / c
+  
+  fun get(s: &Self) -> (int, int):
+    return (*s, *s)
